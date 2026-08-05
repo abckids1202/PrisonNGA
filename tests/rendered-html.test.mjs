@@ -22,6 +22,8 @@ test("server-renders the SecureVisit operations dashboard", async () => {
   assert.match(html, /SecureVisit/);
   assert.match(html, /Central Facility/);
   assert.match(html, /Approval queue/);
-  assert.match(html, /Today(?:&apos;|&#x27;)s agenda/);
+  assert.match(html, /Today(?:&apos;|&#x27;)s operational timeline/);
+  assert.match(html, /Requires attention/);
+  assert.match(html, /Appointment Queue/);
   assert.doesNotMatch(html, /Your site is taking shape/);
 });

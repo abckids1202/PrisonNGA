@@ -22,15 +22,41 @@ type Request = {
 
 const primaryNav: NavItem[] = [
   { label: "Overview", icon: "⌂" },
-  { label: "Appointments", icon: "◷", count: 12 },
-  { label: "Visitors", icon: "♙", count: 6 },
+  { label: "Appointment Queue", icon: "◷", count: 12 },
+  { label: "Calendar", icon: "▦" },
+  { label: "Live Sessions", icon: "◉", count: 2 },
+  { label: "Waiting Room", icon: "◌", count: 3 },
+];
+
+const peopleNav: NavItem[] = [
+  { label: "Verification Queue", icon: "✦", count: 6 },
+  { label: "Relationship Requests", icon: "↔", count: 4 },
+  { label: "Visitors", icon: "♙" },
   { label: "Prisoners", icon: "▦" },
 ];
 
-const operationsNav: NavItem[] = [
-  { label: "Credits & payments", icon: "◈" },
-  { label: "Audit log", icon: "≡" },
-  { label: "Settings", icon: "⚙" },
+const facilityNav: NavItem[] = [
+  { label: "Devices & Rooms", icon: "▣", count: 1 },
+  { label: "Facility Schedule", icon: "◷" },
+  { label: "Restrictions & Closures", icon: "⊘" },
+];
+
+const complianceNav: NavItem[] = [
+  { label: "Incidents", icon: "⚠", count: 3 },
+  { label: "Recording Access", icon: "◉" },
+  { label: "Audit Log", icon: "≡" },
+  { label: "Reports", icon: "▤" },
+];
+
+const financeNav: NavItem[] = [
+  { label: "Visit Credits", icon: "◈" },
+  { label: "Payments & Refunds", icon: "↻" },
+];
+
+const adminNav: NavItem[] = [
+  { label: "Staff & Roles", icon: "⚙" },
+  { label: "Facility Settings", icon: "⚙" },
+  { label: "System Settings", icon: "⚙" },
 ];
 
 const initialRequests: Request[] = [
@@ -84,22 +110,54 @@ function StatusPill({ children, tone }: { children: React.ReactNode; tone: strin
   return <span className={`status status-${tone}`}><span className="status-dot" />{children}</span>;
 }
 
-type MockPageProps = { section: string; onNotify: (message: string) => void };
+type MockPageProps = { section: string; onNotify: (message: string) => void; facilityState: string; onFacilityStateChange: (state: string) => void };
 
-function MockPage({ section, onNotify }: MockPageProps) {
+function MockPage({ section, onNotify, facilityState, onFacilityStateChange }: MockPageProps) {
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
   const [toggles, setToggles] = useState({ recording: true, reminders: true, mfa: true });
 
   const pageCopy: Record<string, { kicker: string; title: string; description: string }> = {
-    Appointments: { kicker: "Scheduling workspace", title: "Appointments", description: "Review, approve, and coordinate every visit across the facility." },
+    "Appointment Queue": { kicker: "Scheduling workspace", title: "Appointment queue", description: "Make policy-aware decisions with every consequence visible before approval." },
+    Calendar: { kicker: "Resource calendar", title: "Calendar", description: "See visits by day, room, device, prisoner, and monitoring capacity." },
+    "Live Sessions": { kicker: "Monitoring workspace", title: "Live sessions", description: "Monitor authorized sessions, waiting visitors, and facility-side readiness." },
+    "Waiting Room": { kicker: "Admission control", title: "Waiting room", description: "Resolve check-in, device, identity, and prisoner readiness before admission." },
+    "Verification Queue": { kicker: "Identity & access", title: "Verification queue", description: "Review visitor evidence with explicit reasons and traceable decisions." },
+    "Relationship Requests": { kicker: "Identity & relationships", title: "Relationship requests", description: "Approve who may request contact with each fictional prisoner." },
     Visitors: { kicker: "Identity & relationships", title: "Visitors", description: "Keep visitor verification and prisoner relationships moving safely." },
     Prisoners: { kicker: "Fictional records", title: "Prisoners", description: "Manage visitation eligibility without exposing restricted custody data." },
-    "Credits & payments": { kicker: "Mock financial ledger", title: "Credits & payments", description: "Track visit credits and reconciliation with a transparent ledger." },
-    "Audit log": { kicker: "Compliance workspace", title: "Audit log", description: "A chronological record of sensitive actions across Central Facility." },
-    Settings: { kicker: "Facility configuration", title: "Settings", description: "Define the rules that keep every visit controlled and accountable." },
+    "Devices & Rooms": { kicker: "Facility resources", title: "Devices & rooms", description: "Know which rooms and kiosks are available, reserved, in use, or offline." },
+    "Facility Schedule": { kicker: "Facility operations", title: "Facility schedule", description: "Manage operating hours, closures, buffers, and monitoring capacity." },
+    "Restrictions & Closures": { kicker: "Facility state", title: "Restrictions & closures", description: "Make operational changes visible before they affect approved visits." },
+    Incidents: { kicker: "Operational safety", title: "Incidents", description: "Record interventions and technical issues with a clear resolution trail." },
+    "Recording Access": { kicker: "Sensitive access", title: "Recording access", description: "Review requests for protected recordings without unrestricted browsing." },
+    "Audit Log": { kicker: "Compliance workspace", title: "Audit log", description: "A chronological record of sensitive actions across Central Correctional Facility." },
+    Reports: { kicker: "Compliance workspace", title: "Reports", description: "Prepare operational summaries without exposing unnecessary sensitive detail." },
+    "Visit Credits": { kicker: "Mock financial ledger", title: "Visit credits", description: "Track reservations and consumption with an append-only visit credit ledger." },
+    "Payments & Refunds": { kicker: "Mock financial ledger", title: "Payments & refunds", description: "Reconcile fictional payment events and facility cancellation releases." },
+    "Staff & Roles": { kicker: "Authorization workspace", title: "Staff & roles", description: "Keep permissions explicit, facility-scoped, and accountable." },
+    "Facility Settings": { kicker: "Facility configuration", title: "Facility settings", description: "Define the rules that keep every visit controlled and accountable." },
+    "System Settings": { kicker: "System configuration", title: "System settings", description: "Review prototype diagnostics and safe system defaults." },
   };
-  const copy = pageCopy[section] ?? pageCopy.Appointments;
+  const copy = pageCopy[section] ?? pageCopy["Appointment Queue"];
+  const isAudit = section === "Audit Log";
+  const isSettings = ["Facility Settings", "System Settings"].includes(section);
+  const isAppointmentQueue = section === "Appointment Queue";
+  const tablePages = ["Appointment Queue", "Visitors", "Prisoners", "Visit Credits", "Payments & Refunds", "Audit Log", "Facility Settings", "System Settings"];
+  const moduleRows: Record<string, Array<[string, string, string, string]>> = {
+    Calendar: [["09:30", "Sarah Amelia ↔ A. Rahman", "Room 03 · Kiosk 04", "Confirmed"], ["10:00", "Dimas Wirawan ↔ Bima Aditya", "Room 01 · Kiosk 02", "Blocked"], ["10:30", "Nurul Hidayah ↔ Fajar Hidayat", "Room 02 · Kiosk 03", "Awaiting confirmation"]],
+    "Live Sessions": [["LIVE", "Maya Putri ↔ Rafi Pratama", "Room 01 · 08:42 remaining", "Monitored"], ["LIVE", "Sarah Amelia ↔ A. Rahman", "Room 03 · 12:10 remaining", "Recording on"], ["WAITING", "Dimas Wirawan", "Waiting room · camera test passed", "Awaiting admission"]],
+    "Waiting Room": [["08:52", "Sarah Amelia", "Identity reconfirmed · ready", "Ready"], ["09:12", "Dimas Wirawan", "Microphone test failed", "Device test failed"], ["09:24", "Nurul Hidayah", "Waiting for prisoner availability", "Awaiting prisoner"]],
+    "Verification Queue": [["8m", "Nurul Hidayah", "Identity document · expiry 2027", "Pending review"], ["22m", "Fajar Anwar", "More information requested", "Needs documents"], ["1h", "Dewi Kartika", "Passport expiry check", "Expiring soon"]],
+    "Relationship Requests": [["REQ-REL-208", "Alya Pratama ↔ Rafi Pratama", "Sister · family card attached", "Under review"], ["REQ-REL-207", "Dimas Wirawan ↔ Bima Aditya", "Legal representative", "Escalated"], ["REQ-REL-206", "Sarah Amelia ↔ A. Rahman", "Wife · approved 02 Aug", "Approved"]],
+    "Devices & Rooms": [["ROOM 01", "Monitoring room", "Kiosk 02 · heartbeat 18s ago", "Available"], ["ROOM 03", "Family visit room", "Kiosk 04 · heartbeat 14m ago", "Device offline"], ["ROOM 04", "Legal visit room", "Kiosk 06 · certificate valid", "Reserved"]],
+    "Facility Schedule": [["08:00–16:00", "Normal operating hours", "Monday–Saturday", "Active"], ["12 Aug", "Staff training closure", "No appointments accepted", "Scheduled"], ["Every visit", "10-minute buffer", "Monitoring capacity: 2", "Policy"]],
+    "Restrictions & Closures": [["NOW", "Facility state", "Normal operations · changed 06:30", facilityState === "LOCKDOWN" ? "Lockdown" : "Normal"], ["05 Aug", "Prisoner restriction", "Bima Aditya · affects 10:00 visit", "Active"], ["12 Aug", "Facility closure", "Staff training · 08:00–12:00", "Scheduled"]],
+    Incidents: [["INC-031", "Device heartbeat missed", "Room 03 · 14 minutes offline", "Open"], ["INC-030", "Technical failure", "Appointment REQ-2038 · rebooking suggested", "Under review"], ["INC-029", "Unauthorized third party", "Session 04 Aug · resolved by supervisor", "Resolved"]],
+    "Recording Access": [["REC-018", "Sarah Amelia ↔ A. Rahman", "Reason: incident review", "Supervisor approval"], ["REC-017", "Legal visit · Bima Aditya", "Recording prohibited by policy", "Not available"], ["REC-016", "K. Wijaya ↔ D. Wijaya", "Reason: compliance audit", "Authorized"]],
+    Reports: [["Daily operations", "05 Aug 2026", "Appointments, exceptions, capacity", "Ready"], ["Credit reconciliation", "July 2026", "Ledger and mock payment events", "Ready"], ["Access review", "Q3 2026", "Sensitive recording and audit access", "Draft"]],
+    "Staff & Roles": [["Maya Santoso", "Scheduling Officer", "Central Facility", "7 permissions"], ["Rizky Kurniawan", "Monitoring Officer", "Central Facility", "5 permissions"], ["Rahman Yusuf", "Supervisor", "Central Facility", "12 permissions"]],
+  };
 
   function toggle(key: "recording" | "reminders" | "mfa") {
     setToggles((current) => ({ ...current, [key]: !current[key] }));
@@ -110,10 +168,10 @@ function MockPage({ section, onNotify }: MockPageProps) {
     <section className="mock-page">
       <div className="mock-heading">
         <div><span className="eyebrow">{copy.kicker}</span><h1>{copy.title}</h1><p>{copy.description}</p></div>
-        <div className="heading-actions"><button className="secondary-button" onClick={() => onNotify("A report export is being prepared.")}>↓ <span>Export</span></button><button className="primary-button" onClick={() => onNotify(`New ${section.toLowerCase()} flow opened.`)}>+ <span>{section === "Settings" ? "Save changes" : "Create new"}</span></button></div>
+        <div className="heading-actions"><button className="secondary-button" onClick={() => onNotify(isAudit ? "Audit integrity verified across the current facility scope." : "A report export is being prepared.")}>{isAudit ? "✓" : "↓"} <span>{isAudit ? "Verify integrity" : "Export"}</span></button><button className="primary-button" onClick={() => onNotify(isAudit ? "Investigation case request opened with a reason required." : isSettings ? "Settings changes are ready for review." : `New ${section.toLowerCase()} flow opened.`)}>+ <span>{isAudit ? "Open investigation" : isSettings ? "Save changes" : "Create new"}</span></button></div>
       </div>
 
-      {section === "Appointments" ? <>
+      {isAppointmentQueue ? <>
         <div className="mock-stat-row"><div><span>Today</span><strong>18</strong><small><em>+12%</em> vs last week</small></div><div><span>Needs review</span><strong>12</strong><small><em className="warm">3 urgent</em> in queue</small></div><div><span>Approved this week</span><strong>86</strong><small><em>94%</em> of requests</small></div><div><span>Average approval</span><strong>18m</strong><small><em>↓ 4m</em> faster than July</small></div></div>
         <div className="mock-toolbar"><div className="toolbar-tabs"><button className={activeFilter === "All" ? "toolbar-active" : ""} onClick={() => setActiveFilter("All")}>All visits <span>18</span></button><button className={activeFilter === "Pending" ? "toolbar-active" : ""} onClick={() => setActiveFilter("Pending")}>Pending <span>12</span></button><button className={activeFilter === "Approved" ? "toolbar-active" : ""} onClick={() => setActiveFilter("Approved")}>Approved <span>6</span></button></div><div className="toolbar-right"><button className="date-button">‹ &nbsp; Wed, 05 Aug &nbsp; ›</button><button className="filter-button">☷ Filters</button></div></div>
         <div className="mock-two-column"><article className="panel table-panel"><div className="panel-header"><div><span className="eyebrow">{activeFilter} appointments</span><h2>Visit schedule</h2></div><button className="more-button">•••</button></div><div className="data-table appointment-table"><div className="data-head"><span>Visitor & prisoner</span><span>Time / room</span><span>Type</span><span>Status</span><span /></div>{[
@@ -149,7 +207,7 @@ function MockPage({ section, onNotify }: MockPageProps) {
         ].filter((row) => row[0].toLowerCase().includes(search.toLowerCase()) || row[2].toLowerCase().includes(search.toLowerCase())).map((row) => <div className="data-row" key={row[2]}><div className="table-person"><Avatar initials={row[1]} tone="navy" small /><span><strong>{row[0]}</strong><small>Display name · fictional record</small></span></div><span className="table-code">{row[2]}</span><StatusPill tone={row[3] === "Eligible" ? "green" : row[3] === "Restricted" ? "orange" : "blue"}>{row[3]}</StatusPill><span className="table-muted">{row[4]}</span><span className="table-muted">{row[5]}</span><button className="row-menu" onClick={() => onNotify(`${row[0]}'s restricted profile opened.`)}>•••</button></div>)}</div><div className="table-disclaimer">ⓘ Visitors only see a display name and the last four digits of a facility reference. Restricted fields stay staff-only.</div></article>
       </> : null}
 
-      {section === "Credits & payments" ? <>
+      {["Visit Credits", "Payments & Refunds"].includes(section) ? <>
         <div className="mock-stat-row credit-stats"><div><span>Available credits</span><strong>164</strong><small><em>Across 248</em> visitor accounts</small></div><div><span>Reserved</span><strong>18</strong><small>for approved appointments</small></div><div><span>Purchased this month</span><strong>236</strong><small><em>+8.4%</em> vs July</small></div><div><span>Refunds pending</span><strong>3</strong><small><em className="warm">¥ 60</em> mock value</small></div></div>
         <div className="mock-toolbar"><div className="toolbar-tabs"><button className="toolbar-active">All transactions <span>1,842</span></button><button>Purchases <span>236</span></button><button>Reservations <span>18</span></button><button>Refunds <span>3</span></button></div><div className="toolbar-right"><button className="date-button">August 2026⌄</button><button className="filter-button">↓ Export ledger</button></div></div>
         <div className="mock-two-column"><article className="panel table-panel"><div className="panel-header"><div><span className="eyebrow">Immutable activity</span><h2>Credit ledger</h2></div><button className="more-button">•••</button></div><div className="data-table credit-table"><div className="data-head"><span>Transaction</span><span>Visitor</span><span>Amount</span><span>Balance after</span><span /></div>{[
@@ -161,7 +219,7 @@ function MockPage({ section, onNotify }: MockPageProps) {
         ].map((row) => <div className="data-row" key={`${row[0]}-${row[1]}`}><div className="ledger-type"><span className={`ledger-dot ledger-${row[5]}`} /><span><strong>{row[0]}</strong><small>{row[4]}</small></span></div><span className="table-muted">{row[1]}</span><strong className={row[2].startsWith("−") ? "amount-minus" : "amount-plus"}>{row[2]}</strong><span className="table-muted">{row[3]}</span><button className="row-menu" onClick={() => onNotify("Ledger transaction details opened.")}>•••</button></div>)}</div></article><aside className="side-stack"><div className="rule-card rule-card-purple"><span className="eyebrow">Ledger integrity</span><div className="health-line"><strong>100%</strong><span>reconciled</span></div><p>All mock payment webhooks are idempotent and accounted for.</p><div className="progress purple-progress"><i style={{ width: "100%" }} /></div></div><div className="panel mini-panel"><div className="panel-header"><div><span className="eyebrow">Credit policy</span><h2>Standard visit</h2></div></div><div className="credit-policy"><div><strong>1 credit</strong><span>20 minute family session</span></div><div><strong>Reserve</strong><span>when appointment is approved</span></div><div><strong>Consume</strong><span>after successful session start</span></div></div></div></aside></div>
       </> : null}
 
-      {section === "Audit log" ? <>
+      {section === "Audit Log" ? <>
         <div className="mock-stat-row audit-stats"><div><span>Events today</span><strong>482</strong><small><em>+9.2%</em> vs yesterday</small></div><div><span>Staff actions</span><strong>138</strong><small>across 7 roles</small></div><div><span>Sensitive access</span><strong>12</strong><small><em>All authorized</em></small></div><div><span>Alerts</span><strong>0</strong><small><em>Clear</em> in last 24h</small></div></div>
         <div className="mock-toolbar"><div className="toolbar-tabs"><button className="toolbar-active">All events <span>482</span></button><button>Access events <span>12</span></button><button>Financial <span>38</span></button><button>Security <span>4</span></button></div><div className="toolbar-right"><label className="search-field">⌕<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search event or actor" /></label><button className="filter-button">☷ Filters</button></div></div>
         <article className="panel table-panel full-table"><div className="panel-header"><div><span className="eyebrow">Append-only record</span><h2>Recent events</h2></div><button className="secondary-button" onClick={() => onNotify("Audit export queued with your access reason.")}>↓ <span>Export audit</span></button></div><div className="data-table audit-table"><div className="data-head"><span>Time</span><span>Actor</span><span>Action</span><span>Resource</span><span>Result</span></div>{[
@@ -173,9 +231,11 @@ function MockPage({ section, onNotify }: MockPageProps) {
         ].filter((row) => row.join(" ").toLowerCase().includes(search.toLowerCase())).map((row) => <div className="data-row" key={`${row[0]}-${row[2]}`}><span className="audit-time">{row[0]}<small>05 Aug 2026</small></span><div className="table-person"><Avatar initials={row[5]} tone={row[6]} small /><span><strong>{row[1]}</strong><small>Staff member</small></span></div><span className="table-muted">{row[2]}</span><span className="table-muted">{row[3]}</span><StatusPill tone="green">{row[4]}</StatusPill></div>)}</div><div className="table-disclaimer">ⓘ Audit events are append-only in the production architecture. Recording access and exports always require a reason.</div></article>
       </> : null}
 
-      {section === "Settings" ? <>
+      {isSettings ? <>
         <div className="settings-layout"><div className="settings-nav"><span className="settings-nav-title">Facility setup</span>{["General", "Appointment policy", "Recording policy", "Staff access", "Notifications"].map((item, index) => <button className={index === 0 ? "settings-nav-active" : ""} key={item} onClick={() => onNotify(`${item} settings selected.`)}>{item}<span>›</span></button>)}</div><div className="settings-content"><article className="panel settings-card"><div className="settings-card-header"><div><span className="eyebrow">General</span><h2>Central Facility</h2><p>Basic details shown to verified visitors.</p></div><StatusPill tone="green">Active</StatusPill></div><div className="settings-fields"><label>Facility display name<input defaultValue="Central Facility" /></label><label>Timezone<select defaultValue="Asia/Jakarta"><option>Asia/Jakarta · GMT+7</option></select></label><label>Operating hours<input defaultValue="09:00 – 16:00 · Monday to Saturday" /></label><label>Visitor support email<input defaultValue="support@central-facility.example" /></label></div></article><article className="panel settings-card"><div className="settings-card-header"><div><span className="eyebrow">Policy controls</span><h2>Guardrails for every visit</h2><p>These settings are illustrative and require institutional approval.</p></div></div><div className="toggle-list"><div className="toggle-row"><span><strong>Record standard family sessions</strong><small>Show recording notice before admission.</small></span><button className={`toggle ${toggles.recording ? "toggle-on" : ""}`} onClick={() => toggle("recording")}><i /></button></div><div className="toggle-row"><span><strong>Send appointment reminders</strong><small>Notify verified visitors 24 hours and 10 minutes before a visit.</small></span><button className={`toggle ${toggles.reminders ? "toggle-on" : ""}`} onClick={() => toggle("reminders")}><i /></button></div><div className="toggle-row"><span><strong>Require MFA for staff</strong><small>All staff accounts must verify a second factor.</small></span><button className={`toggle ${toggles.mfa ? "toggle-on" : ""}`} onClick={() => toggle("mfa")}><i /></button></div></div></article></div></div>
       </> : null}
+
+      {!tablePages.includes(section) ? <div className="workflow-module-layout"><article className="panel workflow-list-panel"><div className="panel-header"><div><span className="eyebrow">Operational queue</span><h2>{copy.title}</h2></div><span className="scope-badge">Central Facility</span></div><div className="workflow-list">{(moduleRows[section] ?? [["INFO", "Module is ready for the next workflow phase", "Fictional data only", "Prototype"]]).map((row) => <button className="workflow-row" key={`${row[0]}-${row[1]}`} onClick={() => onNotify(`${row[1]} details opened.`)}><span className="workflow-time">{row[0]}</span><span className="workflow-copy"><strong>{row[1]}</strong><small>{row[2]}</small></span><StatusPill tone={row[3] === "Blocked" || row[3] === "Device offline" || row[3] === "Open" ? "orange" : row[3] === "Not available" ? "red" : row[3] === "Ready" || row[3] === "Active" || row[3] === "Confirmed" || row[3] === "Approved" || row[3] === "Available" ? "green" : "blue"}>{row[3]}</StatusPill><span className="workflow-arrow">→</span></button>)}</div></article><aside className="side-stack"><div className="rule-card rule-card-dark"><span className="eyebrow">Decision context</span><strong>{section === "Restrictions & Closures" ? facilityState === "LOCKDOWN" ? "LOCKDOWN" : "NORMAL" : "Ready"}</strong><p>{section === "Restrictions & Closures" ? "Changing facility state affects approvals, reservations, notifications, and audit events." : "Every action stays scoped to Central Facility and creates a traceable prototype event."}</p>{section === "Restrictions & Closures" ? <button className="dark-outline-button" onClick={() => { const next = facilityState === "LOCKDOWN" ? "NORMAL_OPERATIONS" : "LOCKDOWN"; onFacilityStateChange(next); onNotify(next === "LOCKDOWN" ? "Lockdown simulation started. Affected visits are flagged for release." : "Facility state returned to normal operations."); }}>{facilityState === "LOCKDOWN" ? "End lockdown simulation" : "Declare lockdown simulation"}</button> : <button className="dark-outline-button" onClick={() => onNotify(`${copy.title} workflow opened with required reason capture.`)}>Open decision workspace →</button>}</div><div className="panel mini-panel"><div className="panel-header"><div><span className="eyebrow">Traceability</span><h2>What happens next</h2></div></div><div className="check-list"><span>✓ <b>Validate facility scope</b></span><span>✓ <b>Record the actor and reason</b></span><span>✓ <b>Notify affected people</b></span><span>✓ <b>Append an audit event</b></span></div></div></aside></div> : null}
     </section>
   );
 }
@@ -185,6 +245,7 @@ export default function Home() {
   const [requests, setRequests] = useState(initialRequests);
   const [toast, setToast] = useState("");
   const [showVisitorView, setShowVisitorView] = useState(false);
+  const [facilityState, setFacilityState] = useState("NORMAL_OPERATIONS");
 
   const pendingCount = requests.length;
   const selectedLabel = activeNav === "Overview" ? "Overview" : activeNav;
@@ -212,31 +273,67 @@ export default function Home() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-lockup">
-          <div className="brand-mark"><span>SV</span></div>
+          <div className="brand-mark" aria-label="Controlled Passage mark"><span className="passage-mark"><i /><i /><b /></span></div>
           <div>
-            <div className="brand-name">SecureVisit</div>
-            <div className="brand-subtitle">Facility operations</div>
+            <div className="brand-name"><strong>Secure</strong>Visit</div>
+            <div className="brand-subtitle">SecureVisit Control</div>
           </div>
         </div>
 
         <div className="facility-switcher">
           <div className="facility-icon">CF</div>
-          <div className="facility-copy"><span>Central Facility</span><small>Jakarta · ID</small></div>
+          <div className="facility-copy"><span>Central Correctional Facility</span><small>Jakarta · Prototype environment</small></div>
           <span className="chevron">⌄</span>
         </div>
 
-        <div className="nav-section-label">Workspace</div>
+        <div className="nav-section-label">Operations</div>
         <nav className="nav-list" aria-label="Main navigation">
           {primaryNav.map((item) => (
             <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
-              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.label === "Appointments" ? pendingCount : item.count}</span> : null}
+              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.label === "Appointment Queue" ? pendingCount : item.count}</span> : null}
             </button>
           ))}
         </nav>
 
-        <div className="nav-section-label nav-section-gap">Operations</div>
+        <div className="nav-section-label nav-section-gap">People & access</div>
         <nav className="nav-list" aria-label="Operations navigation">
-          {operationsNav.map((item) => (
+          {peopleNav.map((item) => (
+            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
+              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
+            </button>
+          ))}
+        </nav>
+
+        <div className="nav-section-label nav-section-gap">Facility</div>
+        <nav className="nav-list" aria-label="Facility navigation">
+          {facilityNav.map((item) => (
+            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
+              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
+            </button>
+          ))}
+        </nav>
+
+        <div className="nav-section-label nav-section-gap">Compliance</div>
+        <nav className="nav-list" aria-label="Compliance navigation">
+          {complianceNav.map((item) => (
+            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
+              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
+            </button>
+          ))}
+        </nav>
+
+        <div className="nav-section-label nav-section-gap">Finance</div>
+        <nav className="nav-list" aria-label="Finance navigation">
+          {financeNav.map((item) => (
+            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
+              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
+            </button>
+          ))}
+        </nav>
+
+        <div className="nav-section-label nav-section-gap">Administration</div>
+        <nav className="nav-list" aria-label="Administration navigation">
+          {adminNav.map((item) => (
             <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
               <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
             </button>
@@ -244,8 +341,8 @@ export default function Home() {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="security-note"><span className="lock-icon">⌾</span><div><strong>Secure mode</strong><small>All activity is logged</small></div></div>
-          <div className="user-card"><Avatar initials="MS" tone="navy" small /><div><strong>Maya Santoso</strong><small>Scheduling officer</small></div><button aria-label="User menu">•••</button></div>
+          <div className="security-note"><span className="lock-icon">⌾</span><div><strong>Normal operations</strong><small>All activity is logged</small></div></div>
+          <div className="user-card"><Avatar initials="MS" tone="navy" small /><div><strong>Maya Santoso</strong><small>Scheduling Officer · 07:00–15:00</small></div><button aria-label="User menu">•••</button></div>
         </div>
       </aside>
 
@@ -253,7 +350,7 @@ export default function Home() {
         <header className="topbar">
           <div className="breadcrumb"><span>Central Facility</span><b>/</b><strong>{selectedLabel}</strong></div>
           <div className="topbar-actions">
-            <button className="view-toggle" onClick={() => setShowVisitorView((current) => !current)}><span className="toggle-dot" />{showVisitorView ? "Visitor view" : "Staff view"}<span className="chevron">⌄</span></button>
+            <button className="view-toggle" onClick={() => setShowVisitorView((current) => !current)}><span className="toggle-dot" />{showVisitorView ? "Visitor preview" : "Demo role · Scheduling Officer"}<span className="chevron">⌄</span></button>
             <button className="icon-button" aria-label="Search">⌕</button>
             <button className="icon-button notification-button" aria-label="Notifications">♧<span /></button>
             <Avatar initials="MS" tone="navy" />
@@ -270,7 +367,12 @@ export default function Home() {
           <>
             <section className="page-heading">
               <div><div className="eyebrow">Wednesday, 05 August 2026 <span className="heading-dot">·</span> 08:42 WIB</div><h1>Good morning, Maya <span className="wave">✦</span></h1><p>Here&apos;s what needs your attention across Central Facility today.</p></div>
-              <div className="heading-actions"><button className="secondary-button" onClick={() => notify("Report export prepared for download.")}>↓ <span>Export report</span></button><button className="primary-button" onClick={() => setActiveNav("Appointments")}>+ <span>New appointment</span></button></div>
+              <div className="heading-actions"><button className="secondary-button" onClick={() => notify("Report export prepared for download.")}>↓ <span>Export report</span></button><button className="primary-button" onClick={() => setActiveNav("Appointment Queue")}>+ <span>New appointment</span></button></div>
+            </section>
+
+            <section className={`facility-state-strip ${facilityState === "LOCKDOWN" ? "facility-lockdown" : ""}`} aria-label="Facility state and live operations">
+              <div className="facility-state-main"><span className="state-kicker">Facility state</span><strong>{facilityState === "LOCKDOWN" ? "LOCKDOWN" : "NORMAL OPERATIONS"}</strong><small>{facilityState === "LOCKDOWN" ? "New approvals paused · affected visits are being released" : "Last changed today at 06:30 by Supervisor Rahman"}</small></div>
+              <div className="state-metric"><span>Live now</span><strong>2 sessions</strong></div><div className="state-metric"><span>Waiting</span><strong>3 visitors</strong></div><div className="state-metric"><span>Action required</span><strong>5 decisions</strong></div><div className="state-metric"><span>Capacity</span><strong>4 / 6 rooms</strong></div><div className="state-metric"><span>Device health</span><strong className={facilityState === "LOCKDOWN" ? "danger-text" : ""}>{facilityState === "LOCKDOWN" ? "8 reviewed" : "7 healthy · 1 offline"}</strong></div><button className="state-action" onClick={() => { const next = facilityState === "LOCKDOWN" ? "NORMAL_OPERATIONS" : "LOCKDOWN"; setFacilityState(next); notify(next === "LOCKDOWN" ? "Lockdown simulation started. Upcoming appointments are now flagged." : "Facility returned to normal operations."); }}>{facilityState === "LOCKDOWN" ? "End simulation" : "View state"}</button>
             </section>
 
             <section className="stat-grid" aria-label="Facility summary">
@@ -281,18 +383,18 @@ export default function Home() {
             </section>
 
             <section className="dashboard-grid">
-              <article className="panel agenda-panel"><div className="panel-header"><div><span className="eyebrow">Live schedule</span><h2>Today&apos;s agenda</h2></div><button className="text-button" onClick={() => setActiveNav("Appointments")}>View calendar <span>→</span></button></div><div className="agenda-date-row"><button>‹</button><strong>Wed, 05 Aug</strong><span className="today-pill">Today</span><button>›</button><span className="agenda-timezone">GMT+7 · Jakarta</span></div><div className="agenda-list">{agenda.map((item) => <div className="agenda-row" key={`${item.time}-${item.name}`}><span className="agenda-time">{item.time}</span><span className={`agenda-line agenda-line-${item.color}`} /><div className="agenda-main"><strong>{item.name}</strong><span>{item.room} <i /> {item.type}</span></div><StatusPill tone={item.color === "orange" ? "orange" : item.color === "blue" ? "blue" : "green"}>{item.status}</StatusPill></div>)}</div><div className="agenda-footer"><span className="status status-light"><span className="status-dot status-dot-green" />2 rooms in progress</span><button className="text-button" onClick={() => notify("Room status panel opened.")}>Room status <span>→</span></button></div></article>
+              <article className="panel agenda-panel"><div className="panel-header"><div><span className="eyebrow">Live schedule</span><h2>Today&apos;s operational timeline</h2></div><button className="text-button" onClick={() => setActiveNav("Calendar")}>View calendar <span>→</span></button></div><div className="agenda-date-row"><button>‹</button><strong>Wed, 05 Aug</strong><span className="today-pill">Today</span><button>›</button><span className="agenda-timezone">GMT+7 · Jakarta</span></div><div className="agenda-list">{agenda.map((item) => <div className="agenda-row" key={`${item.time}-${item.name}`}><span className="agenda-time">{item.time}</span><span className={`agenda-line agenda-line-${item.color}`} /><div className="agenda-main"><strong>{item.name}</strong><span>{item.room} <i /> {item.type}</span></div><StatusPill tone={item.color === "orange" ? "orange" : item.color === "blue" ? "blue" : "green"}>{item.status}</StatusPill></div>)}</div><div className="agenda-footer"><span className="status status-light"><span className="status-dot status-dot-green" />2 rooms in progress</span><button className="text-button" onClick={() => setActiveNav("Devices & Rooms")}>Resource status <span>→</span></button></div></article>
 
-              <article className="panel pulse-panel"><div className="panel-header"><div><span className="eyebrow">Facility pulse</span><h2>Operational health</h2></div><button className="more-button" aria-label="More options">•••</button></div><div className="pulse-score"><div className="pulse-ring"><div><strong>94</strong><span>/ 100</span></div></div><div><StatusPill tone="green">All systems normal</StatusPill><p>Updated just now</p></div></div><div className="pulse-metrics"><div><span><i className="metric-dot mint-dot" />Room readiness</span><strong>100%</strong></div><div><span><i className="metric-dot blue-dot" />Staff capacity</span><strong>82%</strong></div><div><span><i className="metric-dot orange-dot" />Visitor queue</span><strong>12 waiting</strong></div></div><div className="pulse-note"><span>↗</span><p><strong>Great momentum.</strong> Approval time is down 18% this week.</p></div></article>
+              <article className="panel exceptions-panel"><div className="panel-header"><div><span className="eyebrow">Exception monitor</span><h2>Requires attention</h2></div><StatusPill tone={facilityState === "LOCKDOWN" ? "orange" : "green"}>{facilityState === "LOCKDOWN" ? "State changed" : "Normal operations"}</StatusPill></div><div className="exception-list"><button onClick={() => setActiveNav("Appointment Queue")}><span className="exception-icon exception-amber">!</span><span><strong>2 approvals exceed 30-minute SLA</strong><small>Scheduling queue · 38m and 42m old</small></span><b>→</b></button><button onClick={() => setActiveNav("Devices & Rooms")}><span className="exception-icon exception-red">!</span><span><strong>1 device has not checked in</strong><small>Room 03 · Kiosk 04 · 14 minutes</small></span><b>→</b></button><button onClick={() => setActiveNav("Verification Queue")}><span className="exception-icon exception-blue">i</span><span><strong>3 visitor documents expire soon</strong><small>Within seven days · review recommended</small></span><b>→</b></button><button onClick={() => setActiveNav("Restrictions & Closures")}><span className="exception-icon exception-violet">↗</span><span><strong>1 approved visit conflicts with a restriction</strong><small>Bima Aditya · 10:00 appointment</small></span><b>→</b></button></div></article>
             </section>
 
             <section className="lower-grid">
               <article className="panel requests-panel"><div className="panel-header"><div><span className="eyebrow">Action required</span><h2>Approval queue <span className="heading-count">{pendingCount}</span></h2></div><button className="text-button" onClick={() => setActiveNav("Visitors")}>View all <span>→</span></button></div><div className="request-list">{activeRequests.length ? activeRequests.map((request) => <div className="request-row" key={request.id}><Avatar initials={request.initials} tone={request.tone} /><div className="request-person"><strong>{request.visitor}</strong><span>{request.relationship} <i /> <b>{request.id}</b></span></div><div className="request-visit"><strong>{request.prisoner}</strong><span>{request.prisonerId}</span></div><div className="request-time"><strong>{request.date}</strong><span>{request.time}</span></div><div className="request-actions"><button className="approve-button" aria-label={`Approve ${request.visitor}`} onClick={() => approveRequest(request.id)}>✓</button><button className="decline-button" aria-label={`Decline ${request.visitor}`} onClick={() => declineRequest(request.id)}>×</button></div></div>) : <div className="empty-state"><span>✓</span><strong>Queue cleared</strong><p>New visitor requests will appear here.</p></div>}</div></article>
 
-              <article className="panel activity-panel"><div className="panel-header"><div><span className="eyebrow">Audit trail</span><h2>Recent activity</h2></div><button className="more-button" aria-label="More options">•••</button></div><div className="activity-list"><div className="activity-item"><Avatar initials="MS" tone="navy" small /><div><p><strong>You</strong> approved a visit request</p><span>REQ-2043 · 8 minutes ago</span></div><span className="activity-check">✓</span></div><div className="activity-item"><Avatar initials="RK" tone="blue" small /><div><p><strong>Rizky K.</strong> started a session</p><span>Room 03 · 21 minutes ago</span></div><span className="activity-live">Live</span></div><div className="activity-item"><Avatar initials="SY" tone="peach" small /><div><p><strong>Sari Y.</strong> updated a prisoner record</p><span>LPS-JKT-004821 · 42 minutes ago</span></div><span className="activity-check">✓</span></div><div className="activity-item"><Avatar initials="SYS" tone="lavender" small /><div><p><strong>System</strong> released 1 visit credit</p><span>Facility cancellation · 1h ago</span></div><span className="activity-check">✓</span></div></div><button className="full-link" onClick={() => setActiveNav("Audit log")}>Open audit log <span>→</span></button></article>
+              <article className="panel activity-panel"><div className="panel-header"><div><span className="eyebrow">Audit trail</span><h2>Recent activity</h2></div><button className="more-button" aria-label="More options">•••</button></div><div className="activity-list"><div className="activity-item"><Avatar initials="MS" tone="navy" small /><div><p><strong>You</strong> approved a visit request</p><span>REQ-2043 · 8 minutes ago</span></div><span className="activity-check">✓</span></div><div className="activity-item"><Avatar initials="RK" tone="blue" small /><div><p><strong>Rizky K.</strong> started a session</p><span>Room 03 · 21 minutes ago</span></div><span className="activity-live">Live</span></div><div className="activity-item"><Avatar initials="SY" tone="peach" small /><div><p><strong>Sari Y.</strong> updated a prisoner record</p><span>LPS-JKT-004821 · 42 minutes ago</span></div><span className="activity-check">✓</span></div><div className="activity-item"><Avatar initials="SYS" tone="lavender" small /><div><p><strong>System</strong> released 1 visit credit</p><span>Facility cancellation · 1h ago</span></div><span className="activity-check">✓</span></div></div><button className="full-link" onClick={() => setActiveNav("Audit Log")}>Open audit log <span>→</span></button></article>
             </section>
           </>
-        ) : <MockPage section={activeNav} onNotify={notify} />}
+        ) : <MockPage section={activeNav} onNotify={notify} facilityState={facilityState} onFacilityStateChange={setFacilityState} />}
       </main>
       {toast ? <div className="toast"><span>✓</span>{toast}</div> : null}
     </div>
