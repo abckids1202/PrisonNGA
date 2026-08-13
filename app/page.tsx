@@ -366,12 +366,12 @@ export default function Home() {
         ) : activeNav === "Overview" ? (
           <>
             <section className="page-heading">
-              <div><div className="eyebrow">Wednesday, 05 August 2026 <span className="heading-dot">·</span> 08:42 WIB</div><h1>Good morning, Maya <span className="wave">✦</span></h1><p>Here&apos;s what needs your attention across Central Facility today.</p></div>
+              <div><div className="eyebrow">Central Correctional Facility <span className="heading-dot">·</span> Thursday, 13 August 2026</div><h1>Operations Overview</h1><p>Current visitation activity, exceptions, and facility capacity.</p></div>
               <div className="heading-actions"><button className="secondary-button" onClick={() => notify("Report export prepared for download.")}>↓ <span>Export report</span></button><button className="primary-button" onClick={() => setActiveNav("Appointment Queue")}>+ <span>New appointment</span></button></div>
             </section>
 
             <section className={`facility-state-strip ${facilityState === "LOCKDOWN" ? "facility-lockdown" : ""}`} aria-label="Facility state and live operations">
-              <div className="facility-state-main"><span className="state-kicker">Facility state</span><strong>{facilityState === "LOCKDOWN" ? "LOCKDOWN" : "NORMAL OPERATIONS"}</strong><small>{facilityState === "LOCKDOWN" ? "New approvals paused · affected visits are being released" : "Last changed today at 06:30 by Supervisor Rahman"}</small></div>
+              <div className="facility-state-main"><span className="state-kicker">Facility state</span><strong>{facilityState === "LOCKDOWN" ? "LOCKDOWN IN EFFECT" : "NORMAL OPERATIONS"}</strong><small>{facilityState === "LOCKDOWN" ? "New visitation approvals are temporarily suspended." : "All visitation services are operating within policy. Last update · 06:30 · Supervisor Rahman"}</small></div>
               <div className="state-metric"><span>Live now</span><strong>2 sessions</strong></div><div className="state-metric"><span>Waiting</span><strong>3 visitors</strong></div><div className="state-metric"><span>Action required</span><strong>5 decisions</strong></div><div className="state-metric"><span>Capacity</span><strong>4 / 6 rooms</strong></div><div className="state-metric"><span>Device health</span><strong className={facilityState === "LOCKDOWN" ? "danger-text" : ""}>{facilityState === "LOCKDOWN" ? "8 reviewed" : "7 healthy · 1 offline"}</strong></div><button className="state-action" onClick={() => { const next = facilityState === "LOCKDOWN" ? "NORMAL_OPERATIONS" : "LOCKDOWN"; setFacilityState(next); notify(next === "LOCKDOWN" ? "Lockdown simulation started. Upcoming appointments are now flagged." : "Facility returned to normal operations."); }}>{facilityState === "LOCKDOWN" ? "End simulation" : "View state"}</button>
             </section>
 
