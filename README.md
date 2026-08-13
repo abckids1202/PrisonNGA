@@ -32,3 +32,7 @@ npm test
 ## Production boundaries
 
 Before institutional use, the platform needs real authentication and facility-scoped authorization, a transactional credit ledger, verified payment webhooks, protected document storage, a policy-driven video provider, recording access approvals, immutable audit storage, retention controls, and legal/privacy review. The prototype keeps those high-risk systems out of scope on purpose.
+
+## Backend foundation
+
+The project now includes a D1-backed security foundation with workspace identity checks, facility-scoped permissions, audit/outbox records, versioned facility-state changes, and security headers. See [SECURITY.md](SECURITY.md) for setup and limitations.
