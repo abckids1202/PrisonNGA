@@ -1,402 +1,294 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-type NavItem = {
-  label: string;
-  icon: string;
-  count?: number;
-};
-
-type Request = {
+type Mode = "operations" | "management";
+type AppointmentStatus = "Requires action" | "Ready" | "Live" | "Blocked" | "Completed" | "Approved";
+type Appointment = {
   id: string;
   visitor: string;
-  initials: string;
-  relationship: string;
+  visitorInitials: string;
   prisoner: string;
-  prisonerId: string;
-  date: string;
   time: string;
-  tone: "mint" | "peach" | "lavender";
+  date: string;
+  room: string;
+  kiosk: string;
+  type: "Family" | "Legal";
+  status: AppointmentStatus;
+  issue?: string;
 };
 
-const primaryNav: NavItem[] = [
-  { label: "Overview", icon: "⌂" },
-  { label: "Appointment Queue", icon: "◷", count: 12 },
-  { label: "Calendar", icon: "▦" },
-  { label: "Live Sessions", icon: "◉", count: 2 },
-  { label: "Waiting Room", icon: "◌", count: 3 },
+type Notice = { id: number; message: string; tone?: "success" | "warning" | "info" };
+
+const operationsNav = [
+  ["Command Center", "⌂"],
+  ["Appointments", "◈"],
+  ["Waiting Room", "◌"],
+  ["Live Sessions", "◉"],
+  ["Resources", "▦"],
+  ["Incidents", "!"],
+] as const;
+
+const managementNav = [
+  ["People", "♙"],
+  ["Visitation", "◫"],
+  ["Finance", "¤"],
+  ["Compliance", "≡"],
+  ["Facility", "⌘"],
+  ["Administration", "⚙"],
+] as const;
+
+const initialAppointments: Appointment[] = [
+  { id: "SV-260813-031", visitor: "Sarah Amelia", visitorInitials: "SA", prisoner: "A. Rahman", time: "10:00–10:20", date: "Today", room: "Room 03", kiosk: "Kiosk 04", type: "Family", status: "Live" },
+  { id: "SV-260813-032", visitor: "Daniel Wijaya", visitorInitials: "DW", prisoner: "R. Santoso", time: "10:20–10:40", date: "Today", room: "Room 01", kiosk: "Kiosk 02", type: "Family", status: "Ready" },
+  { id: "SV-260813-033", visitor: "Alya Pratama", visitorInitials: "AP", prisoner: "F. Pratama", time: "10:40–11:00", date: "Today", room: "Room 04", kiosk: "Kiosk 06", type: "Family", status: "Requires action", issue: "Relationship evidence needs review" },
+  { id: "SV-260813-034", visitor: "Dimas Wirawan", visitorInitials: "DW", prisoner: "B. Aditya", time: "11:20–11:40", date: "Today", room: "Room 02", kiosk: "Kiosk 03", type: "Legal", status: "Blocked", issue: "Visitor device test failed" },
+  { id: "SV-260814-018", visitor: "Nurul Hidayah", visitorInitials: "NH", prisoner: "F. Hidayat", time: "09:00–09:20", date: "Tomorrow", room: "Room 02", kiosk: "Kiosk 03", type: "Family", status: "Approved" },
 ];
 
-const peopleNav: NavItem[] = [
-  { label: "Verification Queue", icon: "✦", count: 6 },
-  { label: "Relationship Requests", icon: "↔", count: 4 },
-  { label: "Visitors", icon: "♙" },
-  { label: "Prisoners", icon: "▦" },
-];
+const activities = [
+  ["09:54", "Kiosk 06 assigned to SV-260813-033", "Resource desk"],
+  ["09:51", "A. Rahman confirmed for the 10:00 visit", "Unit 4"],
+  ["09:48", "Sarah Amelia completed device check", "Visitor portal"],
+  ["09:46", "Waiting room opened for the morning schedule", "System"],
+] as const;
 
-const facilityNav: NavItem[] = [
-  { label: "Devices & Rooms", icon: "▣", count: 1 },
-  { label: "Facility Schedule", icon: "◷" },
-  { label: "Restrictions & Closures", icon: "⊘" },
-];
-
-const complianceNav: NavItem[] = [
-  { label: "Incidents", icon: "⚠", count: 3 },
-  { label: "Recording Access", icon: "◉" },
-  { label: "Audit Log", icon: "≡" },
-  { label: "Reports", icon: "▤" },
-];
-
-const financeNav: NavItem[] = [
-  { label: "Visit Credits", icon: "◈" },
-  { label: "Payments & Refunds", icon: "↻" },
-];
-
-const adminNav: NavItem[] = [
-  { label: "Staff & Roles", icon: "⚙" },
-  { label: "Facility Settings", icon: "⚙" },
-  { label: "System Settings", icon: "⚙" },
-];
-
-const initialRequests: Request[] = [
-  {
-    id: "REQ-2048",
-    visitor: "Alya Pratama",
-    initials: "AP",
-    relationship: "Sister",
-    prisoner: "Rafi Pratama",
-    prisonerId: "LPS-JKT-004821",
-    date: "Today",
-    time: "10:40–11:00",
-    tone: "mint",
-  },
-  {
-    id: "REQ-2047",
-    visitor: "Dimas Wirawan",
-    initials: "DW",
-    relationship: "Legal representative",
-    prisoner: "Bima Aditya",
-    prisonerId: "LPS-JKT-003118",
-    date: "Today",
-    time: "11:20–11:40",
-    tone: "peach",
-  },
-  {
-    id: "REQ-2046",
-    visitor: "Nurul Hidayah",
-    initials: "NH",
-    relationship: "Mother",
-    prisoner: "Fajar Hidayat",
-    prisonerId: "LPS-JKT-005204",
-    date: "Tomorrow",
-    time: "09:00–09:20",
-    tone: "lavender",
-  },
-];
-
-const agenda = [
-  { time: "09:00", name: "Maya & R. Santoso", room: "Room 03", type: "Family", status: "In 18 min", color: "blue" },
-  { time: "09:30", name: "S. Rahman & A. Rahman", room: "Room 01", type: "Family", status: "Confirmed", color: "green" },
-  { time: "10:00", name: "K. Wijaya & D. Wijaya", room: "Room 04", type: "Family", status: "Confirmed", color: "green" },
-  { time: "10:40", name: "Alya Pratama", room: "Pending", type: "Review", status: "Needs review", color: "orange" },
-];
-
-function Avatar({ initials, tone = "mint", small = false }: { initials: string; tone?: string; small?: boolean }) {
-  return <span className={`avatar avatar-${tone} ${small ? "avatar-small" : ""}`}>{initials}</span>;
+function Avatar({ initials, tone = "blue" }: { initials: string; tone?: string }) {
+  return <span className={`sv3-avatar sv3-avatar-${tone}`}>{initials}</span>;
 }
 
-function StatusPill({ children, tone }: { children: React.ReactNode; tone: string }) {
-  return <span className={`status status-${tone}`}><span className="status-dot" />{children}</span>;
+function Status({ children, tone }: { children: ReactNode; tone?: string }) {
+  return <span className={`sv3-status sv3-status-${tone || String(children).toLowerCase().replaceAll(" ", "-")}`}><i />{children}</span>;
 }
 
-type MockPageProps = { section: string; onNotify: (message: string) => void; facilityState: string; onFacilityStateChange: (state: string) => void };
-
-function MockPage({ section, onNotify, facilityState, onFacilityStateChange }: MockPageProps) {
-  const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState("All");
-  const [toggles, setToggles] = useState({ recording: true, reminders: true, mfa: true });
-
-  const pageCopy: Record<string, { kicker: string; title: string; description: string }> = {
-    "Appointment Queue": { kicker: "Scheduling workspace", title: "Appointment queue", description: "Make policy-aware decisions with every consequence visible before approval." },
-    Calendar: { kicker: "Resource calendar", title: "Calendar", description: "See visits by day, room, device, prisoner, and monitoring capacity." },
-    "Live Sessions": { kicker: "Monitoring workspace", title: "Live sessions", description: "Monitor authorized sessions, waiting visitors, and facility-side readiness." },
-    "Waiting Room": { kicker: "Admission control", title: "Waiting room", description: "Resolve check-in, device, identity, and prisoner readiness before admission." },
-    "Verification Queue": { kicker: "Identity & access", title: "Verification queue", description: "Review visitor evidence with explicit reasons and traceable decisions." },
-    "Relationship Requests": { kicker: "Identity & relationships", title: "Relationship requests", description: "Approve who may request contact with each fictional prisoner." },
-    Visitors: { kicker: "Identity & relationships", title: "Visitors", description: "Keep visitor verification and prisoner relationships moving safely." },
-    Prisoners: { kicker: "Fictional records", title: "Prisoners", description: "Manage visitation eligibility without exposing restricted custody data." },
-    "Devices & Rooms": { kicker: "Facility resources", title: "Devices & rooms", description: "Know which rooms and kiosks are available, reserved, in use, or offline." },
-    "Facility Schedule": { kicker: "Facility operations", title: "Facility schedule", description: "Manage operating hours, closures, buffers, and monitoring capacity." },
-    "Restrictions & Closures": { kicker: "Facility state", title: "Restrictions & closures", description: "Make operational changes visible before they affect approved visits." },
-    Incidents: { kicker: "Operational safety", title: "Incidents", description: "Record interventions and technical issues with a clear resolution trail." },
-    "Recording Access": { kicker: "Sensitive access", title: "Recording access", description: "Review requests for protected recordings without unrestricted browsing." },
-    "Audit Log": { kicker: "Compliance workspace", title: "Audit log", description: "A chronological record of sensitive actions across Central Correctional Facility." },
-    Reports: { kicker: "Compliance workspace", title: "Reports", description: "Prepare operational summaries without exposing unnecessary sensitive detail." },
-    "Visit Credits": { kicker: "Mock financial ledger", title: "Visit credits", description: "Track reservations and consumption with an append-only visit credit ledger." },
-    "Payments & Refunds": { kicker: "Mock financial ledger", title: "Payments & refunds", description: "Reconcile fictional payment events and facility cancellation releases." },
-    "Staff & Roles": { kicker: "Authorization workspace", title: "Staff & roles", description: "Keep permissions explicit, facility-scoped, and accountable." },
-    "Facility Settings": { kicker: "Facility configuration", title: "Facility settings", description: "Define the rules that keep every visit controlled and accountable." },
-    "System Settings": { kicker: "System configuration", title: "System settings", description: "Review prototype diagnostics and safe system defaults." },
-  };
-  const copy = pageCopy[section] ?? pageCopy["Appointment Queue"];
-  const isAudit = section === "Audit Log";
-  const isSettings = ["Facility Settings", "System Settings"].includes(section);
-  const isAppointmentQueue = section === "Appointment Queue";
-  const tablePages = ["Appointment Queue", "Visitors", "Prisoners", "Visit Credits", "Payments & Refunds", "Audit Log", "Facility Settings", "System Settings"];
-  const moduleRows: Record<string, Array<[string, string, string, string]>> = {
-    Calendar: [["09:30", "Sarah Amelia ↔ A. Rahman", "Room 03 · Kiosk 04", "Confirmed"], ["10:00", "Dimas Wirawan ↔ Bima Aditya", "Room 01 · Kiosk 02", "Blocked"], ["10:30", "Nurul Hidayah ↔ Fajar Hidayat", "Room 02 · Kiosk 03", "Awaiting confirmation"]],
-    "Live Sessions": [["LIVE", "Maya Putri ↔ Rafi Pratama", "Room 01 · 08:42 remaining", "Monitored"], ["LIVE", "Sarah Amelia ↔ A. Rahman", "Room 03 · 12:10 remaining", "Recording on"], ["WAITING", "Dimas Wirawan", "Waiting room · camera test passed", "Awaiting admission"]],
-    "Waiting Room": [["08:52", "Sarah Amelia", "Identity reconfirmed · ready", "Ready"], ["09:12", "Dimas Wirawan", "Microphone test failed", "Device test failed"], ["09:24", "Nurul Hidayah", "Waiting for prisoner availability", "Awaiting prisoner"]],
-    "Verification Queue": [["8m", "Nurul Hidayah", "Identity document · expiry 2027", "Pending review"], ["22m", "Fajar Anwar", "More information requested", "Needs documents"], ["1h", "Dewi Kartika", "Passport expiry check", "Expiring soon"]],
-    "Relationship Requests": [["REQ-REL-208", "Alya Pratama ↔ Rafi Pratama", "Sister · family card attached", "Under review"], ["REQ-REL-207", "Dimas Wirawan ↔ Bima Aditya", "Legal representative", "Escalated"], ["REQ-REL-206", "Sarah Amelia ↔ A. Rahman", "Wife · approved 02 Aug", "Approved"]],
-    "Devices & Rooms": [["ROOM 01", "Monitoring room", "Kiosk 02 · heartbeat 18s ago", "Available"], ["ROOM 03", "Family visit room", "Kiosk 04 · heartbeat 14m ago", "Device offline"], ["ROOM 04", "Legal visit room", "Kiosk 06 · certificate valid", "Reserved"]],
-    "Facility Schedule": [["08:00–16:00", "Normal operating hours", "Monday–Saturday", "Active"], ["12 Aug", "Staff training closure", "No appointments accepted", "Scheduled"], ["Every visit", "10-minute buffer", "Monitoring capacity: 2", "Policy"]],
-    "Restrictions & Closures": [["NOW", "Facility state", "Normal operations · changed 06:30", facilityState === "LOCKDOWN" ? "Lockdown" : "Normal"], ["05 Aug", "Prisoner restriction", "Bima Aditya · affects 10:00 visit", "Active"], ["12 Aug", "Facility closure", "Staff training · 08:00–12:00", "Scheduled"]],
-    Incidents: [["INC-031", "Device heartbeat missed", "Room 03 · 14 minutes offline", "Open"], ["INC-030", "Technical failure", "Appointment REQ-2038 · rebooking suggested", "Under review"], ["INC-029", "Unauthorized third party", "Session 04 Aug · resolved by supervisor", "Resolved"]],
-    "Recording Access": [["REC-018", "Sarah Amelia ↔ A. Rahman", "Reason: incident review", "Supervisor approval"], ["REC-017", "Legal visit · Bima Aditya", "Recording prohibited by policy", "Not available"], ["REC-016", "K. Wijaya ↔ D. Wijaya", "Reason: compliance audit", "Authorized"]],
-    Reports: [["Daily operations", "05 Aug 2026", "Appointments, exceptions, capacity", "Ready"], ["Credit reconciliation", "July 2026", "Ledger and mock payment events", "Ready"], ["Access review", "Q3 2026", "Sensitive recording and audit access", "Draft"]],
-    "Staff & Roles": [["Maya Santoso", "Scheduling Officer", "Central Facility", "7 permissions"], ["Rizky Kurniawan", "Monitoring Officer", "Central Facility", "5 permissions"], ["Rahman Yusuf", "Supervisor", "Central Facility", "12 permissions"]],
-  };
-
-  function toggle(key: "recording" | "reminders" | "mfa") {
-    setToggles((current) => ({ ...current, [key]: !current[key] }));
-    onNotify(`${key === "mfa" ? "Staff MFA" : key === "recording" ? "Recording policy" : "Visitor reminders"} setting updated.`);
-  }
-
-  return (
-    <section className="mock-page">
-      <div className="mock-heading">
-        <div><span className="eyebrow">{copy.kicker}</span><h1>{copy.title}</h1><p>{copy.description}</p></div>
-        <div className="heading-actions"><button className="secondary-button" onClick={() => onNotify(isAudit ? "Audit integrity verified across the current facility scope." : "A report export is being prepared.")}>{isAudit ? "✓" : "↓"} <span>{isAudit ? "Verify integrity" : "Export"}</span></button><button className="primary-button" onClick={() => onNotify(isAudit ? "Investigation case request opened with a reason required." : isSettings ? "Settings changes are ready for review." : `New ${section.toLowerCase()} flow opened.`)}>+ <span>{isAudit ? "Open investigation" : isSettings ? "Save changes" : "Create new"}</span></button></div>
-      </div>
-
-      {isAppointmentQueue ? <>
-        <div className="mock-stat-row"><div><span>Today</span><strong>18</strong><small><em>+12%</em> vs last week</small></div><div><span>Needs review</span><strong>12</strong><small><em className="warm">3 urgent</em> in queue</small></div><div><span>Approved this week</span><strong>86</strong><small><em>94%</em> of requests</small></div><div><span>Average approval</span><strong>18m</strong><small><em>↓ 4m</em> faster than July</small></div></div>
-        <div className="mock-toolbar"><div className="toolbar-tabs"><button className={activeFilter === "All" ? "toolbar-active" : ""} onClick={() => setActiveFilter("All")}>All visits <span>18</span></button><button className={activeFilter === "Pending" ? "toolbar-active" : ""} onClick={() => setActiveFilter("Pending")}>Pending <span>12</span></button><button className={activeFilter === "Approved" ? "toolbar-active" : ""} onClick={() => setActiveFilter("Approved")}>Approved <span>6</span></button></div><div className="toolbar-right"><button className="date-button">‹ &nbsp; Wed, 05 Aug &nbsp; ›</button><button className="filter-button">☷ Filters</button></div></div>
-        <div className="mock-two-column"><article className="panel table-panel"><div className="panel-header"><div><span className="eyebrow">{activeFilter} appointments</span><h2>Visit schedule</h2></div><button className="more-button">•••</button></div><div className="data-table appointment-table"><div className="data-head"><span>Visitor & prisoner</span><span>Time / room</span><span>Type</span><span>Status</span><span /></div>{[
-          ["Alya Pratama", "Rafi Pratama", "10:40–11:00", "Room 02", "Family", "Needs review", "orange"],
-          ["S. Rahman", "A. Rahman", "09:30–09:50", "Room 01", "Family", "Confirmed", "green"],
-          ["Dimas Wirawan", "Bima Aditya", "11:20–11:40", "Room 04", "Legal", "Needs review", "orange"],
-          ["K. Wijaya", "D. Wijaya", "13:00–13:20", "Room 03", "Family", "Confirmed", "green"],
-          ["Nurul Hidayah", "Fajar Hidayat", "Tomorrow · 09:00", "Room 02", "Family", "Reschedule", "blue"],
-        ].map((row) => <div className="data-row" key={row[0]}><div className="table-person"><Avatar initials={row[0].split(" ").map((part) => part[0]).join("").slice(0, 2)} tone="mint" small /><span><strong>{row[0]}</strong><small>{row[1]}</small></span></div><span className="table-time"><strong>{row[2]}</strong><small>{row[3]}</small></span><span className="table-muted">{row[4]}</span><StatusPill tone={row[6]}>{row[5]}</StatusPill><button className="row-menu" onClick={() => onNotify(`${row[0]}'s appointment details opened.`)}>•••</button></div>)}</div></article><aside className="side-stack"><div className="rule-card rule-card-dark"><span className="eyebrow">Capacity today</span><strong>72%</strong><p>13 of 18 monitored slots are allocated.</p><div className="progress"><i style={{ width: "72%" }} /></div><span className="rule-foot">5 slots still available</span></div><div className="panel mini-panel"><div className="panel-header"><div><span className="eyebrow">Policy check</span><h2>Before approval</h2></div></div><div className="check-list"><span>✓ <b>Visitor identity verified</b></span><span>✓ <b>Prisoner eligible today</b></span><span>✓ <b>Room & staff capacity clear</b></span><span className="check-muted">○ <b>Credit reservation ready</b></span></div></div></aside></div>
-      </> : null}
-
-      {section === "Visitors" ? <>
-        <div className="mock-stat-row visitor-stats"><div><span>Verified visitors</span><strong>248</strong><small><em>+16</em> this month</small></div><div><span>Pending review</span><strong>6</strong><small><em className="warm">2 urgent</em> need action</small></div><div><span>Relationships</span><strong>312</strong><small><em>98%</em> active</small></div><div><span>Expiring soon</span><strong>9</strong><small>within 30 days</small></div></div>
-        <div className="mock-toolbar"><div className="toolbar-tabs"><button className="toolbar-active">All visitors <span>264</span></button><button>Pending review <span>6</span></button><button>Suspended <span>3</span></button></div><div className="toolbar-right"><label className="search-field">⌕<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search visitor or ID" /></label><button className="filter-button">☷ Filters</button></div></div>
-        <div className="mock-two-column"><article className="panel table-panel"><div className="panel-header"><div><span className="eyebrow">Visitor directory</span><h2>Verified accounts</h2></div><button className="more-button">•••</button></div><div className="data-table visitor-table"><div className="data-head"><span>Visitor</span><span>Relationship</span><span>Verification</span><span>Last visit</span><span /></div>{[
-          ["Alya Pratama", "AP", "Sister · Rafi Pratama", "Verified", "29 Jul 2026", "mint"],
-          ["Dimas Wirawan", "DW", "Legal · Bima Aditya", "Verified", "01 Aug 2026", "peach"],
-          ["Nurul Hidayah", "NH", "Mother · Fajar Hidayat", "Pending", "—", "lavender"],
-          ["Sarah Amelia", "SA", "Wife · A. Rahman", "Verified", "04 Aug 2026", "blue"],
-          ["Reno Putra", "RP", "Brother · M. Putra", "Expiring soon", "18 Jul 2026", "mint"],
-        ].filter((row) => row[0].toLowerCase().includes(search.toLowerCase())).map((row) => <div className="data-row" key={row[0]}><div className="table-person"><Avatar initials={row[1]} tone={row[5]} small /><span><strong>{row[0]}</strong><small>Visitor ID · VST-20{row[1]}</small></span></div><span className="table-muted">{row[2]}</span><StatusPill tone={row[3] === "Verified" ? "green" : row[3] === "Pending" ? "orange" : "blue"}>{row[3]}</StatusPill><span className="table-muted">{row[4]}</span><button className="row-menu" onClick={() => onNotify(`${row[0]}'s visitor profile opened.`)}>•••</button></div>)}</div></article><aside className="side-stack"><div className="panel mini-panel"><div className="panel-header"><div><span className="eyebrow">Review queue</span><h2>Identity checks</h2></div><span className="heading-count">6</span></div><div className="review-list"><div><Avatar initials="NH" tone="lavender" small /><span><strong>Nurul Hidayah</strong><small>Document review · 8m ago</small></span><button onClick={() => onNotify("Identity review opened.")}>Review</button></div><div><Avatar initials="FA" tone="peach" small /><span><strong>Fajar A.</strong><small>More information · 22m ago</small></span><button onClick={() => onNotify("Identity review opened.")}>Review</button></div><div><Avatar initials="DK" tone="mint" small /><span><strong>Dewi Kartika</strong><small>Expiry check · 1h ago</small></span><button onClick={() => onNotify("Identity review opened.")}>Review</button></div></div></div><div className="rule-card"><span className="eyebrow">Verification health</span><div className="health-line"><strong>98.2%</strong><span>current</span></div><p>Most visitor profiles are in good standing.</p><div className="progress"><i style={{ width: "98%" }} /></div></div></aside></div>
-      </> : null}
-
-      {section === "Prisoners" ? <>
-        <div className="mock-stat-row prisoner-stats"><div><span>Active records</span><strong>1,284</strong><small><em>All fictional</em> prototype data</small></div><div><span>Visit eligible</span><strong>1,102</strong><small><em>86%</em> of active records</small></div><div><span>Restricted today</span><strong>31</strong><small><em className="warm">5 new</em> since yesterday</small></div><div><span>In transfer</span><strong>4</strong><small>requires rescheduling</small></div></div>
-        <div className="mock-toolbar"><div className="toolbar-tabs"><button className="toolbar-active">All records <span>1,284</span></button><button>Eligible <span>1,102</span></button><button>Restricted <span>31</span></button></div><div className="toolbar-right"><label className="search-field">⌕<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or prisoner ID" /></label><button className="filter-button">☷ Filters</button></div></div>
-        <article className="panel table-panel full-table"><div className="panel-header"><div><span className="eyebrow">Central Facility records</span><h2>Prisoner directory</h2></div><button className="more-button">•••</button></div><div className="data-table prisoner-table"><div className="data-head"><span>Prisoner</span><span>Facility ID</span><span>Eligibility</span><span>Visits this week</span><span>Housing</span><span /></div>{[
-          ["Rafi Pratama", "RP", "LPS-JKT-004821", "Eligible", "2 / 3", "Unit C · 04"],
-          ["Bima Aditya", "BA", "LPS-JKT-003118", "Eligible", "1 / 3", "Unit A · 12"],
-          ["Fajar Hidayat", "FH", "LPS-JKT-005204", "Restricted", "0 / 0", "Unit B · 08"],
-          ["A. Rahman", "AR", "LPS-JKT-002944", "Eligible", "3 / 3", "Unit C · 02"],
-          ["M. Putra", "MP", "LPS-JKT-006401", "In transfer", "—", "Transfer desk"],
-        ].filter((row) => row[0].toLowerCase().includes(search.toLowerCase()) || row[2].toLowerCase().includes(search.toLowerCase())).map((row) => <div className="data-row" key={row[2]}><div className="table-person"><Avatar initials={row[1]} tone="navy" small /><span><strong>{row[0]}</strong><small>Display name · fictional record</small></span></div><span className="table-code">{row[2]}</span><StatusPill tone={row[3] === "Eligible" ? "green" : row[3] === "Restricted" ? "orange" : "blue"}>{row[3]}</StatusPill><span className="table-muted">{row[4]}</span><span className="table-muted">{row[5]}</span><button className="row-menu" onClick={() => onNotify(`${row[0]}'s restricted profile opened.`)}>•••</button></div>)}</div><div className="table-disclaimer">ⓘ Visitors only see a display name and the last four digits of a facility reference. Restricted fields stay staff-only.</div></article>
-      </> : null}
-
-      {["Visit Credits", "Payments & Refunds"].includes(section) ? <>
-        <div className="mock-stat-row credit-stats"><div><span>Available credits</span><strong>164</strong><small><em>Across 248</em> visitor accounts</small></div><div><span>Reserved</span><strong>18</strong><small>for approved appointments</small></div><div><span>Purchased this month</span><strong>236</strong><small><em>+8.4%</em> vs July</small></div><div><span>Refunds pending</span><strong>3</strong><small><em className="warm">¥ 60</em> mock value</small></div></div>
-        <div className="mock-toolbar"><div className="toolbar-tabs"><button className="toolbar-active">All transactions <span>1,842</span></button><button>Purchases <span>236</span></button><button>Reservations <span>18</span></button><button>Refunds <span>3</span></button></div><div className="toolbar-right"><button className="date-button">August 2026⌄</button><button className="filter-button">↓ Export ledger</button></div></div>
-        <div className="mock-two-column"><article className="panel table-panel"><div className="panel-header"><div><span className="eyebrow">Immutable activity</span><h2>Credit ledger</h2></div><button className="more-button">•••</button></div><div className="data-table credit-table"><div className="data-head"><span>Transaction</span><span>Visitor</span><span>Amount</span><span>Balance after</span><span /></div>{[
-          ["PURCHASE", "Sarah Amelia", "+5 credits", "8 credits", "05 Aug · 08:32", "green"],
-          ["RESERVATION", "Alya Pratama", "−1 credit", "2 credits", "05 Aug · 08:18", "orange"],
-          ["RELEASE", "Sari Yuliani", "+1 credit", "4 credits", "04 Aug · 17:40", "blue"],
-          ["CONSUMPTION", "Rizky Kurniawan", "−1 credit", "0 credits", "04 Aug · 15:20", "lavender"],
-          ["REFUND", "Dewi Kartika", "+2 credits", "6 credits", "04 Aug · 14:05", "mint"],
-        ].map((row) => <div className="data-row" key={`${row[0]}-${row[1]}`}><div className="ledger-type"><span className={`ledger-dot ledger-${row[5]}`} /><span><strong>{row[0]}</strong><small>{row[4]}</small></span></div><span className="table-muted">{row[1]}</span><strong className={row[2].startsWith("−") ? "amount-minus" : "amount-plus"}>{row[2]}</strong><span className="table-muted">{row[3]}</span><button className="row-menu" onClick={() => onNotify("Ledger transaction details opened.")}>•••</button></div>)}</div></article><aside className="side-stack"><div className="rule-card rule-card-purple"><span className="eyebrow">Ledger integrity</span><div className="health-line"><strong>100%</strong><span>reconciled</span></div><p>All mock payment webhooks are idempotent and accounted for.</p><div className="progress purple-progress"><i style={{ width: "100%" }} /></div></div><div className="panel mini-panel"><div className="panel-header"><div><span className="eyebrow">Credit policy</span><h2>Standard visit</h2></div></div><div className="credit-policy"><div><strong>1 credit</strong><span>20 minute family session</span></div><div><strong>Reserve</strong><span>when appointment is approved</span></div><div><strong>Consume</strong><span>after successful session start</span></div></div></div></aside></div>
-      </> : null}
-
-      {section === "Audit Log" ? <>
-        <div className="mock-stat-row audit-stats"><div><span>Events today</span><strong>482</strong><small><em>+9.2%</em> vs yesterday</small></div><div><span>Staff actions</span><strong>138</strong><small>across 7 roles</small></div><div><span>Sensitive access</span><strong>12</strong><small><em>All authorized</em></small></div><div><span>Alerts</span><strong>0</strong><small><em>Clear</em> in last 24h</small></div></div>
-        <div className="mock-toolbar"><div className="toolbar-tabs"><button className="toolbar-active">All events <span>482</span></button><button>Access events <span>12</span></button><button>Financial <span>38</span></button><button>Security <span>4</span></button></div><div className="toolbar-right"><label className="search-field">⌕<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search event or actor" /></label><button className="filter-button">☷ Filters</button></div></div>
-        <article className="panel table-panel full-table"><div className="panel-header"><div><span className="eyebrow">Append-only record</span><h2>Recent events</h2></div><button className="secondary-button" onClick={() => onNotify("Audit export queued with your access reason.")}>↓ <span>Export audit</span></button></div><div className="data-table audit-table"><div className="data-head"><span>Time</span><span>Actor</span><span>Action</span><span>Resource</span><span>Result</span></div>{[
-          ["08:41:52", "Maya Santoso", "Approved appointment", "REQ-2043 · appointment", "Allowed", "MS", "navy"],
-          ["08:38:17", "Rizky Kurniawan", "Joined monitor room", "Room 03 · session", "Allowed", "RK", "blue"],
-          ["08:32:04", "System", "Created credit ledger entry", "PAY-00841 · +5 credits", "Allowed", "SY", "lavender"],
-          ["08:19:43", "Sari Yuliani", "Viewed visitor document", "VST-20NH · identity", "Allowed", "SY", "peach"],
-          ["08:14:20", "Maya Santoso", "Updated schedule rules", "Central Facility · settings", "Allowed", "MS", "navy"],
-        ].filter((row) => row.join(" ").toLowerCase().includes(search.toLowerCase())).map((row) => <div className="data-row" key={`${row[0]}-${row[2]}`}><span className="audit-time">{row[0]}<small>05 Aug 2026</small></span><div className="table-person"><Avatar initials={row[5]} tone={row[6]} small /><span><strong>{row[1]}</strong><small>Staff member</small></span></div><span className="table-muted">{row[2]}</span><span className="table-muted">{row[3]}</span><StatusPill tone="green">{row[4]}</StatusPill></div>)}</div><div className="table-disclaimer">ⓘ Audit events are append-only in the production architecture. Recording access and exports always require a reason.</div></article>
-      </> : null}
-
-      {isSettings ? <>
-        <div className="settings-layout"><div className="settings-nav"><span className="settings-nav-title">Facility setup</span>{["General", "Appointment policy", "Recording policy", "Staff access", "Notifications"].map((item, index) => <button className={index === 0 ? "settings-nav-active" : ""} key={item} onClick={() => onNotify(`${item} settings selected.`)}>{item}<span>›</span></button>)}</div><div className="settings-content"><article className="panel settings-card"><div className="settings-card-header"><div><span className="eyebrow">General</span><h2>Central Facility</h2><p>Basic details shown to verified visitors.</p></div><StatusPill tone="green">Active</StatusPill></div><div className="settings-fields"><label>Facility display name<input defaultValue="Central Facility" /></label><label>Timezone<select defaultValue="Asia/Jakarta"><option>Asia/Jakarta · GMT+7</option></select></label><label>Operating hours<input defaultValue="09:00 – 16:00 · Monday to Saturday" /></label><label>Visitor support email<input defaultValue="support@central-facility.example" /></label></div></article><article className="panel settings-card"><div className="settings-card-header"><div><span className="eyebrow">Policy controls</span><h2>Guardrails for every visit</h2><p>These settings are illustrative and require institutional approval.</p></div></div><div className="toggle-list"><div className="toggle-row"><span><strong>Record standard family sessions</strong><small>Show recording notice before admission.</small></span><button className={`toggle ${toggles.recording ? "toggle-on" : ""}`} onClick={() => toggle("recording")}><i /></button></div><div className="toggle-row"><span><strong>Send appointment reminders</strong><small>Notify verified visitors 24 hours and 10 minutes before a visit.</small></span><button className={`toggle ${toggles.reminders ? "toggle-on" : ""}`} onClick={() => toggle("reminders")}><i /></button></div><div className="toggle-row"><span><strong>Require MFA for staff</strong><small>All staff accounts must verify a second factor.</small></span><button className={`toggle ${toggles.mfa ? "toggle-on" : ""}`} onClick={() => toggle("mfa")}><i /></button></div></div></article></div></div>
-      </> : null}
-
-      {!tablePages.includes(section) ? <div className="workflow-module-layout"><article className="panel workflow-list-panel"><div className="panel-header"><div><span className="eyebrow">Operational queue</span><h2>{copy.title}</h2></div><span className="scope-badge">Central Facility</span></div><div className="workflow-list">{(moduleRows[section] ?? [["INFO", "Module is ready for the next workflow phase", "Fictional data only", "Prototype"]]).map((row) => <button className="workflow-row" key={`${row[0]}-${row[1]}`} onClick={() => onNotify(`${row[1]} details opened.`)}><span className="workflow-time">{row[0]}</span><span className="workflow-copy"><strong>{row[1]}</strong><small>{row[2]}</small></span><StatusPill tone={row[3] === "Blocked" || row[3] === "Device offline" || row[3] === "Open" ? "orange" : row[3] === "Not available" ? "red" : row[3] === "Ready" || row[3] === "Active" || row[3] === "Confirmed" || row[3] === "Approved" || row[3] === "Available" ? "green" : "blue"}>{row[3]}</StatusPill><span className="workflow-arrow">→</span></button>)}</div></article><aside className="side-stack"><div className="rule-card rule-card-dark"><span className="eyebrow">Decision context</span><strong>{section === "Restrictions & Closures" ? facilityState === "LOCKDOWN" ? "LOCKDOWN" : "NORMAL" : "Ready"}</strong><p>{section === "Restrictions & Closures" ? "Changing facility state affects approvals, reservations, notifications, and audit events." : "Every action stays scoped to Central Facility and creates a traceable prototype event."}</p>{section === "Restrictions & Closures" ? <button className="dark-outline-button" onClick={() => { const next = facilityState === "LOCKDOWN" ? "NORMAL_OPERATIONS" : "LOCKDOWN"; onFacilityStateChange(next); onNotify(next === "LOCKDOWN" ? "Lockdown simulation started. Affected visits are flagged for release." : "Facility state returned to normal operations."); }}>{facilityState === "LOCKDOWN" ? "End lockdown simulation" : "Declare lockdown simulation"}</button> : <button className="dark-outline-button" onClick={() => onNotify(`${copy.title} workflow opened with required reason capture.`)}>Open decision workspace →</button>}</div><div className="panel mini-panel"><div className="panel-header"><div><span className="eyebrow">Traceability</span><h2>What happens next</h2></div></div><div className="check-list"><span>✓ <b>Validate facility scope</b></span><span>✓ <b>Record the actor and reason</b></span><span>✓ <b>Notify affected people</b></span><span>✓ <b>Append an audit event</b></span></div></div></aside></div> : null}
-    </section>
-  );
+function Button({ children, variant = "secondary", onClick, disabled = false }: { children: ReactNode; variant?: "primary" | "secondary" | "quiet" | "danger"; onClick?: () => void; disabled?: boolean }) {
+  return <button className={`sv3-button sv3-button-${variant}`} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
-export default function Home() {
-  const [activeNav, setActiveNav] = useState("Overview");
-  const [requests, setRequests] = useState(initialRequests);
-  const [toast, setToast] = useState("");
-  const [showVisitorView, setShowVisitorView] = useState(false);
+function Metric({ label, value, detail, tone = "default" }: { label: string; value: string; detail: string; tone?: string }) {
+  return <div className={`sv3-metric sv3-metric-${tone}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></div>;
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return <div className="sv3-section-label">{children}</div>;
+}
+
+function PageHeader({ eyebrow, title, description, actions }: { eyebrow: string; title: string; description: string; actions?: ReactNode }) {
+  return <header className="sv3-page-header"><div><span className="sv3-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{actions ? <div className="sv3-header-actions">{actions}</div> : null}</header>;
+}
+
+function EmptyState({ title, body, action }: { title: string; body: string; action?: string }) {
+  return <div className="sv3-empty"><span>◌</span><strong>{title}</strong><p>{body}</p>{action ? <Button variant="secondary">{action}</Button> : null}</div>;
+}
+
+export default function ControlApp() {
+  const [mode, setMode] = useState<Mode>("operations");
+  const [page, setPage] = useState("Command Center");
+  const [appointments, setAppointments] = useState(initialAppointments);
   const [facilityState, setFacilityState] = useState("NORMAL_OPERATIONS");
+  const [facilityVersion, setFacilityVersion] = useState(1);
+  const [backendStatus, setBackendStatus] = useState<"connected" | "demo">("demo");
+  const [simulationPaused, setSimulationPaused] = useState(false);
+  const [selectedIncident, setSelectedIncident] = useState("INC-260813-019");
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [simulationTick, setSimulationTick] = useState(0);
 
-  const pendingCount = requests.length;
-  const selectedLabel = activeNav === "Overview" ? "Overview" : activeNav;
+  useEffect(() => {
+    let active = true;
+    fetch("/api/facility/state", { headers: { accept: "application/json" } }).then(async (response) => {
+      if (!response.ok) return;
+      const body = await response.json();
+      if (active && body.facility) {
+        setFacilityState(body.facility.currentState);
+        setFacilityVersion(body.facility.version);
+        setBackendStatus("connected");
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
-  const activeRequests = useMemo(() => requests.slice(0, 3), [requests]);
-
-  function notify(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 3200);
+  function notify(message: string, tone: Notice["tone"] = "info") {
+    const id = Date.now();
+    setNotices((current) => [...current.slice(-2), { id, message, tone }]);
+    window.setTimeout(() => setNotices((current) => current.filter((notice) => notice.id !== id)), 4200);
   }
 
-  function approveRequest(id: string) {
-    const request = requests.find((item) => item.id === id);
-    setRequests((current) => current.filter((item) => item.id !== id));
-    if (request) notify(`${request.visitor}'s request approved and credit reserved.`);
+  async function changeFacilityState(nextState: string) {
+    const previousState = facilityState;
+    const nextVersion = facilityVersion + 1;
+    setFacilityState(nextState);
+    setFacilityVersion(nextVersion);
+    try {
+      const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: nextState === "LOCKDOWN" ? "Demo supervisor declared a controlled facility lockdown." : "Demo supervisor restored normal operations." }) });
+      if (response.ok) {
+        const body = await response.json();
+        setFacilityVersion(body.facility?.version || nextVersion);
+        setBackendStatus("connected");
+        notify(nextState === "LOCKDOWN" ? "Facility lockdown declared and audit event created." : "Facility returned to normal operations.", nextState === "LOCKDOWN" ? "warning" : "success");
+      } else {
+        notify("Demo state changed locally; authenticated staff API is not connected in this preview.", "info");
+      }
+    } catch {
+      setFacilityState(nextState);
+      notify(`Demo state changed to ${nextState === "LOCKDOWN" ? "lockdown" : "normal operations"}.`, "info");
+    }
+    if (previousState === nextState) notify("No facility state change was needed.");
   }
 
-  function declineRequest(id: string) {
-    const request = requests.find((item) => item.id === id);
-    setRequests((current) => current.filter((item) => item.id !== id));
-    if (request) notify(`${request.visitor}'s request moved to declined.`);
+  function updateAppointment(id: string, status: AppointmentStatus) {
+    setAppointments((current) => current.map((appointment) => appointment.id === id ? { ...appointment, status, issue: undefined } : appointment));
+    notify(status === "Approved" ? "Visit approved. Room, kiosk, credit, and audit actions queued." : `Visit marked ${status.toLowerCase()}.`, status === "Approved" ? "success" : "warning");
+    setSelectedAppointment(null);
   }
 
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-lockup">
-          <div className="brand-mark" aria-label="Controlled Passage mark"><span className="passage-mark"><i /><i /><b /></span></div>
-          <div>
-            <div className="brand-name"><strong>Secure</strong>Visit</div>
-            <div className="brand-subtitle">SecureVisit Control</div>
-          </div>
-        </div>
+  function navigate(nextPage: string, nextMode = mode) {
+    setMode(nextMode);
+    setPage(nextPage);
+    setSelectedAppointment(null);
+    window.history.replaceState(null, "", `/?workspace=${nextMode}&page=${encodeURIComponent(nextPage)}`);
+  }
 
-        <div className="facility-switcher">
-          <div className="facility-icon">CF</div>
-          <div className="facility-copy"><span>Central Correctional Facility</span><small>Jakarta · Prototype environment</small></div>
-          <span className="chevron">⌄</span>
-        </div>
+  const currentNav = mode === "operations" ? operationsNav : managementNav;
+  const pageContent = mode === "operations" ? renderOperationsPage() : renderManagementPage();
 
-        <div className="nav-section-label">Operations</div>
-        <nav className="nav-list" aria-label="Main navigation">
-          {primaryNav.map((item) => (
-            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
-              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.label === "Appointment Queue" ? pendingCount : item.count}</span> : null}
-            </button>
-          ))}
-        </nav>
+  function renderOperationsPage() {
+    if (page === "Appointments") return <AppointmentsPage appointments={appointments} onSelect={setSelectedAppointment} />;
+    if (page === "Waiting Room") return <WaitingRoomPage appointments={appointments} onNotify={notify} />;
+    if (page === "Live Sessions") return <LiveSessionsPage appointments={appointments} onNotify={notify} />;
+    if (page === "Resources") return <ResourcesPage onNotify={notify} onReassign={(id) => { setAppointments((current) => current.map((appointment) => appointment.id === id ? { ...appointment, kiosk: "Kiosk 06", status: "Ready", issue: undefined } : appointment)); notify("Device reassigned. Kiosk 06 is now reserved.", "success"); }} />;
+    if (page === "Incidents") return <IncidentsPage selected={selectedIncident} onSelect={setSelectedIncident} onNotify={notify} />;
+    return <CommandCenterPage appointments={appointments} facilityState={facilityState} simulationPaused={simulationPaused} simulationTick={simulationTick} onFacilityStateChange={changeFacilityState} onPause={() => setSimulationPaused((current) => !current)} onAdvance={() => { setSimulationTick((current) => current + 1); notify("Simulation advanced. The operational feed has been refreshed.", "info"); }} onNavigate={navigate} />;
+  }
 
-        <div className="nav-section-label nav-section-gap">People & access</div>
-        <nav className="nav-list" aria-label="Operations navigation">
-          {peopleNav.map((item) => (
-            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
-              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
-            </button>
-          ))}
-        </nav>
+  function renderManagementPage() {
+    if (page === "People") return <PeoplePage onNotify={notify} />;
+    if (page === "Visitation") return <VisitationPage onNotify={notify} />;
+    if (page === "Finance") return <FinancePage onNotify={notify} />;
+    if (page === "Compliance") return <CompliancePage onNotify={notify} />;
+    if (page === "Facility") return <FacilityPage facilityState={facilityState} onNotify={notify} />;
+    return <AdministrationPage onNotify={notify} />;
+  }
 
-        <div className="nav-section-label nav-section-gap">Facility</div>
-        <nav className="nav-list" aria-label="Facility navigation">
-          {facilityNav.map((item) => (
-            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
-              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
-            </button>
-          ))}
-        </nav>
+  return <div className="sv3-app">
+    <aside className="sv3-sidebar">
+      <div className="sv3-brand"><span className="sv3-brand-mark">+</span><div><strong>SecureVisit</strong><small>CONTROL</small></div></div>
+      <div className="sv3-facility-chip"><span className="sv3-facility-icon">▣</span><div><strong>Central Facility</strong><small>Jakarta · Demo environment</small></div><span>⌄</span></div>
+      <div className="sv3-mode-switch" role="tablist" aria-label="Staff workspace"><button className={mode === "operations" ? "active" : ""} onClick={() => navigate("Command Center", "operations")}>Operations</button><button className={mode === "management" ? "active" : ""} onClick={() => navigate("People", "management")}>Management</button></div>
+      <SectionLabel>{mode === "operations" ? "Live operations" : "Records & policy"}</SectionLabel>
+      <nav className="sv3-nav" aria-label={`${mode} navigation`}>{currentNav.map(([label, icon]) => <button key={label} className={page === label ? "active" : ""} onClick={() => navigate(label)}><span>{icon}</span><b>{label}</b>{label === "Appointments" ? <em>12</em> : label === "Waiting Room" ? <em>3</em> : label === "Incidents" ? <em className="alert">3</em> : null}</button>)}</nav>
+      <div className="sv3-sidebar-foot"><div className="sv3-connection"><span className={backendStatus === "connected" ? "online" : "demo"} />{backendStatus === "connected" ? "Protected API connected" : "Demo data · API ready"}</div><button className="sv3-user"><Avatar initials="MS" tone="orange" /><span><strong>Maya Santoso</strong><small>Demo Role · Supervisor</small></span><span>···</span></button></div>
+    </aside>
+    <main className="sv3-main">
+      <div className="sv3-topbar"><div className="sv3-breadcrumb"><span>SecureVisit Control</span><i>/</i><strong>{mode === "operations" ? "Operations" : "Management"}</strong><i>/</i><strong>{page}</strong></div><div className="sv3-top-actions"><span className="sv3-demo-badge"><i />DEMO ENVIRONMENT</span><span className="sv3-clock">13 Aug 2026 · 09:42 WIB</span><button className="sv3-icon-button" aria-label="Open visitor preview" onClick={() => { window.location.href = "/visitor"; }}>↗</button><button className="sv3-icon-button" aria-label="Notifications" onClick={() => notify("No new security notifications.")}>◔</button></div></div>
+      <div className="sv3-page-scroll">{pageContent}</div>
+    </main>
+    <div className="sv3-toasts" aria-live="polite">{notices.map((notice) => <div key={notice.id} className={`sv3-toast sv3-toast-${notice.tone || "info"}`}><i>✓</i>{notice.message}</div>)}</div>
+    {selectedAppointment ? <AppointmentDrawer appointment={selectedAppointment} onClose={() => setSelectedAppointment(null)} onUpdate={updateAppointment} /> : null}
+  </div>;
+}
 
-        <div className="nav-section-label nav-section-gap">Compliance</div>
-        <nav className="nav-list" aria-label="Compliance navigation">
-          {complianceNav.map((item) => (
-            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
-              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
-            </button>
-          ))}
-        </nav>
+function CommandCenterPage({ appointments, facilityState, simulationPaused, simulationTick, onFacilityStateChange, onPause, onAdvance, onNavigate }: { appointments: Appointment[]; facilityState: string; simulationPaused: boolean; simulationTick: number; onFacilityStateChange: (state: string) => void; onPause: () => void; onAdvance: () => void; onNavigate: (page: string) => void }) {
+  const live = appointments.filter((appointment) => appointment.status === "Live").length;
+  const waiting = appointments.filter((appointment) => appointment.status === "Ready").length + 2;
+  const attention = appointments.filter((appointment) => appointment.status === "Requires action" || appointment.status === "Blocked").length + (facilityState === "LOCKDOWN" ? 1 : 0);
+  return <>
+    <div className="sv3-command-band"><div><span className="sv3-eyebrow">Central Correctional Facility · Operations</span><h1>{facilityState === "LOCKDOWN" ? "Facility lockdown" : "Command Center"}</h1><p>{facilityState === "LOCKDOWN" ? "New visit approvals are suspended while the facility response is active." : "A live view of what is happening, what is blocked, and what needs a decision."}</p></div><div className="sv3-command-state"><Status tone={facilityState === "LOCKDOWN" ? "red" : "green"}>{facilityState === "LOCKDOWN" ? "LOCKDOWN" : "NORMAL OPERATIONS"}</Status><strong>09:42</strong><small>WIB · Wednesday 13 Aug 2026</small></div></div>
+    <div className="sv3-command-metrics"><Metric label="Live sessions" value={String(live)} detail="1 needs monitoring" tone="orange" /><Metric label="Waiting room" value={String(waiting)} detail="2 ready to admit" tone="blue" /><Metric label="Requires attention" value={String(attention)} detail="2 SLA exceptions" tone="red" /><Metric label="Rooms in use" value="4 / 6" detail="67% capacity" tone="green" /></div>
+    <div className="sv3-simulation-bar"><span><i className={simulationPaused ? "paused" : ""} />DEMO SIMULATION · {simulationPaused ? "PAUSED" : "RUNNING"} · SPEED 1×</span><div><button onClick={onPause}>{simulationPaused ? "Resume" : "Pause"}</button><button onClick={onAdvance}>Advance event</button><button onClick={() => onFacilityStateChange(facilityState === "LOCKDOWN" ? "NORMAL_OPERATIONS" : "LOCKDOWN")} className="danger-link">{facilityState === "LOCKDOWN" ? "Restore facility" : "Test lockdown"}</button></div><small>Event {String(3 + simulationTick).padStart(2, "0")} · {simulationTick ? "Scenario changed locally" : "Normal day scenario"}</small></div>
+    <div className="sv3-command-layout"><section className="sv3-surface sv3-timeline-surface"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Today’s operational timeline</span><h2>Morning visitation</h2></div><button className="sv3-link-button" onClick={() => onNavigate("Appointments")}>Open appointments →</button></div><div className="sv3-timeline"><div className="sv3-timeline-row"><time>09:00</time><span className="sv3-timeline-line done" /><div><Status tone="green">COMPLETED</Status><strong>Sarah Amelia ↔ A. Rahman</strong><small>Room 02 · Family visit · credit settled</small></div></div><div className="sv3-timeline-row"><time>10:00</time><span className="sv3-timeline-line live" /><div><Status tone="orange">LIVE · 11:43 REMAINING</Status><strong>Sarah Amelia ↔ A. Rahman</strong><small>Room 03 · Kiosk 04 · connection stable</small></div></div><div className="sv3-timeline-row"><time>10:20</time><span className="sv3-timeline-line ready" /><div><Status tone="blue">READY</Status><strong>Daniel Wijaya ↔ R. Santoso</strong><small>Room 01 · Identity and device checks complete</small></div></div><div className="sv3-timeline-row"><time>10:40</time><span className="sv3-timeline-line blocked" /><div><Status tone="red">BLOCKED</Status><strong>Alya Pratama ↔ F. Pratama</strong><small>Room 04 · Relationship evidence needs review</small></div></div></div></section><aside className="sv3-attention-rail"><div className="sv3-surface sv3-attention-surface"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Action center</span><h2>Requires attention</h2></div><span className="sv3-count-badge">{attention}</span></div><button className="sv3-action-row" onClick={() => onNavigate("Appointments")}><span className="sv3-action-icon amber">!</span><span><strong>2 approval SLAs exceeded</strong><small>Review before 10:40</small></span><b>›</b></button><button className="sv3-action-row" onClick={() => onNavigate("Resources")}><span className="sv3-action-icon red">×</span><span><strong>Kiosk 04 offline</strong><small>Affects SV-260813-031</small></span><b>›</b></button><button className="sv3-action-row" onClick={() => onNavigate("Waiting Room")}><span className="sv3-action-icon blue">◌</span><span><strong>Visitor waiting 4:32</strong><small>Prisoner not confirmed</small></span><b>›</b></button><button className="sv3-action-row" onClick={() => onNavigate("Incidents")}><span className="sv3-action-icon violet">≡</span><span><strong>Incident needs assignment</strong><small>Unauthorized participant report</small></span><b>›</b></button></div><div className="sv3-surface sv3-feed-surface"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Activity feed</span><h2>What changed</h2></div></div>{activities.map(([time, event, source]) => <div className="sv3-feed-row" key={time}><time>{time}</time><span><strong>{event}</strong><small>{source}</small></span></div>)}</div></aside></div>
+  </>;
+}
 
-        <div className="nav-section-label nav-section-gap">Finance</div>
-        <nav className="nav-list" aria-label="Finance navigation">
-          {financeNav.map((item) => (
-            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
-              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
-            </button>
-          ))}
-        </nav>
+function AppointmentsPage({ appointments, onSelect }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void }) {
+  const [view, setView] = useState("Queue");
+  const [filter, setFilter] = useState("All");
+  const filtered = filter === "All" ? appointments : appointments.filter((appointment) => appointment.status === filter);
+  return <><PageHeader eyebrow="Operations · Scheduling" title="Appointments" description="One appointment record, three operational views: make decisions, run today, or plan ahead." actions={<><Button onClick={() => setView("Calendar")}>▦ Calendar</Button><Button variant="primary" onClick={() => onSelect(appointments[2])}>Review next decision</Button></>} /><div className="sv3-workspace-tabs"><button className={view === "Queue" ? "active" : ""} onClick={() => setView("Queue")}>Queue <em>12</em></button><button className={view === "Timeline" ? "active" : ""} onClick={() => setView("Timeline")}>Timeline</button><button className={view === "Calendar" ? "active" : ""} onClick={() => setView("Calendar")}>Calendar</button></div>{view === "Queue" ? <div className="sv3-appointment-workspace"><div className="sv3-queue-toolbar"><div><span>Showing</span>{["All", "Requires action", "Ready", "Blocked"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div><span className="sv3-toolbar-meta">{filtered.length} of {appointments.length} demo records</span></div><div className="sv3-table-wrap"><table className="sv3-table"><thead><tr><th>Visitor / prisoner</th><th>Requested time</th><th>Resources</th><th>Policy state</th><th /></tr></thead><tbody>{filtered.map((appointment) => <tr key={appointment.id} onClick={() => onSelect(appointment)}><td><div className="sv3-table-person"><Avatar initials={appointment.visitorInitials} tone={appointment.type === "Legal" ? "purple" : "blue"} /><span><strong>{appointment.visitor}</strong><small>{appointment.prisoner} · {appointment.id}</small></span></div></td><td><strong>{appointment.date} · {appointment.time}</strong><small>{appointment.type} visit</small></td><td><strong>{appointment.room}</strong><small>{appointment.kiosk}</small></td><td><Status tone={appointment.status === "Blocked" ? "red" : appointment.status === "Requires action" ? "orange" : appointment.status === "Live" ? "green" : "blue"}>{appointment.status}</Status>{appointment.issue ? <small className="sv3-issue-text">{appointment.issue}</small> : null}</td><td><button className="sv3-row-arrow" onClick={(event) => { event.stopPropagation(); onSelect(appointment); }}>→</button></td></tr>)}</tbody></table></div></div> : view === "Timeline" ? <TimelineView appointments={appointments} /> : <CalendarView />}</>;
+}
 
-        <div className="nav-section-label nav-section-gap">Administration</div>
-        <nav className="nav-list" aria-label="Administration navigation">
-          {adminNav.map((item) => (
-            <button className={`nav-item ${activeNav === item.label ? "nav-active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
-              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}
-            </button>
-          ))}
-        </nav>
+function TimelineView({ appointments }: { appointments: Appointment[] }) {
+  return <div className="sv3-day-timeline"><div className="sv3-day-axis"><span>08:00</span><span>09:00</span><span>10:00</span><span>11:00</span><span>12:00</span><span>13:00</span></div><div className="sv3-day-track"><div className="sv3-now-line"><span>NOW 09:42</span></div>{appointments.slice(0, 4).map((appointment, index) => <div className={`sv3-visit-block sv3-visit-${index}`} key={appointment.id} onClick={() => undefined}><strong>{appointment.visitor}</strong><small>{appointment.room} · {appointment.time}</small><Status tone={appointment.status === "Blocked" ? "red" : appointment.status === "Live" ? "green" : "blue"}>{appointment.status}</Status></div>)}</div><aside className="sv3-timeline-legend"><span><i className="green" />Live / completed</span><span><i className="blue" />Ready / approved</span><span><i className="red" />Blocked</span></aside></div>;
+}
 
-        <div className="sidebar-footer">
-          <div className="security-note"><span className="lock-icon">⌾</span><div><strong>Normal operations</strong><small>All activity is logged</small></div></div>
-          <div className="user-card"><Avatar initials="MS" tone="navy" small /><div><strong>Maya Santoso</strong><small>Scheduling Officer · 07:00–15:00</small></div><button aria-label="User menu">•••</button></div>
-        </div>
-      </aside>
+function CalendarView() {
+  const days = ["27", "28", "29", "30", "31", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30"];
+  return <div className="sv3-calendar-layout"><div className="sv3-calendar-main"><div className="sv3-calendar-head"><button>‹</button><h2>August 2026</h2><button>›</button><Button>Today</Button></div><div className="sv3-calendar-grid">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span className="calendar-weekday" key={day}>{day}</span>)}{days.map((day, index) => <div className={`calendar-cell ${day === "13" ? "today" : ""} ${index < 5 ? "muted" : ""}`} key={`${day}-${index}`}><b>{day}</b>{day === "13" ? <><span className="calendar-event green">8 visits</span><span className="calendar-event orange">2 reviews</span></> : day === "14" ? <span className="calendar-event blue">4 visits</span> : null}</div>)}</div></div><aside className="sv3-calendar-side"><span className="sv3-eyebrow">Selected day</span><h2>Wednesday<br />13 August</h2><strong>18 appointments</strong><p>4 rooms · 6 kiosks · 2 monitoring officers</p><Button variant="primary">Open day plan</Button></aside></div>;
+}
 
-      <main className="main-content">
-        <header className="topbar">
-          <div className="breadcrumb"><span>Central Facility</span><b>/</b><strong>{selectedLabel}</strong></div>
-          <div className="topbar-actions">
-            <button className="view-toggle" onClick={() => setShowVisitorView((current) => !current)}><span className="toggle-dot" />{showVisitorView ? "Visitor preview" : "Demo role · Scheduling Officer"}<span className="chevron">⌄</span></button>
-            <button className="icon-button" aria-label="Search">⌕</button>
-            <button className="icon-button notification-button" aria-label="Notifications">♧<span /></button>
-            <Avatar initials="MS" tone="navy" />
-          </div>
-        </header>
+function WaitingRoomPage({ appointments, onNotify }: { appointments: Appointment[]; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [lane, setLane] = useState("all");
+  const ready = appointments.filter((appointment) => appointment.status === "Ready");
+  return <><PageHeader eyebrow="Operations · Admission control" title="Waiting Room" description="Readiness lanes for identity, devices, prisoner confirmation, and admission—not a list of appointments." actions={<><Status tone="green">ROOM OPEN</Status><Button variant="primary" onClick={() => onNotify("All waiting visitors have been re-polled.", "success")}>↻ Refresh readiness</Button></>} /><div className="sv3-waiting-summary"><div><span>Visitors checked in</span><strong>3</strong><small>2 within appointment window</small></div><div><span>Ready to admit</span><strong>2</strong><small className="green-text">All checks passed</small></div><div><span>Waiting on unit</span><strong>1</strong><small>Longest wait 04:32</small></div><div><span>Technical issue</span><strong>1</strong><small className="red-text">Needs intervention</small></div></div><div className="sv3-lane-filter"><span>VIEW BY</span>{[["all", "All visitors"], ["ready", "Ready to admit"], ["unit", "Waiting for unit"], ["issue", "Technical issue"]].map(([value, label]) => <button className={lane === value ? "active" : ""} key={value} onClick={() => setLane(value)}>{label}</button>)}</div><div className="sv3-waiting-lanes"><section className="sv3-waiting-lane lane-ready"><div className="sv3-lane-head"><span><i />READY TO ADMIT</span><strong>2</strong></div><WaitingCard name="Sarah Amelia" initials="SA" appointment="10:00 · Family visit · Room 03" checks={["Identity confirmed", "Camera", "Microphone", "Connection", "Prisoner ready", "Kiosk 04 ready"]} action="Admit visitor" onAction={() => onNotify("Sarah Amelia admitted to Room 03.", "success")} hidden={lane !== "all" && lane !== "ready"} /><WaitingCard name="Daniel Wijaya" initials="DW" appointment="10:20 · Family visit · Room 01" checks={["Identity confirmed", "Camera", "Microphone", "Connection", "Prisoner ready", "Kiosk 02 ready"]} action="Admit visitor" onAction={() => onNotify("Daniel Wijaya admitted to Room 01.", "success")} hidden={lane !== "all" && lane !== "ready"} /></section><section className="sv3-waiting-lane lane-unit"><div className="sv3-lane-head"><span><i />WAITING FOR PRISONER</span><strong>1</strong></div><div className={`sv3-waiting-card waiting-unit ${lane !== "all" && lane !== "unit" ? "hidden" : ""}`}><div className="sv3-waiting-card-head"><Avatar initials="NH" tone="purple" /><div><strong>Nurul Hidayah</strong><small>10:20 · Family visit · Room 02</small></div><time>04:32</time></div><div className="sv3-check-grid"><span className="pass">✓ Visitor ready</span><span className="warn">! Prisoner not confirmed</span><span className="pass">✓ Kiosk available</span></div><div className="sv3-card-actions"><Button onClick={() => onNotify("Unit 4 has been contacted about F. Hidayat.")}>Contact unit</Button><Button variant="quiet" onClick={() => onNotify("Delay note added to SV-260814-018.")}>Delay visit</Button></div></div></section><section className="sv3-waiting-lane lane-issue"><div className="sv3-lane-head"><span><i />TECHNICAL ISSUE</span><strong>1</strong></div><div className={`sv3-waiting-card waiting-issue ${lane !== "all" && lane !== "issue" ? "hidden" : ""}`}><div className="sv3-waiting-card-head"><Avatar initials="AP" tone="orange" /><div><strong>Alya Pratama</strong><small>10:40 · Family visit · Room 04</small></div><Status tone="red">MIC ERROR</Status></div><div className="sv3-issue-callout"><strong>Microphone unavailable</strong><span>Last test failed at 09:38 · Kiosk 04 is offline</span><b>Suggested alternative: Kiosk 06</b></div><div className="sv3-card-actions"><Button variant="primary" onClick={() => onNotify("Kiosk 06 test requested for Alya Pratama.")}>Retry test</Button><Button variant="quiet" onClick={() => onNotify("Technical support ticket opened.")}>Support</Button></div></div></section></div><div className="sv3-waiting-footer"><span>Readiness updates every 15 seconds in production.</span><strong>{ready.length + 1} records linked to today&apos;s schedule</strong></div></>;
+}
 
-        {showVisitorView ? (
-          <section className="visitor-preview">
-            <div className="visitor-preview-copy"><span className="eyebrow">Visitor portal preview</span><h1>Good morning, Sarah.</h1><p>Your next approved visit is ready when you are.</p></div>
-            <div className="visitor-call-card"><div className="call-card-header"><span className="live-label"><span className="status-dot" />Upcoming visit</span><span className="call-time">Tomorrow · 09:30</span></div><div className="call-person"><Avatar initials="AR" tone="peach" /><div><strong>With A. Rahman</strong><span>Central Facility · 20 minutes</span></div><button className="dark-button" onClick={() => notify("Waiting room opens 10 minutes before the appointment.")}>View details <span>→</span></button></div></div>
-            <div className="visitor-bottom-grid"><div className="simple-panel"><span className="eyebrow">Visit credits</span><strong className="big-number">3</strong><p>Available for approved appointments</p><button className="text-button" onClick={() => notify("Mock credit purchase flow opened.")}>Buy credits <span>→</span></button></div><div className="simple-panel"><span className="eyebrow">Verification</span><StatusPill tone="green">Verified</StatusPill><p className="panel-note">Your identity review is current through 30 Nov 2026.</p><button className="text-button" onClick={() => notify("Profile settings opened.")}>View profile <span>→</span></button></div></div>
-          </section>
-        ) : activeNav === "Overview" ? (
-          <>
-            <section className="page-heading">
-              <div><div className="eyebrow">Central Correctional Facility <span className="heading-dot">·</span> Thursday, 13 August 2026</div><h1>Operations Overview</h1><p>Current visitation activity, exceptions, and facility capacity.</p></div>
-              <div className="heading-actions"><button className="secondary-button" onClick={() => notify("Report export prepared for download.")}>↓ <span>Export report</span></button><button className="primary-button" onClick={() => setActiveNav("Appointment Queue")}>+ <span>New appointment</span></button></div>
-            </section>
+function WaitingCard({ name, initials, appointment, checks, action, onAction, hidden }: { name: string; initials: string; appointment: string; checks: string[]; action: string; onAction: () => void; hidden: boolean }) {
+  return <div className={`sv3-waiting-card ${hidden ? "hidden" : ""}`}><div className="sv3-waiting-card-head"><Avatar initials={initials} /><div><strong>{name}</strong><small>{appointment}</small></div><Status tone="green">READY</Status></div><div className="sv3-check-grid">{checks.map((check) => <span className="pass" key={check}>✓ {check}</span>)}</div><div className="sv3-card-actions"><Button variant="primary" onClick={onAction}>{action}</Button><Button variant="quiet">···</Button></div></div>;
+}
 
-            <section className={`facility-state-strip ${facilityState === "LOCKDOWN" ? "facility-lockdown" : ""}`} aria-label="Facility state and live operations">
-              <div className="facility-state-main"><span className="state-kicker">Facility state</span><strong>{facilityState === "LOCKDOWN" ? "LOCKDOWN IN EFFECT" : "NORMAL OPERATIONS"}</strong><small>{facilityState === "LOCKDOWN" ? "New visitation approvals are temporarily suspended." : "All visitation services are operating within policy. Last update · 06:30 · Supervisor Rahman"}</small></div>
-              <div className="state-metric"><span>Live now</span><strong>2 sessions</strong></div><div className="state-metric"><span>Waiting</span><strong>3 visitors</strong></div><div className="state-metric"><span>Action required</span><strong>5 decisions</strong></div><div className="state-metric"><span>Capacity</span><strong>4 / 6 rooms</strong></div><div className="state-metric"><span>Device health</span><strong className={facilityState === "LOCKDOWN" ? "danger-text" : ""}>{facilityState === "LOCKDOWN" ? "8 reviewed" : "7 healthy · 1 offline"}</strong></div><button className="state-action" onClick={() => { const next = facilityState === "LOCKDOWN" ? "NORMAL_OPERATIONS" : "LOCKDOWN"; setFacilityState(next); notify(next === "LOCKDOWN" ? "Lockdown simulation started. Upcoming appointments are now flagged." : "Facility returned to normal operations."); }}>{facilityState === "LOCKDOWN" ? "End simulation" : "View state"}</button>
-            </section>
+function LiveSessionsPage({ appointments, onNotify }: { appointments: Appointment[]; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [monitoring, setMonitoring] = useState("SV-260813-031");
+  return <><PageHeader eyebrow="Operations · Authorized monitoring" title="Live Sessions" description="A monitored session console for connection health, recording policy, and operator intervention." actions={<><span className="sv3-live-count"><i />2 ACTIVE SESSIONS</span><Button variant="primary" onClick={() => onNotify("Monitoring roster refreshed.")}>Refresh sessions</Button></>} /><div className="sv3-session-layout"><div className="sv3-session-grid">{appointments.filter((appointment) => appointment.status === "Live" || appointment.status === "Ready").slice(0, 3).map((appointment, index) => <button className={`sv3-session-card ${monitoring === appointment.id ? "selected" : ""}`} key={appointment.id} onClick={() => setMonitoring(appointment.id)}><div className="sv3-session-card-top"><Status tone={appointment.status === "Live" ? "green" : "blue"}>{appointment.status === "Live" ? "LIVE" : "STAGED"}</Status><span>{appointment.type} visit</span></div><div className="sv3-session-people"><Avatar initials={appointment.visitorInitials} tone="orange" /><span>↔</span><Avatar initials={appointment.prisoner.replaceAll(".", "").replace(" ", "").slice(0, 2)} tone="blue" /></div><h2>{appointment.visitor} <span>↔</span> {appointment.prisoner}</h2><p>{appointment.room} · {appointment.kiosk}</p><div className="sv3-session-time"><strong>{index === 0 ? "11:43" : "10:20"}</strong><small>remaining</small></div><div className="sv3-session-health"><span>Connection <b className="green-text">Stable</b></span><span>Recording <b>Enabled</b></span><span>Monitor <b>Maya Santoso</b></span></div><span className="sv3-open-session">Open session →</span></button>)}</div><aside className="sv3-monitor-panel"><span className="sv3-eyebrow">Session monitor</span><h2>{monitoring}</h2><p>Monitoring is authorized for the assigned facility scope. No unrestricted recording browse is available.</p><div className="sv3-monitor-visual"><div className="sv3-scan-line" /><span>SECURE CHANNEL</span><strong>01:48:17</strong><small>Video and audio signal stable</small></div><div className="sv3-monitor-controls"><button onClick={() => onNotify("Recording has been marked for supervisor review.")}>▣ Flag moment</button><button onClick={() => onNotify("Session detail drawer opened.")}>≡ Session log</button><button className="danger-text-button" onClick={() => onNotify("End-session confirmation requested.", "warning")}>End session</button></div></aside></div><div className="sv3-session-footer"><span>Recording access is policy-gated and audit logged.</span><Button onClick={() => onNotify("Recording access workflow opened.")}>Review recording access</Button></div></>;
+}
 
-            <section className="stat-grid" aria-label="Facility summary">
-              <article className="stat-card stat-card-highlight"><div className="stat-top"><span>Today&apos;s visits</span><span className="stat-icon stat-icon-dark">◷</span></div><div className="stat-value">18</div><div className="stat-foot"><span className="trend-up">↗ 12%</span><span>vs. last Wednesday</span></div><div className="sparkline sparkline-light"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></article>
-              <article className="stat-card"><div className="stat-top"><span>Pending approval</span><span className="stat-icon">◌</span></div><div className="stat-value">{pendingCount + 9}</div><div className="stat-foot"><span className="trend-warm">{pendingCount} urgent</span><span>needs review</span></div><div className="mini-bars"><i /><i /><i /><i /><i /><i /><i /><i /></div></article>
-              <article className="stat-card"><div className="stat-top"><span>Active rooms</span><span className="stat-icon stat-icon-green">◉</span></div><div className="stat-value">2 <small>/ 6</small></div><div className="stat-foot"><span className="trend-green">● On schedule</span><span>all systems normal</span></div><div className="room-dots"><i className="filled" /><i className="filled" /><i /><i /><i /><i /></div></article>
-              <article className="stat-card"><div className="stat-top"><span>Credits this month</span><span className="stat-icon stat-icon-purple">◈</span></div><div className="stat-value">164</div><div className="stat-foot"><span className="trend-up">↗ 8.4%</span><span>vs. last month</span></div><div className="sparkline sparkline-purple"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></article>
-            </section>
+function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, tone?: Notice["tone"]) => void; onReassign: (id: string) => void }) {
+  const [selected, setSelected] = useState("Kiosk 04");
+  const resources = [{ name: "Room 01", type: "ROOM", status: "IN USE", detail: "Kiosk 02 · 10:20", tone: "green" }, { name: "Room 02", type: "ROOM", status: "AVAILABLE", detail: "Next visit 11:20", tone: "blue" }, { name: "Room 03", type: "ROOM", status: "IN USE", detail: "Kiosk 04 · 11:43 left", tone: "orange" }, { name: "Room 04", type: "ROOM", status: "RESERVED", detail: "Alya · 10:40", tone: "purple" }, { name: "Kiosk 02", type: "KIOSK", status: "ONLINE", detail: "Room 01 · heartbeat 4s", tone: "green" }, { name: "Kiosk 04", type: "KIOSK", status: "OFFLINE", detail: "Last heartbeat 14m", tone: "red" }, { name: "Kiosk 06", type: "KIOSK", status: "ONLINE", detail: "Available · certificate valid", tone: "blue" }, { name: "Kiosk 08", type: "KIOSK", status: "MAINTENANCE", detail: "Scheduled 15 Aug", tone: "purple" }];
+  return <><PageHeader eyebrow="Operations · Resource map" title="Resources" description="The live state of every room and kiosk, including what each problem affects and the safest alternative." actions={<><Button onClick={() => onNotify("All room and kiosk heartbeats requested.")}>↻ Poll devices</Button><Button variant="primary" onClick={() => onNotify("Maintenance request opened for the selected resource.")}>+ Maintenance request</Button></>} /><div className="sv3-resource-summary"><div className="sv3-resource-hero"><span className="sv3-eyebrow">Facility capacity</span><strong>4 <small>/ 6</small></strong><p>rooms currently usable</p><div className="sv3-capacity-bar"><i style={{ width: "67%" }} /></div><span>2 rooms available · 1 device warning</span></div><div><span>Online kiosks</span><strong>7 / 8</strong><small>One missed heartbeat</small></div><div><span>Monitoring capacity</span><strong>2 / 2</strong><small>Full until 11:00</small></div></div><div className="sv3-resource-layout"><section className="sv3-resource-board"><div className="sv3-resource-board-head"><div><span className="sv3-eyebrow">Live resource board</span><h2>Rooms & kiosks</h2></div><div className="sv3-resource-legend"><span><i className="green" />Healthy</span><span><i className="orange" />Reserved</span><span><i className="red" />Attention</span></div></div><div className="sv3-resource-grid">{resources.map((resource) => <button key={resource.name} className={`sv3-resource-tile resource-${resource.tone} ${selected === resource.name ? "selected" : ""}`} onClick={() => setSelected(resource.name)}><div><span>{resource.type}</span><Status tone={resource.tone}>{resource.status}</Status></div><strong>{resource.name}</strong><small>{resource.detail}</small><i className="resource-signal" /></button>)}</div></section><aside className="sv3-resource-detail"><span className="sv3-eyebrow">Selected resource</span><h2>{selected}</h2><Status tone={selected === "Kiosk 04" ? "red" : "green"}>{selected === "Kiosk 04" ? "OFFLINE" : "OPERATIONAL"}</Status><dl><div><dt>Last heartbeat</dt><dd>{selected === "Kiosk 04" ? "14 minutes ago" : "4 seconds ago"}</dd></div><div><dt>Current reservation</dt><dd>{selected === "Kiosk 04" ? "SV-260813-031 · affected" : "None"}</dd></div><div><dt>Camera</dt><dd>{selected === "Kiosk 04" ? "Not reachable" : "Passed"}</dd></div><div><dt>Microphone</dt><dd>{selected === "Kiosk 04" ? "Not reachable" : "Passed"}</dd></div></dl>{selected === "Kiosk 04" ? <div className="sv3-resource-warning"><strong>What this affects</strong><span>SV-260813-031 · Sarah Amelia ↔ A. Rahman</span><small>Recommended alternative: Kiosk 06</small><Button variant="primary" onClick={() => onReassign("SV-260813-031")}>Reassign to Kiosk 06</Button></div> : <Button onClick={() => onNotify(`${selected} details opened.`)}>Open resource record</Button>}</aside></div></>;
+}
 
-            <section className="dashboard-grid">
-              <article className="panel agenda-panel"><div className="panel-header"><div><span className="eyebrow">Live schedule</span><h2>Today&apos;s operational timeline</h2></div><button className="text-button" onClick={() => setActiveNav("Calendar")}>View calendar <span>→</span></button></div><div className="agenda-date-row"><button>‹</button><strong>Wed, 05 Aug</strong><span className="today-pill">Today</span><button>›</button><span className="agenda-timezone">GMT+7 · Jakarta</span></div><div className="agenda-list">{agenda.map((item) => <div className="agenda-row" key={`${item.time}-${item.name}`}><span className="agenda-time">{item.time}</span><span className={`agenda-line agenda-line-${item.color}`} /><div className="agenda-main"><strong>{item.name}</strong><span>{item.room} <i /> {item.type}</span></div><StatusPill tone={item.color === "orange" ? "orange" : item.color === "blue" ? "blue" : "green"}>{item.status}</StatusPill></div>)}</div><div className="agenda-footer"><span className="status status-light"><span className="status-dot status-dot-green" />2 rooms in progress</span><button className="text-button" onClick={() => setActiveNav("Devices & Rooms")}>Resource status <span>→</span></button></div></article>
+function IncidentsPage({ selected, onSelect, onNotify }: { selected: string; onSelect: (id: string) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const incidents = [{ id: "INC-260813-019", severity: "CRITICAL", title: "Unauthorized participant detected", appointment: "SV-260813-031", age: "4 min ago", assignee: "Rahman Prakoso", tone: "red" }, { id: "INC-260813-014", severity: "HIGH", title: "Device interruption", appointment: "SV-260813-033", age: "23 min ago", assignee: "Maya Santoso", tone: "orange" }, { id: "INC-260812-081", severity: "MEDIUM", title: "Visitor conduct report", appointment: "SV-260812-081", age: "Yesterday", assignee: "Unassigned", tone: "blue" }];
+  const active = incidents.find((incident) => incident.id === selected) || incidents[0];
+  return <><PageHeader eyebrow="Operations · Case management" title="Incidents" description="Investigate what happened, understand the affected visit, assign ownership, and record the resolution." actions={<><Status tone="red">3 OPEN</Status><Button variant="primary" onClick={() => onNotify("New incident form opened. A reason and related visit are required.")}>+ Report incident</Button></>} /><div className="sv3-incident-layout"><section className="sv3-incident-list"><div className="sv3-incident-list-head"><span>OPEN INCIDENTS</span><button>Filter · All</button></div>{incidents.map((incident) => <button className={`sv3-incident-row ${active.id === incident.id ? "active" : ""}`} key={incident.id} onClick={() => onSelect(incident.id)}><span className={`sv3-severity severity-${incident.tone}`}>{incident.severity}</span><strong>{incident.title}</strong><small>{incident.id} · {incident.age}</small><span className="sv3-incident-meta">{incident.appointment} · {incident.assignee}</span><b>›</b></button>)}<EmptyState title="No more open incidents" body="Resolved cases remain available in Compliance." action="View resolved cases" /></section><article className="sv3-incident-detail"><div className="sv3-incident-detail-head"><div><span className={`sv3-severity severity-${active.tone}`}>{active.severity}</span><span className="sv3-eyebrow">INCIDENT {active.id}</span><h2>{active.title}</h2><p>Opened {active.age} · Related appointment {active.appointment}</p></div><Button onClick={() => onNotify("Incident assignment updated.", "success")}>Assign case</Button></div><div className="sv3-incident-columns"><div><SectionLabel>Investigation timeline</SectionLabel><div className="sv3-case-timeline"><div><time>09:38</time><span /><p><strong>Session readiness failed</strong><small>Kiosk 04 stopped responding during pre-flight checks.</small></p></div><div><time>09:41</time><span /><p><strong>Officer created incident</strong><small>Maya Santoso linked the issue to {active.appointment}.</small></p></div><div><time>09:42</time><span /><p><strong>Supervisor notified</strong><small>Rahman Prakoso is reviewing the case.</small></p></div></div></div><div className="sv3-case-facts"><SectionLabel>Case facts</SectionLabel><dl><div><dt>Reporter</dt><dd>Maya Santoso</dd></div><div><dt>Assigned investigator</dt><dd>{active.assignee}</dd></div><div><dt>Affected visitor</dt><dd>Sarah Amelia</dd></div><div><dt>Evidence</dt><dd>3 event records</dd></div></dl><Button variant="secondary" onClick={() => onNotify("Evidence access request created and audit logged.")}>Request evidence access</Button></div></div><div className="sv3-resolution"><SectionLabel>Resolution</SectionLabel><p>Document actions taken and why the visit can resume, be delayed, or be cancelled.</p><Button variant="primary" onClick={() => onNotify("Resolution form opened. Case remains open until submitted.")}>Add resolution note</Button><Button variant="quiet" onClick={() => onNotify("Incident marked ready for supervisor closure.")}>Prepare closure</Button></div></article></div></>;
+}
 
-              <article className="panel exceptions-panel"><div className="panel-header"><div><span className="eyebrow">Exception monitor</span><h2>Requires attention</h2></div><StatusPill tone={facilityState === "LOCKDOWN" ? "orange" : "green"}>{facilityState === "LOCKDOWN" ? "State changed" : "Normal operations"}</StatusPill></div><div className="exception-list"><button onClick={() => setActiveNav("Appointment Queue")}><span className="exception-icon exception-amber">!</span><span><strong>2 approvals exceed 30-minute SLA</strong><small>Scheduling queue · 38m and 42m old</small></span><b>→</b></button><button onClick={() => setActiveNav("Devices & Rooms")}><span className="exception-icon exception-red">!</span><span><strong>1 device has not checked in</strong><small>Room 03 · Kiosk 04 · 14 minutes</small></span><b>→</b></button><button onClick={() => setActiveNav("Verification Queue")}><span className="exception-icon exception-blue">i</span><span><strong>3 visitor documents expire soon</strong><small>Within seven days · review recommended</small></span><b>→</b></button><button onClick={() => setActiveNav("Restrictions & Closures")}><span className="exception-icon exception-violet">↗</span><span><strong>1 approved visit conflicts with a restriction</strong><small>Bima Aditya · 10:00 appointment</small></span><b>→</b></button></div></article>
-            </section>
+function AppointmentDrawer({ appointment, onClose, onUpdate }: { appointment: Appointment; onClose: () => void; onUpdate: (id: string, status: AppointmentStatus) => void }) {
+  return <div className="sv3-drawer-backdrop" onClick={onClose}><aside className="sv3-drawer" onClick={(event) => event.stopPropagation()}><div className="sv3-drawer-head"><div><span className="sv3-eyebrow">Appointment review</span><h2>{appointment.id}</h2></div><button onClick={onClose} aria-label="Close review">×</button></div><div className="sv3-drawer-person"><Avatar initials={appointment.visitorInitials} tone="orange" /><div><strong>{appointment.visitor}</strong><span>{appointment.type} visit with {appointment.prisoner}</span></div><Status tone={appointment.status === "Blocked" ? "red" : "orange"}>{appointment.status}</Status></div><div className="sv3-drawer-details"><div><span>Requested</span><strong>{appointment.date} · {appointment.time}</strong></div><div><span>Resources</span><strong>{appointment.room} · {appointment.kiosk}</strong></div><div><span>Relationship</span><strong>Sister · approved</strong></div><div><span>Credits</span><strong>1 available · reservation ready</strong></div></div><div className="sv3-approval-preview"><span className="sv3-eyebrow">If approved</span><p>This action will reserve the room, kiosk, monitoring slot, and one Visit Credit; notify the visitor; and create an audit event.</p><span>✓ Eligibility checks passed</span><span>✓ Visitor identity verified</span><span>! Relationship evidence requires review</span></div><div className="sv3-drawer-actions"><Button variant="quiet" onClick={onClose}>Cancel</Button><Button variant="danger" onClick={() => onUpdate(appointment.id, "Blocked")}>Decline</Button><Button variant="primary" onClick={() => onUpdate(appointment.id, "Approved")}>Approve visit</Button></div></aside></div>;
+}
 
-            <section className="lower-grid">
-              <article className="panel requests-panel"><div className="panel-header"><div><span className="eyebrow">Action required</span><h2>Approval queue <span className="heading-count">{pendingCount}</span></h2></div><button className="text-button" onClick={() => setActiveNav("Visitors")}>View all <span>→</span></button></div><div className="request-list">{activeRequests.length ? activeRequests.map((request) => <div className="request-row" key={request.id}><Avatar initials={request.initials} tone={request.tone} /><div className="request-person"><strong>{request.visitor}</strong><span>{request.relationship} <i /> <b>{request.id}</b></span></div><div className="request-visit"><strong>{request.prisoner}</strong><span>{request.prisonerId}</span></div><div className="request-time"><strong>{request.date}</strong><span>{request.time}</span></div><div className="request-actions"><button className="approve-button" aria-label={`Approve ${request.visitor}`} onClick={() => approveRequest(request.id)}>✓</button><button className="decline-button" aria-label={`Decline ${request.visitor}`} onClick={() => declineRequest(request.id)}>×</button></div></div>) : <div className="empty-state"><span>✓</span><strong>Queue cleared</strong><p>New visitor requests will appear here.</p></div>}</div></article>
+function PeoplePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [tab, setTab] = useState("Visitors");
+  const [search, setSearch] = useState("");
+  const rows = tab === "Prisoners" ? [["A. Rahman", "ACTIVE", "6 approved visitors", "Next visit · 10:00", "AR"], ["R. Santoso", "ACTIVE", "4 approved visitors", "Next visit · 10:20", "RS"], ["F. Pratama", "RESTRICTED", "2 approved visitors", "Review required", "FP"]] : tab === "Verifications" ? [["Nurul Hidayah", "PENDING", "Passport · expires 2027", "8 min ago", "NH"], ["Fajar Anwar", "NEEDS INFO", "Address evidence", "22 min ago", "FA"], ["Dewi Kartika", "EXPIRING", "Identity refresh", "1 hour ago", "DK"]] : tab === "Relationships" ? [["Alya Pratama", "UNDER REVIEW", "Sister → F. Pratama", "Family card attached", "AP"], ["Dimas Wirawan", "ESCALATED", "Counsel → B. Aditya", "Supervisor review", "DW"], ["Sarah Amelia", "APPROVED", "Wife → A. Rahman", "Approved 02 Aug", "SA"]] : [["Sarah Amelia", "VERIFIED", "Wife → A. Rahman", "Next visit · 10:00", "SA"], ["Daniel Wijaya", "VERIFIED", "Brother → R. Santoso", "Next visit · 10:20", "DW"], ["Alya Pratama", "PENDING", "Sister → F. Pratama", "Requesting visit", "AP"], ["Nurul Hidayah", "VERIFIED", "Mother → F. Hidayat", "Next visit · tomorrow", "NH"]];
+  const filtered = rows.filter((row) => row.join(" ").toLowerCase().includes(search.toLowerCase()));
+  return <><PageHeader eyebrow="Management · People" title="People" description="One people workspace connects visitors, prisoners, verification evidence, and relationship permissions." actions={<><Button onClick={() => onNotify("People export queued with facility scope applied.")}>Export scoped list</Button><Button variant="primary" onClick={() => onNotify("Controlled record creation flow opened.")}>+ Add record</Button></>} /><div className="sv3-entity-tabs">{["Visitors", "Prisoners", "Verifications", "Relationships"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div><div className="sv3-people-layout"><section className="sv3-people-directory"><div className="sv3-directory-head"><div><span className="sv3-eyebrow">{tab} directory</span><h2>{tab === "Visitors" ? "Verified accounts" : tab}</h2></div><label className="sv3-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or reference" /></label></div><div className="sv3-people-table-head"><span>Person</span><span>Verification / status</span><span>Relationship or scope</span><span>Activity</span><span /></div>{filtered.map((row) => <button className="sv3-person-row" key={row[0]} onClick={() => onNotify(`${row[0]} 360° profile opened.`)}><span className="sv3-table-person"><Avatar initials={row[4]} tone={tab === "Prisoners" ? "blue" : "orange"} /><span><strong>{row[0]}</strong><small>{tab === "Prisoners" ? "Prisoner ref · CCF-" : "Visitor ID · VST-"}{row[4]}</small></span></span><Status tone={row[1] === "VERIFIED" || row[1] === "ACTIVE" || row[1] === "APPROVED" ? "green" : row[1] === "RESTRICTED" || row[1] === "ESCALATED" ? "red" : "orange"}>{row[1]}</Status><span>{row[2]}</span><span>{row[3]}</span><b>→</b></button>)}</section><aside className="sv3-profile-teaser"><span className="sv3-eyebrow">Selected profile</span><div className="sv3-profile-identity"><Avatar initials="SA" tone="orange" /><div><h2>Sarah Amelia</h2><Status tone="green">VERIFIED</Status></div></div><div className="sv3-profile-tabs"><button className="active">Overview</button><button>Relationships</button><button>Visits</button><button>Credits</button><button>Activity</button></div><dl><div><dt>Relationship</dt><dd>A. Rahman · Wife · Approved</dd></div><div><dt>Upcoming visit</dt><dd>Today · 10:00 · Room 03</dd></div><div><dt>Credits</dt><dd>2 available · 1 reserved</dd></div><div><dt>Incidents</dt><dd>None on record</dd></div></dl><Button variant="primary" onClick={() => onNotify("Full visitor profile opened.")}>Open full profile →</Button></aside></div></>;
+}
 
-              <article className="panel activity-panel"><div className="panel-header"><div><span className="eyebrow">Audit trail</span><h2>Recent activity</h2></div><button className="more-button" aria-label="More options">•••</button></div><div className="activity-list"><div className="activity-item"><Avatar initials="MS" tone="navy" small /><div><p><strong>You</strong> approved a visit request</p><span>REQ-2043 · 8 minutes ago</span></div><span className="activity-check">✓</span></div><div className="activity-item"><Avatar initials="RK" tone="blue" small /><div><p><strong>Rizky K.</strong> started a session</p><span>Room 03 · 21 minutes ago</span></div><span className="activity-live">Live</span></div><div className="activity-item"><Avatar initials="SY" tone="peach" small /><div><p><strong>Sari Y.</strong> updated a prisoner record</p><span>LPS-JKT-004821 · 42 minutes ago</span></div><span className="activity-check">✓</span></div><div className="activity-item"><Avatar initials="SYS" tone="lavender" small /><div><p><strong>System</strong> released 1 visit credit</p><span>Facility cancellation · 1h ago</span></div><span className="activity-check">✓</span></div></div><button className="full-link" onClick={() => setActiveNav("Audit Log")}>Open audit log <span>→</span></button></article>
-            </section>
-          </>
-        ) : <MockPage section={activeNav} onNotify={notify} facilityState={facilityState} onFacilityStateChange={setFacilityState} />}
-      </main>
-      {toast ? <div className="toast"><span>✓</span>{toast}</div> : null}
-    </div>
-  );
+function VisitationPage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [tab, setTab] = useState("Appointment Types");
+  const [enabled, setEnabled] = useState(true);
+  return <><PageHeader eyebrow="Management · Visitation policy" title="Visitation" description={<>Maintain the rules that define the schedule. Today&apos;s live appointments stay in Operations.</>} actions={<Button variant="primary" onClick={() => onNotify("Policy changes saved as a draft for supervisor review.", "success")}>Save policy draft</Button>} /><div className="sv3-policy-layout"><nav className="sv3-policy-nav">{["Appointment Types", "Availability Rules", "Visit Policies", "Operating Hours", "Closures"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}><span>{item}</span><b>›</b></button>)}</nav><section className="sv3-policy-editor"><div className="sv3-policy-editor-head"><div><span className="sv3-eyebrow">Policy catalog</span><h2>{tab}</h2></div><Status tone="green">DRAFT IN SYNC</Status></div>{tab === "Appointment Types" ? <div className="sv3-policy-cards"><article><div><span className="sv3-policy-icon orange">⌁</span><Status tone="green">ACTIVE</Status></div><h3>Family Visit</h3><p>Standard family contact for approved relationships.</p><dl><div><dt>Duration</dt><dd>20 minutes</dd></div><div><dt>Credit required</dt><dd>Yes · 1</dd></div><div><dt>Weekly limit</dt><dd>3 visits</dd></div><div><dt>Recording</dt><dd>Policy controlled</dd></div></dl><Button onClick={() => onNotify("Family Visit policy editor opened.")}>Edit policy</Button></article><article><div><span className="sv3-policy-icon blue">§</span><Status tone="green">ACTIVE</Status></div><h3>Legal Visit</h3><p>Privileged contact with different monitoring and recording rules.</p><dl><div><dt>Duration</dt><dd>40 minutes</dd></div><div><dt>Credit required</dt><dd>Waived</dd></div><div><dt>Weekly limit</dt><dd>By case</dd></div><div><dt>Recording</dt><dd>Prohibited</dd></div></dl><Button onClick={() => onNotify("Legal Visit policy editor opened.")}>Edit policy</Button></article></div> : <div className="sv3-settings-surface"><div className="sv3-rule-line"><div><strong>{tab === "Availability Rules" ? "Minimum scheduling buffer" : tab === "Visit Policies" ? "Require prisoner confirmation" : tab === "Operating Hours" ? "Central Facility operating hours" : "August training closure"}</strong><small>{tab === "Availability Rules" ? "Time between consecutive visits in the same room." : tab === "Visit Policies" ? "A visit cannot enter Waiting Room until the unit confirms readiness." : tab === "Operating Hours" ? "Monday–Saturday · Asia/Jakarta" : "12 Aug 2026 · 08:00–12:00"}</small></div><label className="sv3-switch"><input type="checkbox" checked={enabled} onChange={() => setEnabled((current) => !current)} /><i /></label></div><div className="sv3-form-grid"><label>Effective from<input defaultValue={tab === "Operating Hours" ? "08:00" : "13 Aug 2026"} /></label><label>Review owner<select defaultValue="Supervisor"><option>Supervisor</option><option>Facility administrator</option></select></label><label>Reason<textarea defaultValue="Keep the demo facility rule visible and explicitly scoped." /></label></div><Button variant="primary" onClick={() => onNotify(`${tab} draft updated.`, "success")}>Update {tab.toLowerCase()}</Button></div>}</section></div></>;
+}
+
+function FinancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [tab, setTab] = useState("Overview");
+  return <><PageHeader eyebrow="Management · Financial controls" title="Finance" description="Credits, payments, refunds, and reconciliation in one financial workspace." actions={<Button variant="primary" onClick={() => onNotify("Reconciliation run started.", "success")}>Run reconciliation</Button>} /><div className="sv3-finance-tabs">{["Overview", "Ledger", "Payments", "Refunds", "Reconciliation"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>{tab === "Overview" ? <div className="sv3-finance-overview"><div className="sv3-finance-metrics"><Metric label="Credits purchased" value="48" detail="Today · +8 vs yesterday" tone="green" /><Metric label="Credits consumed" value="31" detail="Today · 65% of purchased" tone="blue" /><Metric label="Credits reserved" value="19" detail="Across 14 appointments" tone="orange" /><Metric label="Refund cases" value="3" detail="1 needs approval" tone="red" /></div><div className="sv3-finance-lower"><section className="sv3-surface sv3-ledger-preview"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Append-only ledger</span><h2>Recent activity</h2></div><button className="sv3-link-button" onClick={() => setTab("Ledger")}>Open ledger →</button></div>{[["09:42", "Credit reserved", "Sarah Amelia · SV-260813-031", "-1 available · +1 reserved", "Balanced"], ["09:21", "Credits purchased", "Daniel Wijaya · payment PMT-8821", "+3 available", "Settled"], ["08:58", "Reservation released", "Visit cancelled by facility", "+1 available · -1 reserved", "Balanced"]].map((row) => <div className="sv3-ledger-row" key={row[0]}><time>{row[0]}</time><span><strong>{row[1]}</strong><small>{row[2]}</small></span><span>{row[3]}</span><Status tone="green">{row[4]}</Status></div>)}</section><aside className="sv3-reconcile-card"><span className="sv3-eyebrow">Reconciliation</span><strong>✓ Ledger balanced</strong><p>Last check 08:30 · all appointment settlements matched.</p><Button onClick={() => onNotify("All three financial control checks passed.", "success")}>Review controls</Button></aside></div></div> : <div className="sv3-finance-tab-content"><div className="sv3-finance-tab-head"><div><span className="sv3-eyebrow">{tab}</span><h2>{tab === "Ledger" ? "Credit ledger" : tab === "Refunds" ? "Refund cases" : tab === "Payments" ? "Provider transactions" : "Control checks"}</h2></div><span className="sv3-toolbar-meta">Fictional demo data · 13 Aug 2026</span></div>{tab === "Reconciliation" ? <div className="sv3-control-checks"><ControlCheck label="Credit ledger" detail="All balances agree with entries" /><ControlCheck label="Payments" detail="32 provider transactions matched" /><ControlCheck label="Appointments" detail="All completed paid visits settled" /><ControlCheck label="Webhooks" detail="1 unmatched payment webhook" warning /></div> : <div className="sv3-finance-table">{(tab === "Refunds" ? [["RF-260813-008", "Sarah Amelia", "Facility cancellation", "1 Visit Credit", "PENDING APPROVAL"], ["RF-260812-004", "Dimas Wirawan", "Technical failure", "1 Visit Credit", "APPROVED"]] : [["PMT-8821", "Daniel Wijaya", "3 Visit Credits", "Succeeded", "08:21"], ["PMT-8819", "Sarah Amelia", "2 Visit Credits", "Succeeded", "07:48"], ["PMT-8804", "Nurul Hidayah", "1 Visit Credit", "Refunded", "Yesterday"]]).map((row) => <button key={row[0]} onClick={() => onNotify(`${row[0]} details opened.`)}><strong>{row[0]}</strong><span>{row[1]}</span><span>{row[2]}</span><span>{row[3]}</span><Status tone={row[4].includes("PENDING") ? "orange" : "green"}>{row[4]}</Status><b>→</b></button>)}</div>}</div>}</>;
+}
+
+function ControlCheck({ label, detail, warning = false }: { label: string; detail: string; warning?: boolean }) {
+  return <div className={`sv3-control-check ${warning ? "warning" : ""}`}><span>{warning ? "!" : "✓"}</span><div><strong>{label}</strong><small>{detail}</small></div><b>{warning ? "Review" : "Passed"}</b></div>;
+}
+
+function CompliancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [tab, setTab] = useState("Audit");
+  const [events, setEvents] = useState([["09:42:16", "APPOINTMENT APPROVED", "Maya Santoso · Scheduling Officer", "SV-260813-031", "All eligibility requirements satisfied", "COR-93842"], ["09:38:04", "DEVICE HEALTH WARNING", "System monitor", "Kiosk 04", "Heartbeat missed for 10 minutes", "COR-93838"], ["09:21:33", "CREDIT RESERVED", "System", "Sarah Amelia", "One Visit Credit reserved", "COR-93821"]]);
+  useEffect(() => { fetch("/api/audit/events?limit=20", { headers: { accept: "application/json" } }).then(async (response) => { if (!response.ok) return; const body = await response.json(); if (body.events?.length) setEvents(body.events.map((event: { createdAt: string; actionType: string; actorRole?: string | null; entityId?: string | null; reason?: string | null; correlationId: string }) => [event.createdAt.slice(11, 19), event.actionType, event.actorRole || "System", event.entityId || "Facility", event.reason || "Recorded action", event.correlationId])); }).catch(() => undefined); }, []);
+  return <><PageHeader eyebrow="Management · Compliance" title="Compliance" description="Investigate the record of what changed, who accessed sensitive material, and which reports are ready." actions={<><Button onClick={() => onNotify("Audit integrity verified for the current facility scope.", "success")}>✓ Verify integrity</Button><Button variant="primary" onClick={() => onNotify("Scoped compliance export requested.")}>Export scoped report</Button></>} /><div className="sv3-compliance-tabs">{["Audit", "Recording Access", "Reports", "Security Events"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>{tab === "Audit" ? <div className="sv3-audit-layout"><section className="sv3-audit-stream"><div className="sv3-audit-head"><div><span className="sv3-eyebrow">Chronological investigation trail</span><h2>Facility audit</h2></div><span className="sv3-toolbar-meta">{events.length} events · live scope</span></div>{events.map((event) => <button className="sv3-audit-event" key={event[5]} onClick={() => onNotify(`${event[5]} expanded with before-and-after values.`)}><time>{event[0]}</time><span className="sv3-audit-dot" /><div><strong>{event[1]}</strong><small>{event[2]} · {event[3]}</small><p>{event[4]}</p><em>Correlation {event[5]}</em></div><b>›</b></button>)}</section><aside className="sv3-audit-side"><div className="sv3-surface"><span className="sv3-eyebrow">Access posture</span><strong className="sv3-posture">Protected</strong><p>Identity, facility scope, and permission checks are enforced before sensitive records are returned.</p><div className="sv3-posture-line"><span>Audit retention</span><b>Configured</b></div><div className="sv3-posture-line"><span>Request IDs</span><b>Enabled</b></div><div className="sv3-posture-line"><span>Outbox</span><b>12 pending</b></div></div><div className="sv3-surface"><span className="sv3-eyebrow">Need to investigate?</span><h2>Open a case</h2><p>Link audit events, appointment records, and evidence access into a controlled review.</p><Button variant="primary" onClick={() => onNotify("Compliance investigation case opened.")}>Start investigation</Button></div></aside></div> : <ComplianceTab tab={tab} onNotify={onNotify} />}</>;
+}
+
+function ComplianceTab({ tab, onNotify }: { tab: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  if (tab === "Recording Access") return <div className="sv3-review-cases"><div className="sv3-review-case urgent"><Status tone="orange">SUPERVISOR APPROVAL REQUIRED</Status><h2>Recording REC-260812-010</h2><p>Requested by Arif Nugraha · Reason: incident investigation</p><div><span>Related session</span><strong>Sarah Amelia ↔ A. Rahman · 04 Aug</strong></div><Button variant="primary" onClick={() => onNotify("Recording access request routed to Supervisor Rahman.")}>Review request</Button></div><div className="sv3-review-case"><Status tone="green">AUTHORIZED</Status><h2>Recording REC-260811-006</h2><p>Requested by Maya Santoso · Reason: quality review</p><div><span>Expires</span><strong>13 Aug 2026 · 18:00 WIB</strong></div><Button onClick={() => onNotify("Access receipt opened.")}>Open access receipt</Button></div></div>;
+  if (tab === "Reports") return <div className="sv3-report-grid">{[["Daily operations", "13 Aug 2026", "Appointments, exceptions, capacity", "READY"], ["Credit reconciliation", "July 2026", "Ledger and fictional payment events", "READY"], ["Access review", "Q3 2026", "Sensitive recording and audit access", "DRAFT"]].map((report) => <button key={report[0]} onClick={() => onNotify(`${report[0]} opened.`)}><span className="sv3-report-icon">▤</span><strong>{report[0]}</strong><small>{report[1]} · {report[2]}</small><Status tone={report[3] === "READY" ? "green" : "orange"}>{report[3]}</Status><b>Open report →</b></button>)}</div>;
+  return <div className="sv3-security-events"><div className="sv3-security-event critical"><span>!</span><div><strong>Cross-facility access denied</strong><small>13 Aug · 09:31 · Policy engine</small></div><Status tone="red">CRITICAL</Status></div><div className="sv3-security-event"><span>✓</span><div><strong>Security event review completed</strong><small>13 Aug · 08:30 · Rahman Prakoso</small></div><Status tone="green">RESOLVED</Status></div><Button variant="secondary" onClick={() => onNotify(`${tab} filtered to current facility scope.`)}>Apply facility scope</Button></div>;
+}
+
+function FacilityPage({ facilityState, onNotify }: { facilityState: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [tab, setTab] = useState("Profile");
+  return <><PageHeader eyebrow="Management · Facility configuration" title="Facility" description="Configure what Central Facility is, how it operates, and which rules its live operations must follow." actions={<Button variant="primary" onClick={() => onNotify("Facility configuration saved as a draft.", "success")}>Save configuration</Button>} /><div className="sv3-facility-layout"><nav className="sv3-facility-nav">{["Profile", "Operating Hours", "Rooms", "Devices", "Restrictions", "Closures", "Visit Policies"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}<b>›</b></button>)}</nav><section className="sv3-facility-editor"><div className="sv3-facility-editor-head"><div><span className="sv3-eyebrow">Central Correctional Facility</span><h2>{tab}</h2></div><Status tone={facilityState === "LOCKDOWN" ? "red" : "green"}>{facilityState === "LOCKDOWN" ? "LOCKDOWN" : "NORMAL"}</Status></div>{tab === "Profile" ? <div className="sv3-facility-profile"><div className="sv3-facility-map"><span>CCF</span><small>Jakarta · ID-JKT-CCF-01</small><i>⌖</i></div><div className="sv3-form-grid"><label>Facility name<input defaultValue="Central Correctional Facility" /></label><label>Timezone<select defaultValue="Asia/Jakarta"><option>Asia/Jakarta</option><option>Asia/Makassar</option></select></label><label>Facility reference<input defaultValue="ID-JKT-CCF-01" /></label><label>Operational state<input value={facilityState === "LOCKDOWN" ? "Lockdown" : "Normal operations"} readOnly /></label><label>Address<textarea defaultValue="Jakarta · fictional demo facility" /></label></div></div> : <div className="sv3-facility-table">{(tab === "Rooms" ? [["Room 01", "Family visit", "6 seats", "Active"], ["Room 02", "Family visit", "6 seats", "Active"], ["Room 03", "Family visit", "6 seats", "Active"], ["Room 04", "Legal visit", "4 seats", "Active"]] : tab === "Devices" ? [["Kiosk 02", "Room 01", "Camera + microphone", "Online"], ["Kiosk 04", "Room 03", "Heartbeat missed", "Attention"], ["Kiosk 06", "Unassigned", "Camera + microphone", "Online"]] : [[tab, "Configured rule", "Owner · Supervisor", "Active"], ["Visitor identity", "Required before check-in", "Owner · Verification", "Active"], ["Recording policy", "Per appointment type", "Owner · Compliance", "Active"]]).map((row) => <button key={row[0]} onClick={() => onNotify(`${row[0]} configuration opened.`)}><strong>{row[0]}</strong><span>{row[1]}</span><span>{row[2]}</span><Status tone={row[3] === "Attention" ? "red" : "green"}>{row[3]}</Status><b>→</b></button>)}</div>}</section></div></>;
+}
+
+function AdministrationPage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [tab, setTab] = useState("Staff");
+  return <><PageHeader eyebrow="Management · Administration" title="Administration" description="Make roles, notifications, integrations, and system defaults understandable to the people who own them." actions={<Button variant="primary" onClick={() => onNotify("Administration changes are ready for review.")}>Save changes</Button>} /><div className="sv3-admin-tabs">{["Staff", "Roles & Permissions", "Notifications", "Integrations", "System Settings"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>{tab === "Staff" ? <div className="sv3-admin-content"><div className="sv3-admin-stat"><span>Provisioned staff</span><strong>8</strong><small>All facility scoped</small></div><div className="sv3-staff-list">{[["Maya Santoso", "Scheduling Officer", "Last login · 09:12", "MS"], ["Rahman Prakoso", "Supervisor", "Last login · 08:42", "RP"], ["Dewi Lestari", "Verification Officer", "Last login · 08:30", "DL"], ["Arif Nugraha", "Monitoring Officer", "Last login · yesterday", "AN"]].map((staff) => <button key={staff[0]} onClick={() => onNotify(`${staff[0]} profile opened.`)}><Avatar initials={staff[3]} tone="blue" /><span><strong>{staff[0]}</strong><small>{staff[1]} · Central Facility</small></span><span>{staff[2]}</span><Status tone="green">ACTIVE</Status><b>→</b></button>)}</div></div> : tab === "Roles & Permissions" ? <div className="sv3-permissions"><div className="sv3-permission-head"><span>PERMISSION</span><span>Scheduler</span><span>Monitor</span><span>Finance</span><span>Supervisor</span></div>{[["Appointment approve", "✓", "—", "—", "✓"], ["Session monitor", "—", "✓", "—", "✓"], ["Credit adjustment", "—", "—", "✓", "✓"], ["Facility lockdown", "—", "—", "—", "✓"], ["Recording access", "—", "✓", "—", "✓"]].map((row) => <div className="sv3-permission-row" key={row[0]}>{row.map((cell, index) => <span className={index > 0 && cell === "✓" ? "allowed" : ""} key={`${row[0]}-${index}`}>{cell}</span>)}</div>)}<p>Permissions are provisioned by institutional administrators. This demo role cannot elevate itself.</p></div> : <div className="sv3-admin-settings">{["Visitor reminders", "Security event alerts", "Weekly reconciliation report", "Break-glass access approval"].map((setting, index) => <div className="sv3-setting-row" key={setting}><div><strong>{setting}</strong><small>{index === 3 ? "Require supervisor and reason before sensitive access." : "Notify the assigned facility team when this event changes."}</small></div><label className="sv3-switch"><input type="checkbox" defaultChecked={index !== 2} onChange={() => onNotify(`${setting} setting updated.`)} /><i /></label></div>)}<Button variant="primary" onClick={() => onNotify(`${tab} settings saved.`, "success")}>Save {tab.toLowerCase()}</Button></div>}</>;
 }

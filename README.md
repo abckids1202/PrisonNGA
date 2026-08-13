@@ -19,6 +19,15 @@ npm run lint
 npm test
 ```
 
+## Product architecture
+
+- **SecureVisit Control → Operations:** Command Center, Appointments, Waiting Room, Live Sessions, Resources, and Incidents.
+- **SecureVisit Control → Management:** People, Visitation, Finance, Compliance, Facility, and Administration.
+- **SecureVisit Visitor:** Separate external-user experience at `/visitor` with Home, Visits, Connections, Credits, and Account.
+- **SecureVisit Kiosk:** Reserved as a future controlled-device experience; it is not exposed as a staff mode.
+
+Each workspace uses a different interaction pattern: timelines and action center for operations, queues and case views for decisions, resource grids for live capacity, configuration forms for management, and mobile-first flows for visitors.
+
 ## MVP scope
 
 - Staff dashboard for Central Facility

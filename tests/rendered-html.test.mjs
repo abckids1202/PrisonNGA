@@ -7,14 +7,18 @@ async function loadWorker() {
   return (await import(workerUrl.href)).default;
 }
 
-async function render() {
+async function renderPath(pathname = "/") {
   const worker = await loadWorker();
 
   return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
+    new Request(`http://localhost${pathname}`, { headers: { accept: "text/html" } }),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
+}
+
+async function render() {
+  return renderPath("/");
 }
 
 async function renderApi(pathname) {
@@ -33,12 +37,24 @@ test("server-renders the SecureVisit operations dashboard", async () => {
 
   const html = await response.text();
   assert.match(html, /SecureVisit/);
-  assert.match(html, /Central Facility/);
-  assert.match(html, /Approval queue/);
-  assert.match(html, /Today(?:&apos;|&#x27;)s operational timeline/);
+  assert.match(html, /Central Correctional Facility/);
+  assert.match(html, /Today(?:’|&apos;|&#x27;)s operational timeline/);
   assert.match(html, /Requires attention/);
-  assert.match(html, /Appointment Queue/);
+  assert.match(html, /Command Center/);
+  assert.match(html, /DEMO ENVIRONMENT/);
   assert.doesNotMatch(html, /Your site is taking shape/);
+});
+
+test("server-renders a distinct visitor application shell", async () => {
+  const response = await renderPath("/visitor");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /SecureVisit/);
+  assert.match(html, /Hello, Sarah/);
+  assert.match(html, /NEXT VISIT/);
+  assert.match(html, /Connections/);
+  assert.match(html, /Credits/);
+  assert.doesNotMatch(html, /Action center/);
 });
 
 test("rejects unauthenticated API requests with security headers", async () => {

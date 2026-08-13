@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SecureVisit — Facility operations",
-  description: "A secure correctional visitation management prototype for controlled scheduling and approvals.",
+  title: "SecureVisit Control — Visitation operations",
+  description: "SecureVisit Control coordinates live visitation operations, management policy, and a separate visitor experience.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
