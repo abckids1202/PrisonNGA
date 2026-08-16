@@ -42,8 +42,14 @@ function VisitorAvatar({ initials, color = "sage" }: { initials: string; color?:
 export default function VisitorPage() {
   const [tab, setTab] = useState<Tab>("Home");
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
-  const [visitSheet, setVisitSheet] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("section");
+    if (requested && ["Home", "Visits", "Connections", "Credits", "Account"].includes(requested)) {
+      setTab(requested as Tab);
+    }
+  }, []);
 
   function action(message: string, tone: NoticeTone = "success") {
     setNotice({ message, tone });
@@ -54,6 +60,10 @@ export default function VisitorPage() {
     setTab(nextTab);
     setNotificationsOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openVisitDetails() {
+    window.location.href = "/visitor/visits/SV-260814-018";
   }
 
   return (
@@ -84,8 +94,8 @@ export default function VisitorPage() {
       </header>
 
       <main className="sv4-main">
-        {tab === "Home" && <VisitorHome onAction={action} onOpenVisit={() => setVisitSheet(true)} onNavigate={navigate} />}
-        {tab === "Visits" && <VisitorVisits onAction={action} onOpenVisit={() => setVisitSheet(true)} />}
+        {tab === "Home" && <VisitorHome onAction={action} onOpenVisit={openVisitDetails} onNavigate={navigate} />}
+        {tab === "Visits" && <VisitorVisits onAction={action} onOpenVisit={openVisitDetails} />}
         {tab === "Connections" && <VisitorConnections onAction={action} />}
         {tab === "Credits" && <VisitorCredits onAction={action} />}
         {tab === "Account" && <VisitorAccount onAction={action} />}
@@ -99,7 +109,6 @@ export default function VisitorPage() {
         ))}
       </nav>
 
-      {visitSheet && <VisitorVisitSheet onClose={() => setVisitSheet(false)} onAction={action} />}
       {notice && <div className={`sv4-toast sv4-toast-${notice.tone}`} role="status"><span>{notice.tone === "success" ? "✓" : "i"}</span>{notice.message}</div>}
     </div>
   );
