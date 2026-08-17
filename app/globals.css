@@ -245,6 +245,64 @@ button, input, select, textarea { font-family: inherit; }
 .sv3-visitor-greeting h1, .sv3-visitor-title h1 { font-size: 34px; }.sv3-visitor-greeting p, .sv3-visitor-title p { font-size: 14px; }.sv3-next-visit h2 { font-size: 21px; }.sv3-visit-person p, .sv3-visit-details span, .sv3-visit-details strong { font-size: 12px; }.sv3-visitor-approved { font-size: 10px; }.sv3-visitor-button { font-size: 12px; min-height: 42px; }.sv3-visitor-section-head button, .sv3-visitor-actions small, .sv3-connection-card small, .sv3-visitor-nav button small { font-size: 10px; }.sv3-visitor-actions strong, .sv3-connection-card strong { font-size: 12px; }.sv3-visitor-visit-list h2, .sv3-visitor-connection-list h2 { font-size: 18px; }.sv3-visitor-visit-list p, .sv3-visitor-visit-list small, .sv3-visitor-connection-list p, .sv3-visitor-connection-list small { font-size: 11px; }.sv3-credit-balance > span, .sv3-credit-balance > small, .sv3-credit-balance > div > span { font-size: 11px; }.sv3-credit-activity > div > span b { font-size: 12px; }.sv3-credit-activity > div > span small, .sv3-account-profile p, .sv3-account-card > button { font-size: 11px; }.sv3-account-profile h2 { font-size: 20px; }.sv3-visitor-trust { font-size: 11px; }
 @media (max-width: 740px) { .sv3-page-header h1 { font-size: 32px; }.sv3-command-band h1 { font-size: 30px; }.sv3-topbar { min-height: 62px; }.sv3-nav button { font-size: 11px; }.sv3-metric strong { font-size: 26px; }.sv3-table td { font-size: 11px; }.sv3-visitor-greeting h1, .sv3-visitor-title h1 { font-size: 31px; } }
 
+/* Control V2: denser operational hierarchy, scoped away from Visitor and Kiosk. */
+.sv6-control-app { font-family: var(--font-manrope), "Manrope", Arial, Helvetica, sans-serif; }
+.sv6-control-app .sv3-topbar, .sv6-control-app .sv3-sidebar, .sv6-control-app .sv3-page-scroll { letter-spacing: -.01em; }
+.sv6-control-app .sv3-command-band { border-radius: 0; min-height: 154px; padding: 29px 31px; }
+.sv6-control-app .sv3-command-band h1 { font-size: 38px; letter-spacing: -.055em; }
+.sv6-control-app .sv3-command-band p { color: #b7c6cd; font-size: 14px; }
+.sv6-control-app .sv3-command-state { min-width: 220px; }
+.sv6-control-app .sv3-command-state strong { font-size: 34px; }
+.sv6-hero-meta { align-items: center; color: #89a4b0; display: flex; font-size: 11px; gap: 18px; margin-top: 16px; }
+.sv6-hero-meta span { align-items: center; display: inline-flex; gap: 7px; }
+.sv6-hero-meta b { color: #d8e3e6; font-family: var(--font-geist-mono), monospace; font-size: 10px; font-weight: 600; }
+.sv6-pulse-dot, .sv6-feed-live i { background: #52b783; border-radius: 50%; display: inline-block; height: 7px; width: 7px; }
+.sv6-command-metrics { margin-bottom: 18px; }
+.sv6-control-app .sv3-metric { min-height: 118px; padding: 16px 18px; }
+.sv6-control-app .sv3-metric strong { font-family: var(--font-geist-mono), monospace; font-size: 33px; font-variant-numeric: tabular-nums; }
+.sv6-control-app .sv3-metric span { color: #65777f; font-size: 13px; font-weight: 600; }
+.sv6-control-app .sv3-metric small { font-size: 11px; }
+.sv6-simulation-bar { background: #fffaf6; border-color: #ead8ca; gap: 22px; min-height: 65px; padding: 10px 15px; }
+.sv6-simulation-status { align-items: center; display: flex; gap: 9px; min-width: 140px; }
+.sv6-simulation-status span { align-items: center; color: #774c32; display: inline-flex; font-size: 12px; font-weight: 800; gap: 7px; }
+.sv6-simulation-status strong { color: #ae6c39; font-size: 11px; font-weight: 700; }
+.sv6-simulation-field { color: #967662; display: flex; flex-direction: column; font-size: 9px; gap: 2px; min-width: 140px; }
+.sv6-simulation-field select { background: #fff; border: 1px solid #e3cdbc; border-radius: 4px; color: #724d39; font: 600 11px var(--font-manrope), sans-serif; padding: 6px 8px; }
+.sv6-simulation-speed { color: #987b69; display: flex; flex-direction: column; font-size: 9px; gap: 3px; }
+.sv6-simulation-speed b { color: #704c3b; font-family: var(--font-geist-mono), monospace; font-size: 12px; }
+.sv6-simulation-actions { align-items: center; display: flex; gap: 5px; }
+.sv6-simulation-actions .danger-link { border-color: #e7bdb5; margin-left: 5px; }
+.sv6-control-app .sv6-simulation-bar > small { font-family: var(--font-geist-mono), monospace; font-size: 10px; }
+.sv6-operations-label { align-items: end; display: flex; justify-content: space-between; margin: 0 38px 9px; }
+.sv6-operations-label > div { display: flex; flex-direction: column; gap: 4px; }
+.sv6-operations-label strong { color: #3f5159; font-size: 13px; }
+.sv6-operations-label > span { color: #89969b; font-size: 10px; }
+.sv6-timeline-surface { border-top: 3px solid #d9e4e4; }
+.sv6-control-app .sv3-timeline { padding-top: 9px; }
+.sv6-control-app .sv3-timeline-row { min-height: 96px; padding-top: 17px; }
+.sv6-control-app .sv3-timeline-row time { color: #526a74; font-size: 12px; font-weight: 650; }
+.sv6-timeline-content { min-width: 0; }
+.sv6-timeline-topline { align-items: center; display: flex; justify-content: space-between; max-width: 100%; }
+.sv6-control-app .sv3-timeline-row strong { color: #243a44; font-size: 14px; margin-top: 11px; }
+.sv6-control-app .sv3-timeline-row small { color: #71848c; font-size: 11px; }
+.sv6-row-action { background: transparent; border: 0; color: #357298; cursor: pointer; font-size: 10px; font-weight: 800; opacity: 0; padding: 5px 0 5px 10px; transform: translateX(4px); transition: opacity 160ms ease, transform 160ms ease; }
+.sv6-row-action span { font-size: 14px; margin-left: 3px; }
+.sv6-timeline-row:hover .sv6-row-action, .sv6-timeline-row:focus-within .sv6-row-action { opacity: 1; transform: translateX(0); }
+.sv6-attention-surface { border-top: 3px solid #d9e4e4; }
+.sv6-control-app .sv3-action-row { min-height: 76px; padding-bottom: 13px; padding-top: 13px; }
+.sv6-control-app .sv3-action-row strong { color: #30454f; font-size: 12px; }
+.sv6-control-app .sv3-action-row small { color: #74868e; font-size: 10px; line-height: 1.35; }
+.sv6-control-app .sv3-action-row em { font-size: 10px; white-space: nowrap; }
+.sv6-feed-surface { border-top: 3px solid #d9e4e4; }
+.sv6-feed-live { align-items: center; color: #42835f; display: inline-flex; font-size: 10px; font-weight: 700; gap: 6px; }
+.sv6-feed-live i { height: 6px; width: 6px; }
+.sv6-control-app .sv3-feed-row { min-height: 62px; padding-bottom: 12px; padding-top: 12px; }
+.sv6-control-app .sv3-feed-row time { font-size: 11px; font-weight: 650; }
+.sv6-control-app .sv3-feed-row strong { color: #3e535d; font-size: 11px; }
+.sv6-control-app .sv3-feed-row small { font-size: 10px; }
+@media (max-width: 1000px) { .sv6-simulation-bar { align-items: flex-start; flex-wrap: wrap; }.sv6-simulation-bar > small { margin-left: 0; }.sv6-operations-label { margin-left: 38px; margin-right: 38px; } }
+@media (max-width: 740px) { .sv6-control-app .sv3-command-band { min-height: 0; padding: 22px 20px; }.sv6-control-app .sv3-command-band h1 { font-size: 31px; }.sv6-hero-meta { align-items: flex-start; flex-direction: column; gap: 6px; }.sv6-simulation-bar { gap: 11px; }.sv6-simulation-actions { flex-wrap: wrap; }.sv6-operations-label { align-items: flex-start; flex-direction: column; gap: 5px; margin-left: 17px; margin-right: 17px; }.sv6-timeline-topline { align-items: flex-start; flex-direction: column; gap: 3px; }.sv6-row-action { opacity: 1; padding-left: 0; transform: none; } }
+
 /* Interaction system v1 — calm overlays, explicit consequences, and operational depth. */
 :root { --sv3-motion-fast: 120ms; --sv3-motion-standard: 180ms; --sv3-motion-slow: 240ms; --sv3-ease: cubic-bezier(.2,.8,.2,1); }
 .sv3-mono-value, .sv3-clock, .sv3-command-state strong, .sv3-timeline time, .sv3-feed-row time { font-family: var(--font-geist-mono), "Geist Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: -.015em; }
