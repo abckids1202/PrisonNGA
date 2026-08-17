@@ -40,16 +40,13 @@ function VisitorAvatar({ initials, color = "sage" }: { initials: string; color?:
 }
 
 export default function VisitorPage() {
-  const [tab, setTab] = useState<Tab>("Home");
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === "undefined") return "Home";
+    const requested = new URLSearchParams(window.location.search).get("section");
+    return requested && ["Home", "Visits", "Connections", "Credits", "Account"].includes(requested) ? requested as Tab : "Home";
+  });
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-
-  useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("section");
-    if (requested && ["Home", "Visits", "Connections", "Credits", "Account"].includes(requested)) {
-      setTab(requested as Tab);
-    }
-  }, []);
 
   function action(message: string, tone: NoticeTone = "success") {
     setNotice({ message, tone });

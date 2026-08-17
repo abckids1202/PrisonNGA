@@ -79,21 +79,19 @@ function VisitorStatus({ children, tone = "green" }: { children: ReactNode; tone
 }
 
 export default function VisitDetailsPage() {
-  const [state, setState] = useState<VisitState>("approved");
+  const [state, setState] = useState<VisitState>(() => {
+    if (typeof window === "undefined") return "approved";
+    const requestedState = new URLSearchParams(window.location.search).get("state") as VisitState | null;
+    if (requestedState && demoStates.some((item) => item.value === requestedState)) return requestedState;
+    return window.localStorage.getItem("securevisit:device-check:" + visit.id) ? "approved_device_ready" : "approved";
+  });
   const [seconds, setSeconds] = useState(18 * 3600 + 42 * 60 + 15);
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [infoPanel, setInfoPanel] = useState<InfoPanel>(null);
   const [expandedJourney, setExpandedJourney] = useState("prepare");
-  const [demoMode, setDemoMode] = useState(false);
+  const [demoMode] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1");
   const [showSticky, setShowSticky] = useState(false);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const requestedState = params.get("state") as VisitState | null;
-    setDemoMode(params.get("demo") === "1");
-    if (requestedState && demoStates.some((item) => item.value === requestedState)) setState(requestedState);
-  }, []);
 
   useEffect(() => {
     if (!["approved", "approved_device_ready"].includes(state)) return;
@@ -120,7 +118,7 @@ export default function VisitDetailsPage() {
 
   function runPrimaryAction() {
     if (state === "approved") {
-      showNotice("Device Check is the next step for this visit. We’ll open it in the next sprint.", "info");
+      window.location.href = "/visitor/visits/" + visit.id + "/device-check";
       return;
     }
     if (state === "waiting_room_open") {
@@ -186,7 +184,7 @@ export default function VisitDetailsPage() {
                 <PreparationItem title="Device check" state={deviceReady ? "Ready" : "Needs attention"} done={deviceReady} current={!deviceReady && state !== "under_review"} />
               </div>
               {!deviceReady && state !== "under_review" && <div className="sv5-prep-callout"><span>!</span><p><strong>Check your device before tomorrow.</strong><br />Make sure your camera, microphone, and connection work.</p></div>}
-              {!deviceReady && state !== "under_review" && <button className="sv4-button sv4-button-primary" onClick={() => showNotice("Device Check is the next step for this visit.", "info")}>Check my device <span>→</span></button>}
+              {!deviceReady && state !== "under_review" && <button className="sv4-button sv4-button-primary" onClick={() => { window.location.href = "/visitor/visits/" + visit.id + "/device-check"; }}>Check my device <span>→</span></button>}
             </article>
             <article className={"sv5-panel sv5-waiting-panel sv5-waiting-" + (state === "waiting_room_open" || state === "waiting" ? "open" : "closed")}>
               <div className="sv5-waiting-illustration"><span>◷</span><i /></div><p className="sv4-kicker">Waiting room</p><h2>{state === "waiting_room_open" ? "Your waiting room is open" : state === "waiting" ? "You’re checked in" : "Not open yet"}</h2><p>{state === "waiting_room_open" ? "Your visit begins at 10:00 WIB." : state === "waiting" ? "Stay close. We’ll let you know when your visit is ready." : "You can enter 10 minutes before your scheduled visit."}</p>
