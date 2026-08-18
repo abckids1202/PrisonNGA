@@ -12,6 +12,7 @@ Implemented foundations:
 - Append-only audit and outbox records for facility-state changes.
 - Version checks for stale facility-state changes.
 - Mock role and permission seed data in `db/seed.sql`.
+- Live Session records are separate from appointment state, with short-lived role-scoped LiveKit tokens, provider webhook verification, session events, audit entries, and server-side end-time enforcement.
 
 ## Runtime setup
 
@@ -19,6 +20,7 @@ Implemented foundations:
 2. Apply `db/seed.sql` once to create the fictional facility, roles, and permission catalog.
 3. Provision workspace identities into `users`, `staff_profiles`, and `user_roles` through an institution-controlled admin workflow. There is intentionally no self-service role escalation endpoint.
 4. Set `SECUREVISIT_HASH_SALT` in the runtime secret store before recording production security-event hashes. The local fallback is only for development.
+5. Configure `VIDEO_PROVIDER=livekit`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` in the server runtime. The secret must never be exposed through a public frontend environment variable.
 
 ## Important limitations
 

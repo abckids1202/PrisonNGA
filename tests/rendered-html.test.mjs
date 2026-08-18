@@ -21,10 +21,10 @@ async function render() {
   return renderPath("/");
 }
 
-async function renderApi(pathname) {
+async function renderApi(pathname, method = "GET") {
   const worker = await loadWorker();
   return worker.fetch(
-    new Request(`http://localhost${pathname}`, { headers: { accept: "application/json" } }),
+    new Request(`http://localhost${pathname}`, { method, headers: { accept: "application/json" } }),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
@@ -57,6 +57,14 @@ test("server-renders a distinct visitor application shell", async () => {
   assert.doesNotMatch(html, /Action center/);
 });
 
+test("server-renders the visitor Live Session entry point", async () => {
+  const response = await renderPath("/visitor/visits/SV-260814-018/live");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Preparing your secure visit/);
+  assert.match(html, /Encrypted media channel/);
+});
+
 test("rejects unauthenticated API requests with security headers", async () => {
   const response = await renderApi("/api/auth/me");
   assert.equal(response.status, 401);
@@ -76,4 +84,18 @@ test("protects the Waiting Room operations API", async () => {
   const body = await response.json();
   assert.equal(body.error, "AUTHENTICATION_REQUIRED");
   assert.equal(body.requestId, response.headers.get("x-request-id"));
+});
+
+test("protects kiosk token issuance", async () => {
+  const response = await renderApi("/api/kiosk/visits/SV-260814-018/live-session", "POST");
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.error, "KIOSK_AUTHENTICATION_REQUIRED");
+});
+
+test("protects visitor Live Session token issuance", async () => {
+  const response = await renderApi("/api/visitor/visits/SV-260814-018/live-session", "POST");
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.error, "AUTHENTICATION_REQUIRED");
 });

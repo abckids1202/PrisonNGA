@@ -15,6 +15,13 @@
       "when": 1787052000000,
       "tag": "0001_waiting_room_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787055600000,
+      "tag": "0002_visit_sessions",
+      "breakpoints": true
     }
   ]
 }

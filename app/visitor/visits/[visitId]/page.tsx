@@ -134,6 +134,10 @@ export default function VisitDetailsPage() {
       showNotice("Your waiting room opens at 09:50 WIB.", "info");
       return;
     }
+    if (state === "session_ready" || state === "in_progress") {
+      window.location.href = "/visitor/visits/" + visit.id + "/live";
+      return;
+    }
     if (state === "cancelled_by_facility") {
       showNotice("Choose another time from My Visits when scheduling is available.", "info");
       return;

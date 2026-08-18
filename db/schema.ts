@@ -189,6 +189,37 @@ export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   ...timestamps,
 }, (table) => ({ facilityStateIdx: index("waiting_room_sessions_facility_state_idx").on(table.facilityId, table.state), facilityAppointmentIdx: index("waiting_room_sessions_facility_appointment_idx").on(table.facilityId, table.appointmentId) }));
 
+export const visitSessions = sqliteTable("visit_sessions", {
+  id: text("id").primaryKey(),
+  appointmentId: text("appointment_id").notNull().references(() => appointments.id),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  provider: text("provider").notNull().default("livekit"),
+  providerRoomName: text("provider_room_name").notNull(),
+  providerRoomSid: text("provider_room_sid"),
+  status: text("status", { enum: ["PREPARING", "CONNECTING", "ACTIVE", "RECONNECTING", "ENDING", "ENDED", "FAILED", "TERMINATED", "CANCELLED"] }).notNull().default("PREPARING"),
+  authorizedStartAt: text("authorized_start_at").notNull(),
+  authorizedEndAt: text("authorized_end_at").notNull(),
+  actualStartedAt: text("actual_started_at"),
+  actualEndedAt: text("actual_ended_at"),
+  createdBy: text("created_by"),
+  recordingPolicy: text("recording_policy").notNull().default("OFF"),
+  recordingStatus: text("recording_status").notNull().default("NOT_RECORDED"),
+  terminationReason: text("termination_reason"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ appointmentIdx: uniqueIndex("visit_sessions_appointment_idx").on(table.appointmentId), facilityStatusIdx: index("visit_sessions_facility_status_idx").on(table.facilityId, table.status) }));
+
+export const visitSessionEvents = sqliteTable("visit_session_events", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().references(() => visitSessions.id),
+  eventType: text("event_type").notNull(),
+  source: text("source").notNull(),
+  participantRole: text("participant_role"),
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+  correlationId: text("correlation_id").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ sessionIdx: index("visit_session_events_session_idx").on(table.sessionId, table.createdAt) }));
+
 export const creditAccounts = sqliteTable("credit_accounts", {
   id: text("id").primaryKey(),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
