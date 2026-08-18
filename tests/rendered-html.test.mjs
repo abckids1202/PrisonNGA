@@ -68,3 +68,12 @@ test("rejects unauthenticated API requests with security headers", async () => {
   assert.equal(body.error, "AUTHENTICATION_REQUIRED");
   assert.equal(body.requestId, response.headers.get("x-request-id"));
 });
+
+test("protects the Waiting Room operations API", async () => {
+  const response = await renderApi("/api/control/waiting-room");
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const body = await response.json();
+  assert.equal(body.error, "AUTHENTICATION_REQUIRED");
+  assert.equal(body.requestId, response.headers.get("x-request-id"));
+});

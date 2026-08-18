@@ -4,6 +4,19 @@ import { useEffect, useState, type ReactNode } from "react";
 
 type Mode = "operations" | "management";
 type AppointmentStatus = "Requires action" | "Ready" | "Live" | "Blocked" | "Completed" | "Approved";
+type WaitingState = "NOT_ARRIVED" | "VISITOR_WAITING" | "PRISONER_WAITING" | "BOTH_PRESENT" | "TECHNICAL_ISSUE" | "STAFF_REVIEW" | "READY_TO_START" | "LATE" | "LIVE";
+type CheckState = "pass" | "warning" | "failed" | "pending";
+type ReadinessCheck = { key: string; label: string; detail: string; state: CheckState };
+type WaitingRecord = Appointment & {
+  waitingState: WaitingState;
+  countdown: string;
+  visitorPresence: "present" | "waiting" | "absent";
+  prisonerPresence: "present" | "waiting" | "absent";
+  verification: CheckState;
+  checks: ReadinessCheck[];
+  blocker?: string;
+  lastUpdated: string;
+};
 type Appointment = {
   id: string;
   visitor: string;
@@ -220,7 +233,7 @@ export default function ControlApp() {
 
   function renderOperationsPage() {
     if (page === "Appointments") return <AppointmentsPage appointments={appointments} onSelect={setSelectedAppointment} onNotify={notify} />;
-    if (page === "Waiting Room") return <WaitingRoomPage appointments={appointments} onNotify={notify} />;
+    if (page === "Waiting Room") return <WaitingRoomPage appointments={appointments} facilityState={facilityState} onUpdateAppointment={updateAppointment} onNotify={notify} />;
     if (page === "Live Sessions") return <LiveSessionsPage appointments={appointments} onNotify={notify} />;
     if (page === "Resources") return <ResourcesPage onNotify={notify} onReassign={reassignAppointment} />;
     if (page === "Incidents") return <IncidentsPage selected={selectedIncident} onSelect={setSelectedIncident} onNotify={notify} />;
@@ -355,14 +368,98 @@ function CalendarView({ appointments, onSelect, onNotify }: { appointments: Appo
   return <section className="sv7-calendar-surface"><div className="sv7-view-header"><div><span className="sv3-eyebrow">Planning horizon · August 2026</span><h2>Schedule calendar</h2><p>Week overview for capacity planning. Select a visit to open its decision record.</p></div><div className="sv7-calendar-summary"><strong>{appointments.length + 13}</strong><span>scheduled visits<br />72% capacity</span></div></div><div className="sv7-calendar-grid">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span className="sv7-calendar-weekday" key={day}>{day}</span>)}{days.map((day, index) => <div className={`sv7-calendar-cell ${day === "13" ? "today" : ""} ${index < 5 ? "muted" : ""}`} key={`${day}-${index}`}><b>{day}</b>{day === "13" ? <><button className="sv7-calendar-event approved" onClick={() => onSelect(appointments[0])}>10:00 Sarah · Approved</button><button className="sv7-calendar-event blocked" onClick={() => onSelect(appointments[2])}>10:40 Alya · Review</button></> : day === "14" ? <button className="sv7-calendar-event pending" onClick={() => onNotify("Thursday has 4 scheduled visits and one available room.")}>4 visits · 58%</button> : null}</div>)}</div><div className="sv7-calendar-footer"><span><i className="approved" />Approved</span><span><i className="pending" />Pending</span><span><i className="blocked" />Blocked</span><Button onClick={() => onNotify("Day plan opened with 18 appointments, 4 rooms, and 6 kiosks.")}>Open day plan →</Button></div></section>;
 }
 
-function WaitingRoomPage({ appointments, onNotify }: { appointments: Appointment[]; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
-  const [lane, setLane] = useState("all");
-  const ready = appointments.filter((appointment) => appointment.status === "Ready");
-  return <><PageHeader eyebrow="Operations · Admission control" title="Waiting Room" description="Readiness lanes for identity, devices, prisoner confirmation, and admission—not a list of appointments." actions={<><Status tone="green">ROOM OPEN</Status><Button variant="primary" onClick={() => onNotify("All waiting visitors have been re-polled.", "success")}>↻ Refresh readiness</Button></>} /><div className="sv3-waiting-summary"><div><span>Visitors checked in</span><strong>3</strong><small>2 within appointment window</small></div><div><span>Ready to admit</span><strong>2</strong><small className="green-text">All checks passed</small></div><div><span>Waiting on unit</span><strong>1</strong><small>Longest wait 04:32</small></div><div><span>Technical issue</span><strong>1</strong><small className="red-text">Needs intervention</small></div></div><div className="sv3-lane-filter"><span>VIEW BY</span>{[["all", "All visitors"], ["ready", "Ready to admit"], ["unit", "Waiting for unit"], ["issue", "Technical issue"]].map(([value, label]) => <button className={lane === value ? "active" : ""} key={value} onClick={() => setLane(value)}>{label}</button>)}</div><div className="sv3-waiting-lanes"><section className="sv3-waiting-lane lane-ready"><div className="sv3-lane-head"><span><i />READY TO ADMIT</span><strong>2</strong></div><WaitingCard name="Sarah Amelia" initials="SA" appointment="10:00 · Family visit · Room 03" checks={["Identity confirmed", "Camera", "Microphone", "Connection", "Prisoner ready", "Kiosk 04 ready"]} action="Admit visitor" onAction={() => onNotify("Sarah Amelia admitted to Room 03.", "success")} hidden={lane !== "all" && lane !== "ready"} /><WaitingCard name="Daniel Wijaya" initials="DW" appointment="10:20 · Family visit · Room 01" checks={["Identity confirmed", "Camera", "Microphone", "Connection", "Prisoner ready", "Kiosk 02 ready"]} action="Admit visitor" onAction={() => onNotify("Daniel Wijaya admitted to Room 01.", "success")} hidden={lane !== "all" && lane !== "ready"} /></section><section className="sv3-waiting-lane lane-unit"><div className="sv3-lane-head"><span><i />WAITING FOR PRISONER</span><strong>1</strong></div><div className={`sv3-waiting-card waiting-unit ${lane !== "all" && lane !== "unit" ? "hidden" : ""}`}><div className="sv3-waiting-card-head"><Avatar initials="NH" tone="purple" /><div><strong>Nurul Hidayah</strong><small>10:20 · Family visit · Room 02</small></div><time>04:32</time></div><div className="sv3-check-grid"><span className="pass">✓ Visitor ready</span><span className="warn">! Prisoner not confirmed</span><span className="pass">✓ Kiosk available</span></div><div className="sv3-card-actions"><Button onClick={() => onNotify("Unit 4 has been contacted about F. Hidayat.")}>Contact unit</Button><Button variant="quiet" onClick={() => onNotify("Delay note added to SV-260814-018.")}>Delay visit</Button></div></div></section><section className="sv3-waiting-lane lane-issue"><div className="sv3-lane-head"><span><i />TECHNICAL ISSUE</span><strong>1</strong></div><div className={`sv3-waiting-card waiting-issue ${lane !== "all" && lane !== "issue" ? "hidden" : ""}`}><div className="sv3-waiting-card-head"><Avatar initials="AP" tone="orange" /><div><strong>Alya Pratama</strong><small>10:40 · Family visit · Room 04</small></div><Status tone="red">MIC ERROR</Status></div><div className="sv3-issue-callout"><strong>Microphone unavailable</strong><span>Last test failed at 09:38 · Kiosk 04 is offline</span><b>Suggested alternative: Kiosk 06</b></div><div className="sv3-card-actions"><Button variant="primary" onClick={() => onNotify("Kiosk 06 test requested for Alya Pratama.")}>Retry test</Button><Button variant="quiet" onClick={() => onNotify("Technical support ticket opened.")}>Support</Button></div></div></section></div><div className="sv3-waiting-footer"><span>Readiness updates every 15 seconds in production.</span><strong>{ready.length + 1} records linked to today&apos;s schedule</strong></div></>;
+function buildWaitingChecks(appointment: Appointment, state: WaitingState, facilityState: string): ReadinessCheck[] {
+  const notArrived = state === "NOT_ARRIVED";
+  const technical = state === "TECHNICAL_ISSUE";
+  const review = state === "STAFF_REVIEW";
+  const facilityBlocked = facilityState !== "NORMAL_OPERATIONS";
+  return [
+    { key: "visitor", label: "Visitor present", detail: notArrived ? "Not checked in" : "Visitor is in the waiting room", state: notArrived ? "pending" : "pass" },
+    { key: "prisoner", label: "Prisoner present", detail: notArrived ? "Unit confirmation pending" : review ? "Unit confirmation required" : "Prisoner is ready", state: notArrived || review ? "pending" : "pass" },
+    { key: "identity", label: "Identity/session verified", detail: review ? "Relationship evidence needs review" : notArrived ? "Runs at check-in" : "Verified for this visit", state: review ? "warning" : notArrived ? "pending" : "pass" },
+    { key: "camera", label: "Camera working", detail: technical ? "Camera test needs retry" : notArrived ? "Runs at check-in" : "Camera signal healthy", state: technical ? "failed" : notArrived ? "pending" : "pass" },
+    { key: "microphone", label: "Microphone working", detail: technical ? "Microphone unavailable on assigned kiosk" : notArrived ? "Runs at check-in" : "Microphone signal healthy", state: technical ? "failed" : notArrived ? "pending" : "pass" },
+    { key: "network", label: "Network acceptable", detail: technical ? "Connection test failed at 09:38" : notArrived ? "Runs at check-in" : "Stable · 42 ms", state: technical ? "failed" : notArrived ? "pending" : "pass" },
+    { key: "room", label: "Room available", detail: facilityBlocked ? "Facility state requires supervisor review" : `${appointment.room} reserved for this window`, state: facilityBlocked ? "warning" : "pass" },
+    { key: "kiosk", label: "Kiosk connected", detail: technical ? `${appointment.kiosk} is offline · alternative available` : `${appointment.kiosk} connected`, state: technical ? "failed" : "pass" },
+    { key: "restriction", label: "No operational restriction", detail: facilityBlocked ? `Facility is ${facilityState.toLowerCase().replaceAll("_", " ")}` : "No active restriction", state: facilityBlocked ? "failed" : "pass" },
+  ];
 }
 
-function WaitingCard({ name, initials, appointment, checks, action, onAction, hidden }: { name: string; initials: string; appointment: string; checks: string[]; action: string; onAction: () => void; hidden: boolean }) {
-  return <div className={`sv3-waiting-card ${hidden ? "hidden" : ""}`}><div className="sv3-waiting-card-head"><Avatar initials={initials} /><div><strong>{name}</strong><small>{appointment}</small></div><Status tone="green">READY</Status></div><div className="sv3-check-grid">{checks.map((check) => <span className="pass" key={check}>✓ {check}</span>)}</div><div className="sv3-card-actions"><Button variant="primary" onClick={onAction}>{action}</Button><Button variant="quiet">···</Button></div></div>;
+function buildWaitingRecord(appointment: Appointment, facilityState: string, override?: WaitingState): WaitingRecord | null {
+  if (!["Approved", "Ready", "Requires action", "Blocked"].includes(appointment.status)) return null;
+  const waitingState = override || (appointment.status === "Ready" ? "READY_TO_START" : appointment.status === "Requires action" ? "STAFF_REVIEW" : appointment.status === "Blocked" ? "TECHNICAL_ISSUE" : "NOT_ARRIVED");
+  const checks = buildWaitingChecks(appointment, waitingState, facilityState);
+  const visitorPresence = waitingState === "NOT_ARRIVED" ? "absent" : "present";
+  const prisonerPresence = waitingState === "NOT_ARRIVED" || waitingState === "VISITOR_WAITING" || waitingState === "LATE" ? "waiting" : "present";
+  const blocker = checks.find((check) => check.state === "failed" || check.state === "warning");
+  return {
+    ...appointment,
+    waitingState,
+    countdown: waitingState === "READY_TO_START" ? "READY NOW" : waitingState === "NOT_ARRIVED" ? "IN 18 MIN" : waitingState === "LATE" ? "08 MIN LATE" : "04:32 WAIT",
+    visitorPresence,
+    prisonerPresence,
+    verification: checks.find((check) => check.key === "identity")?.state || "pending",
+    checks,
+    blocker: blocker?.detail,
+    lastUpdated: waitingState === "TECHNICAL_ISSUE" ? "Updated 4 min ago" : "Updated just now",
+  };
+}
+
+function WaitingRoomPage({ appointments, facilityState, onUpdateAppointment, onNotify }: { appointments: Appointment[]; facilityState: string; onUpdateAppointment: (id: string, status: AppointmentStatus) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [lane, setLane] = useState("all");
+  const [query, setQuery] = useState("");
+  const [onlyAttention, setOnlyAttention] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [transitions, setTransitions] = useState<Record<string, WaitingState>>({});
+  const baseRecords = appointments.map((appointment) => buildWaitingRecord(appointment, facilityState, transitions[appointment.id])).filter((record): record is WaitingRecord => Boolean(record));
+  const records = baseRecords.filter((record) => `${record.visitor} ${record.prisoner} ${record.id} ${record.room} ${record.kiosk}`.toLowerCase().includes(query.toLowerCase())).filter((record) => !onlyAttention || ["TECHNICAL_ISSUE", "STAFF_REVIEW", "LATE"].includes(record.waitingState));
+  const counts = {
+    ready: baseRecords.filter((record) => record.waitingState === "READY_TO_START").length,
+    waiting: baseRecords.filter((record) => ["VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(record.waitingState)).length,
+    attention: baseRecords.filter((record) => ["TECHNICAL_ISSUE", "STAFF_REVIEW", "LATE"].includes(record.waitingState)).length,
+    upcoming: baseRecords.filter((record) => record.waitingState === "NOT_ARRIVED").length,
+  };
+  const laneFor = (state: WaitingState) => state === "READY_TO_START" ? "ready" : state === "NOT_ARRIVED" ? "upcoming" : ["TECHNICAL_ISSUE", "STAFF_REVIEW", "LATE"].includes(state) ? "attention" : "waiting";
+  const laneRecords = (value: string) => records.filter((record) => value === "all" || laneFor(record.waitingState) === value);
+  const selected = baseRecords.find((record) => record.id === selectedId) || null;
+
+  function notifyTransition(record: WaitingRecord, nextState: WaitingState, message: string, tone: Notice["tone"] = "success") {
+    setTransitions((current) => ({ ...current, [record.id]: nextState }));
+    onNotify(message, tone);
+  }
+
+  function action(record: WaitingRecord, kind: "admit" | "checks" | "contact" | "late" | "reassign" | "cancel" | "start") {
+    if (kind === "start") {
+      if (!record.checks.every((check) => check.state === "pass") || facilityState !== "NORMAL_OPERATIONS") {
+        onNotify("This visit cannot start until every pre-call check passes and the facility is operating normally.", "error");
+        return;
+      }
+      notifyTransition(record, "LIVE", `${record.visitor} moved to Live Sessions.`, "success");
+      onUpdateAppointment(record.id, "Live");
+      setSelectedId(null);
+      return;
+    }
+    if (kind === "admit") return notifyTransition(record, "READY_TO_START", `${record.visitor} admitted. Pre-call checks are ready to run.`, "success");
+    if (kind === "checks") return notifyTransition(record, "READY_TO_START", `Connection test completed for ${record.visitor}. All required checks passed.`, "success");
+    if (kind === "contact") return onNotify(`Secure message sent to the ${record.prisoner} unit about ${record.id}.`, "info");
+    if (kind === "late") return notifyTransition(record, "LATE", `${record.visitor} marked late. Staff follow-up is required.`, "warning");
+    if (kind === "reassign") return notifyTransition(record, "READY_TO_START", `${record.kiosk} released. ${record.visitor} is ready for the replacement kiosk.`, "success");
+    if (kind === "cancel") {
+      onUpdateAppointment(record.id, "Blocked");
+      notifyTransition(record, "STAFF_REVIEW", `${record.visitor} was held for cancellation review.`, "warning");
+    }
+  }
+
+  function primaryAction(record: WaitingRecord) {
+    if (record.waitingState === "READY_TO_START") return ["start", "Start Visit"] as const;
+    if (record.waitingState === "TECHNICAL_ISSUE") return ["checks", "Run connection test"] as const;
+    if (record.waitingState === "STAFF_REVIEW") return ["checks", "Review checks"] as const;
+    if (record.waitingState === "NOT_ARRIVED" || record.waitingState === "LATE") return ["contact", "Contact visitor"] as const;
+    return ["admit", "Admit visitor"] as const;
+  }
+
+  return <div className="sv8-waiting-page"><PageHeader eyebrow="Operations · Admission control" title="Waiting Room" description="Move approved appointments from arrival to a safe, verified handoff into Live Sessions." actions={<><Status tone={facilityState === "NORMAL_OPERATIONS" ? "green" : "red"}>{facilityState === "NORMAL_OPERATIONS" ? "ROOM OPEN" : "FACILITY REVIEW"}</Status><Button variant="primary" onClick={() => onNotify("Readiness checks refreshed for the linked appointment queue.", "success")}>↻ Refresh readiness</Button></>} /><div className="sv8-summary"><button onClick={() => setLane("waiting")} className={lane === "waiting" ? "active" : ""}><span>Waiting now</span><strong>{counts.waiting}</strong><small>presence or unit confirmation</small></button><button onClick={() => setLane("ready")} className={lane === "ready" ? "active" : ""}><span>Ready to start</span><strong>{counts.ready}</strong><small>all checks passing</small></button><button onClick={() => setLane("attention")} className={lane === "attention" ? "active" : ""}><span>Needs attention</span><strong>{counts.attention}</strong><small>blockers or late arrivals</small></button><button onClick={() => setLane("upcoming")} className={lane === "upcoming" ? "active" : ""}><span>Upcoming</span><strong>{counts.upcoming}</strong><small>not yet in the window</small></button></div><section className="sv8-queue"><div className="sv8-toolbar"><label className="sv8-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search visitor, prisoner, visit ID, room, or kiosk" /></label><label className="sv8-select"><span>Window</span><select aria-label="Waiting room time window"><option>Next 2 hours</option><option>Today</option><option>All approved</option></select></label><button type="button" className={`sv8-attention-toggle ${onlyAttention ? "active" : ""}`} onClick={() => setOnlyAttention((current) => !current)}>Only needs attention</button><span className="sv8-toolbar-meta">{laneRecords(lane).length} linked visits · live readiness</span></div><div className="sv8-lane-tabs"><span>VIEW</span>{[["all", "All visits"], ["ready", "Ready to start"], ["waiting", "Waiting now"], ["attention", "Needs attention"], ["upcoming", "Upcoming"]].map(([value, label]) => <button className={lane === value ? "active" : ""} key={value} onClick={() => setLane(value)}>{label}{value !== "all" ? <em>{counts[value as keyof typeof counts]}</em> : null}</button>)}</div><div className="sv8-lanes">{[["ready", "READY TO START", "green"], ["waiting", "WAITING NOW", "blue"], ["attention", "NEEDS ATTENTION", "orange"], ["upcoming", "UPCOMING", "gray"]].map(([value, label, tone]) => <section className={`sv8-lane sv8-lane-${tone}`} key={value}><header><span><i />{label}</span><strong>{laneRecords(value).length}</strong></header><div className="sv8-lane-body">{laneRecords(value).map((record) => <article className={`sv8-card ${selectedId === record.id ? "selected" : ""}`} key={record.id}><button className="sv8-card-main" onClick={() => setSelectedId(record.id)}><div className="sv8-card-top"><Avatar initials={record.visitorInitials} tone={value === "attention" ? "orange" : value === "upcoming" ? "purple" : "blue"} /><span><strong>{record.visitor}</strong><small>{record.prisoner} · <span className="sv8-mono">{record.id}</span></small></span><Status tone={record.waitingState === "READY_TO_START" ? "green" : record.waitingState === "TECHNICAL_ISSUE" ? "red" : record.waitingState === "STAFF_REVIEW" || record.waitingState === "LATE" ? "orange" : "blue"}>{record.waitingState.replaceAll("_", " ")}</Status></div><div className="sv8-card-time"><strong>{record.date} · {record.time}</strong><span>{record.countdown}</span></div><div className="sv8-card-facts"><span>Visitor <b className={record.visitorPresence === "present" ? "pass" : "pending"}>{record.visitorPresence === "present" ? "Present" : "Not arrived"}</b></span><span>Prisoner <b className={record.prisonerPresence === "present" ? "pass" : "pending"}>{record.prisonerPresence === "present" ? "Present" : "Waiting"}</b></span><span>Resource <b>{record.room} · {record.kiosk}</b></span></div>{record.blocker ? <p className="sv8-blocker"><b>Blocker</b>{record.blocker}</p> : null}</button><div className="sv8-card-actions"><Button variant={primaryAction(record)[0] === "start" ? "primary" : "secondary"} onClick={() => action(record, primaryAction(record)[0])}>{primaryAction(record)[1]}</Button><button type="button" className="sv8-open-link" onClick={() => setSelectedId(record.id)}>Open readiness →</button></div></article>)}{!laneRecords(value).length ? <div className="sv8-lane-empty">No linked visits in this lane.</div> : null}</div></section>)}</div><footer className="sv8-footer"><span>Linked to the approved appointment queue · refreshes every 15 seconds in production.</span><strong>Last sync · just now</strong></footer></section>{selected ? <div className="sv8-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedId(null); }}><aside className="sv8-drawer" role="dialog" aria-modal="true" aria-labelledby="waiting-drawer-title"><header className="sv8-drawer-head"><div><span className="sv8-kicker">{selected.id} · READINESS RECORD</span><h2 id="waiting-drawer-title">{selected.visitor}</h2><p>{selected.prisoner} · {selected.type} visit</p></div><button type="button" aria-label="Close readiness drawer" onClick={() => setSelectedId(null)}>×</button></header><div className="sv8-drawer-scroll"><div className="sv8-drawer-hero"><Avatar initials={selected.visitorInitials} tone="orange" /><div><strong>{selected.date} · {selected.time}</strong><small>{selected.room} · {selected.kiosk}</small></div><Status tone={selected.waitingState === "READY_TO_START" ? "green" : selected.waitingState === "TECHNICAL_ISSUE" ? "red" : "orange"}>{selected.waitingState.replaceAll("_", " ")}</Status></div><div className="sv8-drawer-callout"><span className="sv8-kicker">NEXT DECISION</span><strong>{selected.waitingState === "READY_TO_START" ? "Safe to start" : selected.blocker || "Waiting for arrival and facility confirmation"}</strong><p>{selected.waitingState === "READY_TO_START" ? "All required checks are passing. Starting this visit will hand it to the Live Sessions workspace." : "Resolve the highlighted blocker before starting the visit."}</p></div><section className="sv8-drawer-section"><header><span className="sv8-kicker">PRESENCE</span><span className="sv8-mono">{selected.countdown}</span></header><div className="sv8-presence-grid"><div><span>Visitor</span><strong className={selected.visitorPresence === "present" ? "pass" : "pending"}>{selected.visitorPresence === "present" ? "Present" : "Not arrived"}</strong></div><div><span>Prisoner</span><strong className={selected.prisonerPresence === "present" ? "pass" : "pending"}>{selected.prisonerPresence === "present" ? "Present" : "Waiting"}</strong></div></div></section><section className="sv8-drawer-section"><header><span className="sv8-kicker">PRE-CALL CHECKS</span><span className="sv8-check-score">{selected.checks.filter((check) => check.state === "pass").length}/{selected.checks.length} passing</span></header><div className="sv8-check-list">{selected.checks.map((check) => <div className="sv8-check-row" key={check.key}><span className={`sv8-check-icon ${check.state}`}>{check.state === "pass" ? "✓" : check.state === "failed" ? "×" : check.state === "warning" ? "!" : "·"}</span><span><strong>{check.label}</strong><small>{check.detail}</small></span></div>)}</div></section><section className="sv8-drawer-section"><header><span className="sv8-kicker">ASSIGNMENT</span></header><div className="sv8-detail-grid"><span><small>Room</small><strong>{selected.room}</strong></span><span><small>Kiosk</small><strong>{selected.kiosk}</strong></span><span><small>Visit ID</small><strong className="sv8-mono">{selected.id}</strong></span><span><small>Updated</small><strong>{selected.lastUpdated}</strong></span></div></section><section className="sv8-drawer-section"><header><span className="sv8-kicker">STAFF NOTES</span></header><p className="sv8-notes">{selected.issue || "No staff notes. Session is linked to the approved appointment and its reserved resources."}</p></section></div><footer className="sv8-drawer-actions"><Button variant="quiet" onClick={() => action(selected, "cancel")}>Cancel visit</Button>{selected.waitingState !== "READY_TO_START" ? <Button onClick={() => action(selected, "reassign")}>Reassign kiosk</Button> : null}<Button onClick={() => action(selected, "late")}>Mark late</Button><Button variant="primary" onClick={() => action(selected, primaryAction(selected)[0])} disabled={primaryAction(selected)[0] === "start" && selected.checks.some((check) => check.state !== "pass")}>{primaryAction(selected)[1]}</Button></footer></aside></div> : null}</div>;
 }
 
 function LiveSessionsPage({ appointments, onNotify }: { appointments: Appointment[]; onNotify: (message: string, tone?: Notice["tone"]) => void }) {

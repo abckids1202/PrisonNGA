@@ -170,6 +170,25 @@ export const resourceReservations = sqliteTable("resource_reservations", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ resourceIdx: index("resource_reservations_resource_idx").on(table.resourceType, table.resourceId, table.startsAt), appointmentIdx: index("resource_reservations_appointment_idx").on(table.appointmentId) }));
 
+export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
+  appointmentId: text("appointment_id").primaryKey().references(() => appointments.id),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  state: text("state").notNull().default("NOT_ARRIVED"),
+  visitorPresence: text("visitor_presence").notNull().default("absent"),
+  prisonerPresence: text("prisoner_presence").notNull().default("waiting"),
+  identityState: text("identity_state").notNull().default("pending"),
+  cameraState: text("camera_state").notNull().default("pending"),
+  microphoneState: text("microphone_state").notNull().default("pending"),
+  networkState: text("network_state").notNull().default("pending"),
+  roomState: text("room_state").notNull().default("pass"),
+  kioskState: text("kiosk_state").notNull().default("pending"),
+  restrictionState: text("restriction_state").notNull().default("pass"),
+  staffNotes: text("staff_notes"),
+  version: integer("version").notNull().default(1),
+  lastCheckedAt: text("last_checked_at"),
+  ...timestamps,
+}, (table) => ({ facilityStateIdx: index("waiting_room_sessions_facility_state_idx").on(table.facilityId, table.state), facilityAppointmentIdx: index("waiting_room_sessions_facility_appointment_idx").on(table.facilityId, table.appointmentId) }));
+
 export const creditAccounts = sqliteTable("credit_accounts", {
   id: text("id").primaryKey(),
   facilityId: text("facility_id").notNull().references(() => facilities.id),

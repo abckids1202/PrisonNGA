@@ -8,6 +8,13 @@
       "when": 1786599907407,
       "tag": "0000_black_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787052000000,
+      "tag": "0001_waiting_room_sessions",
+      "breakpoints": true
     }
   ]
 }
