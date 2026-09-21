@@ -21,10 +21,10 @@ async function render() {
   return renderPath("/");
 }
 
-async function renderApi(pathname, method = "GET", body) {
+async function renderApi(pathname, method = "GET", body, extraHeaders = {}) {
   const worker = await loadWorker();
   return worker.fetch(
-    new Request(`http://localhost${pathname}`, { method, headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) }, body }),
+    new Request(`http://localhost${pathname}`, { method, headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}), ...extraHeaders }, body }),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
@@ -126,6 +126,13 @@ test("protects visitor-owned workflow APIs", async () => {
   const evidence = await renderApi("/api/visitor/verification/evidence");
   assert.equal(evidence.status, 401);
   assert.equal((await evidence.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const forgedWorkspaceIdentity = await renderApi("/api/visitor/profile", "GET", undefined, {
+    "oai-authenticated-user-id": "visitor-demo",
+    "oai-authenticated-user-email": "visitor@example.test",
+  });
+  assert.equal(forgedWorkspaceIdentity.status, 401);
+  assert.equal((await forgedWorkspaceIdentity.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
 test("protects staff verification workflow", async () => {

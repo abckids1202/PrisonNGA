@@ -37,14 +37,7 @@ export async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {
 export async function requireVisitorIdentity(): Promise<VisitorAuthorizationContext> {
   const sessionVisitor = await getVisitorSessionIdentity();
   if (sessionVisitor) return sessionVisitor;
-  const identity = await requireWorkspaceIdentity();
-  const db = await getDb();
-  const [user] = await db.select({ id: users.id, email: users.email, displayName: users.displayName, userType: users.userType, status: users.status })
-    .from(users)
-    .where(eq(users.externalId, identity.externalId))
-    .limit(1);
-  if (!user || user.status !== "ACTIVE" || user.userType !== "VISITOR") throw new SecurityError("VISITOR_ACCOUNT_REQUIRED", 403);
-  return { userId: user.id, email: user.email, displayName: user.displayName };
+  throw new SecurityError("AUTHENTICATION_REQUIRED", 401);
 }
 
 export async function getVisitorSessionIdentity(): Promise<VisitorAuthorizationContext | null> {
