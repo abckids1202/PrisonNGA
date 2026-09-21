@@ -25,7 +25,24 @@ export function parseWorkspaceIdentity(input: Headers): WorkspaceIdentity | null
 }
 
 export async function getWorkspaceIdentity(): Promise<WorkspaceIdentity | null> {
+  const staffSession = await getStaffSessionIdentity();
+  if (staffSession) return staffSession;
   return parseWorkspaceIdentity(await headers());
+}
+
+export async function getStaffSessionIdentity(): Promise<WorkspaceIdentity | null> {
+  const sessionToken = (await cookies()).get("securevisit_staff_session")?.value;
+  if (!sessionToken) return null;
+  const salt = await getSecuritySalt();
+  const tokenHash = await hashIdentifier(sessionToken, salt);
+  const db = await getDb();
+  const [sessionUser] = await db.select({ externalId: users.externalId, email: users.email, displayName: users.displayName, status: users.status, userType: users.userType })
+    .from(authSessions)
+    .innerJoin(users, eq(authSessions.userId, users.id))
+    .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "STAFF"), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, new Date().toISOString())))
+    .limit(1);
+  if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
+  return { externalId: sessionUser.externalId, email: sessionUser.email, displayName: sessionUser.displayName };
 }
 
 export async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {

@@ -130,6 +130,21 @@ export const idempotencyRecords = sqliteTable("idempotency_records", {
   createdIdx: index("idempotency_records_created_idx").on(table.createdAt),
 }));
 
+export const authFederationStates = sqliteTable("auth_federation_states", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull(),
+  stateHash: text("state_hash").notNull(),
+  nonce: text("nonce").notNull(),
+  codeVerifier: text("code_verifier").notNull(),
+  redirectUri: text("redirect_uri").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  consumedAt: text("consumed_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  stateHashIdx: uniqueIndex("auth_federation_states_hash_idx").on(table.stateHash),
+  expiresIdx: index("auth_federation_states_expires_idx").on(table.expiresAt),
+}));
+
 export const securityEvents = sqliteTable("security_events", {
   id: text("id").primaryKey(),
   userId: text("user_id"),
