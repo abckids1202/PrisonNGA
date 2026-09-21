@@ -36,7 +36,8 @@ INSERT INTO permissions (id, permission_key, description) VALUES
   ('perm-audit-read', 'audit.read', 'Read facility-scoped audit events.'),
   ('perm-audit-export', 'audit.export', 'Export an authorized audit report.'),
   ('perm-incident-read', 'incident.read', 'Read facility incident records.'),
-  ('perm-incident-manage', 'incident.manage', 'Create and resolve facility incidents.')
+  ('perm-incident-manage', 'incident.manage', 'Create and resolve facility incidents.'),
+  ('perm-notification-manage', 'notification.manage', 'Replay and operate failed notification deliveries.')
 ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id) VALUES
@@ -57,5 +58,6 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ('role-monitoring-officer', 'perm-incident-manage'),
   ('role-supervisor', 'perm-incident-read'),
   ('role-supervisor', 'perm-incident-manage'),
-  ('role-auditor', 'perm-incident-read')
+  ('role-auditor', 'perm-incident-read'),
+  ('role-supervisor', 'perm-notification-manage')
 ON CONFLICT(role_id, permission_id) DO NOTHING;
