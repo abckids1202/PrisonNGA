@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
+import { deliverVisitorChallenge } from "../../../../../lib/server/visitor-auth/delivery";
 
 function normalizeEmail(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -31,7 +32,20 @@ export async function POST(request: Request) {
     const codeHash = await hashIdentifier(`visitor-sign-in:${code}`, salt);
     await d1.prepare(`INSERT INTO auth_challenges (id, channel, destination, destination_hash, destination_masked, code_hash, purpose, attempt_count, max_attempts, expires_at, created_at) VALUES (?, 'EMAIL', ?, ?, ?, ?, 'VISITOR_SIGN_IN', 0, 5, ?, ?)`).bind(challengeId, email, destinationHash, maskEmail(email), codeHash, expiresAt, now.toISOString()).run();
     const responseBody: Record<string, unknown> = { challengeId, channel: "EMAIL", destination: maskEmail(email), expiresAt, retryAfterSeconds: 60 };
-    if ((await getRuntimeValue("VISITOR_AUTH_DELIVERY")) === "console") responseBody.devCode = code;
+    const delivery = (await getRuntimeValue("VISITOR_AUTH_DELIVERY") || "console").toLowerCase();
+    if (delivery === "console") {
+      responseBody.devCode = code;
+    } else if (delivery === "webhook") {
+      try {
+        await deliverVisitorChallenge({ challengeId, destination: email, code, expiresAt });
+      } catch {
+        await d1.prepare("DELETE FROM auth_challenges WHERE id = ? AND consumed_at IS NULL").bind(challengeId).run();
+        throw new SecurityError("AUTH_DELIVERY_UNAVAILABLE", 503);
+      }
+    } else {
+      await d1.prepare("DELETE FROM auth_challenges WHERE id = ? AND consumed_at IS NULL").bind(challengeId).run();
+      throw new SecurityError("AUTH_DELIVERY_NOT_CONFIGURED", 503);
+    }
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

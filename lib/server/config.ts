@@ -26,7 +26,12 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   }
   if (configuredEnvironment !== environment) missing.push("SECUREVISIT_ENVIRONMENT");
   if (value(env, "SECUREVISIT_HASH_SALT").length < 32) missing.push("SECUREVISIT_HASH_SALT");
-  if (value(env, "VISITOR_AUTH_DELIVERY") === "console" || !value(env, "VISITOR_AUTH_DELIVERY")) missing.push("VISITOR_AUTH_DELIVERY");
+  const visitorDelivery = value(env, "VISITOR_AUTH_DELIVERY");
+  if (visitorDelivery !== "webhook") missing.push("VISITOR_AUTH_DELIVERY=webhook");
+  if (visitorDelivery === "webhook") {
+    if (!/^https:\/\//i.test(value(env, "VISITOR_AUTH_WEBHOOK_URL"))) missing.push("VISITOR_AUTH_WEBHOOK_URL");
+    if (!value(env, "VISITOR_AUTH_WEBHOOK_SECRET")) missing.push("VISITOR_AUTH_WEBHOOK_SECRET");
+  }
   if (value(env, "VIDEO_PROVIDER") !== "livekit") missing.push("VIDEO_PROVIDER=livekit");
   for (const key of ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]) if (!value(env, key)) missing.push(key);
   if (!env.EVIDENCE_BUCKET) missing.push("EVIDENCE_BUCKET");
