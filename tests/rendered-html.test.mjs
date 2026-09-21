@@ -117,3 +117,13 @@ test("protects staff verification workflow", async () => {
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
 });
+
+test("protects persisted appointment workflows", async () => {
+  const visitor = await renderApi("/api/visitor/appointments");
+  assert.equal(visitor.status, 401);
+  assert.equal((await visitor.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const control = await renderApi("/api/control/appointments");
+  assert.equal(control.status, 401);
+  assert.equal((await control.json()).error, "AUTHENTICATION_REQUIRED");
+});
