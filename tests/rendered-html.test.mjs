@@ -167,3 +167,16 @@ test("keeps the rate-limit store and staff federation boundary behind safe defau
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error, "VALID_EMAIL_REQUIRED");
 });
+
+test("protects visitor session management", async () => {
+  const response = await renderApi("/api/auth/sessions");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
+test("exposes a fail-closed staff federation configuration", async () => {
+  const response = await renderApi("/api/auth/staff/config");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.staffFederation.configured, false);
+});

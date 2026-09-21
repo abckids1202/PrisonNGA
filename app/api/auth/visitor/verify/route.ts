@@ -41,7 +41,8 @@ export async function POST(request: Request) {
     ]);
     const user = await d1.prepare("SELECT id, email, display_name FROM users WHERE email = ? AND user_type = 'VISITOR'").bind(challenge.destination).first<{ id: string; email: string; display_name: string }>();
     if (!user) throw new SecurityError("VISITOR_ACCOUNT_NOT_CREATED", 500);
-    await d1.prepare("INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), user.id, tokenHash, new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString(), now).run();
+    const sessionId = crypto.randomUUID();
+    await d1.prepare("INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, user_agent_hash, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(sessionId, user.id, tokenHash, new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString(), now, context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null).run();
     const response = securityResponse({ authenticated: true, visitor: { id: user.id, email: user.email, displayName: user.display_name }, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString() }, 200, context.requestId);
     response.headers.set("Set-Cookie", await sessionCookie(token));
     return response;
