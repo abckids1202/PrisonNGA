@@ -16,12 +16,14 @@ Implemented foundations:
 
 ## Runtime setup
 
-1. Apply the generated migration in `drizzle/` to the D1 database bound as `DB`.
+1. Apply the generated migration in `drizzle/` to the D1 database bound as `DB` (`npm run db:migrate:local` for local D1 or `npm run db:migrate:remote` for a named remote Wrangler environment).
 2. Apply `db/seed.sql` once to create the fictional facility, roles, and permission catalog.
 3. Provision workspace identities into `users`, `staff_profiles`, and `user_roles` through an institution-controlled admin workflow. There is intentionally no self-service role escalation endpoint.
 4. Set `SECUREVISIT_HASH_SALT` in the runtime secret store before recording production security-event hashes. The local fallback is only for development.
 5. Configure `VIDEO_PROVIDER=livekit`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` in the server runtime. The secret must never be exposed through a public frontend environment variable.
 6. Configure the visitor authentication delivery adapter. `VISITOR_AUTH_DELIVERY=console` is development-only; production must use a managed email/SMS provider and must never return an OTP in the API response.
+7. Configure the `EVIDENCE_BUCKET` R2 binding and set `EVIDENCE_RETENTION_DAYS`; the visitor evidence API intentionally refuses uploads without the binding.
+8. Check `/api/health/readiness` after deployment. It reports only whether the database and required schema are ready; it does not expose missing secret names.
 
 ## Important limitations
 

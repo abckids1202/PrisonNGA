@@ -1,11 +1,13 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { validateEnvironment } from "../lib/server/config";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   EVIDENCE_BUCKET?: R2Bucket;
+  [key: string]: unknown;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -78,6 +80,12 @@ const worker = {
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    const environmentCheck = validateEnvironment(env);
+    if (!environmentCheck.ok && environmentCheck.environment === "production") {
+      console.error(JSON.stringify({ event: "ENVIRONMENT_VALIDATION_FAILED", missing: environmentCheck.missing, requestId: request.headers.get("x-request-id") || crypto.randomUUID() }));
+      return Response.json({ error: "SERVICE_NOT_READY" }, { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

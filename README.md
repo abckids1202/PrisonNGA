@@ -44,6 +44,8 @@ Each workspace uses a different interaction pattern: timelines and action center
 
 Before institutional use, the platform still needs configured institutional OIDC/SAML authentication, a real visitor delivery provider, a real payment adapter, full resource/policy enforcement, notification delivery adapters, immutable audit export, provider operations, and legal/privacy review. Verification evidence metadata, retention policies, legal holds, and scheduled purge are now modeled; raw evidence upload remains fail-closed until an R2 `EVIDENCE_BUCKET` binding is configured. Recordings remain disabled.
 
+Operational checks: run `npm run db:migrations:list` against the target D1 database, apply migrations with the matching `db:migrate:*` command, then verify `/api/health/readiness` before opening the pilot to users. Production Worker startup rejects requests when required provider bindings and secrets are missing.
+
 ## Backend foundation
 
 The project now includes a D1-backed security foundation with workspace identity checks, facility-scoped permissions, audit/outbox records, versioned facility-state changes, and security headers. See [SECURITY.md](SECURITY.md) for setup and limitations.

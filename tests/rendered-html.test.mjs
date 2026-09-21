@@ -202,3 +202,13 @@ test("declares the outbox worker schedule in the generated Worker build", async 
   const workerConfig = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(new URL("../dist/server/wrangler.json", import.meta.url), "utf8")));
   assert.deepEqual(workerConfig.triggers?.crons, ["*/1 * * * *"]);
 });
+
+test("exposes a non-sensitive readiness endpoint", async () => {
+  const response = await renderApi("/api/health/readiness");
+  assert.ok([200, 503].includes(response.status));
+  const body = await response.json();
+  assert.ok(["ready", "not_ready"].includes(body.status));
+  assert.equal(typeof body.checks.database, "boolean");
+  assert.equal(typeof body.checks.schema, "boolean");
+  assert.doesNotMatch(JSON.stringify(body), /LIVEKIT_API_SECRET|PAYMENT_WEBHOOK_SECRET|HASH_SALT/);
+});
