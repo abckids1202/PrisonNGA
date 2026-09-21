@@ -1,6 +1,6 @@
 import { getD1 } from "../../../../../db/runtime";
 import { appendAuditAndOutbox } from "../../../../../lib/server/events";
-import { applySecurityHeaders, getRequestContext, requirePermission, securityErrorResponse, SecurityError } from "../../../../../lib/server/security";
+import { applySecurityHeaders, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, SecurityError } from "../../../../../lib/server/security";
 
 function csvCell(value: unknown): string {
   const text = value == null ? "" : String(value);
@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   const context = await getRequestContext();
   try {
     const authorization = await requirePermission("audit.export");
+    await requireStepUp("audit_export", authorization.userId);
     const search = new URL(request.url).searchParams;
     const from = search.get("from")?.trim() || null;
     const to = search.get("to")?.trim() || null;

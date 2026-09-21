@@ -1,6 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { appendAuditAndOutbox } from "../../../../lib/server/events";
-import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 export async function GET() {
   const context = await getRequestContext();
@@ -16,6 +16,7 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const authorization = await requirePermission("audit.read");
+    await requireStepUp("legal_hold_change", authorization.userId);
     const body = await request.json() as { action?: unknown; entityType?: unknown; entityId?: unknown; reason?: unknown; holdId?: unknown };
     const action = body.action === "RELEASE" ? "RELEASE" : body.action === "CREATE" ? "CREATE" : "";
     const d1 = await getD1();
