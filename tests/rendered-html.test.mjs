@@ -153,6 +153,16 @@ test("protects staff verification workflow", async () => {
   assert.equal((await evidence.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
+test("protects staff provisioning workflow", async () => {
+  const list = await renderApi("/api/control/staff");
+  assert.equal(list.status, 401);
+  assert.equal((await list.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const create = await renderApi("/api/control/staff", "POST", JSON.stringify({ email: "staff@example.test" }));
+  assert.equal(create.status, 401);
+  assert.equal((await create.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
 test("protects retention and legal hold controls", async () => {
   const retention = await renderApi("/api/control/retention");
   assert.equal(retention.status, 401);
