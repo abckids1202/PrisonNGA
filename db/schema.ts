@@ -377,3 +377,31 @@ export const notifications = sqliteTable("notifications", {
   idempotencyKey: text("idempotency_key").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ idempotencyIdx: uniqueIndex("notifications_idempotency_idx").on(table.idempotencyKey), userStatusIdx: index("notifications_user_status_idx").on(table.userId, table.status, table.createdAt), facilityIdx: index("notifications_facility_idx").on(table.facilityId, table.createdAt) }));
+
+export const incidents = sqliteTable("incidents", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  incidentType: text("incident_type").notNull(),
+  severity: text("severity", { enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] }).notNull(),
+  status: text("status", { enum: ["OPEN", "ACKNOWLEDGED", "IN_REVIEW", "RESOLVED", "CLOSED"] }).notNull().default("OPEN"),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  appointmentId: text("appointment_id"),
+  sessionId: text("session_id"),
+  resourceId: text("resource_id"),
+  reporterUserId: text("reporter_user_id").notNull().references(() => users.id),
+  assignedUserId: text("assigned_user_id").references(() => users.id),
+  resolution: text("resolution"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ facilityStatusIdx: index("incidents_facility_status_idx").on(table.facilityId, table.status, table.createdAt), appointmentIdx: index("incidents_appointment_idx").on(table.appointmentId), severityIdx: index("incidents_severity_idx").on(table.facilityId, table.severity) }));
+
+export const incidentEvents = sqliteTable("incident_events", {
+  id: text("id").primaryKey(),
+  incidentId: text("incident_id").notNull().references(() => incidents.id),
+  eventType: text("event_type").notNull(),
+  actorUserId: text("actor_user_id").notNull().references(() => users.id),
+  details: text("details").notNull(),
+  correlationId: text("correlation_id").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ incidentIdx: index("incident_events_incident_idx").on(table.incidentId, table.createdAt) }));

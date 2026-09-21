@@ -94,6 +94,12 @@ test("protects the facility resource catalog", async () => {
   assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
+test("protects the incident management API", async () => {
+  const response = await renderApi("/api/control/incidents");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
 test("protects kiosk token issuance", async () => {
   const response = await renderApi("/api/kiosk/visits/SV-260814-018/live-session", "POST");
   assert.equal(response.status, 401);
