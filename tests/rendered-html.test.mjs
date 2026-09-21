@@ -137,6 +137,10 @@ test("protects visitor-owned workflow APIs", async () => {
   const availability = await renderApi("/api/visitor/availability?facilityId=facility-central-001&prisonerId=prisoner-ar-001&date=2026-09-22");
   assert.equal(availability.status, 401);
   assert.equal((await availability.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const prisoners = await renderApi("/api/visitor/prisoners?facilityId=facility-central-001");
+  assert.equal(prisoners.status, 401);
+  assert.equal((await prisoners.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
 test("protects staff verification workflow", async () => {
