@@ -19,6 +19,38 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string };
+
+async function processOutbox(env: Env): Promise<void> {
+  const result = await env.DB.prepare("SELECT id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id FROM outbox_events WHERE status = 'PENDING' AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<OutboxRow>();
+  for (const row of result.results) {
+    const now = new Date().toISOString();
+    try {
+      const payload = JSON.parse(row.payload) as Record<string, unknown>;
+      await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1 WHERE id = ? AND status = 'PENDING'").bind(row.id).run();
+      const visitorUserId = typeof payload.visitorUserId === "string" ? payload.visitorUserId : null;
+      if (visitorUserId) {
+        const copy = notificationCopy(row.event_type);
+        await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, idempotency_key, created_at)
+          VALUES (?, ?, ?, 'IN_APP', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?)`).bind(crypto.randomUUID(), row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify({ aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload }), now, `${row.id}:visitor:in-app`, now).run();
+      }
+      await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSED', processed_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, row.id).run();
+    } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 500) : "OUTBOX_PROCESSING_FAILED";
+      await env.DB.prepare("UPDATE outbox_events SET status = CASE WHEN attempt_count >= 5 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = datetime('now', '+60 seconds'), last_error = ? WHERE id = ?").bind(message, row.id).run();
+    }
+  }
+}
+
+function notificationCopy(eventType: string): { title: string; body: string } {
+  if (eventType === "APPOINTMENT_APPROVE") return { title: "Your visit was approved", body: "Your appointment is ready. Open Visit Details to prepare." };
+  if (eventType === "APPOINTMENT_REJECT") return { title: "Your visit needs attention", body: "Your appointment request was not approved. Open Visit Details to see the reason." };
+  if (eventType === "VERIFICATION_APPROVED") return { title: "Connection approved", body: "You can now request a visit with this connection." };
+  if (eventType === "VERIFICATION_REJECTED") return { title: "Verification needs attention", body: "Your relationship verification needs an update before you can request a visit." };
+  if (eventType === "APPOINTMENT_SUBMITTED") return { title: "Visit request received", body: "The facility team has your request and will review it shortly." };
+  return { title: "SecureVisit update", body: "There is a new update in your SecureVisit account." };
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -26,6 +58,9 @@ interface ExecutionContext {
 // const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
 
 const worker = {
+  async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(processOutbox(env));
+  },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 

@@ -343,3 +343,22 @@ export const paymentProviderEvents = sqliteTable("payment_provider_events", {
   processedAt: text("processed_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ eventKeyIdx: uniqueIndex("payment_provider_events_key_idx").on(table.provider, table.eventKey), createdIdx: index("payment_provider_events_created_idx").on(table.createdAt) }));
+
+export const notifications = sqliteTable("notifications", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").references(() => facilities.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  channel: text("channel", { enum: ["IN_APP", "EMAIL", "SMS"] }).notNull().default("IN_APP"),
+  template: text("template").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status", { enum: ["QUEUED", "DELIVERED", "FAILED", "READ"] }).notNull().default("QUEUED"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  availableAt: text("available_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  deliveredAt: text("delivered_at"),
+  readAt: text("read_at"),
+  lastError: text("last_error"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ idempotencyIdx: uniqueIndex("notifications_idempotency_idx").on(table.idempotencyKey), userStatusIdx: index("notifications_user_status_idx").on(table.userId, table.status, table.createdAt), facilityIdx: index("notifications_facility_idx").on(table.facilityId, table.createdAt) }));

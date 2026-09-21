@@ -137,3 +137,9 @@ test("protects visitor credit and payment workflows", async () => {
   assert.equal(payment.status, 401);
   assert.equal((await payment.json()).error, "AUTHENTICATION_REQUIRED");
 });
+
+test("protects visitor notification workflows", async () => {
+  const response = await renderApi("/api/visitor/notifications");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
