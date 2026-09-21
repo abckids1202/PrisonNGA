@@ -1,5 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { appendAuditAndOutbox } from "../../../../lib/server/events";
+import { releaseVisitCredit } from "../../../../lib/server/credits";
+import { releaseVisitResources } from "../../../../lib/server/resources";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const activeStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"];
@@ -60,4 +62,53 @@ export async function POST(request: Request) {
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }
+}
+
+export async function PATCH(request: Request) {
+  const context = await getRequestContext();
+  try {
+    const visitor = await requireVisitorIdentity();
+    const body = await request.json() as { appointmentId?: unknown; action?: unknown; requestedStart?: unknown; requestedEnd?: unknown; expectedVersion?: unknown };
+    const appointmentId = typeof body.appointmentId === "string" ? body.appointmentId.trim() : "";
+    const action = body.action === "cancel" || body.action === "reschedule" ? body.action : "";
+    if (!appointmentId || !action) throw new SecurityError("INVALID_APPOINTMENT_ACTION", 400);
+    const d1 = await getD1();
+    const appointment = await d1.prepare(`SELECT a.id, a.facility_id, a.prisoner_id, a.status, a.version, a.requested_start, a.requested_end, f.current_state, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time, f.timezone, ca.id AS credit_account_id
+      FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id LEFT JOIN visit_policies vp ON vp.facility_id = a.facility_id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
+      WHERE a.id = ? AND a.visitor_user_id = ?`).bind(appointmentId, visitor.userId).first<Record<string, string | number | null>>();
+    if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
+    if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== Number(appointment.version)) throw new SecurityError("STALE_APPOINTMENT", 409);
+    const now = new Date().toISOString();
+    const correlationId = crypto.randomUUID();
+    if (action === "cancel") {
+      if (!["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(String(appointment.status))) throw new SecurityError("APPOINTMENT_NOT_CANCELLABLE", 409);
+      const updated = await d1.prepare("UPDATE appointments SET status = 'CANCELLED_BY_VISITOR', version = version + 1, updated_at = ? WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING')").bind(now, appointmentId, visitor.userId, Number(appointment.version)).run();
+      if (!updated.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
+      if (appointment.credit_account_id && ["APPROVED", "WAITING"].includes(String(appointment.status))) {
+        await releaseVisitCredit(d1, { accountId: String(appointment.credit_account_id), appointmentId, actorUserId: visitor.userId, reason: "Visitor cancelled the appointment." });
+        await releaseVisitResources(d1, appointmentId, String(appointment.facility_id));
+      }
+      await d1.batch([
+        d1.prepare("INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, ?, 'CANCELLED_BY_VISITOR', ?, 'VISITOR_CANCELLED', 'Visitor cancelled the appointment.', ?, ?)").bind(crypto.randomUUID(), appointmentId, appointment.status, visitor.userId, correlationId, now),
+      ]);
+      await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: String(appointment.facility_id), actionType: "APPOINTMENT_CANCELLED_BY_VISITOR", entityType: "appointment", entityId: appointmentId, reason: "Visitor cancelled the appointment.", oldValues: { status: appointment.status }, newValues: { status: "CANCELLED_BY_VISITOR" }, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_CANCELLED_BY_VISITOR", payload: { appointmentId, visitorUserId: visitor.userId } });
+      return securityResponse({ appointmentId, status: "CANCELLED_BY_VISITOR", version: Number(appointment.version) + 1, correlationId }, 200, context.requestId);
+    }
+    if (!["SUBMITTED", "UNDER_REVIEW"].includes(String(appointment.status))) throw new SecurityError("APPOINTMENT_NOT_RESCHEDULABLE", 409);
+    const requestedStart = typeof body.requestedStart === "string" ? body.requestedStart : "";
+    const requestedEnd = typeof body.requestedEnd === "string" ? body.requestedEnd : "";
+    const startMs = Date.parse(requestedStart);
+    const endMs = Date.parse(requestedEnd);
+    const minDuration = Number(appointment.min_duration_minutes || 15);
+    const maxDuration = Number(appointment.max_duration_minutes || 30);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs || (endMs - startMs) / 60000 < minDuration || (endMs - startMs) / 60000 > maxDuration || (endMs - startMs) % (15 * 60000) !== 0) throw new SecurityError("INVALID_APPOINTMENT_WINDOW", 400);
+    if (startMs < Date.now() + Number(appointment.min_advance_minutes || 60) * 60000 || startMs > Date.now() + Number(appointment.max_advance_days || 30) * 86400000) throw new SecurityError("APPOINTMENT_OUTSIDE_BOOKING_HORIZON", 400);
+    const overlap = await d1.prepare(`SELECT id FROM appointments WHERE id <> ? AND facility_id = ? AND (visitor_user_id = ? OR prisoner_id = ?) AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(appointmentId, appointment.facility_id, visitor.userId, appointment.prisoner_id, ...activeStatuses, requestedEnd, requestedStart).first();
+    if (overlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
+    const updated = await d1.prepare("UPDATE appointments SET requested_start = ?, requested_end = ?, status = 'UNDER_REVIEW', version = version + 1, updated_at = ? WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW')").bind(requestedStart, requestedEnd, now, appointmentId, visitor.userId, Number(appointment.version)).run();
+    if (!updated.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
+    await d1.prepare("INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, ?, 'UNDER_REVIEW', ?, 'VISITOR_RESCHEDULED', 'Visitor requested a new appointment window.', ?, ?)").bind(crypto.randomUUID(), appointmentId, appointment.status, visitor.userId, correlationId, now).run();
+    await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: String(appointment.facility_id), actionType: "APPOINTMENT_RESCHEDULED", entityType: "appointment", entityId: appointmentId, reason: "Visitor requested a new appointment window.", oldValues: { status: appointment.status, requestedStart: appointment.requested_start, requestedEnd: appointment.requested_end }, newValues: { status: "UNDER_REVIEW", requestedStart, requestedEnd }, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_RESCHEDULED", payload: { appointmentId, visitorUserId: visitor.userId } });
+    return securityResponse({ appointmentId, status: "UNDER_REVIEW", requestedStart, requestedEnd, version: Number(appointment.version) + 1, correlationId }, 200, context.requestId);
+  } catch (error) { return securityErrorResponse(error, context.requestId); }
 }

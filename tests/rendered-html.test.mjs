@@ -178,6 +178,10 @@ test("protects persisted appointment workflows", async () => {
   const control = await renderApi("/api/control/appointments");
   assert.equal(control.status, 401);
   assert.equal((await control.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const visitorPatch = await renderApi("/api/visitor/appointments", "PATCH", "{}");
+  assert.equal(visitorPatch.status, 401);
+  assert.equal((await visitorPatch.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
 test("protects visitor credit and payment workflows", async () => {

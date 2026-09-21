@@ -172,7 +172,7 @@ export const appointments = sqliteTable("appointments", {
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
   prisonerId: text("prisoner_id").notNull(),
-  status: text("status", { enum: ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "CANCELLED_BY_FACILITY", "WAITING", "IN_PROGRESS", "COMPLETED", "TECHNICAL_FAILURE"] }).notNull().default("DRAFT"),
+  status: text("status", { enum: ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "CANCELLED_BY_FACILITY", "CANCELLED_BY_VISITOR", "WAITING", "IN_PROGRESS", "COMPLETED", "TECHNICAL_FAILURE"] }).notNull().default("DRAFT"),
   requestedStart: text("requested_start").notNull(),
   requestedEnd: text("requested_end").notNull(),
   timezone: text("timezone").notNull().default("Asia/Jakarta"),
