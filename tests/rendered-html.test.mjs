@@ -186,6 +186,12 @@ test("fails closed when payment webhook signing is not configured", async () => 
   assert.equal((await response.json()).error, "PAYMENT_WEBHOOK_NOT_CONFIGURED");
 });
 
+test("fails closed when LiveKit webhook configuration is unavailable", async () => {
+  const response = await renderApi("/api/webhooks/livekit", "POST", "{}");
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "VIDEO_PROVIDER_NOT_CONFIGURED");
+});
+
 test("protects visitor notification workflows", async () => {
   const response = await renderApi("/api/visitor/notifications");
   assert.equal(response.status, 401);
