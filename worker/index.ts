@@ -19,15 +19,17 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string };
+type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 
 async function processOutbox(env: Env): Promise<void> {
-  const result = await env.DB.prepare("SELECT id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id FROM outbox_events WHERE status = 'PENDING' AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<OutboxRow>();
+  await env.DB.prepare("UPDATE outbox_events SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim.' WHERE status = 'PROCESSING' AND created_at < datetime('now', '-5 minutes')").run();
+  const result = await env.DB.prepare("SELECT id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, attempt_count FROM outbox_events WHERE status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<OutboxRow>();
   for (const row of result.results) {
     const now = new Date().toISOString();
     try {
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
-      await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1 WHERE id = ? AND status = 'PENDING'").bind(row.id).run();
+      const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
+      if (!claim.meta.changes) continue;
       const visitorUserId = typeof payload.visitorUserId === "string" ? payload.visitorUserId : null;
       if (visitorUserId) {
         const copy = notificationCopy(row.event_type);
@@ -37,7 +39,10 @@ async function processOutbox(env: Env): Promise<void> {
       await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSED', processed_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, row.id).run();
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 500) : "OUTBOX_PROCESSING_FAILED";
-      await env.DB.prepare("UPDATE outbox_events SET status = CASE WHEN attempt_count >= 5 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = datetime('now', '+60 seconds'), last_error = ? WHERE id = ?").bind(message, row.id).run();
+      const attempt = row.attempt_count + 1;
+      const delaySeconds = Math.min(3600, 30 * (2 ** Math.max(0, attempt - 1)));
+      const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+      await env.DB.prepare("UPDATE outbox_events SET status = CASE WHEN attempt_count >= 5 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
     }
   }
 }

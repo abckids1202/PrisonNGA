@@ -180,3 +180,8 @@ test("exposes a fail-closed staff federation configuration", async () => {
   const body = await response.json();
   assert.equal(body.staffFederation.configured, false);
 });
+
+test("declares the outbox worker schedule in the generated Worker build", async () => {
+  const workerConfig = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(new URL("../dist/server/wrangler.json", import.meta.url), "utf8")));
+  assert.deepEqual(workerConfig.triggers?.crons, ["*/1 * * * *"]);
+});
