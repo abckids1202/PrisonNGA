@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { createLiveKitProvider, createProviderRoomName } from "../../../../lib/server/video/provider";
+import { canTransitionWaitingRoom } from "../../../../lib/server/workflow";
 
 const eligibleStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
 const commands = ["admit_visitor", "run_preflight", "retry_device", "contact_visitor", "mark_late", "reassign_kiosk", "cancel_visit", "start_visit"] as const;
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const nextVersion = currentVersion + 1;
     const nextState = command === "admit_visitor" ? "VISITOR_WAITING" : command === "mark_late" ? "LATE" : command === "start_visit" ? "LIVE" : command === "contact_visitor" ? currentState : command === "cancel_visit" ? "CANCELLED" : "READY_TO_START";
+    if (!canTransitionWaitingRoom(currentState, nextState)) throw new SecurityError("INVALID_WAITING_ROOM_TRANSITION", 409);
     const visitorPresence = command === "admit_visitor" || command === "run_preflight" || command === "retry_device" || command === "reassign_kiosk" || command === "start_visit" ? "present" : String(current.visitor_presence || "absent");
     const prisonerPresence = command === "run_preflight" || command === "retry_device" || command === "start_visit" ? "present" : String(current.prisoner_presence || "waiting");
     const checkState = command === "run_preflight" || command === "retry_device" || command === "reassign_kiosk" || command === "start_visit" ? "pass" : String(current.identity_state || "pending");
