@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     if (body.expectedVersion !== undefined && body.expectedVersion !== currentVersion) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
     if (!eligibleStatuses.includes(current.appointment_status as typeof eligibleStatuses[number])) throw new SecurityError("APPOINTMENT_NOT_ELIGIBLE", 409);
     const currentState = String(current.state || "NOT_ARRIVED") as string;
+    if (command === "cancel_visit" && (currentState === "LIVE" || current.appointment_status === "IN_PROGRESS")) throw new SecurityError("LIVE_VISIT_MUST_BE_TERMINATED", 409);
     if (command === "start_visit" && currentState !== "READY_TO_START") throw new SecurityError("WAITING_ROOM_NOT_READY", 409);
     if (command === "start_visit" && (current.current_state !== "NORMAL_OPERATIONS" || current.identity_state !== "pass" || current.camera_state !== "pass" || current.microphone_state !== "pass" || current.network_state !== "pass" || current.room_state !== "pass" || current.kiosk_state !== "pass" || current.restriction_state !== "pass")) throw new SecurityError("PRECALL_CHECKS_INCOMPLETE", 409);
     if (command === "run_preflight" && !["VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT", "TECHNICAL_ISSUE", "STAFF_REVIEW"].includes(currentState)) throw new SecurityError("VISITORS_NOT_PRESENT", 409);

@@ -464,7 +464,8 @@ type WaitingRoomApiRow = {
 };
 
 function hydrateWaitingRecord(base: WaitingRecord | null, row?: WaitingRoomApiRow): WaitingRecord | null {
-  if (!base || !row || row.state === "LIVE" || row.state === "CANCELLED") return base;
+  if (!base || !row) return base;
+  if (row.state === "LIVE" || row.state === "CANCELLED") return null;
   const states = new Map<string, CheckState>([
     ["identity", row.identity_state || base.checks.find((check) => check.key === "identity")?.state || "pending"],
     ["camera", row.camera_state || "pending"], ["microphone", row.microphone_state || "pending"],
