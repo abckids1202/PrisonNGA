@@ -1,4 +1,5 @@
 import { getD1 } from "../../../../db/runtime";
+import { releaseVisitCredit, reserveVisitCredit } from "../../../../lib/server/credits";
 import { appendAuditAndOutbox } from "../../../../lib/server/events";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
@@ -43,14 +44,30 @@ export async function POST(request: Request) {
       d1.prepare(`UPDATE appointments SET status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?`).bind(nextStatus, now, appointmentId, authorization.facilityId, current.version),
       d1.prepare(`INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), appointmentId, current.status, nextStatus, authorization.userId, `STAFF_${command.toUpperCase()}`, reason, correlationId, now),
     ];
+    let reservationCreated = false;
     if (command === "approve" && current.credit_account_id) {
-      statements.push(d1.prepare(`UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND available_credits >= 1`).bind(now, current.credit_account_id));
-      statements.push(d1.prepare(`INSERT INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at) VALUES (?, ?, ?, 'RESERVATION', -1, ?, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), current.credit_account_id, appointmentId, `${appointmentId}:reservation`, reason, authorization.userId, now));
+      await reserveVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason });
+      reservationCreated = true;
     }
-    const results = await d1.batch(statements);
-    if (!results[0]?.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
-    if (command === "approve" && !results[2]?.meta.changes) throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
+    let results: Array<{ meta: { changes: number } }>;
+    try {
+      results = await d1.batch(statements);
+    } catch (error) {
+      if (reservationCreated && current.credit_account_id) {
+        await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Appointment state update failed; reservation released." });
+      }
+      throw error;
+    }
+    if (!results[0]?.meta.changes) {
+      if (reservationCreated && current.credit_account_id) {
+        await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Appointment was already changed; reservation released." });
+      }
+      throw new SecurityError("STALE_APPOINTMENT", 409);
+    }
+    if (command === "approve" && !reservationCreated) throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
+    if (command === "cancel" && current.credit_account_id && ["APPROVED", "WAITING"].includes(current.status)) {
+      await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Appointment cancelled by facility." });
+    }
     await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Scheduling Officer", facilityId: authorization.facilityId, actionType: `APPOINTMENT_${command.toUpperCase()}`, entityType: "appointment", entityId: appointmentId, reason, oldValues: { status: current.status }, newValues: { status: nextStatus }, requestId: context.requestId, correlationId, eventType: `APPOINTMENT_${command.toUpperCase()}`, payload: { appointmentId, status: nextStatus, visitorUserId: current.visitor_user_id } });
     return securityResponse({ appointmentId, status: nextStatus, version: current.version + 1, correlationId }, 200, context.requestId);
   } catch (error) {
