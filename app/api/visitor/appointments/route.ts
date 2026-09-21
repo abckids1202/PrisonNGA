@@ -3,6 +3,7 @@ import { appendAuditAndOutbox } from "../../../../lib/server/events";
 import { releaseVisitCredit } from "../../../../lib/server/credits";
 import { releaseVisitResources } from "../../../../lib/server/resources";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { claimIdempotency, completeIdempotency, hashIdempotencyPayload } from "../../../../lib/server/idempotency";
 
 const activeStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"];
 
@@ -24,12 +25,14 @@ export async function POST(request: Request) {
   try {
     const visitor = await requireVisitorIdentity();
     const body = await request.json() as { relationshipId?: unknown; requestedStart?: unknown; requestedEnd?: unknown; appointmentType?: unknown };
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     const relationshipId = typeof body.relationshipId === "string" ? body.relationshipId.trim() : "";
     const requestedStart = typeof body.requestedStart === "string" ? body.requestedStart : "";
     const requestedEnd = typeof body.requestedEnd === "string" ? body.requestedEnd : "";
     const appointmentType = typeof body.appointmentType === "string" ? body.appointmentType.trim().slice(0, 40) : "FAMILY";
     const startMs = Date.parse(requestedStart);
     const endMs = Date.parse(requestedEnd);
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     if (!relationshipId || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs || endMs - startMs < 15 * 60_000 || endMs - startMs > 30 * 60_000) throw new SecurityError("INVALID_APPOINTMENT_WINDOW", 400);
     if (startMs < Date.now() - 60_000) throw new SecurityError("APPOINTMENT_MUST_BE_FUTURE", 400);
     const d1 = await getD1();
@@ -48,6 +51,10 @@ export async function POST(request: Request) {
     if (overlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
     const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(relationship.facility_id, relationship.prisoner_id, ...activeStatuses, requestedEnd, requestedStart).first<{ id: string }>();
     if (prisonerOverlap) throw new SecurityError("PRISONER_APPOINTMENT_OVERLAP", 409);
+    const idempotencyScope = `visitor:${visitor.userId}:appointment:create`;
+    const requestHash = await hashIdempotencyPayload({ relationshipId, requestedStart, requestedEnd, appointmentType });
+    const replay = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+    if (replay) return securityResponse(replay.body, replay.status, context.requestId);
     const appointmentId = `SV-${new Date(startMs).toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
@@ -58,7 +65,9 @@ export async function POST(request: Request) {
         .bind(crypto.randomUUID(), appointmentId, visitor.userId, correlationId, now),
     ]);
     await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: relationship.facility_id, actionType: "APPOINTMENT_SUBMITTED", entityType: "appointment", entityId: appointmentId, reason: "Visitor submitted an appointment request.", newValues: { status: "SUBMITTED", requestedStart, requestedEnd, prisonerId: relationship.prisoner_id }, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_SUBMITTED", payload: { appointmentId, visitorUserId: visitor.userId } });
-    return securityResponse({ appointmentId, status: "SUBMITTED", correlationId }, 201, context.requestId);
+    const responseBody = { appointmentId, status: "SUBMITTED", correlationId };
+    await completeIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, status: 201, body: responseBody });
+    return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }

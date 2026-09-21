@@ -115,6 +115,21 @@ export const authChallenges = sqliteTable("auth_challenges", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ destinationIdx: index("auth_challenges_destination_idx").on(table.destinationHash, table.createdAt), expiresIdx: index("auth_challenges_expires_idx").on(table.expiresAt) }));
 
+export const idempotencyRecords = sqliteTable("idempotency_records", {
+  id: text("id").primaryKey(),
+  scope: text("scope").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  requestHash: text("request_hash").notNull(),
+  status: text("status", { enum: ["PROCESSING", "COMPLETED"] }).notNull().default("PROCESSING"),
+  responseStatus: integer("response_status"),
+  responseBody: text("response_body"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  completedAt: text("completed_at"),
+}, (table) => ({
+  scopeKeyIdx: uniqueIndex("idempotency_records_scope_key_idx").on(table.scope, table.idempotencyKey),
+  createdIdx: index("idempotency_records_created_idx").on(table.createdAt),
+}));
+
 export const securityEvents = sqliteTable("security_events", {
   id: text("id").primaryKey(),
   userId: text("user_id"),
