@@ -2,7 +2,7 @@
 
 SecureVisit is a staff-first prototype for controlled correctional visitation operations. It brings the approval queue, facility schedule, room readiness, live-session control, credit activity, visitor portal preview, and audit trail into one calm operations workspace.
 
-This build is intentionally an MVP using fictional data only. It does not process real payments or connect to a live prisoner database. When configured, video media uses LiveKit WebRTC and recordings remain disabled by default.
+This build is still an MVP, but its first persisted institutional workflow is now represented in D1: facility-managed prisoner records, visitor profiles, relationship verification, and appointment requests/decisions. It does not process real payments yet or integrate with an external prisoner system. When configured, video media uses LiveKit WebRTC and recordings remain disabled by default.
 
 ## Run locally
 
@@ -36,12 +36,13 @@ Each workspace uses a different interaction pattern: timelines and action center
 - Visitor portal preview via the Staff view toggle
 - Fictional visitor, prisoner, appointment, and credit data
 - Audit activity surface and secure-mode messaging
+- Persisted visitor profile, relationship verification, prisoner, and appointment workflow APIs
 - LiveKit-backed Live Session V1 with visitor and controlled kiosk routes, scoped tokens, timer, reconnect states, staff monitoring authorization, and completion lifecycle
 - Responsive layout for desktop and smaller screens
 
 ## Production boundaries
 
-Before institutional use, the platform needs institutional authentication and facility-scoped authorization, a transactional credit ledger, verified payment webhooks, protected document storage, recording access approvals, immutable audit storage, retention controls, provider operations, and legal/privacy review. The prototype keeps those high-risk systems bounded and fictional.
+Before institutional use, the platform needs institutional OIDC/SAML authentication, visitor passwordless authentication, verified payment webhooks, protected evidence storage, full resource/policy enforcement, notification workers, recording access approvals, immutable audit export, retention controls, provider operations, and legal/privacy review. The current visitor and payment provider boundaries are still development-only.
 
 ## Backend foundation
 

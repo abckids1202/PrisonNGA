@@ -4,14 +4,14 @@ This prototype uses the platform's workspace authentication headers as its ident
 
 Implemented foundations:
 
-- D1 schema for users, staff profiles, facilities, roles, permissions, sessions, security events, audit events, outbox events, appointments, resources, and Visit Credit ledger entries.
+- D1 schema for users, staff profiles, facilities, roles, permissions, sessions, security events, audit events, outbox events, prisoners, visitor profiles, relationships, verification cases, appointments, resources, and Visit Credit ledger entries.
 - Facility-scoped authorization through `requirePermission()`.
 - Generic 401/403 responses that do not reveal whether an account exists.
 - Request IDs on protected responses.
 - Global security headers: CSP, frame denial, MIME sniffing protection, referrer policy, permissions policy, and no-store API responses.
 - Append-only audit and outbox records for facility-state changes.
 - Version checks for stale facility-state changes.
-- Mock role and permission seed data in `db/seed.sql`.
+- Fictional facility, prisoner, role, and permission seed data in `db/seed.sql`.
 - Live Session records are separate from appointment state, with short-lived role-scoped LiveKit tokens, provider webhook verification, session events, audit entries, and server-side end-time enforcement.
 
 ## Runtime setup
@@ -24,4 +24,4 @@ Implemented foundations:
 
 ## Important limitations
 
-This is not a production authorization deployment yet. PostgreSQL RLS, institutional SSO/passkeys, formal MFA step-up, managed secrets, WAF/rate limiting, background outbox workers, and independent security review still belong in the production hardening phase. Video, recordings, real payments, identity-document uploads, and prisoner data remain out of scope for this fictional prototype.
+This is not a production authorization deployment yet. Institutional OIDC/SAML, visitor passwordless authentication, formal MFA step-up, managed secrets, WAF/rate limiting, background outbox workers, payment provider verification, protected identity evidence, retention controls, and independent security review still belong in the hardening phase. Video is real when LiveKit is configured; recordings and real payment processing remain disabled until their operational controls are implemented.
