@@ -14,10 +14,11 @@ export async function GET() {
     const placeholders = eligibleStatuses.map(() => "?").join(", ");
     const result = await d1.prepare(`SELECT
         a.id, a.status AS appointment_status, a.prisoner_id, a.requested_start, a.requested_end, a.timezone, a.appointment_type, a.version AS appointment_version,
-        u.display_name AS visitor_name,
-        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.restriction_state, w.staff_notes, w.version, w.last_checked_at
+        u.display_name AS visitor_name, p.display_name AS prisoner_name,
+        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.restriction_state, w.assigned_room_id, w.assigned_kiosk_id, w.staff_notes, w.version, w.last_checked_at
       FROM appointments a
       INNER JOIN users u ON u.id = a.visitor_user_id
+      INNER JOIN prisoners p ON p.id = a.prisoner_id
       LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
       WHERE a.facility_id = ? AND a.status IN (${placeholders})
       ORDER BY a.requested_start ASC`).bind(authorization.facilityId, ...eligibleStatuses).all();
@@ -32,14 +33,14 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const authorization = await requirePermission("appointment.review");
-    const body = await request.json() as { appointmentId?: string; command?: string; expectedVersion?: number; reason?: string; staffNotes?: string; kioskId?: string };
+    const body = await request.json() as { appointmentId?: string; command?: string; expectedVersion?: number; reason?: string; staffNotes?: string; kioskId?: string; roomId?: string };
     if (!body.appointmentId || !commands.includes(body.command as WaitingCommand)) throw new SecurityError("INVALID_WAITING_ROOM_COMMAND", 400);
     const command = body.command as WaitingCommand;
     const reason = assertReason(body.reason);
     const d1 = await getD1();
     const current = await d1.prepare(`SELECT a.id, a.status AS appointment_status, a.version AS appointment_version, a.requested_start, a.requested_end, f.current_state,
         vs.id AS session_id, vs.status AS session_status, vs.provider_room_name,
-        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.restriction_state, w.version
+        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.restriction_state, w.assigned_room_id, w.assigned_kiosk_id, w.version
       FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id
       LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
       LEFT JOIN visit_sessions vs ON vs.appointment_id = a.id AND vs.facility_id = a.facility_id
@@ -48,12 +49,20 @@ export async function POST(request: Request) {
     const currentVersion = Number(current.version || 1);
     if (body.expectedVersion !== undefined && body.expectedVersion !== currentVersion) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
     if (!eligibleStatuses.includes(current.appointment_status as typeof eligibleStatuses[number])) throw new SecurityError("APPOINTMENT_NOT_ELIGIBLE", 409);
+    const currentState = String(current.state || "NOT_ARRIVED") as string;
+    if (command === "start_visit" && currentState !== "READY_TO_START") throw new SecurityError("WAITING_ROOM_NOT_READY", 409);
     if (command === "start_visit" && (current.current_state !== "NORMAL_OPERATIONS" || current.identity_state !== "pass" || current.camera_state !== "pass" || current.microphone_state !== "pass" || current.network_state !== "pass" || current.room_state !== "pass" || current.kiosk_state !== "pass" || current.restriction_state !== "pass")) throw new SecurityError("PRECALL_CHECKS_INCOMPLETE", 409);
+    if (command === "run_preflight" && !["VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT", "TECHNICAL_ISSUE", "STAFF_REVIEW"].includes(currentState)) throw new SecurityError("VISITORS_NOT_PRESENT", 409);
+    if (command === "reassign_kiosk" && !body.kioskId?.trim()) throw new SecurityError("KIOSK_ASSIGNMENT_REQUIRED", 400);
+    if (command === "reassign_kiosk" && body.kioskId?.trim()) {
+      const conflict = await d1.prepare(`SELECT rr.id FROM resource_reservations rr INNER JOIN appointments a2 ON a2.id = rr.appointment_id WHERE rr.facility_id = ? AND rr.resource_type = 'DEVICE' AND rr.resource_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.appointment_id <> ? AND a2.requested_start < ? AND a2.requested_end > ? LIMIT 1`).bind(authorization.facilityId, body.kioskId.trim(), body.appointmentId, current.requested_end, current.requested_start).first();
+      if (conflict) throw new SecurityError("KIOSK_RESOURCE_CONFLICT", 409);
+    }
     if (command === "start_visit" && current.session_id && ["CONNECTING", "ACTIVE", "RECONNECTING"].includes(String(current.session_status))) return securityResponse({ appointmentId: body.appointmentId, sessionId: String(current.session_id), state: "LIVE", version: currentVersion, idempotent: true }, 200, context.requestId);
 
     const now = new Date().toISOString();
     const nextVersion = currentVersion + 1;
-    const nextState = command === "admit_visitor" ? "VISITOR_WAITING" : command === "mark_late" ? "LATE" : command === "start_visit" ? "LIVE" : command === "contact_visitor" ? String(current.state || "NOT_ARRIVED") : command === "cancel_visit" ? "CANCELLED" : "READY_TO_START";
+    const nextState = command === "admit_visitor" ? "VISITOR_WAITING" : command === "mark_late" ? "LATE" : command === "start_visit" ? "LIVE" : command === "contact_visitor" ? currentState : command === "cancel_visit" ? "CANCELLED" : "READY_TO_START";
     const visitorPresence = command === "admit_visitor" || command === "run_preflight" || command === "retry_device" || command === "reassign_kiosk" || command === "start_visit" ? "present" : String(current.visitor_presence || "absent");
     const prisonerPresence = command === "run_preflight" || command === "retry_device" || command === "start_visit" ? "present" : String(current.prisoner_presence || "waiting");
     const checkState = command === "run_preflight" || command === "retry_device" || command === "reassign_kiosk" || command === "start_visit" ? "pass" : String(current.identity_state || "pending");
@@ -70,10 +79,10 @@ export async function POST(request: Request) {
       }
     }
     const statements = [
-      d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, prisoner_presence, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, staff_notes, version, last_checked_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = excluded.visitor_presence, prisoner_presence = excluded.prisoner_presence, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, room_state = excluded.room_state, kiosk_state = excluded.kiosk_state, restriction_state = excluded.restriction_state, staff_notes = COALESCE(excluded.staff_notes, waiting_room_sessions.staff_notes), version = excluded.version, last_checked_at = excluded.last_checked_at, updated_at = excluded.updated_at`)
-        .bind(body.appointmentId, authorization.facilityId, nextState, visitorPresence, prisonerPresence, checkState, checkState, checkState, checkState, "pass", checkState, current.current_state === "NORMAL_OPERATIONS" ? "pass" : "failed", body.staffNotes?.trim().slice(0, 500) || null, nextVersion, now, now, now),
+      d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, prisoner_presence, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = excluded.visitor_presence, prisoner_presence = excluded.prisoner_presence, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, room_state = excluded.room_state, kiosk_state = excluded.kiosk_state, restriction_state = excluded.restriction_state, assigned_room_id = COALESCE(excluded.assigned_room_id, waiting_room_sessions.assigned_room_id), assigned_kiosk_id = COALESCE(excluded.assigned_kiosk_id, waiting_room_sessions.assigned_kiosk_id), staff_notes = COALESCE(excluded.staff_notes, waiting_room_sessions.staff_notes), version = excluded.version, last_checked_at = excluded.last_checked_at, updated_at = excluded.updated_at`)
+        .bind(body.appointmentId, authorization.facilityId, nextState, visitorPresence, prisonerPresence, checkState, checkState, checkState, checkState, "pass", checkState, current.current_state === "NORMAL_OPERATIONS" ? "pass" : "failed", body.roomId?.trim() || String(current.assigned_room_id || "") || null, command === "reassign_kiosk" ? body.kioskId?.trim() : String(current.assigned_kiosk_id || "") || null, body.staffNotes?.trim().slice(0, 500) || null, nextVersion, now, now, now),
       d1.prepare("UPDATE appointments SET status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(nextAppointmentStatus, now, body.appointmentId, authorization.facilityId, Number(current.appointment_version || 1)),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)

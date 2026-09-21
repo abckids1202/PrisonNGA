@@ -258,6 +258,8 @@ export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   roomState: text("room_state").notNull().default("pass"),
   kioskState: text("kiosk_state").notNull().default("pending"),
   restrictionState: text("restriction_state").notNull().default("pass"),
+  assignedRoomId: text("assigned_room_id"),
+  assignedKioskId: text("assigned_kiosk_id"),
   staffNotes: text("staff_notes"),
   version: integer("version").notNull().default(1),
   lastCheckedAt: text("last_checked_at"),

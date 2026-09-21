@@ -16,6 +16,7 @@ type WaitingRecord = Appointment & {
   checks: ReadinessCheck[];
   blocker?: string;
   lastUpdated: string;
+  backendVersion?: number;
 };
 type Appointment = {
   id: string;
@@ -443,13 +444,62 @@ function buildWaitingRecord(appointment: Appointment, facilityState: string, ove
   };
 }
 
+type WaitingRoomApiRow = {
+  id: string;
+  state?: string | null;
+  visitor_presence?: string | null;
+  prisoner_presence?: string | null;
+  identity_state?: CheckState | null;
+  camera_state?: CheckState | null;
+  microphone_state?: CheckState | null;
+  network_state?: CheckState | null;
+  room_state?: CheckState | null;
+  kiosk_state?: CheckState | null;
+  restriction_state?: CheckState | null;
+  assigned_room_id?: string | null;
+  assigned_kiosk_id?: string | null;
+  staff_notes?: string | null;
+  version?: number | null;
+  last_checked_at?: string | null;
+};
+
+function hydrateWaitingRecord(base: WaitingRecord | null, row?: WaitingRoomApiRow): WaitingRecord | null {
+  if (!base || !row || row.state === "LIVE" || row.state === "CANCELLED") return base;
+  const states = new Map<string, CheckState>([
+    ["identity", row.identity_state || base.checks.find((check) => check.key === "identity")?.state || "pending"],
+    ["camera", row.camera_state || "pending"], ["microphone", row.microphone_state || "pending"],
+    ["network", row.network_state || "pending"], ["room", row.room_state || "pass"],
+    ["kiosk", row.kiosk_state || "pending"], ["restriction", row.restriction_state || "pass"],
+  ]);
+  const checks = base.checks.map((check) => ({ ...check, state: states.get(check.key) || check.state }));
+  const validStates = ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT", "TECHNICAL_ISSUE", "STAFF_REVIEW", "READY_TO_START", "LATE", "LIVE"];
+  const waitingState = row.state && validStates.includes(row.state) ? row.state as WaitingState : base.waitingState;
+  return { ...base, waitingState, room: row.assigned_room_id || base.room, kiosk: row.assigned_kiosk_id || base.kiosk, visitorPresence: row.visitor_presence === "present" ? "present" : "absent", prisonerPresence: row.prisoner_presence === "present" ? "present" : "waiting", checks, verification: states.get("identity") || base.verification, blocker: row.staff_notes || checks.find((check) => check.state === "failed" || check.state === "warning")?.detail, lastUpdated: row.last_checked_at ? `Checked ${new Date(row.last_checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : base.lastUpdated, backendVersion: Number(row.version || 1) };
+}
+
 function WaitingRoomPage({ appointments, facilityState, onUpdateAppointment, onNotify }: { appointments: Appointment[]; facilityState: string; onUpdateAppointment: (id: string, status: AppointmentStatus) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [lane, setLane] = useState("all");
   const [query, setQuery] = useState("");
   const [onlyAttention, setOnlyAttention] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [transitions, setTransitions] = useState<Record<string, WaitingState>>({});
-  const baseRecords = appointments.map((appointment) => buildWaitingRecord(appointment, facilityState, transitions[appointment.id])).filter((record): record is WaitingRecord => Boolean(record));
+  const [serverVisits, setServerVisits] = useState<WaitingRoomApiRow[]>([]);
+  const [, setLastSync] = useState("not synced");
+  async function refreshWaitingRoom() {
+    const response = await fetch("/api/control/waiting-room", { headers: { accept: "application/json" }, credentials: "include" });
+    if (!response.ok) throw new Error("Waiting Room data could not be refreshed from the staff API.");
+    const body = await response.json() as { visits?: WaitingRoomApiRow[] };
+    setServerVisits(body.visits || []);
+    setLastSync(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }
+  useEffect(() => {
+    let active = true;
+    const run = () => refreshWaitingRoom().catch(() => undefined);
+    run();
+    const timer = window.setInterval(() => { if (active) run(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+  const baseRecords = appointments.map((appointment) => hydrateWaitingRecord(buildWaitingRecord(appointment, facilityState, transitions[appointment.id]), serverVisits.find((visit) => visit.id === appointment.id))).filter((record): record is WaitingRecord => Boolean(record));
   const records = baseRecords.filter((record) => `${record.visitor} ${record.prisoner} ${record.id} ${record.room} ${record.kiosk}`.toLowerCase().includes(query.toLowerCase())).filter((record) => !onlyAttention || ["TECHNICAL_ISSUE", "STAFF_REVIEW", "LATE"].includes(record.waitingState));
   const counts = {
     ready: baseRecords.filter((record) => record.waitingState === "READY_TO_START").length,
@@ -461,37 +511,24 @@ function WaitingRoomPage({ appointments, facilityState, onUpdateAppointment, onN
   const laneRecords = (value: string) => records.filter((record) => value === "all" || laneFor(record.waitingState) === value);
   const selected = baseRecords.find((record) => record.id === selectedId) || null;
 
-  function notifyTransition(record: WaitingRecord, nextState: WaitingState, message: string, tone: Notice["tone"] = "success") {
-    setTransitions((current) => ({ ...current, [record.id]: nextState }));
-    onNotify(message, tone);
-  }
-
   async function action(record: WaitingRecord, kind: "admit" | "checks" | "contact" | "late" | "reassign" | "cancel" | "start") {
-    if (kind === "start") {
-      if (!record.checks.every((check) => check.state === "pass") || facilityState !== "NORMAL_OPERATIONS") {
-        onNotify("This visit cannot start until every pre-call check passes and the facility is operating normally.", "error");
-        return;
-      }
-      try {
-        const response = await fetch("/api/control/waiting-room", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ appointmentId: record.id, command: "start_visit", reason: "Staff started the authorized visit after all pre-call checks passed." }) });
-        const body = await response.json() as { error?: string };
-        if (!response.ok) throw new Error(body.error === "VIDEO_PROVIDER_NOT_CONFIGURED" ? "LiveKit is not configured for this environment yet. Add the server-side video provider settings before starting a real visit." : body.error || "The session could not be started.");
-        notifyTransition(record, "LIVE", `${record.visitor} moved to Live Sessions.`, "success");
-        onUpdateAppointment(record.id, "Live");
-        setSelectedId(null);
-      } catch (error) {
-        onNotify(error instanceof Error ? error.message : "The session could not be started.", "error");
-      }
+    if (kind === "start" && (!record.checks.every((check) => check.state === "pass") || facilityState !== "NORMAL_OPERATIONS")) {
+      onNotify("This visit cannot start until every pre-call check passes and the facility is operating normally.", "error");
       return;
     }
-    if (kind === "admit") return notifyTransition(record, "READY_TO_START", `${record.visitor} admitted. Pre-call checks are ready to run.`, "success");
-    if (kind === "checks") return notifyTransition(record, "READY_TO_START", `Connection test completed for ${record.visitor}. All required checks passed.`, "success");
-    if (kind === "contact") return onNotify(`Secure message sent to the ${record.prisoner} unit about ${record.id}.`, "info");
-    if (kind === "late") return notifyTransition(record, "LATE", `${record.visitor} marked late. Staff follow-up is required.`, "warning");
-    if (kind === "reassign") return notifyTransition(record, "READY_TO_START", `${record.kiosk} released. ${record.visitor} is ready for the replacement kiosk.`, "success");
-    if (kind === "cancel") {
-      onUpdateAppointment(record.id, "Blocked");
-      notifyTransition(record, "STAFF_REVIEW", `${record.visitor} was held for cancellation review.`, "warning");
+    const command = ({ admit: "admit_visitor", checks: "run_preflight", contact: "contact_visitor", late: "mark_late", reassign: "reassign_kiosk", cancel: "cancel_visit", start: "start_visit" } as const)[kind];
+    try {
+      const response = await fetch("/api/control/waiting-room", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ appointmentId: record.id, command, expectedVersion: record.backendVersion, kioskId: kind === "reassign" ? "Kiosk 06" : undefined, reason: `Staff selected ${command.replaceAll("_", " ")} from the Waiting Room workflow.`, staffNotes: kind === "contact" ? "Staff contacted the assigned unit for a readiness update." : undefined }) });
+      const body = await response.json() as { error?: string; state?: WaitingState };
+      if (!response.ok) throw new Error(body.error === "VIDEO_PROVIDER_NOT_CONFIGURED" ? "LiveKit is not configured for this environment yet." : body.error || "Waiting Room action was rejected by the staff API.");
+      if (body.state) setTransitions((current) => ({ ...current, [record.id]: body.state as WaitingState }));
+      await refreshWaitingRoom();
+      if (kind === "start") onUpdateAppointment(record.id, "Live");
+      if (kind === "cancel") onUpdateAppointment(record.id, "Blocked");
+      onNotify(`${record.visitor} updated: ${command.replaceAll("_", " ")}.`, kind === "late" ? "warning" : "success");
+      if (kind === "start" || kind === "cancel") setSelectedId(null);
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : "Waiting Room action failed.", "error");
     }
   }
 
