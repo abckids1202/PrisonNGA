@@ -85,6 +85,15 @@ const activities = [
   ["09:46", "Waiting room opened for the morning schedule", "System"],
 ] as const;
 
+function mapBackendAppointment(row: { id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; appointment_type?: string; status: string }): Appointment {
+  const start = new Date(row.requested_start);
+  const end = new Date(row.requested_end);
+  const status: AppointmentStatus = row.status === "APPROVED" ? "Approved" : row.status === "IN_PROGRESS" ? "Live" : row.status === "COMPLETED" ? "Completed" : row.status === "REJECTED" || row.status === "CANCELLED_BY_FACILITY" ? "Blocked" : row.status === "UNDER_REVIEW" ? "Requires action" : "Ready";
+  const visitor = row.visitor_name || "Visitor";
+  const prisoner = row.prisoner_name || "Prisoner";
+  return { id: row.id, visitor, visitorInitials: visitor.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), prisoner, time: `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}–${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, date: start.toLocaleDateString(), room: "Unassigned", kiosk: "Unassigned", type: row.appointment_type === "LEGAL" ? "Legal" : "Family", status };
+}
+
 function Avatar({ initials, tone = "blue" }: { initials: string; tone?: string }) {
   return <span className={`sv3-avatar sv3-avatar-${tone}`}>{initials}</span>;
 }
@@ -155,6 +164,19 @@ export default function ControlApp() {
 
   useEffect(() => {
     let active = true;
+    fetch("/api/control/appointments", { headers: { accept: "application/json" }, credentials: "include" }).then(async (response) => {
+      if (!active || !response.ok) return;
+      const body = await response.json() as { appointments?: Array<{ id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; appointment_type?: string; status: string }> };
+      if (body.appointments) {
+        setAppointments(body.appointments.map(mapBackendAppointment));
+        setBackendStatus("connected");
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     fetch("/api/facility/state", { headers: { accept: "application/json" } }).then(async (response) => {
       if (!response.ok) return;
       const body = await response.json();
@@ -195,9 +217,24 @@ export default function ControlApp() {
     if (previousState === nextState) notify("No facility state change was needed.");
   }
 
-  function updateAppointment(id: string, status: AppointmentStatus) {
+  async function updateAppointment(id: string, status: AppointmentStatus) {
+    const command = status === "Approved" ? "approve" : status === "Blocked" ? "reject" : "request_info";
+    try {
+      const response = await fetch("/api/control/appointments", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ appointmentId: id, command, reason: `Staff selected ${command.replaceAll("_", " ")} from the appointment review workflow.` }) });
+      if (response.ok) {
+        setBackendStatus("connected");
+        const body = await response.json() as { status?: string };
+        setAppointments((current) => current.map((appointment) => appointment.id === id ? { ...appointment, status: body.status === "APPROVED" ? "Approved" : body.status === "REJECTED" ? "Blocked" : appointment.status, issue: undefined } : appointment));
+        notify(status === "Approved" ? "Visit approved and persisted to the facility workflow." : `Visit decision persisted as ${command.replaceAll("_", " ")}.`, status === "Approved" ? "success" : "warning");
+        setSelectedAppointment(null);
+        setApprovalAppointment(null);
+        return;
+      }
+    } catch {
+      // The local demo fallback below remains available when the protected staff API is not provisioned.
+    }
     setAppointments((current) => current.map((appointment) => appointment.id === id ? { ...appointment, status, issue: undefined } : appointment));
-    notify(status === "Approved" ? "Visit approved. Room, kiosk, credit, and audit actions queued." : `Visit marked ${status.toLowerCase()}.`, status === "Approved" ? "success" : "warning");
+    notify(status === "Approved" ? "Demo decision applied locally; staff API is not connected." : `Demo visit marked ${status.toLowerCase()}.`, status === "Approved" ? "success" : "warning");
     setSelectedAppointment(null);
     setApprovalAppointment(null);
   }
