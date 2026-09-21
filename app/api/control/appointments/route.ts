@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { releaseVisitCredit, reserveVisitCredit } from "../../../../lib/server/credits";
+import { allocateVisitResources, releaseVisitResources } from "../../../../lib/server/resources";
 import { appendAuditAndOutbox } from "../../../../lib/server/events";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     if (!appointmentId || !commands.includes(command)) throw new SecurityError("INVALID_APPOINTMENT_COMMAND", 400);
     const reason = assertReason(body.reason);
     const d1 = await getD1();
-    const current = await d1.prepare(`SELECT a.id, a.facility_id, a.visitor_user_id, a.prisoner_id, a.status, a.version, p.visitation_status, ca.id AS credit_account_id, ca.available_credits FROM appointments a INNER JOIN prisoners p ON p.id = a.prisoner_id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id WHERE a.id = ? AND a.facility_id = ?`).bind(appointmentId, authorization.facilityId).first<{ id: string; facility_id: string; visitor_user_id: string; prisoner_id: string; status: string; version: number; visitation_status: string; credit_account_id: string | null; available_credits: number | null }>();
+    const current = await d1.prepare(`SELECT a.id, a.facility_id, a.visitor_user_id, a.prisoner_id, a.status, a.version, a.requested_start, a.requested_end, p.visitation_status, ca.id AS credit_account_id, ca.available_credits FROM appointments a INNER JOIN prisoners p ON p.id = a.prisoner_id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id WHERE a.id = ? AND a.facility_id = ?`).bind(appointmentId, authorization.facilityId).first<{ id: string; facility_id: string; visitor_user_id: string; prisoner_id: string; status: string; version: number; requested_start: string; requested_end: string; visitation_status: string; credit_account_id: string | null; available_credits: number | null }>();
     if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_APPOINTMENT", 409);
     const nextStatus = command === "approve" ? "APPROVED" : command === "reject" ? "REJECTED" : command === "request_info" ? "UNDER_REVIEW" : "CANCELLED_BY_FACILITY";
@@ -45,9 +46,18 @@ export async function POST(request: Request) {
       d1.prepare(`INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), appointmentId, current.status, nextStatus, authorization.userId, `STAFF_${command.toUpperCase()}`, reason, correlationId, now),
     ];
     let reservationCreated = false;
+    let resourcesAllocated = false;
+    let allocation: { roomId: string; roomName: string; deviceId: string; deviceName: string } | null = null;
     if (command === "approve" && current.credit_account_id) {
       await reserveVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason });
       reservationCreated = true;
+      try {
+        allocation = await allocateVisitResources(d1, { facilityId: authorization.facilityId, appointmentId, startsAt: current.requested_start, endsAt: current.requested_end });
+        resourcesAllocated = true;
+      } catch (error) {
+        await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Resource allocation failed; credit reservation released." });
+        throw error;
+      }
     }
     let results: Array<{ meta: { changes: number } }>;
     try {
@@ -56,20 +66,23 @@ export async function POST(request: Request) {
       if (reservationCreated && current.credit_account_id) {
         await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Appointment state update failed; reservation released." });
       }
+      if (resourcesAllocated) await releaseVisitResources(d1, appointmentId, authorization.facilityId);
       throw error;
     }
     if (!results[0]?.meta.changes) {
       if (reservationCreated && current.credit_account_id) {
         await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Appointment was already changed; reservation released." });
       }
+      if (resourcesAllocated) await releaseVisitResources(d1, appointmentId, authorization.facilityId);
       throw new SecurityError("STALE_APPOINTMENT", 409);
     }
     if (command === "approve" && !reservationCreated) throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
     if (command === "cancel" && current.credit_account_id && ["APPROVED", "WAITING"].includes(current.status)) {
       await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Appointment cancelled by facility." });
+      await releaseVisitResources(d1, appointmentId, authorization.facilityId);
     }
     await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Scheduling Officer", facilityId: authorization.facilityId, actionType: `APPOINTMENT_${command.toUpperCase()}`, entityType: "appointment", entityId: appointmentId, reason, oldValues: { status: current.status }, newValues: { status: nextStatus }, requestId: context.requestId, correlationId, eventType: `APPOINTMENT_${command.toUpperCase()}`, payload: { appointmentId, status: nextStatus, visitorUserId: current.visitor_user_id } });
-    return securityResponse({ appointmentId, status: nextStatus, version: current.version + 1, correlationId }, 200, context.requestId);
+    return securityResponse({ appointmentId, status: nextStatus, version: current.version + 1, allocation, correlationId }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }

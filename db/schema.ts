@@ -245,6 +245,19 @@ export const resourceReservations = sqliteTable("resource_reservations", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ resourceIdx: index("resource_reservations_resource_idx").on(table.resourceType, table.resourceId, table.startsAt), appointmentIdx: index("resource_reservations_appointment_idx").on(table.appointmentId) }));
 
+export const resources = sqliteTable("resources", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  resourceType: text("resource_type", { enum: ["ROOM", "DEVICE"] }).notNull(),
+  displayName: text("display_name").notNull(),
+  status: text("status", { enum: ["AVAILABLE", "ONLINE", "RESERVED", "IN_USE", "OFFLINE", "MAINTENANCE"] }).notNull().default("AVAILABLE"),
+  roomId: text("room_id"),
+  healthState: text("health_state", { enum: ["HEALTHY", "WARNING", "FAILED", "UNKNOWN"] }).notNull().default("UNKNOWN"),
+  lastHeartbeatAt: text("last_heartbeat_at"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ facilityTypeIdx: index("resources_facility_type_idx").on(table.facilityId, table.resourceType, table.status), facilityNameIdx: uniqueIndex("resources_facility_name_idx").on(table.facilityId, table.displayName) }));
+
 export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   appointmentId: text("appointment_id").primaryKey().references(() => appointments.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),

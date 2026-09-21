@@ -6,6 +6,18 @@ INSERT INTO prisoners (id, facility_id, prisoner_number, display_name, housing_u
 VALUES ('prisoner-ar-001', 'facility-central-001', 'AR-2041', 'A. Rahman', 'Unit 4', 'ACTIVE', 'APPROVED')
 ON CONFLICT(id) DO NOTHING;
 
+INSERT INTO resources (id, facility_id, resource_type, display_name, status, room_id, health_state, last_heartbeat_at)
+VALUES
+  ('room-01', 'facility-central-001', 'ROOM', 'Room 01', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('room-02', 'facility-central-001', 'ROOM', 'Room 02', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('room-03', 'facility-central-001', 'ROOM', 'Room 03', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('room-04', 'facility-central-001', 'ROOM', 'Room 04', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('kiosk-02', 'facility-central-001', 'DEVICE', 'Kiosk 02', 'ONLINE', 'room-01', 'HEALTHY', CURRENT_TIMESTAMP),
+  ('kiosk-04', 'facility-central-001', 'DEVICE', 'Kiosk 04', 'OFFLINE', 'room-03', 'FAILED', datetime('now', '-14 minutes')),
+  ('kiosk-06', 'facility-central-001', 'DEVICE', 'Kiosk 06', 'ONLINE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('kiosk-08', 'facility-central-001', 'DEVICE', 'Kiosk 08', 'MAINTENANCE', NULL, 'WARNING', CURRENT_TIMESTAMP)
+ON CONFLICT(id) DO NOTHING;
+
 INSERT INTO roles (id, name, description) VALUES
   ('role-scheduling-officer', 'Scheduling Officer', 'Reviews and coordinates visitation appointments.'),
   ('role-verification-officer', 'Verification Officer', 'Reviews visitor identity and relationship evidence.'),

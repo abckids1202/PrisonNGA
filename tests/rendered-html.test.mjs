@@ -88,6 +88,12 @@ test("protects the Waiting Room operations API", async () => {
   assert.equal(body.requestId, response.headers.get("x-request-id"));
 });
 
+test("protects the facility resource catalog", async () => {
+  const response = await renderApi("/api/control/resources");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
 test("protects kiosk token issuance", async () => {
   const response = await renderApi("/api/kiosk/visits/SV-260814-018/live-session", "POST");
   assert.equal(response.status, 401);
