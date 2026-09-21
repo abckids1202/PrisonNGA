@@ -36,6 +36,19 @@ export const facilities = sqliteTable("facilities", {
   ...timestamps,
 });
 
+export const visitPolicies = sqliteTable("visit_policies", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  minDurationMinutes: integer("min_duration_minutes").notNull().default(15),
+  maxDurationMinutes: integer("max_duration_minutes").notNull().default(30),
+  minAdvanceMinutes: integer("min_advance_minutes").notNull().default(60),
+  maxAdvanceDays: integer("max_advance_days").notNull().default(30),
+  dailyStartTime: text("daily_start_time").notNull().default("08:00"),
+  dailyEndTime: text("daily_end_time").notNull().default("17:00"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ facilityIdx: uniqueIndex("visit_policies_facility_idx").on(table.facilityId) }));
+
 export const staffProfiles = sqliteTable("staff_profiles", {
   userId: text("user_id").primaryKey().references(() => users.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),

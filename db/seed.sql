@@ -2,6 +2,10 @@ INSERT INTO facilities (id, name, timezone, current_state)
 VALUES ('facility-central-001', 'Central Correctional Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS')
 ON CONFLICT(id) DO NOTHING;
 
+INSERT INTO visit_policies (id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, version)
+VALUES ('policy-central-default', 'facility-central-001', 15, 30, 60, 30, '08:00', '17:00', 1)
+ON CONFLICT(facility_id) DO NOTHING;
+
 INSERT INTO prisoners (id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status)
 VALUES ('prisoner-ar-001', 'facility-central-001', 'AR-2041', 'A. Rahman', 'Unit 4', 'ACTIVE', 'APPROVED')
 ON CONFLICT(id) DO NOTHING;

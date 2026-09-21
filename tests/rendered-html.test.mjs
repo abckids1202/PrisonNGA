@@ -133,6 +133,10 @@ test("protects visitor-owned workflow APIs", async () => {
   });
   assert.equal(forgedWorkspaceIdentity.status, 401);
   assert.equal((await forgedWorkspaceIdentity.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const availability = await renderApi("/api/visitor/availability?facilityId=facility-central-001&prisonerId=prisoner-ar-001&date=2026-09-22");
+  assert.equal(availability.status, 401);
+  assert.equal((await availability.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
 test("protects staff verification workflow", async () => {
