@@ -5,6 +5,7 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  EVIDENCE_BUCKET?: R2Bucket;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -47,6 +48,15 @@ async function processOutbox(env: Env): Promise<void> {
   }
 }
 
+async function purgeExpiredEvidence(env: Env): Promise<void> {
+  if (!env.EVIDENCE_BUCKET) return;
+  const rows = await env.DB.prepare("SELECT id, storage_key FROM evidence_documents WHERE status = 'AVAILABLE' AND legal_hold = 0 AND retention_until <= CURRENT_TIMESTAMP LIMIT 50").all<{ id: string; storage_key: string }>();
+  for (const row of rows.results) {
+    await env.EVIDENCE_BUCKET.delete(row.storage_key);
+    await env.DB.prepare("UPDATE evidence_documents SET status = 'DELETED', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'AVAILABLE' AND legal_hold = 0").bind(row.id).run();
+  }
+}
+
 function notificationCopy(eventType: string): { title: string; body: string } {
   if (eventType === "APPOINTMENT_APPROVE") return { title: "Your visit was approved", body: "Your appointment is ready. Open Visit Details to prepare." };
   if (eventType === "APPOINTMENT_REJECT") return { title: "Your visit needs attention", body: "Your appointment request was not approved. Open Visit Details to see the reason." };
@@ -64,7 +74,7 @@ function notificationCopy(eventType: string): { title: string; body: string } {
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(processOutbox(env));
+    ctx.waitUntil(Promise.all([processOutbox(env), purgeExpiredEvidence(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);

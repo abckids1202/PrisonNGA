@@ -25,4 +25,4 @@ Implemented foundations:
 
 ## Important limitations
 
-This is not a production authorization deployment yet. Institutional OIDC/SAML, visitor passwordless authentication, formal MFA step-up, managed secrets, WAF/rate limiting, background outbox workers, payment provider verification, protected identity evidence, retention controls, and independent security review still belong in the hardening phase. Video is real when LiveKit is configured; recordings and real payment processing remain disabled until their operational controls are implemented.
+This is not a production authorization deployment yet. Institutional OIDC/SAML configuration, formal MFA step-up, managed secrets, WAF/rate limiting, payment provider verification, visitor delivery, and independent security review are still required. Identity evidence metadata is facility-scoped and raw uploads fail closed unless the `EVIDENCE_BUCKET` R2 binding exists; retention policies, legal holds, and scheduled deletion are enforced server-side. Video is real when LiveKit is configured; recordings and real payment processing remain disabled until their operational controls are implemented.

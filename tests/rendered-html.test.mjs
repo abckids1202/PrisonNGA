@@ -122,12 +122,29 @@ test("protects visitor-owned workflow APIs", async () => {
   const relationships = await renderApi("/api/visitor/relationships");
   assert.equal(relationships.status, 401);
   assert.equal((await relationships.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const evidence = await renderApi("/api/visitor/verification/evidence");
+  assert.equal(evidence.status, 401);
+  assert.equal((await evidence.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
 test("protects staff verification workflow", async () => {
   const response = await renderApi("/api/control/verification");
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const evidence = await renderApi("/api/control/verification/evidence?verificationCaseId=case-1");
+  assert.equal(evidence.status, 401);
+  assert.equal((await evidence.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
+test("protects retention and legal hold controls", async () => {
+  const retention = await renderApi("/api/control/retention");
+  assert.equal(retention.status, 401);
+  assert.equal((await retention.json()).error, "AUTHENTICATION_REQUIRED");
+  const holds = await renderApi("/api/control/legal-holds");
+  assert.equal(holds.status, 401);
+  assert.equal((await holds.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
 test("protects persisted appointment workflows", async () => {

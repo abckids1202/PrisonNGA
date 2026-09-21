@@ -42,7 +42,7 @@ Each workspace uses a different interaction pattern: timelines and action center
 
 ## Production boundaries
 
-Before institutional use, the platform needs institutional OIDC/SAML authentication, visitor passwordless authentication, verified payment webhooks, protected evidence storage, full resource/policy enforcement, notification workers, recording access approvals, immutable audit export, retention controls, provider operations, and legal/privacy review. The current visitor and payment provider boundaries are still development-only.
+Before institutional use, the platform still needs configured institutional OIDC/SAML authentication, a real visitor delivery provider, a real payment adapter, full resource/policy enforcement, notification delivery adapters, immutable audit export, provider operations, and legal/privacy review. Verification evidence metadata, retention policies, legal holds, and scheduled purge are now modeled; raw evidence upload remains fail-closed until an R2 `EVIDENCE_BUCKET` binding is configured. Recordings remain disabled.
 
 ## Backend foundation
 

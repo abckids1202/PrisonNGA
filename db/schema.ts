@@ -228,6 +228,48 @@ export const verificationCases = sqliteTable("verification_cases", {
   facilityStatusIdx: index("verification_cases_facility_status_idx").on(table.facilityId, table.status),
 }));
 
+export const evidenceDocuments = sqliteTable("evidence_documents", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  verificationCaseId: text("verification_case_id").notNull().references(() => verificationCases.id),
+  visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
+  storageKey: text("storage_key").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  contentType: text("content_type").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  sha256: text("sha256").notNull(),
+  status: text("status", { enum: ["PENDING_UPLOAD", "AVAILABLE", "QUARANTINED", "DELETED"] }).notNull().default("AVAILABLE"),
+  retentionUntil: text("retention_until").notNull(),
+  legalHold: integer("legal_hold", { mode: "boolean" }).notNull().default(false),
+  createdBy: text("created_by").notNull(),
+  deletedAt: text("deleted_at"),
+  ...timestamps,
+}, (table) => ({ caseIdx: index("evidence_documents_case_idx").on(table.verificationCaseId, table.createdAt), facilityRetentionIdx: index("evidence_documents_retention_idx").on(table.facilityId, table.retentionUntil, table.legalHold) }));
+
+export const retentionPolicies = sqliteTable("retention_policies", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  evidenceType: text("evidence_type").notNull().default("VISITOR_VERIFICATION"),
+  retentionDays: integer("retention_days").notNull(),
+  version: integer("version").notNull().default(1),
+  effectiveAt: text("effective_at").notNull(),
+  createdBy: text("created_by").notNull(),
+  ...timestamps,
+}, (table) => ({ facilityTypeIdx: uniqueIndex("retention_policies_facility_type_idx").on(table.facilityId, table.evidenceType) }));
+
+export const legalHolds = sqliteTable("legal_holds", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status", { enum: ["ACTIVE", "RELEASED"] }).notNull().default("ACTIVE"),
+  createdBy: text("created_by").notNull(),
+  releasedBy: text("released_by"),
+  releasedAt: text("released_at"),
+  ...timestamps,
+}, (table) => ({ entityIdx: index("legal_holds_entity_idx").on(table.facilityId, table.entityType, table.entityId, table.status) }));
+
 export const appointmentStatusEvents = sqliteTable("appointment_status_events", {
   id: text("id").primaryKey(),
   appointmentId: text("appointment_id").notNull().references(() => appointments.id),
