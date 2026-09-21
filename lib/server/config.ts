@@ -36,7 +36,9 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (value(env, "VIDEO_PROVIDER") !== "livekit") missing.push("VIDEO_PROVIDER=livekit");
   for (const key of ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]) if (!value(env, key)) missing.push(key);
   if (!env.EVIDENCE_BUCKET) missing.push("EVIDENCE_BUCKET");
-  if (value(env, "PAYMENT_PROVIDER") === "none" || !value(env, "PAYMENT_PROVIDER")) missing.push("PAYMENT_PROVIDER");
+  if (value(env, "PAYMENT_PROVIDER") !== "webhook") missing.push("PAYMENT_PROVIDER=webhook");
+  if (!/^https:\/\//i.test(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL");
+  if (!value(env, "PAYMENT_PROVIDER_SECRET")) missing.push("PAYMENT_PROVIDER_SECRET");
   if (!value(env, "PAYMENT_WEBHOOK_SECRET")) missing.push("PAYMENT_WEBHOOK_SECRET");
   const staffProvider = value(env, "STAFF_AUTH_PROVIDER");
   if (staffProvider !== "oidc" && staffProvider !== "saml") missing.push("STAFF_AUTH_PROVIDER");
