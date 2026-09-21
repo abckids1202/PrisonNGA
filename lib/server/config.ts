@@ -53,6 +53,9 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (staffProvider === "saml") {
     if (!value(env, "STAFF_SAML_ENTITY_ID")) missing.push("STAFF_SAML_ENTITY_ID");
     if (!/^https:\/\//i.test(value(env, "STAFF_SAML_METADATA_URL"))) missing.push("STAFF_SAML_METADATA_URL");
+    if (!/^https:\/\//i.test(value(env, "STAFF_SAML_ENTRY_POINT"))) missing.push("STAFF_SAML_ENTRY_POINT");
+    if (!value(env, "STAFF_SAML_IDP_CERT")) missing.push("STAFF_SAML_IDP_CERT");
+    if (!/^https:\/\//i.test(value(env, "STAFF_SAML_CALLBACK_URI"))) missing.push("STAFF_SAML_CALLBACK_URI");
   }
   return { environment, ok: missing.length === 0, missing: [...new Set(missing)], warnings };
 }

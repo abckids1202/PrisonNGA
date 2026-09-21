@@ -25,5 +25,11 @@ export async function getStaffFederationConfig(): Promise<StaffFederationConfig>
   let validMetadata = false;
   try { validMetadata = Boolean(metadataUrl && new URL(metadataUrl).protocol === "https:"); } catch { validMetadata = false; }
   if (metadataUrl && !validMetadata) missing.push("STAFF_SAML_METADATA_HTTPS");
-  return { provider, configured: missing.length === 0, missing, entityId: entityId || undefined, metadataUrl: metadataUrl || undefined };
+    const entryPoint = await getRuntimeValue("STAFF_SAML_ENTRY_POINT");
+    const idpCert = await getRuntimeValue("STAFF_SAML_IDP_CERT");
+    const callbackUri = await getRuntimeValue("STAFF_SAML_CALLBACK_URI");
+    if (!entryPoint) missing.push("STAFF_SAML_ENTRY_POINT");
+    if (!idpCert) missing.push("STAFF_SAML_IDP_CERT");
+    if (!callbackUri) missing.push("STAFF_SAML_CALLBACK_URI");
+    return { provider, configured: missing.length === 0, missing, entityId: entityId || undefined, metadataUrl: metadataUrl || undefined };
 }

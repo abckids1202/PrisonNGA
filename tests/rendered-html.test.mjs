@@ -245,6 +245,12 @@ test("exposes a fail-closed staff federation configuration", async () => {
   assert.equal(body.staffFederation.configured, false);
 });
 
+test("fails closed when SAML staff authentication is not configured", async () => {
+  const response = await renderApi("/api/auth/staff/saml/start");
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "STAFF_SAML_NOT_CONFIGURED");
+});
+
 test("declares the outbox worker schedule in the generated Worker build", async () => {
   const workerConfig = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(new URL("../dist/server/wrangler.json", import.meta.url), "utf8")));
   assert.deepEqual(workerConfig.triggers?.crons, ["*/1 * * * *"]);
