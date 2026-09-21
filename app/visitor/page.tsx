@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import "./visitor-auth.css";
 
 type Tab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
 type NoticeTone = "success" | "info";
+type VisitorAppointmentRecord = { id: string; status: string; requested_start: string; requested_end: string; prisoner_name: string; appointment_type: string };
+type VisitorRelationshipRecord = { id: string; status: string; prisoner_name: string; relationship_type: string };
+type VisitorCreditAccount = { available_credits: number; reserved_credits: number; facility_name: string };
+type VisitorData = { appointments: VisitorAppointmentRecord[]; relationships: VisitorRelationshipRecord[]; credits: VisitorCreditAccount[]; unreadNotifications: number; loading: boolean };
+
+const VisitorDataContext = createContext<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true });
 
 const navItems: { label: Tab; icon: string }[] = [
   { label: "Home", icon: "⌂" },
@@ -43,6 +49,7 @@ function VisitorAvatar({ initials, color = "sage" }: { initials: string; color?:
 export default function VisitorPage() {
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "signed_out">(() => typeof window === "undefined" ? "authenticated" : "loading");
   const [visitorName, setVisitorName] = useState("Sarah");
+  const [visitorData, setVisitorData] = useState<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true });
   const [tab, setTab] = useState<Tab>(() => {
     if (typeof window === "undefined") return "Home";
     const requested = new URLSearchParams(window.location.search).get("section");
@@ -70,6 +77,21 @@ export default function VisitorPage() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    if (authState !== "authenticated") return;
+    let active = true;
+    Promise.all([
+      fetch("/api/visitor/appointments", { credentials: "include" }).then((response) => response.ok ? response.json() : { appointments: [] }),
+      fetch("/api/visitor/relationships", { credentials: "include" }).then((response) => response.ok ? response.json() : { relationships: [] }),
+      fetch("/api/visitor/credits", { credentials: "include" }).then((response) => response.ok ? response.json() : { accounts: [] }),
+      fetch("/api/visitor/notifications", { credentials: "include" }).then((response) => response.ok ? response.json() : { notifications: [] }),
+    ]).then(([appointments, relationships, credits, notifications]) => {
+      if (!active) return;
+      setVisitorData({ appointments: appointments.appointments || [], relationships: relationships.relationships || [], credits: credits.accounts || [], unreadNotifications: (notifications.notifications || []).filter((item: { status?: string }) => item.status !== "READ").length, loading: false });
+    }).catch(() => active && setVisitorData((current) => ({ ...current, loading: false })));
+    return () => { active = false; };
+  }, [authState]);
+
   function action(message: string, tone: NoticeTone = "success") {
     setNotice({ message, tone });
     window.setTimeout(() => setNotice(null), 3600);
@@ -88,6 +110,7 @@ export default function VisitorPage() {
   if (authState !== "authenticated") return <VisitorAuthGate loading={authState === "loading"} onAuthenticated={(name) => { setVisitorName(name); setAuthState("authenticated"); }} />;
 
   return (
+    <VisitorDataContext.Provider value={visitorData}>
     <div className="sv3-visitor-app sv4-visitor-app">
       <header className="sv4-header">
         <div className="sv4-header-inner">
@@ -105,7 +128,7 @@ export default function VisitorPage() {
           </nav>
           <div className="sv4-header-actions">
             <span className="sv4-secure-note"><i />Secure session</span>
-            <button className={`sv4-icon-button ${notificationsOpen ? "active" : ""}`} onClick={() => setNotificationsOpen((value) => !value)} aria-label="Open notifications">♢<b>2</b></button>
+            <button className={`sv4-icon-button ${notificationsOpen ? "active" : ""}`} onClick={() => setNotificationsOpen((value) => !value)} aria-label="Open notifications">♢{visitorData.unreadNotifications > 0 && <b>{visitorData.unreadNotifications}</b>}</button>
             <button className="sv4-profile-chip" onClick={() => navigate("Account")} aria-label="Open account">
               <VisitorAvatar initials={visitorName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()} color="coral" /><span>{visitorName.split(" ")[0]}</span><em>⌄</em>
             </button>
@@ -132,6 +155,7 @@ export default function VisitorPage() {
 
       {notice && <div className={`sv4-toast sv4-toast-${notice.tone}`} role="status"><span>{notice.tone === "success" ? "✓" : "i"}</span>{notice.message}</div>}
     </div>
+    </VisitorDataContext.Provider>
   );
 }
 
@@ -190,10 +214,14 @@ function VisitorHome({
   onOpenVisit: () => void;
   onNavigate: (tab: Tab) => void;
 }) {
+  const { appointments, relationships, credits, loading } = useContext(VisitorDataContext);
   const [slide, setSlide] = useState(0);
   const [paused, setPaused] = useState(false);
+  const nextVisit = appointments.find((visit) => ["APPROVED", "WAITING", "IN_PROGRESS"].includes(visit.status));
+  const connection = relationships.find((item) => item.status === "APPROVED");
+  const availableCredits = credits.reduce((sum, account) => sum + Number(account.available_credits || 0), 0);
   const slides = [
-    { eyebrow: "Your next visit", title: "Your visit is tomorrow", copy: "A. Rahman is ready to see you at Central Facility.", button: "Prepare for visit", status: "VISIT APPROVED", theme: "peach", action: onOpenVisit },
+    { eyebrow: "Your next visit", title: nextVisit ? "Your visit is scheduled" : "Plan your first visit", copy: nextVisit ? `${nextVisit.prisoner_name} is ready to see you.` : "Start by adding a connection and submitting a visit request.", button: nextVisit ? "Prepare for visit" : "View connections", status: nextVisit ? "VISIT APPROVED" : "GET STARTED", theme: "peach", action: nextVisit ? onOpenVisit : () => onNavigate("Connections") },
     { eyebrow: "Before your visit", title: "Make sure you’re ready", copy: "Test your camera, microphone, and connection before tomorrow.", button: "Check my device", status: "RECOMMENDED", theme: "blue", action: () => onAction("Device check is ready when you are.", "info") },
     { eyebrow: "Good to know", title: "Join 10 minutes early", copy: "Your waiting room opens at 09:50 WIB so you have time to settle in.", button: "View visit guidelines", status: "READY WHEN YOU ARE", theme: "sage", action: () => onAction("Guidelines opened — you’re all set.", "info") },
   ];
@@ -227,14 +255,14 @@ function VisitorHome({
         <QuickAction icon="?" title="Help center" copy="Answers and visitor support" onClick={() => onAction("Our visitor support team is here to help.", "info")} tone="rose" />
       </div></section>
 
-      <section className="sv4-next-visit-card" aria-label="NEXT VISIT: See you tomorrow with A. Rahman" onClick={onOpenVisit} role="button" tabIndex={0} onKeyDown={(event) => event.key === "Enter" && onOpenVisit()}>
-        <div className="sv4-next-visit-main"><div className="sv4-card-overline"><span>Your next visit</span><VisitorStatus>APPROVED</VisitorStatus></div><h2>See you tomorrow</h2><div className="sv4-person-row"><VisitorAvatar initials="AR" /><div><strong>A. Rahman</strong><span>Family visit · Central Facility</span></div></div></div>
-        <div className="sv4-next-visit-time"><span>Tomorrow</span><strong>10:00–10:20</strong><small>Waiting room opens at 09:50</small></div><span className="sv4-round-arrow">→</span>
-      </section>
+      {nextVisit ? <section className="sv4-next-visit-card" aria-label={`NEXT VISIT with ${nextVisit.prisoner_name}`} onClick={onOpenVisit} role="button" tabIndex={0} onKeyDown={(event) => event.key === "Enter" && onOpenVisit()}>
+        <div className="sv4-next-visit-main"><div className="sv4-card-overline"><span>Your next visit</span><VisitorStatus>APPROVED</VisitorStatus></div><h2>Visit scheduled</h2><div className="sv4-person-row"><VisitorAvatar initials={nextVisit.prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2)} /><div><strong>{nextVisit.prisoner_name}</strong><span>{nextVisit.appointment_type} visit · Central Facility</span></div></div></div>
+        <div className="sv4-next-visit-time"><span>{new Date(nextVisit.requested_start).toLocaleDateString()}</span><strong>{new Date(nextVisit.requested_start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}–{new Date(nextVisit.requested_end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><small>Open Visit Details to prepare</small></div><span className="sv4-round-arrow">→</span>
+      </section> : <section className="sv4-next-visit-card sv4-next-visit-empty"><div className="sv4-next-visit-main"><div className="sv4-card-overline"><span>Your next visit</span><VisitorStatus tone="blue">NOT SCHEDULED</VisitorStatus></div><h2>{loading ? "Loading your visits" : "Nothing scheduled yet"}</h2><div className="sv4-person-row"><VisitorAvatar initials="+" /><div><strong>{loading ? "Checking your account" : "Add a connection to begin"}</strong><span>{loading ? "Your latest information is on its way." : "Your approved connections will appear here."}</span></div></div></div><span className="sv4-round-arrow">→</span></section>}
 
-      <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">People in your circle</p><h2>Your connections</h2></div><button className="sv4-text-link" onClick={() => onNavigate("Connections")}>Manage connections →</button></div><div className="sv4-connection-scroll"><ConnectionCard initials="AR" name="A. Rahman" relation="Family" color="sage" onClick={onOpenVisit} /><button className="sv4-add-card" onClick={() => onAction("Start a new connection request from the Connections page.", "info")}><span>＋</span><strong>Add a connection</strong><small>Who would you like to see?</small></button></div></section>
+      <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">People in your circle</p><h2>Your connections</h2></div><button className="sv4-text-link" onClick={() => onNavigate("Connections")}>Manage connections →</button></div><div className="sv4-connection-scroll">{connection ? <ConnectionCard initials={connection.prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2)} name={connection.prisoner_name} relation={connection.relationship_type} color="sage" onClick={onOpenVisit} /> : <div className="sv4-empty-inline">{loading ? "Loading connections…" : "No approved connections yet."}</div>}<button className="sv4-add-card" onClick={() => onNavigate("Connections")}><span>＋</span><strong>Add a connection</strong><small>Who would you like to see?</small></button></div></section>
 
-      <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">A little help along the way</p><h2>For you</h2></div></div><div className="sv4-recommend-grid"><Recommendation icon="⌁" title="Device ready" copy="Take a quick check before you join." action="Check device" onClick={() => onAction("Device check is ready when you are.", "info")} tone="blue" /><Recommendation icon="◷" title="Visit tomorrow" copy="Everything is in place for your visit." action="View details" onClick={onOpenVisit} tone="orange" /><Recommendation icon="◇" title="2 Visit Credits" copy="You have enough for your next two visits." action="View credits" onClick={() => onNavigate("Credits")} tone="sage" /></div></section>
+      <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">A little help along the way</p><h2>For you</h2></div></div><div className="sv4-recommend-grid"><Recommendation icon="⌁" title="Device ready" copy="Take a quick check before you join." action="Check device" onClick={() => onAction("Device check is ready when you are.", "info")} tone="blue" /><Recommendation icon="◷" title={nextVisit ? "Visit scheduled" : "Plan a visit"} copy={nextVisit ? "Everything is in place for your visit." : "Add a connection to get started."} action={nextVisit ? "View details" : "View connections"} onClick={nextVisit ? onOpenVisit : () => onNavigate("Connections")} tone="orange" /><Recommendation icon="◇" title={`${availableCredits} Visit Credit${availableCredits === 1 ? "" : "s"}`} copy={availableCredits ? "Available for an approved visit." : "Top up when you are ready to book."} action="View credits" onClick={() => onNavigate("Credits")} tone="sage" /></div></section>
 
       <section className="sv4-section sv4-guidance-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">Feel ready</p><h2>Before your visit</h2></div><button className="sv4-text-link" onClick={() => onAction("All visit guidance opened.", "info")}>See all guidance →</button></div><div className="sv4-guidance-grid"><GuidanceCard number="01" title="Find a quiet place" copy="A calm space helps you focus on the conversation." /><GuidanceCard number="02" title="Test your connection" copy="Check your camera, microphone, and internet." /><GuidanceCard number="03" title="Join a little early" copy="Your waiting room opens ten minutes before." /></div></section>
 

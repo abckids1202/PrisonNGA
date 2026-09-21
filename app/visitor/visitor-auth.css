@@ -12,3 +12,4 @@
 .sv11-auth-message { background: #f8efe4; border-radius: 9px; color: #80502e; font-size: 14px; line-height: 1.5; margin: 18px 0 0; padding: 11px 13px; }
 .sv11-auth-footnote { color: #8a999d; display: block; font-size: 12px; line-height: 1.5; margin-top: 26px; }
 @media (max-width: 520px) { .sv11-auth-card { border-radius: 18px; padding: 27px 21px; } }
+.sv4-empty-inline { align-items: center; background: #fbfaf8; border: 1px dashed #dcd8d2; border-radius: 12px; color: #78878b; display: flex; min-height: 86px; padding: 18px; }
