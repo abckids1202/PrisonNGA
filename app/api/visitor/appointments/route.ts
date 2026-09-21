@@ -52,8 +52,8 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
     await d1.batch([
-      d1.prepare(`INSERT INTO appointments (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, appointment_type, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'SUBMITTED', ?, ?, 'Asia/Jakarta', ?, 1, ?, ?)`)
-        .bind(appointmentId, relationship.facility_id, visitor.userId, relationship.prisoner_id, requestedStart, requestedEnd, appointmentType, now, now),
+      d1.prepare(`INSERT INTO appointments (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, appointment_type, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, 1, ?, ?)`)
+        .bind(appointmentId, relationship.facility_id, visitor.userId, relationship.prisoner_id, requestedStart, requestedEnd, policy.timezone, appointmentType, now, now),
       d1.prepare(`INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, NULL, 'SUBMITTED', ?, 'VISITOR_SUBMITTED', 'Visitor submitted an appointment request.', ?, ?)`)
         .bind(crypto.randomUUID(), appointmentId, visitor.userId, correlationId, now),
     ]);

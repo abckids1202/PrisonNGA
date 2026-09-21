@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { facilityLocalDateTime } from "../../../../lib/server/time";
 
 const slotMinutes = 15;
 
@@ -21,8 +22,8 @@ export async function GET(request: Request) {
     if (duration < policy.min_duration_minutes || duration > policy.max_duration_minutes || duration % slotMinutes !== 0) throw new SecurityError("DURATION_NOT_ALLOWED", 400);
     const relationship = await d1.prepare("SELECT id FROM visitor_relationships WHERE visitor_user_id = ? AND facility_id = ? AND prisoner_id = ? AND status = 'APPROVED'").bind(visitor.userId, facilityId, prisonerId).first();
     if (!relationship) throw new SecurityError("RELATIONSHIP_NOT_APPROVED", 409);
-    const dayStart = new Date(`${date}T${policy.daily_start_time}:00+07:00`);
-    const dayEnd = new Date(`${date}T${policy.daily_end_time}:00+07:00`);
+    const dayStart = facilityLocalDateTime(date, policy.daily_start_time, facility.timezone);
+    const dayEnd = facilityLocalDateTime(date, policy.daily_end_time, facility.timezone);
     const appointments = await d1.prepare(`SELECT requested_start, requested_end FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS') AND requested_start < ? AND requested_end > ?`).bind(facilityId, prisonerId, dayEnd.toISOString(), dayStart.toISOString()).all<{ requested_start: string; requested_end: string }>();
     const slots: string[] = [];
     for (let cursor = dayStart.getTime(); cursor + duration * 60000 <= dayEnd.getTime(); cursor += slotMinutes * 60000) {
