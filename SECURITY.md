@@ -24,8 +24,9 @@ Implemented foundations:
 6. Configure the visitor authentication delivery adapter. `VISITOR_AUTH_DELIVERY=console` is development-only. Production uses the provider-neutral HTTPS adapter with `VISITOR_AUTH_WEBHOOK_URL` and `VISITOR_AUTH_WEBHOOK_SECRET`; the downstream email/SMS service must verify `x-securevisit-signature` and must never return the OTP.
 7. Configure the `EVIDENCE_BUCKET` R2 binding and set `EVIDENCE_RETENTION_DAYS`; the visitor evidence API intentionally refuses uploads without the binding.
 8. Configure the provider-neutral payment adapter with `PAYMENT_PROVIDER=webhook`, an HTTPS `PAYMENT_CHECKOUT_URL`, `PAYMENT_PROVIDER_SECRET`, and the separate inbound `PAYMENT_WEBHOOK_SECRET`. The checkout service must return `{ providerReference, checkoutUrl }` and verify the outbound HMAC signature.
-9. Check `/api/health/readiness` after deployment. It reports only whether the database and required schema are ready; it does not expose missing secret names.
-10. Configure `STAFF_STEP_UP_SECRET` through the institution’s secret manager and have the IdP/step-up adapter issue `x-securevisit-step-up` assertions in the format `timestamp.hex_hmac(purpose:userId:timestamp)`. Lockdown, emergency closure, and incident closure reject ordinary sessions without a fresh assertion.
+9. Configure `NOTIFICATION_DELIVERY=webhook`, `NOTIFICATION_WEBHOOK_URL`, and `NOTIFICATION_WEBHOOK_SECRET` in production. The notification service must verify the HMAC signature and honor the supplied idempotency key; in-app notifications remain persisted locally.
+10. Check `/api/health/readiness` after deployment. It reports only whether the database and required schema are ready; it does not expose missing secret names.
+11. Configure `STAFF_STEP_UP_SECRET` through the institution’s secret manager and have the IdP/step-up adapter issue `x-securevisit-step-up` assertions in the format `timestamp.hex_hmac(purpose:userId:timestamp)`. Lockdown, emergency closure, and incident closure reject ordinary sessions without a fresh assertion.
 
 ## Important limitations
 

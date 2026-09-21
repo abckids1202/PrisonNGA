@@ -3,6 +3,7 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { validateEnvironment } from "../lib/server/config";
 import { consumeVisitCredit, releaseVisitCredit } from "../lib/server/credits";
+import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 
 interface Env {
   ASSETS: Fetcher;
@@ -38,8 +39,16 @@ async function processOutbox(env: Env): Promise<void> {
       const visitorUserId = typeof payload.visitorUserId === "string" ? payload.visitorUserId : null;
       if (visitorUserId) {
         const copy = notificationCopy(row.event_type);
-        await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, idempotency_key, created_at)
-          VALUES (?, ?, ?, 'IN_APP', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?)`).bind(crypto.randomUUID(), row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify({ aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload }), now, `${row.id}:visitor:in-app`, now).run();
+        const notificationPayload = { aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload };
+        if (await getNotificationDelivery() === "webhook") {
+          const visitor = await env.DB.prepare("SELECT email FROM users WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'").bind(visitorUserId).first<{ email: string }>();
+          if (!visitor) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
+          await deliverNotification({ notificationId: row.id, email: visitor.email, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
+          await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
+            VALUES (?, ?, ?, 'EMAIL', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:email`, row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:email`, now).run();
+        }
+        await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
+          VALUES (?, ?, ?, 'IN_APP', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:in-app`, row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:in-app`, now).run();
       }
       await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSED', processed_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, row.id).run();
     } catch (error) {

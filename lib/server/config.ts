@@ -40,6 +40,9 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (!/^https:\/\//i.test(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL");
   if (!value(env, "PAYMENT_PROVIDER_SECRET")) missing.push("PAYMENT_PROVIDER_SECRET");
   if (!value(env, "PAYMENT_WEBHOOK_SECRET")) missing.push("PAYMENT_WEBHOOK_SECRET");
+  if (value(env, "NOTIFICATION_DELIVERY") !== "webhook") missing.push("NOTIFICATION_DELIVERY=webhook");
+  if (!/^https:\/\//i.test(value(env, "NOTIFICATION_WEBHOOK_URL"))) missing.push("NOTIFICATION_WEBHOOK_URL");
+  if (!value(env, "NOTIFICATION_WEBHOOK_SECRET")) missing.push("NOTIFICATION_WEBHOOK_SECRET");
   const staffProvider = value(env, "STAFF_AUTH_PROVIDER");
   if (staffProvider !== "oidc" && staffProvider !== "saml") missing.push("STAFF_AUTH_PROVIDER");
   if (staffProvider === "oidc") {
