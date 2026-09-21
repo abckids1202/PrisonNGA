@@ -2,6 +2,7 @@ import { getD1 } from "../../../../db/runtime";
 import { refundPurchasedCredits } from "../../../../lib/server/credits";
 import { getRuntimeValue, getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { verifyPaymentWebhookSignature, type PaymentWebhook } from "../../../../lib/server/payments/provider";
+import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 
 const successfulEvents = new Set(["PAYMENT_SUCCEEDED", "PAYMENT_PAID", "PAYMENT_SUCCESS", "SUCCEEDED", "PAID"]);
 const failedEvents = new Set(["PAYMENT_FAILED", "PAYMENT_EXPIRED", "PAYMENT_REFUNDED", "PAYMENT_DISPUTED", "FAILED", "EXPIRED", "REFUNDED", "DISPUTED"]);
@@ -13,11 +14,12 @@ export async function POST(request: Request) {
     if (!secret) throw new SecurityError("PAYMENT_WEBHOOK_NOT_CONFIGURED", 503);
     const rawBody = await request.text();
     if (!await verifyPaymentWebhookSignature(rawBody, request.headers.get("x-securevisit-signature"), secret)) throw new SecurityError("PAYMENT_WEBHOOK_SIGNATURE_INVALID", 401);
+    const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `payment-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const payload = JSON.parse(rawBody) as PaymentWebhook;
     const provider = (request.headers.get("x-payment-provider") || "configured-provider").trim().slice(0, 80);
     const eventKey = payload.eventId?.trim() || request.headers.get("x-payment-event-id")?.trim();
     if (!eventKey || !payload.eventType?.trim()) throw new SecurityError("PAYMENT_WEBHOOK_INVALID", 400);
-    const d1 = await getD1();
     const inserted = await d1.prepare(`INSERT OR IGNORE INTO payment_provider_events (id, provider, event_key, event_type, payload, status, created_at) VALUES (?, ?, ?, ?, ?, 'RECEIVED', ?)`).bind(crypto.randomUUID(), provider, eventKey, payload.eventType.trim().toUpperCase(), rawBody, new Date().toISOString()).run();
     if (!inserted.meta.changes) return securityResponse({ accepted: true, idempotent: true, eventKey }, 200, context.requestId);
     const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, credit_quantity, status, version FROM payment_intents WHERE id = ? OR provider_reference = ? LIMIT 1`).bind(payload.paymentIntentId || "", payload.providerReference || "").first<{ id: string; facility_id: string; user_id: string; provider: string; credit_quantity: number; status: string; version: number }>();

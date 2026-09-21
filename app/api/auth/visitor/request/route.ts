@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
+import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 
 function normalizeEmail(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -19,6 +20,8 @@ export async function POST(request: Request) {
     const d1 = await getD1();
     const salt = await getSecuritySalt();
     const destinationHash = await hashIdentifier(`email:${email}`, salt);
+    await enforceRateLimit(d1, { key: `visitor-auth:email:${destinationHash}`, limit: 5, windowSeconds: 15 * 60 });
+    await enforceRateLimit(d1, { key: `visitor-auth:ip:${context.ipAddress || "unknown"}`, limit: 30, windowSeconds: 15 * 60 });
     const recent = await d1.prepare("SELECT COUNT(*) AS count FROM auth_challenges WHERE destination_hash = ? AND created_at > datetime('now', '-15 minutes')").bind(destinationHash).first<{ count: number }>();
     if (Number(recent?.count || 0) >= 5) throw new SecurityError("AUTH_RATE_LIMITED", 429);
     const code = String(Math.floor(100000 + Math.random() * 900000));

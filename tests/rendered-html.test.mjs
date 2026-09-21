@@ -21,10 +21,10 @@ async function render() {
   return renderPath("/");
 }
 
-async function renderApi(pathname, method = "GET") {
+async function renderApi(pathname, method = "GET", body) {
   const worker = await loadWorker();
   return worker.fetch(
-    new Request(`http://localhost${pathname}`, { method, headers: { accept: "application/json" } }),
+    new Request(`http://localhost${pathname}`, { method, headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) }, body }),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
@@ -160,4 +160,10 @@ test("protects visitor notification workflows", async () => {
   const response = await renderApi("/api/visitor/notifications");
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
+test("keeps the rate-limit store and staff federation boundary behind safe defaults", async () => {
+  const response = await renderApi("/api/auth/visitor/request", "POST", "{}");
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "VALID_EMAIL_REQUIRED");
 });

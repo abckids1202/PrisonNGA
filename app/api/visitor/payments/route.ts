@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { getPaymentProvider } from "../../../../lib/server/payments/provider";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 
 const CREDIT_PRICE_MINOR = 50000;
 
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
     if (!idempotencyKey || !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     if (!facilityId || !Number.isInteger(creditQuantity) || creditQuantity < 1 || creditQuantity > 20) throw new SecurityError("INVALID_CREDIT_PURCHASE", 400);
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `payment-create:${visitor.userId}`, limit: 10, windowSeconds: 60 * 60 });
     const existing = await d1.prepare("SELECT id, status, provider, checkout_url, amount_minor, credit_quantity FROM payment_intents WHERE idempotency_key = ? AND user_id = ?").bind(idempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
     if (existing) return securityResponse({ paymentIntent: existing, idempotent: true }, 200, context.requestId);
     const facility = await d1.prepare("SELECT id FROM facilities WHERE id = ?").bind(facilityId).first<{ id: string }>();

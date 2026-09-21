@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
+import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 
 async function sessionCookie(token: string): Promise<string> {
   const secure = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) === "production";
@@ -15,6 +16,8 @@ export async function POST(request: Request) {
     const requestedDisplayName = typeof body.displayName === "string" ? body.displayName.trim().slice(0, 160) : "";
     if (!challengeId || !/^\d{6}$/.test(code)) throw new SecurityError("INVALID_AUTH_CODE", 400);
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `visitor-auth:verify:${challengeId}`, limit: 10, windowSeconds: 15 * 60 });
+    await enforceRateLimit(d1, { key: `visitor-auth:verify-ip:${context.ipAddress || "unknown"}`, limit: 60, windowSeconds: 15 * 60 });
     const challenge = await d1.prepare("SELECT id, destination, destination_hash, expires_at, code_hash, attempt_count, max_attempts, consumed_at FROM auth_challenges WHERE id = ? AND purpose = 'VISITOR_SIGN_IN'").bind(challengeId).first<{ id: string; destination: string; destination_hash: string; expires_at: string; code_hash: string; attempt_count: number; max_attempts: number; consumed_at: string | null }>();
     if (!challenge || challenge.consumed_at || Date.parse(challenge.expires_at) <= Date.now()) throw new SecurityError("AUTH_CODE_EXPIRED", 400);
     if (challenge.attempt_count >= challenge.max_attempts) throw new SecurityError("AUTH_CODE_LOCKED", 429);

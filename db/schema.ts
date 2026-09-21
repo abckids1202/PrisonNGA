@@ -115,6 +115,13 @@ export const securityEvents = sqliteTable("security_events", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ userIdx: index("security_events_user_idx").on(table.userId), facilityIdx: index("security_events_facility_idx").on(table.facilityId) }));
 
+export const rateLimitBuckets = sqliteTable("rate_limit_buckets", {
+  keyHash: text("key_hash").primaryKey(),
+  windowStartedAt: integer("window_started_at").notNull(),
+  requestCount: integer("request_count").notNull().default(0),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ updatedIdx: index("rate_limit_buckets_updated_idx").on(table.updatedAt) }));
+
 export const auditEvents = sqliteTable("audit_events", {
   id: text("id").primaryKey(),
   actorUserId: text("actor_user_id"),
