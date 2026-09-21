@@ -32,8 +32,9 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const displayName = requestedDisplayName || challenge.destination.split("@")[0];
     const userId = crypto.randomUUID();
+    const consumed = await d1.prepare("UPDATE auth_challenges SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND attempt_count < max_attempts AND expires_at > ?").bind(now, challengeId, now).run();
+    if (!consumed.meta.changes) throw new SecurityError("AUTH_CODE_ALREADY_USED", 409);
     await d1.batch([
-      d1.prepare("UPDATE auth_challenges SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL").bind(now, challengeId),
       d1.prepare(`INSERT INTO users (id, external_id, email, display_name, user_type, status, email_verified_at, version, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'VISITOR', 'ACTIVE', ?, 1, ?, ?)
         ON CONFLICT(email) DO UPDATE SET status = 'ACTIVE', email_verified_at = excluded.email_verified_at, display_name = CASE WHEN users.display_name = users.email THEN excluded.display_name ELSE users.display_name END, updated_at = excluded.updated_at`)

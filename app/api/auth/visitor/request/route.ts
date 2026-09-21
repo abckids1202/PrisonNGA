@@ -12,6 +12,12 @@ function maskEmail(email: string): string {
   return `${local.slice(0, 1)}***@${domain}`;
 }
 
+function generateCode(): string {
+  const bytes = new Uint32Array(1);
+  crypto.getRandomValues(bytes);
+  return String(bytes[0] % 1_000_000).padStart(6, "0");
+}
+
 export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
@@ -25,7 +31,7 @@ export async function POST(request: Request) {
     await enforceRateLimit(d1, { key: `visitor-auth:ip:${context.ipAddress || "unknown"}`, limit: 30, windowSeconds: 15 * 60 });
     const recent = await d1.prepare("SELECT COUNT(*) AS count FROM auth_challenges WHERE destination_hash = ? AND created_at > datetime('now', '-15 minutes')").bind(destinationHash).first<{ count: number }>();
     if (Number(recent?.count || 0) >= 5) throw new SecurityError("AUTH_RATE_LIMITED", 429);
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = generateCode();
     const challengeId = crypto.randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000).toISOString();
