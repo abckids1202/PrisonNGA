@@ -24,6 +24,7 @@ Implemented foundations:
 6. Configure the visitor authentication delivery adapter. `VISITOR_AUTH_DELIVERY=console` is development-only. Production uses the provider-neutral HTTPS adapter with `VISITOR_AUTH_WEBHOOK_URL` and `VISITOR_AUTH_WEBHOOK_SECRET`; the downstream email/SMS service must verify `x-securevisit-signature` and must never return the OTP.
 7. Configure the `EVIDENCE_BUCKET` R2 binding and set `EVIDENCE_RETENTION_DAYS`; the visitor evidence API intentionally refuses uploads without the binding.
 8. Check `/api/health/readiness` after deployment. It reports only whether the database and required schema are ready; it does not expose missing secret names.
+9. Configure `STAFF_STEP_UP_SECRET` through the institution’s secret manager and have the IdP/step-up adapter issue `x-securevisit-step-up` assertions in the format `timestamp.hex_hmac(purpose:userId:timestamp)`. Lockdown, emergency closure, and incident closure reject ordinary sessions without a fresh assertion.
 
 ## Important limitations
 

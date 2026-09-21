@@ -1,5 +1,5 @@
 import { getD1 } from "../../../../db/runtime";
-import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const commands = ["acknowledge", "assign", "add_note", "resolve", "close"] as const;
 
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     if (!incident) throw new SecurityError("INCIDENT_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== incident.version) throw new SecurityError("STALE_INCIDENT", 409);
     const reason = assertReason(body.reason);
+    if (command === "close") await requireStepUp("incident_close", authorization.userId);
     const nextStatus = command === "acknowledge" ? "ACKNOWLEDGED" : command === "resolve" ? "RESOLVED" : command === "close" ? "CLOSED" : incident.status;
     if (command === "close" && incident.status !== "RESOLVED") throw new SecurityError("INCIDENT_MUST_BE_RESOLVED", 409);
     const nextAssignee = command === "assign" ? (typeof body.assignedUserId === "string" && body.assignedUserId.trim() ? body.assignedUserId.trim() : null) : incident.assigned_user_id;

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { getD1 } from "../../../../db/runtime";
 import { facilities } from "../../../../db/schema";
-import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const allowedStates = ["NORMAL_OPERATIONS", "LIMITED_OPERATIONS", "LOCKDOWN", "EMERGENCY_CLOSURE", "TECHNICAL_DEGRADATION"] as const;
 type FacilityState = typeof allowedStates[number];
@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     const authorization = await requirePermission("facility.state.change");
     const body = await request.json() as { state?: string; reason?: string; expectedVersion?: number };
     if (!allowedStates.includes(body.state as FacilityState)) throw new SecurityError("INVALID_FACILITY_STATE", 400);
+    if (body.state === "LOCKDOWN" || body.state === "EMERGENCY_CLOSURE") await requireStepUp(`facility_state:${body.state}`, authorization.userId);
     const reason = assertReason(body.reason);
     const db = await getDb();
     const [current] = await db.select().from(facilities).where(eq(facilities.id, authorization.facilityId)).limit(1);

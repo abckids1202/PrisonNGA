@@ -151,3 +151,20 @@ export async function getRuntimeValue(key: string): Promise<string | null> {
   if (typeof process !== "undefined" && typeof process.env?.[key] === "string") return process.env[key] || null;
   return null;
 }
+
+export async function requireStepUp(purpose: string, userId: string): Promise<void> {
+  const assertion = (await headers()).get("x-securevisit-step-up")?.trim() || "";
+  const secret = await getRuntimeValue("STAFF_STEP_UP_SECRET");
+  const [timestampText, suppliedSignature] = assertion.split(".");
+  const timestamp = Number(timestampText);
+  if (!secret || secret.length < 32 || !Number.isInteger(timestamp) || Math.abs(Date.now() - timestamp) > 5 * 60_000 || !/^[a-f0-9]{64}$/i.test(suppliedSignature || "")) throw new SecurityError("STEP_UP_REQUIRED", 403);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const valid = await crypto.subtle.verify("HMAC", key, hexToBytes(suppliedSignature), new TextEncoder().encode(`${purpose}:${userId}:${timestamp}`));
+  if (!valid) throw new SecurityError("STEP_UP_INVALID", 403);
+}
+
+function hexToBytes(value: string): Uint8Array {
+  const bytes = new Uint8Array(value.length / 2);
+  for (let index = 0; index < bytes.length; index += 1) bytes[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+  return bytes;
+}

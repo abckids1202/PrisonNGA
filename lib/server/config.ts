@@ -26,6 +26,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   }
   if (configuredEnvironment !== environment) missing.push("SECUREVISIT_ENVIRONMENT");
   if (value(env, "SECUREVISIT_HASH_SALT").length < 32) missing.push("SECUREVISIT_HASH_SALT");
+  if (value(env, "STAFF_STEP_UP_SECRET").length < 32) missing.push("STAFF_STEP_UP_SECRET");
   const visitorDelivery = value(env, "VISITOR_AUTH_DELIVERY");
   if (visitorDelivery !== "webhook") missing.push("VISITOR_AUTH_DELIVERY=webhook");
   if (visitorDelivery === "webhook") {
