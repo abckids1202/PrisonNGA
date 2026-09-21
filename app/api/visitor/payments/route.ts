@@ -32,3 +32,15 @@ export async function POST(request: Request) {
     return securityErrorResponse(error, context.requestId);
   }
 }
+
+export async function GET() {
+  const context = await getRequestContext();
+  try {
+    const visitor = await requireVisitorIdentity();
+    const d1 = await getD1();
+    const result = await d1.prepare(`SELECT id, facility_id, provider, credit_quantity, amount_minor, currency, status, provider_reference, checkout_url, version, created_at, updated_at FROM payment_intents WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`).bind(visitor.userId).all();
+    return securityResponse({ paymentIntents: result.results }, 200, context.requestId);
+  } catch (error) {
+    return securityErrorResponse(error, context.requestId);
+  }
+}

@@ -144,6 +144,12 @@ test("protects visitor credit and payment workflows", async () => {
   assert.equal((await payment.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
+test("fails closed when payment webhook signing is not configured", async () => {
+  const response = await renderApi("/api/webhooks/payments", "POST");
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "PAYMENT_WEBHOOK_NOT_CONFIGURED");
+});
+
 test("protects visitor notification workflows", async () => {
   const response = await renderApi("/api/visitor/notifications");
   assert.equal(response.status, 401);
