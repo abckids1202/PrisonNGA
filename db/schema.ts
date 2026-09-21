@@ -316,3 +316,30 @@ export const creditLedgerEntries = sqliteTable("credit_ledger_entries", {
   createdBy: text("created_by"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ idempotencyIdx: uniqueIndex("credit_ledger_idempotency_idx").on(table.idempotencyKey), accountIdx: index("credit_ledger_account_idx").on(table.creditAccountId, table.createdAt) }));
+
+export const paymentIntents = sqliteTable("payment_intents", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  provider: text("provider").notNull(),
+  creditQuantity: integer("credit_quantity").notNull(),
+  amountMinor: integer("amount_minor").notNull(),
+  currency: text("currency").notNull().default("IDR"),
+  status: text("status", { enum: ["PENDING", "CHECKOUT_CREATED", "SUCCEEDED", "FAILED", "EXPIRED", "REFUNDED", "DISPUTED"] }).notNull().default("PENDING"),
+  providerReference: text("provider_reference"),
+  checkoutUrl: text("checkout_url"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ idempotencyIdx: uniqueIndex("payment_intents_idempotency_idx").on(table.idempotencyKey), userStatusIdx: index("payment_intents_user_status_idx").on(table.userId, table.status), facilityStatusIdx: index("payment_intents_facility_status_idx").on(table.facilityId, table.status) }));
+
+export const paymentProviderEvents = sqliteTable("payment_provider_events", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull(),
+  eventKey: text("event_key").notNull(),
+  eventType: text("event_type").notNull(),
+  payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  status: text("status", { enum: ["RECEIVED", "PROCESSED", "FAILED", "IGNORED"] }).notNull().default("RECEIVED"),
+  processedAt: text("processed_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ eventKeyIdx: uniqueIndex("payment_provider_events_key_idx").on(table.provider, table.eventKey), createdIdx: index("payment_provider_events_created_idx").on(table.createdAt) }));

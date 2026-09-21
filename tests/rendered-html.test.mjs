@@ -127,3 +127,13 @@ test("protects persisted appointment workflows", async () => {
   assert.equal(control.status, 401);
   assert.equal((await control.json()).error, "AUTHENTICATION_REQUIRED");
 });
+
+test("protects visitor credit and payment workflows", async () => {
+  const credits = await renderApi("/api/visitor/credits");
+  assert.equal(credits.status, 401);
+  assert.equal((await credits.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const payment = await renderApi("/api/visitor/payments", "POST");
+  assert.equal(payment.status, 401);
+  assert.equal((await payment.json()).error, "AUTHENTICATION_REQUIRED");
+});
