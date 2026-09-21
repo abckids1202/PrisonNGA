@@ -6,6 +6,7 @@ import { permissions, rolePermissions, roles, staffProfiles, userRoles, users } 
 export type WorkspaceIdentity = { externalId: string; email: string; displayName: string };
 export type RequestContext = { requestId: string; ipAddress: string | null; userAgent: string | null };
 export type AuthorizationContext = { userId: string; facilityId: string; roles: string[]; permissions: string[]; displayName: string };
+export type VisitorAuthorizationContext = { userId: string; email: string; displayName: string };
 
 const identityHeaders = {
   id: "oai-authenticated-user-id",
@@ -31,6 +32,17 @@ export async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {
   const identity = await getWorkspaceIdentity();
   if (!identity) throw new SecurityError("AUTHENTICATION_REQUIRED", 401);
   return identity;
+}
+
+export async function requireVisitorIdentity(): Promise<VisitorAuthorizationContext> {
+  const identity = await requireWorkspaceIdentity();
+  const db = await getDb();
+  const [user] = await db.select({ id: users.id, email: users.email, displayName: users.displayName, userType: users.userType, status: users.status })
+    .from(users)
+    .where(eq(users.externalId, identity.externalId))
+    .limit(1);
+  if (!user || user.status !== "ACTIVE" || user.userType !== "VISITOR") throw new SecurityError("VISITOR_ACCOUNT_REQUIRED", 403);
+  return { userId: user.id, email: user.email, displayName: user.displayName };
 }
 
 export async function getRequestContext(): Promise<RequestContext> {

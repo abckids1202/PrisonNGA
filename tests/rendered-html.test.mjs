@@ -101,3 +101,19 @@ test("protects visitor Live Session token issuance", async () => {
   const body = await response.json();
   assert.equal(body.error, "AUTHENTICATION_REQUIRED");
 });
+
+test("protects visitor-owned workflow APIs", async () => {
+  const profile = await renderApi("/api/visitor/profile");
+  assert.equal(profile.status, 401);
+  assert.equal((await profile.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const relationships = await renderApi("/api/visitor/relationships");
+  assert.equal(relationships.status, 401);
+  assert.equal((await relationships.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
+test("protects staff verification workflow", async () => {
+  const response = await renderApi("/api/control/verification");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
