@@ -42,8 +42,8 @@ const worker = {
 
     const response = await handler.fetch(request, env, ctx);
     const securedResponse = new Response(response.body, response);
-    securedResponse.headers.set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self'");
-    securedResponse.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+    securedResponse.headers.set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.livekit.cloud wss://*.livekit.cloud https://*.livekit.io wss://*.livekit.io");
+    securedResponse.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
     securedResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     securedResponse.headers.set("X-Content-Type-Options", "nosniff");
     securedResponse.headers.set("X-Frame-Options", "DENY");

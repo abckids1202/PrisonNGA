@@ -71,6 +71,8 @@ test("rejects unauthenticated API requests with security headers", async () => {
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("x-frame-options"), "DENY");
   assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.match(response.headers.get("content-security-policy") ?? "", /wss:\/\/\*\.livekit\.cloud/);
+  assert.equal(response.headers.get("permissions-policy"), "camera=(self), microphone=(self), geolocation=(), payment=()");
   assert.match(response.headers.get("x-request-id") ?? "", /.+/);
   const body = await response.json();
   assert.equal(body.error, "AUTHENTICATION_REQUIRED");

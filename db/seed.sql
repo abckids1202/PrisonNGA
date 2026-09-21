@@ -2,6 +2,10 @@ INSERT INTO facilities (id, name, timezone, current_state)
 VALUES ('facility-central-001', 'Central Correctional Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS')
 ON CONFLICT(id) DO NOTHING;
 
+INSERT INTO prisoners (id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status)
+VALUES ('prisoner-ar-001', 'facility-central-001', 'AR-2041', 'A. Rahman', 'Unit 4', 'ACTIVE', 'APPROVED')
+ON CONFLICT(id) DO NOTHING;
+
 INSERT INTO roles (id, name, description) VALUES
   ('role-scheduling-officer', 'Scheduling Officer', 'Reviews and coordinates visitation appointments.'),
   ('role-verification-officer', 'Verification Officer', 'Reviews visitor identity and relationship evidence.'),

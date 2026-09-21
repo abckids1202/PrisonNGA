@@ -146,6 +146,66 @@ export const appointments = sqliteTable("appointments", {
   ...timestamps,
 }, (table) => ({ facilityStatusIdx: index("appointments_facility_status_idx").on(table.facilityId, table.status), visitorIdx: index("appointments_visitor_idx").on(table.visitorUserId) }));
 
+export const prisoners = sqliteTable("prisoners", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  prisonerNumber: text("prisoner_number").notNull(),
+  displayName: text("display_name").notNull(),
+  housingUnit: text("housing_unit"),
+  status: text("status", { enum: ["ACTIVE", "TRANSFERRED", "RELEASED", "INACTIVE"] }).notNull().default("ACTIVE"),
+  visitationStatus: text("visitation_status", { enum: ["APPROVED", "RESTRICTED", "SUSPENDED"] }).notNull().default("APPROVED"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({
+  facilityNumberIdx: uniqueIndex("prisoners_facility_number_idx").on(table.facilityId, table.prisonerNumber),
+  facilityStatusIdx: index("prisoners_facility_status_idx").on(table.facilityId, table.status, table.visitationStatus),
+}));
+
+export const visitorProfiles = sqliteTable("visitor_profiles", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  legalName: text("legal_name").notNull(),
+  preferredName: text("preferred_name"),
+  phone: text("phone"),
+  phoneVerifiedAt: text("phone_verified_at"),
+  profileStatus: text("profile_status", { enum: ["INCOMPLETE", "ACTIVE", "SUSPENDED"] }).notNull().default("INCOMPLETE"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+});
+
+export const visitorRelationships = sqliteTable("visitor_relationships", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
+  prisonerId: text("prisoner_id").notNull().references(() => prisoners.id),
+  relationshipType: text("relationship_type").notNull(),
+  status: text("status", { enum: ["PENDING", "APPROVED", "REJECTED", "SUSPENDED"] }).notNull().default("PENDING"),
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: text("reviewed_at"),
+  reviewReason: text("review_reason"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({
+  visitorPrisonerIdx: uniqueIndex("visitor_relationships_pair_idx").on(table.visitorUserId, table.prisonerId),
+  facilityStatusIdx: index("visitor_relationships_facility_status_idx").on(table.facilityId, table.status),
+}));
+
+export const verificationCases = sqliteTable("verification_cases", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  relationshipId: text("relationship_id").notNull().references(() => visitorRelationships.id),
+  status: text("status", { enum: ["PENDING", "IN_REVIEW", "APPROVED", "REJECTED", "MORE_INFO"] }).notNull().default("PENDING"),
+  evidenceRequired: integer("evidence_required", { mode: "boolean" }).notNull().default(true),
+  submittedAt: text("submitted_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: text("reviewed_at"),
+  reviewReason: text("review_reason"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({
+  relationshipIdx: uniqueIndex("verification_cases_relationship_idx").on(table.relationshipId),
+  facilityStatusIdx: index("verification_cases_facility_status_idx").on(table.facilityId, table.status),
+}));
+
 export const appointmentStatusEvents = sqliteTable("appointment_status_events", {
   id: text("id").primaryKey(),
   appointmentId: text("appointment_id").notNull().references(() => appointments.id),
