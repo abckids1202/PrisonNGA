@@ -16,3 +16,20 @@ const transitions: Record<WaitingRoomState, readonly WaitingRoomState[]> = {
 export function canTransitionWaitingRoom(from: string, to: string): boolean {
   return (transitions[from as WaitingRoomState] || []).includes(to as WaitingRoomState);
 }
+
+const appointmentTransitions: Record<string, readonly string[]> = {
+  DRAFT: ["SUBMITTED", "CANCELLED_BY_FACILITY"],
+  SUBMITTED: ["UNDER_REVIEW", "APPROVED", "REJECTED", "CANCELLED_BY_FACILITY"],
+  UNDER_REVIEW: ["UNDER_REVIEW", "APPROVED", "REJECTED", "CANCELLED_BY_FACILITY"],
+  APPROVED: ["CANCELLED_BY_FACILITY", "WAITING"],
+  WAITING: ["IN_PROGRESS", "CANCELLED_BY_FACILITY", "TECHNICAL_FAILURE"],
+  IN_PROGRESS: ["COMPLETED", "TECHNICAL_FAILURE"],
+  REJECTED: [],
+  CANCELLED_BY_FACILITY: [],
+  COMPLETED: [],
+  TECHNICAL_FAILURE: [],
+};
+
+export function canTransitionAppointment(from: string, to: string): boolean {
+  return (appointmentTransitions[from] || []).includes(to);
+}

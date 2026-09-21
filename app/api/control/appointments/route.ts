@@ -3,6 +3,7 @@ import { releaseVisitCredit, reserveVisitCredit } from "../../../../lib/server/c
 import { allocateVisitResources, releaseVisitResources } from "../../../../lib/server/resources";
 import { appendAuditAndOutbox } from "../../../../lib/server/events";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { canTransitionAppointment } from "../../../../lib/server/workflow";
 
 const commands = ["approve", "reject", "request_info", "cancel"] as const;
 type AppointmentCommand = typeof commands[number];
@@ -25,11 +26,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
-    const authorization = await requirePermission("appointment.review");
+    const reviewer = await requirePermission("appointment.review");
     const body = await request.json() as { appointmentId?: unknown; command?: unknown; reason?: unknown; expectedVersion?: unknown };
     const appointmentId = typeof body.appointmentId === "string" ? body.appointmentId.trim() : "";
     const command = body.command as AppointmentCommand;
     if (!appointmentId || !commands.includes(command)) throw new SecurityError("INVALID_APPOINTMENT_COMMAND", 400);
+    const authorization = command === "approve" ? await requirePermission("appointment.approve", reviewer.facilityId) : reviewer;
     const reason = assertReason(body.reason);
     const d1 = await getD1();
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.visitor_user_id, a.prisoner_id, a.status, a.version, a.requested_start, a.requested_end, p.visitation_status, ca.id AS credit_account_id, ca.available_credits FROM appointments a INNER JOIN prisoners p ON p.id = a.prisoner_id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id WHERE a.id = ? AND a.facility_id = ?`).bind(appointmentId, authorization.facilityId).first<{ id: string; facility_id: string; visitor_user_id: string; prisoner_id: string; status: string; version: number; requested_start: string; requested_end: string; visitation_status: string; credit_account_id: string | null; available_credits: number | null }>();
@@ -37,6 +39,7 @@ export async function POST(request: Request) {
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_APPOINTMENT", 409);
     const nextStatus = command === "approve" ? "APPROVED" : command === "reject" ? "REJECTED" : command === "request_info" ? "UNDER_REVIEW" : "CANCELLED_BY_FACILITY";
     if (current.status === nextStatus) return securityResponse({ appointmentId, status: nextStatus, idempotent: true }, 200, context.requestId);
+    if (!canTransitionAppointment(current.status, nextStatus)) throw new SecurityError("INVALID_APPOINTMENT_TRANSITION", 409);
     if (command === "approve" && current.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
     if (command === "approve" && (!current.credit_account_id || Number(current.available_credits || 0) < 1)) throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
     const now = new Date().toISOString();
