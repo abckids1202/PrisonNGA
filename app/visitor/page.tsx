@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import "./visitor-auth.css";
 
 type Tab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
 type NoticeTone = "success" | "info";
@@ -40,6 +41,8 @@ function VisitorAvatar({ initials, color = "sage" }: { initials: string; color?:
 }
 
 export default function VisitorPage() {
+  const [authState, setAuthState] = useState<"loading" | "authenticated" | "signed_out">(() => typeof window === "undefined" ? "authenticated" : "loading");
+  const [visitorName, setVisitorName] = useState("Sarah");
   const [tab, setTab] = useState<Tab>(() => {
     if (typeof window === "undefined") return "Home";
     const requested = new URLSearchParams(window.location.search).get("section");
@@ -47,6 +50,25 @@ export default function VisitorPage() {
   });
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/me", { headers: { accept: "application/json" }, credentials: "include" }).then(async (response) => {
+      if (!active) return;
+      if (!response.ok) {
+        setAuthState("signed_out");
+        return;
+      }
+      const body = await response.json() as { identity?: { displayName?: string; userType?: string } };
+      if (body.identity?.userType !== "VISITOR") {
+        setAuthState("signed_out");
+        return;
+      }
+      setVisitorName(body.identity.displayName || "Visitor");
+      setAuthState("authenticated");
+    }).catch(() => active && setAuthState("signed_out"));
+    return () => { active = false; };
+  }, []);
 
   function action(message: string, tone: NoticeTone = "success") {
     setNotice({ message, tone });
@@ -62,6 +84,8 @@ export default function VisitorPage() {
   function openVisitDetails() {
     window.location.href = "/visitor/visits/SV-260814-018";
   }
+
+  if (authState !== "authenticated") return <VisitorAuthGate loading={authState === "loading"} onAuthenticated={(name) => { setVisitorName(name); setAuthState("authenticated"); }} />;
 
   return (
     <div className="sv3-visitor-app sv4-visitor-app">
@@ -83,7 +107,7 @@ export default function VisitorPage() {
             <span className="sv4-secure-note"><i />Secure session</span>
             <button className={`sv4-icon-button ${notificationsOpen ? "active" : ""}`} onClick={() => setNotificationsOpen((value) => !value)} aria-label="Open notifications">♢<b>2</b></button>
             <button className="sv4-profile-chip" onClick={() => navigate("Account")} aria-label="Open account">
-              <VisitorAvatar initials="SA" color="coral" /><span>Sarah</span><em>⌄</em>
+              <VisitorAvatar initials={visitorName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()} color="coral" /><span>{visitorName.split(" ")[0]}</span><em>⌄</em>
             </button>
           </div>
         </div>
@@ -109,6 +133,52 @@ export default function VisitorPage() {
       {notice && <div className={`sv4-toast sv4-toast-${notice.tone}`} role="status"><span>{notice.tone === "success" ? "✓" : "i"}</span>{notice.message}</div>}
     </div>
   );
+}
+
+function VisitorAuthGate({ loading, onAuthenticated }: { loading: boolean; onAuthenticated: (displayName: string) => void }) {
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [code, setCode] = useState("");
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function requestCode(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/visitor/request", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ email }) });
+      const body = await response.json() as { challengeId?: string; devCode?: string; error?: string };
+      if (!response.ok || !body.challengeId) throw new Error(body.error || "We could not send a sign-in code.");
+      setChallengeId(body.challengeId);
+      if (body.devCode) setCode(body.devCode);
+      setMessage(body.devCode ? "Development code loaded. Verify it below." : "Check your email or phone for the six-digit code.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "We could not send a sign-in code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyCode(event: React.FormEvent) {
+    event.preventDefault();
+    if (!challengeId) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/visitor/verify", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ challengeId, code, displayName }) });
+      const body = await response.json() as { visitor?: { displayName?: string }; error?: string };
+      if (!response.ok || !body.visitor) throw new Error(body.error || "That code is not valid.");
+      onAuthenticated(body.visitor.displayName || displayName || "Visitor");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "That code is not valid.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <main className="sv11-auth-shell"><section className="sv11-auth-card"><div className="sv11-auth-mark">+</div><span className="sv4-kicker">SECUREVISIT VISITOR</span><h1>{loading ? "Checking your secure session" : "Welcome back"}</h1><p>{loading ? "One moment while we check your visitor account." : "Sign in with a one-time code to manage visits and connections."}</p>{!loading && !challengeId ? <form onSubmit={requestCode} className="sv11-auth-form"><label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label><label>Your name <span>(optional)</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="How should we greet you?" /></label><button className="sv4-button sv4-button-primary" disabled={busy}>{busy ? "Sending…" : "Send me a sign-in code"}</button></form> : null}{!loading && challengeId ? <form onSubmit={verifyCode} className="sv11-auth-form"><label>Six-digit code<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" required /></label><button className="sv4-button sv4-button-primary" disabled={busy}>{busy ? "Checking…" : "Continue to SecureVisit"}</button><button type="button" className="sv11-back-button" onClick={() => { setChallengeId(null); setCode(""); setMessage(""); }}>Use another email</button></form> : null}{message && <p className="sv11-auth-message" role="status">{message}</p>}<small className="sv11-auth-footnote">Your visit details are protected. SecureVisit will never ask for your password.</small></section></main>;
 }
 
 function VisitorHome({

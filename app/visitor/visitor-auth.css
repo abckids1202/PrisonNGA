@@ -1,0 +1,14 @@
+.sv11-auth-shell { align-items: center; background: linear-gradient(135deg, #fff8f1 0%, #f5f8f7 52%, #e8f1f4 100%); display: flex; justify-content: center; min-height: 100vh; padding: 28px 18px; }
+.sv11-auth-card { background: rgba(255,255,255,.94); border: 1px solid #e7e4df; border-radius: 24px; box-shadow: 0 24px 80px rgba(21,51,61,.12); max-width: 470px; padding: 38px; width: 100%; }
+.sv11-auth-mark { align-items: center; background: #f6c9a7; border-radius: 12px; color: #17333f; display: flex; font-size: 28px; height: 44px; justify-content: center; margin-bottom: 28px; width: 44px; }
+.sv11-auth-card h1 { color: #17333f; font-size: clamp(28px, 5vw, 40px); letter-spacing: -.04em; margin: 10px 0; }
+.sv11-auth-card > p { color: #61737a; font-size: 16px; line-height: 1.6; margin: 0 0 26px; }
+.sv11-auth-form { display: grid; gap: 16px; }
+.sv11-auth-form label { color: #29444d; display: grid; font-size: 14px; font-weight: 700; gap: 8px; }
+.sv11-auth-form label span { color: #8a989b; font-weight: 500; }
+.sv11-auth-form input { background: #fbfcfb; border: 1px solid #d8e0de; border-radius: 10px; color: #17333f; font: inherit; font-size: 16px; min-height: 50px; padding: 0 14px; }
+.sv11-auth-form input:focus { border-color: #e8753b; box-shadow: 0 0 0 3px rgba(232,117,59,.14); outline: 0; }
+.sv11-back-button { background: transparent; border: 0; color: #5f7379; cursor: pointer; font: inherit; padding: 6px; }
+.sv11-auth-message { background: #f8efe4; border-radius: 9px; color: #80502e; font-size: 14px; line-height: 1.5; margin: 18px 0 0; padding: 11px 13px; }
+.sv11-auth-footnote { color: #8a999d; display: block; font-size: 12px; line-height: 1.5; margin-top: 26px; }
+@media (max-width: 520px) { .sv11-auth-card { border-radius: 18px; padding: 27px 21px; } }
