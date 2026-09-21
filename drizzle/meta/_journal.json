@@ -29,6 +29,13 @@
       "when": 1789962000000,
       "tag": "0003_identity_and_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789962600000,
+      "tag": "0004_visitor_auth",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
-import { headers } from "next/headers";
-import { and, eq } from "drizzle-orm";
+import { cookies, headers } from "next/headers";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../db";
-import { permissions, rolePermissions, roles, staffProfiles, userRoles, users } from "../../db/schema";
+import { authSessions, permissions, rolePermissions, roles, staffProfiles, userRoles, users } from "../../db/schema";
 
 export type WorkspaceIdentity = { externalId: string; email: string; displayName: string };
 export type RequestContext = { requestId: string; ipAddress: string | null; userAgent: string | null };
@@ -35,6 +35,18 @@ export async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {
 }
 
 export async function requireVisitorIdentity(): Promise<VisitorAuthorizationContext> {
+  const sessionToken = (await cookies()).get("securevisit_session")?.value;
+  if (sessionToken) {
+    const salt = await getSecuritySalt();
+    const tokenHash = await hashIdentifier(sessionToken, salt);
+    const db = await getDb();
+    const [sessionUser] = await db.select({ id: users.id, email: users.email, displayName: users.displayName, userType: users.userType, status: users.status })
+      .from(authSessions)
+      .innerJoin(users, eq(authSessions.userId, users.id))
+      .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "VISITOR"), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, new Date().toISOString())))
+      .limit(1);
+    if (sessionUser && sessionUser.status === "ACTIVE") return { userId: sessionUser.id, email: sessionUser.email, displayName: sessionUser.displayName };
+  }
   const identity = await requireWorkspaceIdentity();
   const db = await getDb();
   const [user] = await db.select({ id: users.id, email: users.email, displayName: users.displayName, userType: users.userType, status: users.status })
@@ -128,4 +140,16 @@ export async function getSecuritySalt(): Promise<string> {
     // The local test runner does not provide the Cloudflare runtime module.
   }
   return "local-development-only";
+}
+
+export async function getRuntimeValue(key: string): Promise<string | null> {
+  try {
+    const { env } = await import("cloudflare:workers");
+    const value = (env as unknown as Record<string, unknown>)[key];
+    if (typeof value === "string") return value;
+  } catch {
+    // The local test runner does not provide the Cloudflare runtime module.
+  }
+  if (typeof process !== "undefined" && typeof process.env?.[key] === "string") return process.env[key] || null;
+  return null;
 }

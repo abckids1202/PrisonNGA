@@ -21,6 +21,7 @@ Implemented foundations:
 3. Provision workspace identities into `users`, `staff_profiles`, and `user_roles` through an institution-controlled admin workflow. There is intentionally no self-service role escalation endpoint.
 4. Set `SECUREVISIT_HASH_SALT` in the runtime secret store before recording production security-event hashes. The local fallback is only for development.
 5. Configure `VIDEO_PROVIDER=livekit`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` in the server runtime. The secret must never be exposed through a public frontend environment variable.
+6. Configure the visitor authentication delivery adapter. `VISITOR_AUTH_DELIVERY=console` is development-only; production must use a managed email/SMS provider and must never return an OTP in the API response.
 
 ## Important limitations
 

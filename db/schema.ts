@@ -87,6 +87,21 @@ export const authSessions = sqliteTable("auth_sessions", {
   ipHash: text("ip_hash"),
 }, (table) => ({ tokenIdx: uniqueIndex("auth_sessions_token_hash_idx").on(table.tokenHash), userIdx: index("auth_sessions_user_idx").on(table.userId) }));
 
+export const authChallenges = sqliteTable("auth_challenges", {
+  id: text("id").primaryKey(),
+  channel: text("channel", { enum: ["EMAIL", "SMS"] }).notNull(),
+  destination: text("destination").notNull(),
+  destinationHash: text("destination_hash").notNull(),
+  destinationMasked: text("destination_masked").notNull(),
+  codeHash: text("code_hash").notNull(),
+  purpose: text("purpose", { enum: ["VISITOR_SIGN_IN", "CONTACT_VERIFICATION"] }).notNull(),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(5),
+  expiresAt: text("expires_at").notNull(),
+  consumedAt: text("consumed_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ destinationIdx: index("auth_challenges_destination_idx").on(table.destinationHash, table.createdAt), expiresIdx: index("auth_challenges_expires_idx").on(table.expiresAt) }));
+
 export const securityEvents = sqliteTable("security_events", {
   id: text("id").primaryKey(),
   userId: text("user_id"),
