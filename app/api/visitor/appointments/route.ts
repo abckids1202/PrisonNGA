@@ -1,10 +1,11 @@
 import { getD1 } from "../../../../db/runtime";
-import { appendAuditAndOutbox, auditAndOutboxStatements } from "../../../../lib/server/events";
+import { appendAuditAndOutbox } from "../../../../lib/server/events";
 import { releaseVisitCredit } from "../../../../lib/server/credits";
 import { releaseVisitResources } from "../../../../lib/server/resources";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
-import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim } from "../../../../lib/server/idempotency";
+import { claimIdempotency, hashIdempotencyPayload, releaseIdempotencyClaim } from "../../../../lib/server/idempotency";
 import { validateVisitWindow } from "../../../../lib/server/visit-policy";
+import { createVisitorAppointmentStatements } from "../../../../lib/server/visitor-appointments";
 
 const activeStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"];
 
@@ -55,38 +56,42 @@ export async function POST(request: Request) {
     if (!window.ok) throw new SecurityError(window.reason, window.reason.startsWith("FACILITY_") ? 503 : 400);
     const canonicalStart = window.requestedStart;
     const canonicalEnd = window.requestedEnd;
-    const overlap = await d1.prepare(`SELECT id FROM appointments WHERE visitor_user_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(visitor.userId, ...activeStatuses, canonicalEnd, canonicalStart).first<{ id: string }>();
-    if (overlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
-    const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(relationship.facility_id, relationship.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first<{ id: string }>();
-    if (prisonerOverlap) throw new SecurityError("PRISONER_APPOINTMENT_OVERLAP", 409);
     const appointmentId = `SV-${new Date(startMs).toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
-    const responseBody = { appointmentId, status: "SUBMITTED", correlationId };
-    const auditStatements = auditAndOutboxStatements(d1, {
-      actorUserId: visitor.userId,
-      actorRole: "VISITOR",
+    const responseBody = { appointmentId, status: "SUBMITTED" as const, correlationId };
+    const created = await d1.batch(createVisitorAppointmentStatements(d1, {
+      appointmentId,
       facilityId: relationship.facility_id,
-      actionType: "APPOINTMENT_SUBMITTED",
-      entityType: "appointment",
-      entityId: appointmentId,
-      reason: "Visitor submitted an appointment request.",
-      newValues: { status: "SUBMITTED", requestedStart: canonicalStart, requestedEnd: canonicalEnd, prisonerId: relationship.prisoner_id },
-      requestId: context.requestId,
+      visitorUserId: visitor.userId,
+      prisonerId: relationship.prisoner_id,
+      relationshipId,
+      requestedStart: canonicalStart,
+      requestedEnd: canonicalEnd,
+      timezone: policy.timezone,
+      policyVersion: policy.policy_version,
+      durationMinutes: Math.round((endMs - startMs) / 60_000),
+      appointmentType,
+      now,
       correlationId,
-      eventType: "APPOINTMENT_SUBMITTED",
-      payload: { appointmentId, visitorUserId: visitor.userId },
-    });
-    await d1.batch([
-      d1.prepare(`INSERT INTO appointments (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, policy_version, duration_minutes, appointment_type, version, created_at, updated_at)
-        SELECT ?, ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, ?, ?, 1, ?, ?
-        WHERE EXISTS (SELECT 1 FROM idempotency_records WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING')`)
-        .bind(appointmentId, relationship.facility_id, visitor.userId, relationship.prisoner_id, canonicalStart, canonicalEnd, policy.timezone, policy.policy_version, Math.round((endMs - startMs) / 60_000), appointmentType, now, now, activeClaim!.claimId, activeClaim!.scope, activeClaim!.key),
-      d1.prepare(`INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, NULL, 'SUBMITTED', ?, 'VISITOR_SUBMITTED', 'Visitor submitted an appointment request.', ?, ?)`)
-        .bind(crypto.randomUUID(), appointmentId, visitor.userId, correlationId, now),
-      ...auditStatements,
-      completeIdempotencyStatement(d1, { claimId: activeClaim!.claimId, scope: activeClaim!.scope, key: activeClaim!.key, status: 201, body: responseBody }),
-    ]);
+      requestId: context.requestId,
+      idempotency: activeClaim!,
+      responseBody,
+    }));
+    if (!created[0]?.meta.changes) {
+      const visitorOverlap = await d1.prepare(`SELECT id FROM appointments WHERE visitor_user_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(visitor.userId, ...activeStatuses, canonicalEnd, canonicalStart).first();
+      if (visitorOverlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
+      const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(relationship.facility_id, relationship.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first();
+      if (prisonerOverlap) throw new SecurityError("PRISONER_APPOINTMENT_OVERLAP", 409);
+      const currentRelationship = await d1.prepare(`SELECT vr.status, p.status AS prisoner_status, p.visitation_status FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id AND p.facility_id = vr.facility_id WHERE vr.id = ? AND vr.facility_id = ? AND vr.visitor_user_id = ?`).bind(relationshipId, relationship.facility_id, visitor.userId).first<{ status: string; prisoner_status: string; visitation_status: string }>();
+      if (!currentRelationship || currentRelationship.status !== "APPROVED" || currentRelationship.prisoner_status !== "ACTIVE" || currentRelationship.visitation_status !== "APPROVED") throw new SecurityError("RELATIONSHIP_NOT_APPROVED", 409);
+      const currentPolicy = await d1.prepare("SELECT f.current_state, f.timezone, vp.version AS policy_version FROM facilities f LEFT JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(relationship.facility_id).first<{ current_state: string; timezone: string | null; policy_version: number | null }>();
+      if (!currentPolicy || currentPolicy.current_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
+      if (currentPolicy.timezone !== policy.timezone || currentPolicy.policy_version !== policy.policy_version) throw new SecurityError("FACILITY_POLICY_CHANGED", 409);
+      const currentCredit = await d1.prepare("SELECT available_credits FROM credit_accounts WHERE user_id = ? AND facility_id = ?").bind(visitor.userId, relationship.facility_id).first<{ available_credits: number }>();
+      if (!currentCredit || currentCredit.available_credits < 1) throw new SecurityError("VISIT_CREDIT_REQUIRED", 409);
+      throw new SecurityError("APPOINTMENT_REQUEST_CONFLICT", 409);
+    }
     activeClaim = null;
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
