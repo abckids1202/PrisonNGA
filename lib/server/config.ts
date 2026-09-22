@@ -37,6 +37,8 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   for (const key of ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]) if (!value(env, key)) missing.push(key);
   if (!env.EVIDENCE_BUCKET) missing.push("EVIDENCE_BUCKET");
   if (value(env, "PAYMENT_PROVIDER") !== "webhook") missing.push("PAYMENT_PROVIDER=webhook");
+  const visitCreditPrice = Number(value(env, "VISIT_CREDIT_PRICE_MINOR"));
+  if (!Number.isSafeInteger(visitCreditPrice) || visitCreditPrice <= 0) missing.push("VISIT_CREDIT_PRICE_MINOR");
   if (!/^https:\/\//i.test(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL");
   if (!value(env, "PAYMENT_PROVIDER_SECRET")) missing.push("PAYMENT_PROVIDER_SECRET");
   if (!value(env, "PAYMENT_WEBHOOK_SECRET")) missing.push("PAYMENT_WEBHOOK_SECRET");

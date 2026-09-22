@@ -29,11 +29,18 @@ class WebhookCheckoutProvider implements PaymentProvider {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8_000);
     try {
-      const response = await fetch(this.url, { method: "POST", headers: { "content-type": "application/json", "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
+      const response = await fetch(this.url, { method: "POST", headers: { "content-type": "application/json", "Idempotency-Key": input.paymentIntentId, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
       if (!response.ok) throw new Error(`PAYMENT_CHECKOUT_FAILED_${response.status}`);
       const result = await response.json() as { providerReference?: unknown; checkoutUrl?: unknown };
       if (typeof result.providerReference !== "string" || !result.providerReference || (result.checkoutUrl !== null && typeof result.checkoutUrl !== "string")) throw new Error("PAYMENT_CHECKOUT_INVALID_RESPONSE");
-      return { provider: "webhook", providerReference: result.providerReference, checkoutUrl: result.checkoutUrl as string | null };
+      const checkoutUrl = result.checkoutUrl as string | null;
+      if (checkoutUrl) {
+        let parsed: URL;
+        try { parsed = new URL(checkoutUrl); } catch { throw new Error("PAYMENT_CHECKOUT_INVALID_URL"); }
+        const isLocalDevelopment = (await runtimeValue("SECUREVISIT_ENVIRONMENT")) === "development" && parsed.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+        if (parsed.protocol !== "https:" && !isLocalDevelopment) throw new Error("PAYMENT_CHECKOUT_INVALID_URL");
+      }
+      return { provider: "webhook", providerReference: result.providerReference, checkoutUrl };
     } finally {
       clearTimeout(timeout);
     }

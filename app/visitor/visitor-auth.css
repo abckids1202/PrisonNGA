@@ -14,6 +14,26 @@
 @media (max-width: 520px) { .sv11-auth-card { border-radius: 18px; padding: 27px 21px; } }
 .sv4-empty-inline { align-items: center; background: #fbfaf8; border: 1px dashed #dcd8d2; border-radius: 12px; color: #78878b; display: flex; min-height: 86px; padding: 18px; }
 .sv4-connection-request { background: #fff; border: 1px solid #e3e8e5; border-radius: 18px; box-shadow: 0 14px 40px rgba(26,53,59,.06); display: grid; gap: 17px; margin: 0 0 26px; max-width: 720px; padding: 24px; }
+.sv4-credit-purchase { background: #fff; border: 1px solid #e3e8e5; border-radius: 18px; box-shadow: 0 14px 40px rgba(26,53,59,.06); display: grid; gap: 18px; margin: 25px 0; max-width: 760px; padding: 24px; }
+.sv4-credit-purchase h2 { color: #17333f; font-size: 22px; margin: 5px 0; }
+.sv4-credit-purchase > div:first-child p:last-child { color: #687b80; line-height: 1.55; margin: 0; }
+.sv4-credit-purchase form { display: grid; gap: 15px; }
+.sv4-credit-purchase form > label { color: #29444d; display: grid; font-size: 14px; font-weight: 700; gap: 8px; }
+.sv4-credit-purchase select { background: #fbfcfb; border: 1px solid #d8e0de; border-radius: 10px; color: #17333f; font: inherit; min-height: 48px; padding: 0 13px; }
+.sv4-credit-packs { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sv4-credit-pack { align-items: center; background: #fbfcfb; border: 1px solid #e0e7e4; border-radius: 12px; cursor: pointer; display: grid; gap: 3px; justify-items: center; min-height: 112px; padding: 12px; }
+.sv4-credit-pack.selected { background: #fff8f2; border-color: #e8753b; box-shadow: 0 0 0 2px rgba(232,117,59,.12); }
+.sv4-credit-pack input { accent-color: #e8753b; }
+.sv4-credit-pack strong { color: #17333f; font-size: 24px; }
+.sv4-credit-pack span, .sv4-credit-pack small { color: #687b80; font-size: 12px; }
+.sv4-credit-purchase .sv4-button:disabled { cursor: not-allowed; opacity: .55; }
+.sv4-request-success { background: #edf7f1; border-radius: 9px; color: #286846; font-size: 13px; line-height: 1.5; margin: 0; padding: 10px 12px; }
+.sv4-payment-list { display: grid; }
+.sv4-payment-list > div { align-items: center; border-bottom: 1px solid #e9eeeb; display: flex; gap: 14px; min-height: 72px; padding: 12px 4px; }
+.sv4-payment-list > div > span:first-child { display: grid; flex: 1; gap: 4px; }
+.sv4-payment-list strong { color: #17333f; font-size: 14px; }
+.sv4-payment-list small { color: #718187; font-size: 12px; }
+.sv4-payment-list button { background: transparent; border: 0; color: #b85e30; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; }
 .sv4-connection-request h2 { color: #17333f; font-size: 22px; margin: 5px 0; }
 .sv4-connection-request > div:first-child p:last-child { color: #687b80; margin: 0; }
 .sv4-connection-request > label { color: #29444d; display: grid; font-size: 14px; font-weight: 700; gap: 8px; }
@@ -38,4 +58,4 @@
 .sv4-relationship-card small { color: #718187; font-size: 12px; }
 .sv4-status-orange { background: #fff2e6; color: #92501e; }
 .sv4-status-blue { background: #edf4f8; color: #365f78; }
-@media (max-width: 620px) { .sv4-connection-request { border-radius: 14px; padding: 18px; }.sv4-relationship-card { align-items: flex-start; flex-wrap: wrap; }.sv4-relationship-card .sv4-status { margin-left: 52px; } }
+@media (max-width: 620px) { .sv4-connection-request, .sv4-credit-purchase { border-radius: 14px; padding: 18px; }.sv4-relationship-card { align-items: flex-start; flex-wrap: wrap; }.sv4-relationship-card .sv4-status { margin-left: 52px; }.sv4-credit-packs { gap: 7px; }.sv4-credit-pack { min-height: 98px; padding: 8px; }.sv4-payment-list > div { align-items: flex-start; flex-wrap: wrap; }.sv4-payment-list > div > span:first-child { flex-basis: calc(100% - 100px); } }

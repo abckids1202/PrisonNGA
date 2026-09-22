@@ -11,12 +11,15 @@ export async function settlePaymentPurchase(
     .bind(crypto.randomUUID(), input.facilityId, input.userId, now, now).run();
   const account = await d1.prepare("SELECT id FROM credit_accounts WHERE user_id = ? AND facility_id = ?").bind(input.userId, input.facilityId).first<{ id: string }>();
   if (!account) throw new SecurityError("CREDIT_ACCOUNT_NOT_FOUND", 500);
-  const purchase = await d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-    VALUES (?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ?)`)
-    .bind(crypto.randomUUID(), account.id, input.amount, `payment:${input.paymentIntentId}:purchase`, input.reason, now).run();
-  if (!purchase.meta.changes) return { purchased: false, idempotent: true };
-  await d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ?")
-    .bind(input.amount, now, account.id).run();
+  const purchaseKey = `payment:${input.paymentIntentId}:purchase`;
+  const results = await d1.batch([
+    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
+      VALUES (?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ?)`)
+      .bind(crypto.randomUUID(), account.id, input.amount, purchaseKey, input.reason, now),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+      .bind(input.amount, now, account.id),
+  ]);
+  if (!results[0]?.meta.changes) return { purchased: false, idempotent: true };
   return { purchased: true, idempotent: false };
 }
 
@@ -114,18 +117,17 @@ export async function refundPurchasedCredits(
   const purchase = await d1.prepare(`SELECT cle.credit_account_id, cle.amount FROM credit_ledger_entries cle WHERE cle.idempotency_key = ? AND cle.entry_type = 'PURCHASE' LIMIT 1`).bind(`payment:${input.paymentIntentId}:purchase`).first<{ credit_account_id: string; amount: number }>();
   if (!purchase) return { refunded: false, pending: true };
   const now = new Date().toISOString();
-  const accountState = await d1.prepare("SELECT version FROM credit_accounts WHERE id = ?").bind(purchase.credit_account_id).first<{ version: number }>();
-  if (!accountState) throw new SecurityError("CREDIT_ACCOUNT_NOT_FOUND", 500);
-  const account = await d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND available_credits >= ?").bind(purchase.amount, now, purchase.credit_account_id, accountState.version, purchase.amount).run();
-  if (!account.meta.changes) throw new SecurityError("CREDIT_REVERSAL_REQUIRES_REVIEW", 409);
-  try {
-    await d1.prepare(`INSERT INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-      VALUES (?, ?, NULL, 'REFUND', ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), purchase.credit_account_id, -purchase.amount, `payment:${input.paymentIntentId}:refund`, input.reason, input.actorUserId, now).run();
-  } catch (error) {
-    await d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ?").bind(purchase.amount, new Date().toISOString(), purchase.credit_account_id).run();
-    const raced = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ?").bind(`payment:${input.paymentIntentId}:refund`).first();
-    if (raced) return { refunded: false, idempotent: true };
-    throw error;
-  }
-  return { refunded: true };
+  const refundKey = `payment:${input.paymentIntentId}:refund`;
+  const results = await d1.batch([
+    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
+      SELECT ?, ?, NULL, 'REFUND', ?, ?, ?, ?, ? WHERE EXISTS (
+        SELECT 1 FROM credit_accounts WHERE id = ? AND available_credits >= ?
+      )`).bind(crypto.randomUUID(), purchase.credit_account_id, -purchase.amount, refundKey, input.reason, input.actorUserId, now, purchase.credit_account_id, purchase.amount),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+      .bind(purchase.amount, now, purchase.credit_account_id),
+  ]);
+  if (results[0]?.meta.changes) return { refunded: true };
+  const raced = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ?").bind(refundKey).first();
+  if (raced) return { refunded: false, idempotent: true };
+  throw new SecurityError("CREDIT_REVERSAL_REQUIRES_REVIEW", 409);
 }

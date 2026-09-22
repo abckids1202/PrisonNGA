@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import "./visitor-auth.css";
 
 type Tab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
@@ -8,7 +8,10 @@ type NoticeTone = "success" | "info";
 type VisitorAppointmentRecord = { id: string; status: string; requested_start: string; requested_end: string; prisoner_name: string; appointment_type: string };
 type VisitorRelationshipRecord = { id: string; status: string; prisoner_name: string; relationship_type: string; facility_name?: string };
 type VisitorPrisonerRecord = { id: string; facility_id: string; facility_name: string; prisoner_number: string; display_name: string; relationship_status: string };
-type VisitorCreditAccount = { available_credits: number; reserved_credits: number; facility_name: string };
+type VisitorCreditAccount = { facility_id: string; available_credits: number; reserved_credits: number; facility_name: string };
+type VisitorCreditLedgerEntry = { id: string; entry_type: string; amount: number; reason: string; created_at: string };
+type VisitorPaymentIntent = { id: string; facility_id: string; status: string; credit_quantity: number; amount_minor: number; currency: string; checkout_url: string | null; created_at: string };
+type VisitorFacility = { id: string; name: string; timezone: string; current_state: string };
 type VisitorData = { appointments: VisitorAppointmentRecord[]; relationships: VisitorRelationshipRecord[]; credits: VisitorCreditAccount[]; unreadNotifications: number; loading: boolean };
 
 const VisitorDataContext = createContext<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true });
@@ -58,6 +61,7 @@ export default function VisitorPage() {
   });
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const syncVisitorCredits = useCallback((credits: VisitorCreditAccount[]) => setVisitorData((current) => ({ ...current, credits })), []);
 
   useEffect(() => {
     let active = true;
@@ -142,7 +146,7 @@ export default function VisitorPage() {
         {tab === "Home" && <VisitorHome onAction={action} onOpenVisit={openVisitDetails} onNavigate={navigate} />}
         {tab === "Visits" && <VisitorVisits onAction={action} onOpenVisit={openVisitDetails} />}
         {tab === "Connections" && <VisitorConnections onAction={action} onRelationshipAdded={(relationship) => setVisitorData((current) => ({ ...current, relationships: [relationship, ...current.relationships.filter((item) => item.id !== relationship.id)] }))} />}
-        {tab === "Credits" && <VisitorCredits onAction={action} />}
+        {tab === "Credits" && <VisitorCredits onAction={action} onCreditsLoaded={syncVisitorCredits} />}
         {tab === "Account" && <VisitorAccount onAction={action} />}
       </main>
 
@@ -382,8 +386,105 @@ function VisitorConnections({ onAction, onRelationshipAdded }: { onAction: (mess
   </div>;
 }
 
-function VisitorCredits({ onAction }: { onAction: (message: string, tone?: NoticeTone) => void }) {
-  return <div className="sv4-page sv4-inner-page"><div className="sv4-page-intro"><p className="sv4-kicker">Visit credits</p><h1>Keep your visits going.</h1><p>Each credit gives you one secure video visit.</p></div><section className="sv4-credit-hero"><div><span className="sv4-hero-eyebrow">Available balance</span><strong>2</strong><p>Visit Credits</p></div><div className="sv4-credit-orbit">◇<small>1 reserved</small></div></section><div className="sv4-credit-note"><span>i</span><p><strong>One credit is reserved</strong><br />for your visit with A. Rahman tomorrow.</p></div><div className="sv4-section-heading"><div><p className="sv4-kicker">Your balance</p><h2>Credit activity</h2></div><VisitorButton primary onClick={() => onAction("Credit top-up is ready to connect.", "info")}>＋ Get more credits</VisitorButton></div><div className="sv4-credit-list"><div><span className="sv4-credit-dot green">+</span><span><strong>Credit added</strong><small>Purchase · 06 August 2026</small></span><b>+2</b></div><div><span className="sv4-credit-dot orange">−</span><span><strong>Credit reserved</strong><small>A. Rahman · Tomorrow’s visit</small></span><b>−1</b></div><div><span className="sv4-credit-dot blue">✓</span><span><strong>Credit returned</strong><small>Visit completed · 08 August 2026</small></span><b>+1</b></div></div></div>;
+function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: string, tone?: NoticeTone) => void; onCreditsLoaded: (credits: VisitorCreditAccount[]) => void }) {
+  const { credits: cachedCredits } = useContext(VisitorDataContext);
+  const [accounts, setAccounts] = useState(cachedCredits);
+  const [ledger, setLedger] = useState<VisitorCreditLedgerEntry[]>([]);
+  const [payments, setPayments] = useState<VisitorPaymentIntent[]>([]);
+  const [facilities, setFacilities] = useState<VisitorFacility[]>([]);
+  const [pricePerCredit, setPricePerCredit] = useState<number | null>(null);
+  const [demoPrice, setDemoPrice] = useState(false);
+  const [facilityId, setFacilityId] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const idempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetch("/api/visitor/credits", { credentials: "include" }).then(async (response) => { const body = await response.json() as { accounts?: VisitorCreditAccount[]; ledger?: VisitorCreditLedgerEntry[]; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load your credit balance."); return body; }),
+      fetch("/api/visitor/payments", { credentials: "include" }).then(async (response) => { const body = await response.json() as { paymentIntents?: VisitorPaymentIntent[]; pricing?: { perCreditMinor: number; currency: string; demo: boolean }; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load payment options."); return body; }),
+      fetch("/api/visitor/facilities", { credentials: "include" }).then(async (response) => { const body = await response.json() as { facilities?: VisitorFacility[]; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load available facilities."); return body; }),
+    ]).then(([creditBody, paymentBody, facilityBody]) => {
+      if (!active) return;
+      const nextAccounts = creditBody.accounts || [];
+      setAccounts(nextAccounts);
+      setLedger(creditBody.ledger || []);
+      onCreditsLoaded(nextAccounts);
+      setPayments(paymentBody.paymentIntents || []);
+      setPricePerCredit(paymentBody.pricing?.perCreditMinor ?? null);
+      setDemoPrice(paymentBody.pricing?.demo ?? false);
+      const nextFacilities = facilityBody.facilities || [];
+      setFacilities(nextFacilities);
+      setFacilityId((current) => current || nextFacilities[0]?.id || "");
+      setError("");
+    }).catch((reason: unknown) => active && setError(reason instanceof Error ? reason.message : "Couldn’t load your Visit Credits."))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, [onCreditsLoaded, refreshTick]);
+
+  async function startPurchase(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!facilityId || pricePerCredit === null) return setError("Choose an available facility before continuing.");
+    const fingerprint = `${facilityId}:${quantity}`;
+    if (!idempotencyRef.current || idempotencyRef.current.fingerprint !== fingerprint) idempotencyRef.current = { fingerprint, key: crypto.randomUUID() };
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/visitor/payments", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyRef.current.key },
+        body: JSON.stringify({ facilityId, creditQuantity: quantity }),
+      });
+      const body = await response.json() as { paymentIntent?: { id: string; status: string; checkoutUrl?: string | null; checkout_url?: string | null }; error?: string };
+      if (!response.ok || !body.paymentIntent) {
+        const friendly = body.error === "PAYMENT_PROVIDER_NOT_CONFIGURED" ? "Secure checkout isn’t enabled yet. Your balance has not been charged." : body.error === "VISIT_CREDIT_PRICE_NOT_CONFIGURED" ? "The facility has not configured its Visit Credit price yet." : body.error || "We couldn’t start checkout. Please try again.";
+        throw new Error(friendly);
+      }
+      const checkoutUrl = body.paymentIntent.checkoutUrl || body.paymentIntent.checkout_url;
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
+      }
+      setNotice("Payment request saved. Refresh this page after completing checkout to see the confirmed credit balance.");
+      setRefreshTick((value) => value + 1);
+      onAction("Your payment request is ready.", "info");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "We couldn’t start checkout. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const available = accounts.reduce((sum, account) => sum + Number(account.available_credits || 0), 0);
+  const reserved = accounts.reduce((sum, account) => sum + Number(account.reserved_credits || 0), 0);
+  const currency = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+  const entryLabel = (entry: VisitorCreditLedgerEntry) => entry.entry_type === "PURCHASE" ? "Visit Credits added" : entry.entry_type === "RESERVATION" ? "Visit Credit reserved" : entry.entry_type === "CONSUMPTION" ? "Visit completed" : entry.entry_type === "RESERVATION_RELEASE" ? "Visit Credit returned" : entry.entry_type === "REFUND" ? "Purchase refunded" : entry.entry_type.replaceAll("_", " ").toLowerCase();
+
+  return <div className="sv4-page sv4-inner-page">
+    <div className="sv4-page-intro"><p className="sv4-kicker">Visit Credits</p><h1>Keep your visits going.</h1><p>One Visit Credit covers one approved video visit. Your balance only changes after a confirmed payment or visit outcome.</p></div>
+    <section className="sv4-credit-hero"><div><span className="sv4-hero-eyebrow">Available balance</span><strong>{loading ? "—" : available}</strong><p>Visit Credits</p></div><div className="sv4-credit-orbit">◇<small>{loading ? "…" : `${reserved} reserved`}</small></div></section>
+    {reserved > 0 && <div className="sv4-credit-note"><span>i</span><p><strong>{reserved} {reserved === 1 ? "credit is" : "credits are"} reserved</strong><br />for approved or upcoming visits.</p></div>}
+    <section className="sv4-credit-purchase"><div><p className="sv4-kicker">Top up securely</p><h2>Choose a credit pack</h2><p>Checkout opens with the configured payment service. Credits are added only after its signed confirmation.</p></div>
+      {demoPrice && <p className="sv4-request-hint">Development example price: {pricePerCredit === null ? "—" : currency.format(pricePerCredit)} per credit. This is not an approved production tariff.</p>}
+      <form onSubmit={startPurchase}>
+        <label>Facility<select value={facilityId} onChange={(event) => { setFacilityId(event.target.value); idempotencyRef.current = null; }} disabled={loading || !facilities.length} required>{facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}</select></label>
+        <div className="sv4-credit-packs" role="radiogroup" aria-label="Visit Credit quantity">{[1, 3, 5].map((pack) => <label key={pack} className={`sv4-credit-pack ${quantity === pack ? "selected" : ""}`}><input type="radio" name="credit-pack" checked={quantity === pack} onChange={() => { setQuantity(pack); idempotencyRef.current = null; }} /><strong>{pack}</strong><span>{pack === 1 ? "credit" : "credits"}</span>{pricePerCredit !== null && <small>{currency.format(pricePerCredit * pack)}</small>}</label>)}</div>
+        {error && <p className="sv4-request-error" role="alert">{error}</p>}{notice && <p className="sv4-request-success" role="status">{notice}</p>}
+        <button className="sv4-button sv4-button-primary" disabled={loading || busy || !facilityId || pricePerCredit === null}>{busy ? "Preparing secure checkout…" : `Continue · ${pricePerCredit === null ? "price unavailable" : currency.format(pricePerCredit * quantity)}`}</button>
+        {!facilities.length && !loading && <p className="sv4-request-hint">No facility is currently accepting Visit Credit purchases.</p>}
+      </form>
+    </section>
+    <div className="sv4-section-heading"><div><p className="sv4-kicker">Your balance</p><h2>Credit activity</h2></div></div>
+    {ledger.length ? <div className="sv4-credit-list">{ledger.map((entry) => <div key={entry.id}><span className={`sv4-credit-dot ${entry.amount > 0 ? "green" : entry.amount < 0 ? "orange" : "blue"}`}>{entry.amount > 0 ? "+" : entry.amount < 0 ? "−" : "✓"}</span><span><strong>{entryLabel(entry)}</strong><small>{entry.reason} · {new Date(entry.created_at).toLocaleDateString("id-ID")}</small></span><b>{entry.amount > 0 ? "+" : ""}{entry.amount}</b></div>)}</div> : <div className="sv4-empty-inline">{loading ? "Loading credit activity…" : "Your confirmed credit activity will appear here."}</div>}
+    <div className="sv4-section-heading"><div><p className="sv4-kicker">Payments</p><h2>Checkout history</h2></div><button className="sv4-text-link" onClick={() => setRefreshTick((value) => value + 1)} disabled={loading}>Refresh status ↻</button></div>
+    {payments.length ? <div className="sv4-payment-list">{payments.map((payment) => <div key={payment.id}><span><strong>{payment.credit_quantity} {payment.credit_quantity === 1 ? "Visit Credit" : "Visit Credits"}</strong><small>{new Date(payment.created_at).toLocaleString("id-ID")} · {currency.format(payment.amount_minor)}</small></span><VisitorStatus tone={payment.status === "SUCCEEDED" ? "green" : payment.status === "FAILED" || payment.status === "REFUNDED" ? "blue" : "orange"}>{payment.status.replaceAll("_", " ")}</VisitorStatus>{payment.status === "CHECKOUT_CREATED" && payment.checkout_url && <button type="button" onClick={() => window.location.assign(payment.checkout_url!)}>Continue checkout →</button>}</div>)}</div> : <div className="sv4-empty-inline">Your payment attempts will appear here.</div>}
+  </div>;
 }
 
 function VisitorAccount({ onAction }: { onAction: (message: string, tone?: NoticeTone) => void }) {
