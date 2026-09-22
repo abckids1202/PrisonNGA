@@ -208,6 +208,7 @@ export const appointments = sqliteTable("appointments", {
   timezone: text("timezone").notNull().default("Asia/Jakarta"),
   appointmentType: text("appointment_type").notNull().default("FAMILY"),
   version: integer("version").notNull().default(1),
+  lastTransitionId: text("last_transition_id"),
   ...timestamps,
 }, (table) => ({ facilityStatusIdx: index("appointments_facility_status_idx").on(table.facilityId, table.status), visitorIdx: index("appointments_visitor_idx").on(table.visitorUserId) }));
 

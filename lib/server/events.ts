@@ -16,21 +16,29 @@ export type DomainEventInput = {
   payload: Record<string, unknown>;
 };
 
-export function auditAndOutboxStatements(d1: D1Database, input: DomainEventInput): D1PreparedStatement[] {
+export function auditAndOutboxStatements(
+  d1: D1Database,
+  input: DomainEventInput,
+  guard?: { sql: string; values: unknown[] },
+): D1PreparedStatement[] {
   const correlationId = input.correlationId || crypto.randomUUID();
   const auditId = crypto.randomUUID();
   const outboxId = crypto.randomUUID();
   const createdAt = new Date().toISOString();
 
   return [
-    d1.prepare(`INSERT INTO audit_events
+    d1.prepare(guard ? `INSERT INTO audit_events
+      (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}` : `INSERT INTO audit_events
       (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(auditId, input.actorUserId, input.actorRole, input.facilityId, input.actionType, input.entityType, input.entityId, input.reason, input.oldValues ? JSON.stringify(input.oldValues) : null, input.newValues ? JSON.stringify(input.newValues) : null, correlationId, input.requestId, createdAt),
-    d1.prepare(`INSERT INTO outbox_events
+      .bind(auditId, input.actorUserId, input.actorRole, input.facilityId, input.actionType, input.entityType, input.entityId, input.reason, input.oldValues ? JSON.stringify(input.oldValues) : null, input.newValues ? JSON.stringify(input.newValues) : null, correlationId, input.requestId, createdAt, ...(guard?.values || [])),
+    d1.prepare(guard ? `INSERT INTO outbox_events
+      (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}` : `INSERT INTO outbox_events
       (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(outboxId, input.eventType, input.entityType, input.entityId, input.facilityId, JSON.stringify(input.payload), correlationId, createdAt),
+      .bind(outboxId, input.eventType, input.entityType, input.entityId, input.facilityId, JSON.stringify(input.payload), correlationId, createdAt, ...(guard?.values || [])),
   ];
 }
 
