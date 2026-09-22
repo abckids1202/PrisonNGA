@@ -305,7 +305,7 @@ export default function ControlApp() {
   function renderOperationsPage() {
     if (page === "Appointments") return <AppointmentsPage appointments={appointments} onSelect={setSelectedAppointment} onNotify={notify} />;
     if (page === "Waiting Room") return <WaitingRoomPage facilityState={facilityState} onNotify={notify} />;
-    if (page === "Live Sessions") return <LiveSessionsPage appointments={appointments} onUpdateAppointment={updateAppointment} onNotify={notify} />;
+    if (page === "Live Sessions") return <LiveSessionsPage onNotify={notify} />;
     if (page === "Resources") return <ResourcesPage onNotify={notify} onReassign={reassignAppointment} />;
     if (page === "Incidents") return <IncidentsPage selected={selectedIncident} onSelect={setSelectedIncident} onNotify={notify} />;
     return <CommandCenterPage appointments={appointments} facilityState={facilityState} simulationPaused={simulationPaused} simulationTick={simulationTick} onFacilityStateChange={changeFacilityState} onPause={() => setSimulationPaused((current) => !current)} onAdvance={() => { setSimulationTick((current) => current + 1); notify("Simulation advanced. The operational feed has been refreshed.", "info"); }} onNavigate={navigate} onOpenDrawer={openDrawer} onOpenAppointment={setSelectedAppointment} onOpenPopover={(kind) => setPopover((current) => current === kind ? null : kind)} onNotify={notify} popover={popover} />;
@@ -631,40 +631,78 @@ function WaitingRoomPage({ facilityState, onNotify }: { facilityState: string; o
   return <div className="sv8-waiting-page"><PageHeader eyebrow="Operations · Admission control" title="Waiting Room" description="Move approved appointments from arrival to a safe, verified handoff into Live Sessions." actions={<><Status tone={facilityState === "NORMAL_OPERATIONS" ? "green" : "red"}>{facilityState === "NORMAL_OPERATIONS" ? "ROOM OPEN" : "FACILITY REVIEW"}</Status><Button variant="primary" onClick={() => { void refreshWaitingRoom().then(() => onNotify("Readiness data refreshed from the staff API.", "success")).catch((error) => { const message = error instanceof Error ? error.message : "Refresh failed."; setSyncError(message); onNotify(message, "error"); }); }}>↻ Refresh readiness</Button></>} /><div className="sv8-summary"><button onClick={() => setLane("waiting")} className={lane === "waiting" ? "active" : ""}><span>Waiting now</span><strong>{counts.waiting}</strong><small>presence or unit confirmation</small></button><button onClick={() => setLane("ready")} className={lane === "ready" ? "active" : ""}><span>Ready to start</span><strong>{counts.ready}</strong><small>all checks passing</small></button><button onClick={() => setLane("attention")} className={lane === "attention" ? "active" : ""}><span>Needs attention</span><strong>{counts.attention}</strong><small>blockers or late arrivals</small></button><button onClick={() => setLane("upcoming")} className={lane === "upcoming" ? "active" : ""}><span>Upcoming</span><strong>{counts.upcoming}</strong><small>not yet in the window</small></button></div><section className="sv8-queue"><div className="sv8-toolbar"><label className="sv8-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search visitor, prisoner, visit ID, room, or kiosk" /></label><label className="sv8-select"><span>Window</span><select aria-label="Waiting room time window"><option>Next 2 hours</option><option>Today</option><option>All approved</option></select></label><button type="button" className={`sv8-attention-toggle ${onlyAttention ? "active" : ""}`} onClick={() => setOnlyAttention((current) => !current)}>Only needs attention</button><span className="sv8-toolbar-meta">{laneRecords(lane).length} linked visits · live readiness</span></div><div className="sv8-lane-tabs"><span>VIEW</span>{[["all", "All visits"], ["ready", "Ready to start"], ["waiting", "Waiting now"], ["attention", "Needs attention"], ["upcoming", "Upcoming"]].map(([value, label]) => <button className={lane === value ? "active" : ""} key={value} onClick={() => setLane(value)}>{label}{value !== "all" ? <em>{counts[value as keyof typeof counts]}</em> : null}</button>)}</div><div className="sv8-lanes">{[["ready", "READY TO START", "green"], ["waiting", "WAITING NOW", "blue"], ["attention", "NEEDS ATTENTION", "orange"], ["upcoming", "UPCOMING", "gray"]].map(([value, label, tone]) => <section className={`sv8-lane sv8-lane-${tone}`} key={value}><header><span><i />{label}</span><strong>{laneRecords(value).length}</strong></header><div className="sv8-lane-body">{laneRecords(value).map((record) => <article className={`sv8-card ${selectedId === record.id ? "selected" : ""}`} key={record.id}><button className="sv8-card-main" onClick={() => setSelectedId(record.id)}><div className="sv8-card-top"><Avatar initials={record.visitorInitials} tone={value === "attention" ? "orange" : value === "upcoming" ? "purple" : "blue"} /><span><strong>{record.visitor}</strong><small>{record.prisoner} · <span className="sv8-mono">{record.id}</span></small></span><Status tone={record.waitingState === "READY_TO_START" ? "green" : record.waitingState === "TECHNICAL_ISSUE" ? "red" : record.waitingState === "STAFF_REVIEW" || record.waitingState === "LATE" ? "orange" : "blue"}>{record.waitingState.replaceAll("_", " ")}</Status></div><div className="sv8-card-time"><strong>{record.date} · {record.time}</strong><span>{record.countdown}</span></div><div className="sv8-card-facts"><span>Visitor <b className={record.visitorPresence === "present" ? "pass" : "pending"}>{record.visitorPresence === "present" ? "Present" : "Not arrived"}</b></span><span>Prisoner <b className={record.prisonerPresence === "present" ? "pass" : "pending"}>{record.prisonerPresence === "present" ? "Present" : "Waiting"}</b></span><span>Resource <b>{record.room} · {record.kiosk}</b></span></div>{record.blocker ? <p className="sv8-blocker"><b>Blocker</b>{record.blocker}</p> : null}</button><div className="sv8-card-actions"><Button variant={primaryAction(record)[0] === "start" ? "primary" : "secondary"} onClick={() => action(record, primaryAction(record)[0])}>{primaryAction(record)[1]}</Button><button type="button" className="sv8-open-link" onClick={() => setSelectedId(record.id)}>Open readiness →</button></div></article>)}{!laneRecords(value).length ? <div className="sv8-lane-empty">No linked visits in this lane.</div> : null}</div></section>)}</div><footer className="sv8-footer"><span>Linked to the approved appointment queue · refreshes every 15 seconds in production.</span><strong>{syncError || `Last sync · ${lastSync}`}</strong></footer></section>{selected ? <div className="sv8-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedId(null); }}><aside className="sv8-drawer" role="dialog" aria-modal="true" aria-labelledby="waiting-drawer-title"><header className="sv8-drawer-head"><div><span className="sv8-kicker">{selected.id} · READINESS RECORD</span><h2 id="waiting-drawer-title">{selected.visitor}</h2><p>{selected.prisoner} · {selected.type} visit</p></div><button type="button" aria-label="Close readiness drawer" onClick={() => setSelectedId(null)}>×</button></header><div className="sv8-drawer-scroll"><div className="sv8-drawer-hero"><Avatar initials={selected.visitorInitials} tone="orange" /><div><strong>{selected.date} · {selected.time}</strong><small>{selected.room} · {selected.kiosk}</small></div><Status tone={selected.waitingState === "READY_TO_START" ? "green" : selected.waitingState === "TECHNICAL_ISSUE" ? "red" : "orange"}>{selected.waitingState.replaceAll("_", " ")}</Status></div><div className="sv8-drawer-callout"><span className="sv8-kicker">NEXT DECISION</span><strong>{selected.waitingState === "READY_TO_START" ? "Safe to start" : selected.blocker || "Waiting for arrival and facility confirmation"}</strong><p>{selected.waitingState === "READY_TO_START" ? "All required checks are passing. Starting this visit will hand it to the Live Sessions workspace." : "Resolve the highlighted blocker before starting the visit."}</p></div><section className="sv8-drawer-section"><header><span className="sv8-kicker">PRESENCE</span><span className="sv8-mono">{selected.countdown}</span></header><div className="sv8-presence-grid"><div><span>Visitor</span><strong className={selected.visitorPresence === "present" ? "pass" : "pending"}>{selected.visitorPresence === "present" ? "Present" : "Not arrived"}</strong></div><div><span>Prisoner</span><strong className={selected.prisonerPresence === "present" ? "pass" : "pending"}>{selected.prisonerPresence === "present" ? "Present" : "Waiting"}</strong></div></div></section><section className="sv8-drawer-section"><header><span className="sv8-kicker">PRE-CALL CHECKS</span><span className="sv8-check-score">{selected.checks.filter((check) => check.state === "pass").length}/{selected.checks.length} passing</span></header><div className="sv8-check-list">{selected.checks.map((check) => <div className="sv8-check-row" key={check.key}><span className={`sv8-check-icon ${check.state}`}>{check.state === "pass" ? "✓" : check.state === "failed" ? "×" : check.state === "warning" ? "!" : "·"}</span><span><strong>{check.label}</strong><small>{check.detail}</small></span></div>)}</div></section><section className="sv8-drawer-section"><header><span className="sv8-kicker">ASSIGNMENT</span></header><div className="sv8-detail-grid"><span><small>Room</small><strong>{selected.room}</strong></span><span><small>Kiosk</small><strong>{selected.kiosk}</strong></span><span><small>Visit ID</small><strong className="sv8-mono">{selected.id}</strong></span><span><small>Updated</small><strong>{selected.lastUpdated}</strong></span></div></section><section className="sv8-drawer-section"><header><span className="sv8-kicker">STAFF NOTES</span></header><p className="sv8-notes">{selected.issue || "No staff notes. Session is linked to the approved appointment and its reserved resources."}</p></section></div><footer className="sv8-drawer-actions"><Button variant="quiet" onClick={() => action(selected, "cancel")}>Cancel visit</Button><Button onClick={() => action(selected, "late")}>Mark late</Button><Button variant="primary" onClick={() => action(selected, primaryAction(selected)[0])} disabled={primaryAction(selected)[0] === "start" && selected.checks.some((check) => check.state !== "pass")}>{primaryAction(selected)[1]}</Button></footer></aside></div> : null}</div>;
 }
 
-function LiveSessionsPage({ appointments, onUpdateAppointment, onNotify }: { appointments: Appointment[]; onUpdateAppointment: (id: string, status: AppointmentStatus) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
-  const [selected, setSelected] = useState<Appointment | null>(null);
-  const [serverSessions, setServerSessions] = useState<Record<string, { id: string; status: string; authorized_end_at: string }>>({});
+type LiveSessionRow = {
+  id: string;
+  appointment_id: string;
+  status: string;
+  provider: string;
+  authorized_start_at: string;
+  authorized_end_at: string;
+  actual_started_at: string | null;
+  actual_ended_at: string | null;
+  recording_policy: string;
+  recording_status: string;
+  termination_reason: string | null;
+  visitor_name: string;
+  prisoner_name: string;
+  prisoner_number: string;
+  requested_start: string;
+  requested_end: string;
+  appointment_type: string;
+  room_name: string | null;
+  kiosk_name: string | null;
+};
+
+function LiveSessionsPage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [sessions, setSessions] = useState<LiveSessionRow[]>([]);
+  const [recentlyEnded, setRecentlyEnded] = useState<LiveSessionRow[]>([]);
+  const [selected, setSelected] = useState<LiveSessionRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [syncError, setSyncError] = useState("");
+  const [lastSync, setLastSync] = useState<string | null>(null);
   const [ending, setEnding] = useState(false);
-  const live = appointments.filter((appointment) => appointment.status === "Live");
-  const recentlyEnded = appointments.filter((appointment) => appointment.status === "Completed");
+
+  const refresh = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    try {
+      const response = await fetch("/api/control/live-sessions", { headers: { accept: "application/json" }, cache: "no-store" });
+      const body = await response.json() as { sessions?: LiveSessionRow[]; recentlyEnded?: LiveSessionRow[]; error?: string };
+      if (!response.ok) throw new Error(body.error || "Live Session data could not be loaded.");
+      const active = body.sessions || [];
+      const ended = body.recentlyEnded || [];
+      setSessions(active);
+      setRecentlyEnded(ended);
+      setSelected((current) => current ? active.concat(ended).find((row) => row.id === current.id) || null : null);
+      setLastSync(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setSyncError("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Live Session data could not be loaded.";
+      setSyncError(message);
+      if (!quiet) onNotify(message, "error");
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, [onNotify]);
 
   useEffect(() => {
-    let active = true;
-    fetch("/api/control/live-sessions", { headers: { accept: "application/json" } }).then(async (response) => {
-      if (!response.ok) return;
-      const body = await response.json() as { sessions?: { id: string; appointment_id: string; status: string; authorized_end_at: string }[] };
-      if (!active) return;
-      setServerSessions(Object.fromEntries((body.sessions || []).map((session) => [session.appointment_id, { id: session.id, status: session.status, authorized_end_at: session.authorized_end_at }])));
-    }).catch(() => undefined);
-    return () => { active = false; };
-  }, []);
+    const initial = window.setTimeout(() => void refresh(), 0);
+    const timer = window.setInterval(() => void refresh(true), 15000);
+    return () => { window.clearTimeout(initial); window.clearInterval(timer); };
+  }, [refresh]);
 
-  async function endSession(appointment: Appointment) {
-    const persisted = serverSessions[appointment.id];
-    if (!persisted) {
-      onUpdateAppointment(appointment.id, "Completed");
-      setSelected(null);
-      onNotify("Demo session ended and the visit was marked complete.", "success");
-      return;
-    }
+  async function endSession(session: LiveSessionRow) {
     setEnding(true);
     try {
-      const response = await fetch(`/api/control/live-sessions/${persisted.id}/end`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ reason: "Staff ended the authorized visit from Live Sessions." }) });
+      const response = await fetch(`/api/control/live-sessions/${session.id}/end`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ reason: "Staff ended the authorized visit from Live Sessions." }),
+      });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "The session could not be ended.");
-      onUpdateAppointment(appointment.id, "Completed");
       setSelected(null);
-      onNotify("Visit ended, resources released, and the completion event was recorded.", "success");
+      await refresh(true);
+      onNotify("The session end was recorded. Credit settlement and resource release were processed by the server.", "success");
     } catch (error) {
       onNotify(error instanceof Error ? error.message : "The session could not be ended.", "error");
     } finally {
@@ -672,29 +710,47 @@ function LiveSessionsPage({ appointments, onUpdateAppointment, onNotify }: { app
     }
   }
 
-  async function monitorSession(appointment: Appointment) {
-    const persisted = serverSessions[appointment.id];
-    if (!persisted) {
-      onNotify("Monitoring is available after this visit has a persisted Live Session record.", "info");
-      return;
-    }
+  async function authorizeObserver(session: LiveSessionRow) {
     try {
-      const response = await fetch(`/api/control/live-sessions/${persisted.id}/observer-token`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ reason: "Routine supervision of an authorized live visit." }) });
+      const response = await fetch(`/api/control/live-sessions/${session.id}/observer-token`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ reason: "Routine supervision of an authorized live visit." }),
+      });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Observer authorization was denied.");
-      onNotify("Observer access authorized and monitoring has been audit logged.", "success");
+      onNotify("Observer access was authorized and audit logged. The staff observer player is not yet integrated.", "info");
     } catch (error) {
       onNotify(error instanceof Error ? error.message : "Observer authorization was denied.", "error");
     }
   }
 
-  function card(appointment: Appointment, index: number, recent = false) {
-    const persisted = serverSessions[appointment.id];
-    const state = persisted?.status === "RECONNECTING" ? "RECONNECTING" : recent ? "ENDED" : "LIVE";
-    return <button className={`sv10-session-card ${selected?.id === appointment.id ? "selected" : ""}`} key={appointment.id} onClick={() => setSelected(appointment)}><div className="sv10-card-top"><Status tone={state === "LIVE" ? "green" : state === "RECONNECTING" ? "orange" : "blue"}>{state}</Status><span>{appointment.type} visit · {appointment.id}</span></div><div className="sv10-card-people"><Avatar initials={appointment.visitorInitials} tone="orange" /><span>↔</span><Avatar initials={appointment.prisoner.replaceAll(".", "").replace(" ", "").slice(0, 2)} tone="blue" /></div><h2>{appointment.visitor} <span>↔</span> {appointment.prisoner}</h2><p>{appointment.room} · {appointment.kiosk}</p><div className="sv10-card-time"><strong>{recent ? "20:00" : index === 0 ? "11:43" : "08:16"}</strong><small>{recent ? "duration" : "remaining"}</small></div><div className="sv10-card-health"><span>Visitor <b className="green-text">Connected</b></span><span>Facility <b className={state === "RECONNECTING" ? "orange-text" : "green-text"}>{state === "RECONNECTING" ? "Reconnecting" : "Connected"}</b></span><span>Media <b>{recent ? "Video + audio" : "Video + audio"}</b></span></div><span className="sv10-open">Open session details <b>→</b></span></button>;
+  function displayTime(value: string | null) {
+    if (!value) return "Not recorded";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
   }
 
-  return <div className="sv10-live-page"><PageHeader eyebrow="Operations · Authorized monitoring" title="Live Sessions" description="See which visits are active, what each participant can do, and when staff intervention is required." actions={<><span className="sv10-active-count"><i />{live.length} ACTIVE SESSION{live.length === 1 ? "" : "S"}</span><Button variant="primary" onClick={() => onNotify("Live session roster refreshed from the protected session service.", "success")}>↻ Refresh sessions</Button></>} /><div className="sv10-live-summary"><div><span>Active now</span><strong>{live.length}</strong><small>server-authorized visits</small></div><div><span>Needs attention</span><strong>{live.filter((appointment) => serverSessions[appointment.id]?.status === "RECONNECTING").length}</strong><small>connection recovery</small></div><div><span>Recording</span><strong>OFF</strong><small>default policy</small></div><div><span>Recently ended</span><strong>{recentlyEnded.length}</strong><small>completion summaries</small></div></div><div className="sv10-workspace"><section className="sv10-session-column"><div className="sv10-section-heading"><div><span className="sv9-kicker">ACTIVE SESSIONS</span><h2>In progress</h2></div><span>{live.length} live</span></div><div className="sv10-session-grid">{live.length ? live.map((appointment, index) => card(appointment, index)) : <div className="sv10-empty"><strong>No active visits</strong><span>Visits started from Waiting Room will appear here.</span></div>}</div><div className="sv10-section-heading sv10-recent-heading"><div><span className="sv9-kicker">COMPLETION</span><h2>Recently ended</h2></div><span>{recentlyEnded.length} recorded</span></div><div className="sv10-session-grid sv10-recent-grid">{recentlyEnded.length ? recentlyEnded.slice(0, 3).map((appointment, index) => card(appointment, index, true)) : <div className="sv10-empty"><strong>Nothing ended this shift</strong><span>Completed visits and their summaries will land here.</span></div>}</div></section><aside className="sv10-ops-rail"><span className="sv9-kicker">SESSION OPERATIONS</span><h2>Keep the call safe</h2><p>Live video is never shown in this workspace by default. Open a session when you need technical context or authorized monitoring.</p><div className="sv10-rail-list"><div><span className="sv10-rail-icon">◉</span><span><strong>Media plane</strong><small>WebRTC through LiveKit</small></span></div><div><span className="sv10-rail-icon">◷</span><span><strong>Timer authority</strong><small>Server session window</small></span></div><div><span className="sv10-rail-icon">▣</span><span><strong>Recording policy</strong><small>Off unless explicitly authorized</small></span></div></div><button onClick={() => onNotify("Session health checks are available from each detail drawer.")}>Review session health →</button></aside></div>{selected ? <div className="sv10-drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}><aside className="sv10-drawer" role="dialog" aria-modal="true" aria-labelledby="live-session-title"><header><div><span className="sv9-kicker">SESSION DETAIL · {selected.id}</span><h2 id="live-session-title">{selected.visitor}</h2><p>{selected.prisoner} · {selected.room} · {selected.kiosk}</p></div><button aria-label="Close session details" onClick={() => setSelected(null)}>×</button></header><div className="sv10-drawer-body"><div className="sv10-drawer-state"><Status tone="green">LIVE · 11:43 REMAINING</Status><span>Timer is enforced by SecureVisit</span></div><section><span className="sv9-kicker">PARTICIPANTS</span><div className="sv10-participant-row"><Avatar initials={selected.visitorInitials} tone="orange" /><span><strong>{selected.visitor}</strong><small>Visitor · video on · audio on</small></span><b className="green-text">Connected</b></div><div className="sv10-participant-row"><Avatar initials={selected.prisoner.replaceAll(".", "").replace(" ", "").slice(0, 2)} tone="blue" /><span><strong>{selected.prisoner}</strong><small>Facility kiosk · video on · audio on</small></span><b className="green-text">Connected</b></div></section><section><span className="sv9-kicker">MEDIA & CONNECTION</span><div className="sv10-metric-grid"><div><small>Connection</small><strong>Good</strong></div><div><small>Reconnects</small><strong>0</strong></div><div><small>Video</small><strong>Active</strong></div><div><small>Audio</small><strong>Active</strong></div></div></section><section><span className="sv9-kicker">POLICY</span><div className="sv10-policy-row"><span>Recording</span><strong>Off · no media stored</strong></div><div className="sv10-policy-row"><span>Monitoring</span><strong>Not active</strong></div></section><section><span className="sv9-kicker">TECHNICAL EVENTS</span><p className="sv10-event-note">No connection incidents have been recorded for this session.</p></section></div><footer><Button onClick={() => void monitorSession(selected)}>Monitor Session</Button><Button variant="danger" disabled={ending} onClick={() => void endSession(selected)}>{ending ? "Ending…" : "End Visit"}</Button></footer></aside></div> : null}</div>;
+  function sessionCard(session: LiveSessionRow) {
+    const active = sessions.some((item) => item.id === session.id);
+    const tone = session.status === "ACTIVE" ? "green" : session.status === "RECONNECTING" ? "orange" : active ? "blue" : "gray";
+    return <button className={`sv10-session-card ${selected?.id === session.id ? "selected" : ""}`} key={session.id} onClick={() => setSelected(session)}>
+      <div className="sv10-card-top"><Status tone={tone}>{session.status.replaceAll("_", " ")}</Status><span>{session.appointment_type} · <span className="sv-mono">{session.id}</span></span></div>
+      <div className="sv10-card-people"><Avatar initials={session.visitor_name.split(/\\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()} tone="orange" /><span>↔</span><Avatar initials={session.prisoner_name.split(/\\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()} tone="blue" /></div>
+      <h2>{session.visitor_name} <span>↔</span> {session.prisoner_name}</h2>
+      <p>{session.room_name || "Room not assigned"} · {session.kiosk_name || "Device not assigned"}</p>
+      <div className="sv10-card-time"><strong>{displayTime(session.actual_started_at || session.authorized_start_at)}</strong><small>{active ? "started" : "session start"}</small></div>
+      <div className="sv10-card-health"><span>Recording <b>{session.recording_policy === "OFF" ? "Off" : session.recording_status}</b></span><span>Provider <b>{session.provider}</b></span></div>
+      <span className="sv10-open">Open persisted session record <b>→</b></span>
+    </button>;
+  }
+
+  const attentionCount = sessions.filter((session) => ["RECONNECTING", "ENDING", "CONNECTING"].includes(session.status)).length;
+  return <div className="sv10-live-page"><PageHeader eyebrow="Operations · Authorized monitoring" title="Live Sessions" description="Facility-scoped sessions and completion records, refreshed from the session service." actions={<><span className="sv10-active-count"><i />{sessions.length} ACTIVE SESSION{sessions.length === 1 ? "" : "S"}</span><Button variant="primary" onClick={() => void refresh()}>↻ Refresh sessions</Button></>} />
+    {syncError ? <div className="sv10-empty" role="alert"><strong>Session service unavailable</strong><span>{syncError} Displayed records may be stale; no demo sessions are substituted.</span></div> : null}
+    <div className="sv10-live-summary"><div><span>Active now</span><strong>{sessions.length}</strong><small>persisted sessions</small></div><div><span>Needs attention</span><strong>{attentionCount}</strong><small>connecting or recovering</small></div><div><span>Recording</span><strong>{sessions.every((session) => session.recording_policy === "OFF") ? "OFF" : "POLICY"}</strong><small>server policy</small></div><div><span>Recently ended</span><strong>{recentlyEnded.length}</strong><small>last 24 hours</small></div></div>
+    <div className="sv10-workspace"><section className="sv10-session-column"><div className="sv10-section-heading"><div><span className="sv9-kicker">ACTIVE SESSIONS</span><h2>In progress</h2></div><span>{lastSync ? `Updated ${lastSync}` : "Not synced"}</span></div><div className="sv10-session-grid">{loading ? <div className="sv10-empty"><strong>Loading session records…</strong></div> : sessions.length ? sessions.map(sessionCard) : <div className="sv10-empty"><strong>No active visits</strong><span>Persisted sessions started from Waiting Room will appear here.</span></div>}</div><div className="sv10-section-heading sv10-recent-heading"><div><span className="sv9-kicker">COMPLETION</span><h2>Recently ended</h2></div><span>{recentlyEnded.length} recorded</span></div><div className="sv10-session-grid sv10-recent-grid">{recentlyEnded.length ? recentlyEnded.slice(0, 6).map(sessionCard) : <div className="sv10-empty"><strong>No recent session records</strong><span>Completed and terminated sessions are retained here for 24 hours.</span></div>}</div></section><aside className="sv10-ops-rail"><span className="sv9-kicker">SESSION OPERATIONS</span><h2>Keep the call safe</h2><p>Only persisted session facts are shown. Participant connectivity and media quality appear when provider telemetry is available.</p><div className="sv10-rail-list"><div><span className="sv10-rail-icon">◉</span><span><strong>Media plane</strong><small>LiveKit session provider</small></span></div><div><span className="sv10-rail-icon">◷</span><span><strong>Timer authority</strong><small>Server-authorized visit window</small></span></div><div><span className="sv10-rail-icon">▣</span><span><strong>Recording policy</strong><small>Shown per session record</small></span></div></div></aside></div>
+    {selected ? <div className="sv10-drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}><aside className="sv10-drawer" role="dialog" aria-modal="true" aria-labelledby="live-session-title"><header><div><span className="sv9-kicker">PERSISTED SESSION · <span className="sv-mono">{selected.id}</span></span><h2 id="live-session-title">{selected.visitor_name}</h2><p>{selected.prisoner_name} · #{selected.prisoner_number}</p></div><button aria-label="Close session details" onClick={() => setSelected(null)}>×</button></header><div className="sv10-drawer-body"><div className="sv10-drawer-state"><Status tone={selected.status === "ACTIVE" ? "green" : selected.status === "RECONNECTING" ? "orange" : "blue"}>{selected.status.replaceAll("_", " ")}</Status><span>Session times are server-recorded</span></div><section><span className="sv9-kicker">SCHEDULE & RESOURCE</span><div className="sv10-policy-row"><span>Scheduled</span><strong>{displayTime(selected.requested_start)} – {displayTime(selected.requested_end)}</strong></div><div className="sv10-policy-row"><span>Started</span><strong>{displayTime(selected.actual_started_at)}</strong></div><div className="sv10-policy-row"><span>Ended</span><strong>{displayTime(selected.actual_ended_at)}</strong></div><div className="sv10-policy-row"><span>Room / device</span><strong>{selected.room_name || "Not assigned"} · {selected.kiosk_name || "Not assigned"}</strong></div></section><section><span className="sv9-kicker">VIDEO POLICY</span><div className="sv10-policy-row"><span>Provider</span><strong>{selected.provider}</strong></div><div className="sv10-policy-row"><span>Recording</span><strong>{selected.recording_policy} · {selected.recording_status}</strong></div><div className="sv10-policy-row"><span>Termination note</span><strong>{selected.termination_reason || "None recorded"}</strong></div></section><section><span className="sv9-kicker">TELEMETRY</span><p className="sv10-event-note">Participant connectivity and media-quality telemetry are not yet exposed in this workspace.</p></section></div><footer><Button onClick={() => void authorizeObserver(selected)} disabled={!sessions.some((session) => session.id === selected.id)}>Authorize observer access</Button>{sessions.some((session) => session.id === selected.id) ? <Button variant="danger" disabled={ending} onClick={() => void endSession(selected)}>{ending ? "Ending…" : "End Visit"}</Button> : null}</footer></aside></div> : null}</div>;
 }
 
 function LegacyResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, tone?: Notice["tone"]) => void; onReassign: (id: string) => void }) {
