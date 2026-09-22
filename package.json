@@ -9,7 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --import tsx --test tests/rendered-html.test.mjs tests/idempotency.test.mjs tests/credits.test.mjs tests/resources.test.mjs tests/appointment-decisions.test.mjs tests/visitor-appointments.test.mjs tests/verification-decisions.test.mjs tests/visit-policy.test.mjs",
+    "test": "npm run build && node --import tsx --test tests/rendered-html.test.mjs tests/idempotency.test.mjs tests/credits.test.mjs tests/resources.test.mjs tests/appointment-decisions.test.mjs tests/visitor-appointments.test.mjs tests/visitor-relationships.test.mjs tests/verification-decisions.test.mjs tests/visit-policy.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit --incremental false",
     "db:migrate:local": "node --env-file-if-exists=.env.local scripts/d1-migrations.mjs apply --local",

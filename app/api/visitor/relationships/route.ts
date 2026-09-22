@@ -1,6 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
-import { appendAuditAndOutbox } from "../../../../lib/server/events";
+import { createVisitorRelationshipStatements } from "../../../../lib/server/visitor-relationships";
 
 export async function GET() {
   const context = await getRequestContext();
@@ -35,13 +35,27 @@ export async function POST(request: Request) {
     const verificationId = crypto.randomUUID();
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
-    await d1.batch([
-      d1.prepare(`INSERT INTO visitor_relationships (id, facility_id, visitor_user_id, prisoner_id, relationship_type, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'PENDING', 1, ?, ?)`)
-        .bind(relationshipId, facilityId, visitor.userId, prisonerId, relationshipType, now, now),
-      d1.prepare(`INSERT INTO verification_cases (id, facility_id, relationship_id, status, evidence_required, submitted_at, version, created_at, updated_at) VALUES (?, ?, ?, 'PENDING', 1, ?, 1, ?, ?)`)
-        .bind(verificationId, facilityId, relationshipId, now, now, now),
-    ]);
-    await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId, actionType: "RELATIONSHIP_SUBMITTED", entityType: "visitor_relationship", entityId: relationshipId, reason: "Visitor submitted a prisoner relationship for staff verification.", newValues: { prisonerId, relationshipType, status: "PENDING" }, requestId: context.requestId, correlationId, eventType: "RELATIONSHIP_SUBMITTED", payload: { relationshipId, verificationId, visitorUserId: visitor.userId } });
+    const created = await d1.batch(createVisitorRelationshipStatements(d1, {
+      relationshipId,
+      verificationId,
+      facilityId,
+      visitorUserId: visitor.userId,
+      prisonerId,
+      relationshipType,
+      now,
+      requestId: context.requestId,
+      correlationId,
+    }));
+    if (!created[0]?.meta.changes) {
+      const racedRequest = await d1.prepare(`SELECT vr.id, vr.facility_id, vr.status, vc.id AS verification_id
+        FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id
+        WHERE vr.visitor_user_id = ? AND vr.prisoner_id = ?`)
+        .bind(visitor.userId, prisonerId).first<{ id: string; facility_id: string; status: string; verification_id: string | null }>();
+      if (racedRequest) {
+        return securityResponse({ relationshipId: racedRequest.id, verificationId: racedRequest.verification_id, status: racedRequest.status, idempotent: true }, 200, context.requestId);
+      }
+      throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
+    }
     return securityResponse({ relationshipId, verificationId, status: "PENDING", correlationId }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
