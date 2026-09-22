@@ -12,7 +12,7 @@ async function renderPath(pathname = "/") {
 
   return worker.fetch(
     new Request(`http://localhost${pathname}`, { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { SECUREVISIT_ENVIRONMENT: "development", ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
 }
@@ -25,7 +25,7 @@ async function renderApi(pathname, method = "GET", body, extraHeaders = {}) {
   const worker = await loadWorker();
   return worker.fetch(
     new Request(`http://localhost${pathname}`, { method, headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}), ...extraHeaders }, body }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { SECUREVISIT_ENVIRONMENT: "development", ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
 }

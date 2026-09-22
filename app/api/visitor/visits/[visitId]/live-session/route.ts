@@ -8,7 +8,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const requestContext = await getRequestContext();
   try {
     const { visitId } = await context.params;
-    const session = await getVisitorSession(visitId);
+    const session = await getVisitorSession(visitId, true);
     const config = await getVideoConfig();
     return securityResponse({ session: toSessionPayload(session), provider: { configured: config.configured, provider: config.provider } }, 200, requestContext.requestId);
   } catch (error) {

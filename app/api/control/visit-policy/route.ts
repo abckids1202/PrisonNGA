@@ -53,7 +53,6 @@ export async function PUT(request: Request) {
   const context = await getRequestContext();
   try {
     const authorization = await requirePermission("facility.state.change");
-    await requireStepUp("visit_policy_change", authorization.userId);
     let body: Record<string, unknown>;
     try {
       const parsed: unknown = await request.json();
@@ -72,6 +71,7 @@ export async function PUT(request: Request) {
     const current = await d1.prepare(selectPolicy).bind(authorization.facilityId).first<PolicyRow>();
     if (!current) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 404);
     if (current.version !== expectedVersion) throw new SecurityError("STALE_POLICY", 409);
+    await requireStepUp({ purpose: "visit_policy_change", userId: authorization.userId, targetId: current.id, payload: { policy, reason, expectedVersion } });
 
     const now = new Date().toISOString();
     const nextVersion = current.version + 1;

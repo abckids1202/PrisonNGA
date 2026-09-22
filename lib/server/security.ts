@@ -1,7 +1,9 @@
 import { cookies, headers } from "next/headers";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../db";
+import { getD1 } from "../../db/runtime";
 import { authSessions, permissions, rolePermissions, roles, staffProfiles, userRoles, users } from "../../db/schema";
+import { consumeStepUpNonce, hashStepUpNonce, hashStepUpPayload, verifyStepUpAssertion, type StepUpBinding } from "./step-up";
 
 export type WorkspaceIdentity = { externalId: string; email: string; displayName: string };
 export type RequestContext = { requestId: string; ipAddress: string | null; userAgent: string | null };
@@ -147,6 +149,7 @@ export async function hashIdentifier(value: string, salt: string): Promise<strin
 }
 
 export async function getSecuritySalt(): Promise<string> {
+  const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
   try {
     const { env } = await import("cloudflare:workers");
     const configuredSalt = (env as unknown as Record<string, unknown>).SECUREVISIT_HASH_SALT;
@@ -154,7 +157,8 @@ export async function getSecuritySalt(): Promise<string> {
   } catch {
     // The local test runner does not provide the Cloudflare runtime module.
   }
-  return "local-development-only";
+  if (environment === "development") return "local-development-only";
+  throw new SecurityError("SECUREVISIT_HASH_SALT_NOT_CONFIGURED", 503);
 }
 
 export async function getRuntimeValue(key: string): Promise<string | null> {
@@ -169,19 +173,22 @@ export async function getRuntimeValue(key: string): Promise<string | null> {
   return null;
 }
 
-export async function requireStepUp(purpose: string, userId: string): Promise<void> {
+export async function requireStepUp(binding: StepUpBinding): Promise<void> {
   const assertion = (await headers()).get("x-securevisit-step-up")?.trim() || "";
   const secret = await getRuntimeValue("STAFF_STEP_UP_SECRET");
-  const [timestampText, suppliedSignature] = assertion.split(".");
-  const timestamp = Number(timestampText);
-  if (!secret || secret.length < 32 || !Number.isInteger(timestamp) || Math.abs(Date.now() - timestamp) > 5 * 60_000 || !/^[a-f0-9]{64}$/i.test(suppliedSignature || "")) throw new SecurityError("STEP_UP_REQUIRED", 403);
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
-  const valid = await crypto.subtle.verify("HMAC", key, hexToBytes(suppliedSignature), new TextEncoder().encode(`${purpose}:${userId}:${timestamp}`));
-  if (!valid) throw new SecurityError("STEP_UP_INVALID", 403);
-}
-
-function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
-  const bytes = new Uint8Array(value.length / 2);
-  for (let index = 0; index < bytes.length; index += 1) bytes[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
-  return bytes;
+  if (!secret) throw new SecurityError("STEP_UP_REQUIRED", 403);
+  const verified = await verifyStepUpAssertion(secret, assertion, binding);
+  if (!verified) throw new SecurityError("STEP_UP_INVALID", 403);
+  const nonceHash = await hashStepUpNonce(verified.nonce);
+  const payloadHash = await hashStepUpPayload(binding.payload);
+  const accepted = await consumeStepUpNonce(await getD1(), {
+    nonceHash,
+    actorUserId: binding.userId,
+    purpose: binding.purpose,
+    targetId: binding.targetId,
+    payloadHash,
+    expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    createdAt: new Date().toISOString(),
+  });
+  if (!accepted) throw new SecurityError("STEP_UP_REPLAYED", 403);
 }

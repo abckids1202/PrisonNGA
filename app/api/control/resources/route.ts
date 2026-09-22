@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       const device = await d1.prepare("SELECT id, resource_type FROM resources WHERE id = ? AND facility_id = ?").bind(current.id, authorization.facilityId).first<{ id: string; resource_type: string }>();
       if (device?.resource_type !== "DEVICE") throw new SecurityError("KIOSK_DEVICE_REQUIRED", 409);
       if (body.expectedVersion === undefined) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
-      await requireStepUp("kiosk_credential_issue", authorization.userId);
+      await requireStepUp({ purpose: "kiosk_credential_issue", userId: authorization.userId, targetId: current.id, payload: { command: body.command, resourceId: current.id, expectedVersion: current.version, reason } });
       const versionClaim = await d1.prepare("UPDATE resources SET version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND resource_type = 'DEVICE' AND version = ?")
         .bind(now, current.id, authorization.facilityId, current.version).run();
       if (!versionClaim.meta.changes) throw new SecurityError("STALE_RESOURCE", 409);
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       if (body.expectedVersion === undefined) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
       const activeCredential = await d1.prepare("SELECT id FROM kiosk_credentials WHERE resource_id = ? AND facility_id = ? AND status = 'ACTIVE'").bind(current.id, authorization.facilityId).first<{ id: string }>();
       if (!activeCredential) throw new SecurityError("KIOSK_CREDENTIAL_NOT_ACTIVE", 409);
-      await requireStepUp("kiosk_credential_revoke", authorization.userId);
+      await requireStepUp({ purpose: "kiosk_credential_revoke", userId: authorization.userId, targetId: current.id, payload: { command: body.command, resourceId: current.id, expectedVersion: current.version, reason } });
       const versionClaim = await d1.prepare("UPDATE resources SET version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND resource_type = 'DEVICE' AND version = ?")
         .bind(now, current.id, authorization.facilityId, current.version).run();
       if (!versionClaim.meta.changes) throw new SecurityError("STALE_RESOURCE", 409);

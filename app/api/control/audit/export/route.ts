@@ -11,7 +11,6 @@ export async function GET(request: Request) {
   const context = await getRequestContext();
   try {
     const authorization = await requirePermission("audit.export");
-    await requireStepUp("audit_export", authorization.userId);
     const search = new URL(request.url).searchParams;
     const from = search.get("from")?.trim() || null;
     const to = search.get("to")?.trim() || null;
@@ -19,6 +18,7 @@ export async function GET(request: Request) {
     if (from && Number.isNaN(Date.parse(from))) throw new SecurityError("INVALID_AUDIT_FROM", 400);
     if (to && Number.isNaN(Date.parse(to))) throw new SecurityError("INVALID_AUDIT_TO", 400);
     if (from && to && Date.parse(from) > Date.parse(to)) throw new SecurityError("INVALID_AUDIT_RANGE", 400);
+    await requireStepUp({ purpose: "audit_export", userId: authorization.userId, targetId: `${authorization.facilityId}:audit_export`, payload: { from, to, limit } });
     const d1 = await getD1();
     const clauses = ["facility_id = ?"];
     const bindings: (string | number)[] = [authorization.facilityId];

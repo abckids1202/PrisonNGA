@@ -1,7 +1,7 @@
 export type RuntimeConfig = Record<string, unknown>;
 
 export type EnvironmentCheck = {
-  environment: "development" | "staging" | "production";
+  environment: "development" | "staging" | "production" | "invalid";
   ok: boolean;
   missing: string[];
   warnings: string[];
@@ -16,10 +16,14 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   const configuredEnvironment = value(env, "SECUREVISIT_ENVIRONMENT");
   const environment = configuredEnvironment === "production" || configuredEnvironment === "staging" || configuredEnvironment === "development"
     ? configuredEnvironment
-    : "development";
+    : "invalid";
   const missing: string[] = [];
   const warnings: string[] = [];
   if (!env.DB) missing.push("DB");
+  if (environment === "invalid") {
+    missing.push("SECUREVISIT_ENVIRONMENT (must be explicitly development, staging, or production)");
+    return { environment, ok: false, missing, warnings };
+  }
   if (environment === "development") {
     if (!value(env, "SECUREVISIT_HASH_SALT")) warnings.push("SECUREVISIT_HASH_SALT uses the development fallback");
     return { environment, ok: missing.length === 0, missing, warnings };

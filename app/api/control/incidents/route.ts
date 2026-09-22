@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
-import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { createIncidentStatements, transitionIncidentStatements } from "../../../../lib/server/incident-workflow";
+import { assertReason, getRequestContext, getSecuritySalt, hashIdentifier, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const commands = ["acknowledge", "assign", "add_note", "resolve", "close"] as const;
 
@@ -28,28 +29,53 @@ export async function POST(request: Request) {
     if (!body.incidentId) {
       if (typeof body.title !== "string" || body.title.trim().length < 4 || typeof body.description !== "string" || body.description.trim().length < 8) throw new SecurityError("INCIDENT_DETAILS_REQUIRED", 400);
       if (typeof body.severity !== "string" || !["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(body.severity)) throw new SecurityError("INVALID_INCIDENT_SEVERITY", 400);
+      const idempotencyKey = request.headers.get("idempotency-key")?.trim() || "";
+      if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+      const incidentType = typeof body.incidentType === "string" ? body.incidentType.trim().slice(0, 60) : "OPERATIONAL";
+      const title = body.title.trim().slice(0, 160);
+      const description = body.description.trim().slice(0, 2000);
+      const appointmentId = typeof body.appointmentId === "string" ? body.appointmentId.trim() : null;
+      const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : null;
+      const resourceId = typeof body.resourceId === "string" ? body.resourceId.trim() : null;
+      const salt = await getSecuritySalt();
+      const idempotencyKeyHash = await hashIdentifier(`incident-create:${authorization.facilityId}:${authorization.userId}:${idempotencyKey}`, salt);
+      const requestHash = await hashIdentifier(JSON.stringify({ incidentType, severity: body.severity, title, description, appointmentId, sessionId, resourceId }), salt);
       const id = `INC-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
-      await d1.batch([
-        d1.prepare(`INSERT INTO incidents (id, facility_id, incident_type, severity, status, title, description, appointment_id, session_id, resource_id, reporter_user_id, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, 1, ?, ?)`).bind(id, authorization.facilityId, typeof body.incidentType === "string" ? body.incidentType.trim().slice(0, 60) : "OPERATIONAL", body.severity, body.title.trim().slice(0, 160), body.description.trim().slice(0, 2000), typeof body.appointmentId === "string" ? body.appointmentId.trim() : null, typeof body.sessionId === "string" ? body.sessionId.trim() : null, typeof body.resourceId === "string" ? body.resourceId.trim() : null, authorization.userId, now, now),
-        d1.prepare(`INSERT INTO incident_events (id, incident_id, event_type, actor_user_id, details, correlation_id, created_at) VALUES (?, ?, 'CREATED', ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, authorization.userId, body.description.trim().slice(0, 2000), correlationId, now),
-      ]);
+      const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "INCIDENT_CREATED", entityType: "incident", entityId: id, reason: description, newValues: { incidentType, severity: body.severity, title, appointmentId, sessionId, resourceId }, requestId: context.requestId, correlationId, eventType: "INCIDENT_CREATED", payload: { incidentId: id, severity: body.severity } };
+      const results = await d1.batch(createIncidentStatements(d1, { id, facilityId: authorization.facilityId, incidentType, severity: String(body.severity), title, description, appointmentId, sessionId, resourceId, reporterUserId: authorization.userId, idempotencyKey: idempotencyKeyHash, requestHash, now, correlationId }, event));
+      if (!results[0]?.meta.changes) {
+        const existing = await d1.prepare("SELECT id, status, version, request_hash FROM incidents WHERE facility_id = ? AND reporter_user_id = ? AND idempotency_key = ?").bind(authorization.facilityId, authorization.userId, idempotencyKeyHash).first<{ id: string; status: string; version: number; request_hash: string }>();
+        if (!existing) throw new SecurityError("INCIDENT_CREATE_CONFLICT", 409);
+        if (existing.request_hash !== requestHash) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
+        return securityResponse({ incidentId: existing.id, status: existing.status, version: existing.version, idempotent: true }, 200, context.requestId);
+      }
       return securityResponse({ incidentId: id, status: "OPEN", version: 1, correlationId }, 201, context.requestId);
     }
     if (!command || !commands.includes(command)) throw new SecurityError("INVALID_INCIDENT_COMMAND", 400);
     const incident = await d1.prepare("SELECT id, status, version, assigned_user_id FROM incidents WHERE id = ? AND facility_id = ?").bind(String(body.incidentId).trim(), authorization.facilityId).first<{ id: string; status: string; version: number; assigned_user_id: string | null }>();
     if (!incident) throw new SecurityError("INCIDENT_NOT_FOUND", 404);
-    if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== incident.version) throw new SecurityError("STALE_INCIDENT", 409);
+    if (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 1) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
+    if (Number(body.expectedVersion) !== incident.version) throw new SecurityError("STALE_INCIDENT", 409);
     const reason = assertReason(body.reason);
-    if (command === "close") await requireStepUp("incident_close", authorization.userId);
+    if (command === "close") await requireStepUp({ purpose: "incident_close", userId: authorization.userId, targetId: incident.id, payload: { incidentId: incident.id, command, expectedVersion: incident.version, reason, resolution: body.resolution ?? null } });
     const nextStatus = command === "acknowledge" ? "ACKNOWLEDGED" : command === "resolve" ? "RESOLVED" : command === "close" ? "CLOSED" : incident.status;
     if (command === "close" && incident.status !== "RESOLVED") throw new SecurityError("INCIDENT_MUST_BE_RESOLVED", 409);
+    if (command === "acknowledge" && incident.status !== "OPEN") throw new SecurityError("INCIDENT_NOT_ACKNOWLEDGEABLE", 409);
+    if (command === "resolve" && !["OPEN", "ACKNOWLEDGED"].includes(incident.status)) throw new SecurityError("INCIDENT_NOT_RESOLVABLE", 409);
+    if (command === "assign" && incident.status === "CLOSED") throw new SecurityError("INCIDENT_CLOSED", 409);
     const nextAssignee = command === "assign" ? (typeof body.assignedUserId === "string" && body.assignedUserId.trim() ? body.assignedUserId.trim() : null) : incident.assigned_user_id;
     if (command === "assign" && !nextAssignee) throw new SecurityError("ASSIGNEE_REQUIRED", 400);
-    const resolution = command === "resolve" ? (typeof body.resolution === "string" && body.resolution.trim().length >= 8 ? body.resolution.trim().slice(0, 2000) : reason) : null;
-    await d1.batch([
-      d1.prepare("UPDATE incidents SET status = ?, assigned_user_id = ?, resolution = COALESCE(?, resolution), version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(nextStatus, nextAssignee, resolution, now, incident.id, authorization.facilityId, incident.version),
-      d1.prepare("INSERT INTO incident_events (id, incident_id, event_type, actor_user_id, details, correlation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), incident.id, command.toUpperCase(), authorization.userId, command === "add_note" ? reason : resolution || reason, correlationId, now),
-    ]);
+    const resolution = command === "resolve" ? (typeof body.resolution === "string" && body.resolution.trim().length >= 8 ? body.resolution.trim().slice(0, 2000) : "") : null;
+    if (command === "resolve" && !resolution) throw new SecurityError("INCIDENT_RESOLUTION_REQUIRED", 400);
+    if (command === "assign" && nextAssignee) {
+      const assignee = await d1.prepare("SELECT 1 AS active FROM users u INNER JOIN staff_profiles sp ON sp.user_id = u.id WHERE u.id = ? AND sp.facility_id = ? AND u.user_type = 'STAFF' AND u.status = 'ACTIVE'").bind(nextAssignee, authorization.facilityId).first();
+      if (!assignee) throw new SecurityError("INCIDENT_ASSIGNEE_NOT_FOUND", 404);
+    }
+    const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: `INCIDENT_${command.toUpperCase()}`, entityType: "incident", entityId: incident.id, reason: command === "resolve" ? resolution : reason, oldValues: { status: incident.status, assignedUserId: incident.assigned_user_id, version: incident.version }, newValues: { status: nextStatus, assignedUserId: nextAssignee, resolution, version: incident.version + 1 }, requestId: context.requestId, correlationId, eventType: `INCIDENT_${command.toUpperCase()}`, payload: { incidentId: incident.id, command } };
+    const details: string = command === "resolve" ? (resolution || "") : reason;
+    if (!details) throw new SecurityError("INCIDENT_DETAILS_REQUIRED", 400);
+    const results = await d1.batch(transitionIncidentStatements(d1, { incidentId: incident.id, facilityId: authorization.facilityId, expectedVersion: incident.version, nextStatus, nextAssignee, resolution, actorUserId: authorization.userId, command, details, now, correlationId }, event));
+    if (!results[0]?.meta.changes) throw new SecurityError("STALE_INCIDENT", 409);
     return securityResponse({ incidentId: incident.id, status: nextStatus, assignedUserId: nextAssignee, version: incident.version + 1, correlationId }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }

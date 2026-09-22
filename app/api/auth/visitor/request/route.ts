@@ -38,8 +38,9 @@ export async function POST(request: Request) {
     const codeHash = await hashIdentifier(`visitor-sign-in:${code}`, salt);
     await d1.prepare(`INSERT INTO auth_challenges (id, channel, destination, destination_hash, destination_masked, code_hash, purpose, attempt_count, max_attempts, expires_at, created_at) VALUES (?, 'EMAIL', ?, ?, ?, ?, 'VISITOR_SIGN_IN', 0, 5, ?, ?)`).bind(challengeId, email, destinationHash, maskEmail(email), codeHash, expiresAt, now.toISOString()).run();
     const responseBody: Record<string, unknown> = { challengeId, channel: "EMAIL", destination: maskEmail(email), expiresAt, retryAfterSeconds: 60 };
-    const delivery = (await getRuntimeValue("VISITOR_AUTH_DELIVERY") || "console").toLowerCase();
-    if (delivery === "console") {
+    const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
+    const delivery = (await getRuntimeValue("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
+    if (delivery === "console" && environment === "development") {
       responseBody.devCode = code;
     } else if (delivery === "webhook") {
       try {

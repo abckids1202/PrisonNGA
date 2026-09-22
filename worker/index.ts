@@ -71,6 +71,10 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
   }
 }
 
+async function purgeExpiredStepUpAssertions(env: Env): Promise<void> {
+  await env.DB.prepare("DELETE FROM step_up_assertions WHERE julianday(expires_at) <= julianday('now')").run();
+}
+
 async function reconcileExpiredSessions(env: Env): Promise<void> {
   const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.version, vs.status, vs.actual_started_at,
       vs.termination_reason, vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
@@ -161,13 +165,13 @@ function notificationCopy(eventType: string): { title: string; body: string } {
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), purgeExpiredEvidence(env), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([processOutbox(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), reconcileExpiredSessions(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     const environmentCheck = validateEnvironment(env);
-    if (!environmentCheck.ok && environmentCheck.environment === "production") {
+    if (environmentCheck.environment === "invalid" || (!environmentCheck.ok && environmentCheck.environment !== "development")) {
       console.error(JSON.stringify({ event: "ENVIRONMENT_VALIDATION_FAILED", missing: environmentCheck.missing, requestId: request.headers.get("x-request-id") || crypto.randomUUID() }));
       return Response.json({ error: "SERVICE_NOT_READY" }, { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
     }

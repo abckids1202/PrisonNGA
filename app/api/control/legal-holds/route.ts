@@ -1,5 +1,5 @@
 import { getD1 } from "../../../../db/runtime";
-import { appendAuditAndOutbox } from "../../../../lib/server/events";
+import { createLegalHoldStatements, legalHoldTargetExists, releaseLegalHoldStatements } from "../../../../lib/server/legal-hold-workflow";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 export async function GET() {
@@ -16,7 +16,6 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const authorization = await requirePermission("audit.read");
-    await requireStepUp("legal_hold_change", authorization.userId);
     const body = await request.json() as { action?: unknown; entityType?: unknown; entityId?: unknown; reason?: unknown; holdId?: unknown };
     const action = body.action === "RELEASE" ? "RELEASE" : body.action === "CREATE" ? "CREATE" : "";
     const d1 = await getD1();
@@ -25,11 +24,13 @@ export async function POST(request: Request) {
       const entityType = typeof body.entityType === "string" ? body.entityType.trim().slice(0, 80) : "";
       const entityId = typeof body.entityId === "string" ? body.entityId.trim() : "";
       if (!entityType || !entityId) throw new SecurityError("LEGAL_HOLD_ENTITY_REQUIRED", 400);
+      if (!(await legalHoldTargetExists(d1, authorization.facilityId, entityType, entityId))) throw new SecurityError("LEGAL_HOLD_TARGET_NOT_FOUND", 404);
       const reason = assertReason(body.reason);
+      await requireStepUp({ purpose: "legal_hold_change", userId: authorization.userId, targetId: `${authorization.facilityId}:${entityType}:${entityId}`, payload: { action, entityType, entityId, reason } });
       const id = crypto.randomUUID();
-      await d1.prepare("INSERT INTO legal_holds (id, facility_id, entity_type, entity_id, reason, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)").bind(id, authorization.facilityId, entityType, entityId, reason, authorization.userId, now, now).run();
-      await d1.prepare("UPDATE evidence_documents SET legal_hold = 1, updated_at = ? WHERE facility_id = ? AND ((? = 'verification_case' AND verification_case_id = ?) OR (? = 'evidence_document' AND id = ?))").bind(now, authorization.facilityId, entityType, entityId, entityType, entityId).run();
-      await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Auditor", facilityId: authorization.facilityId, actionType: "LEGAL_HOLD_CREATED", entityType, entityId, reason, newValues: { status: "ACTIVE" }, requestId: context.requestId, correlationId: crypto.randomUUID(), eventType: "LEGAL_HOLD_CREATED", payload: { entityType, entityId } });
+      const correlationId = crypto.randomUUID();
+      const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Auditor", facilityId: authorization.facilityId, actionType: "LEGAL_HOLD_CREATED", entityType, entityId, reason, newValues: { status: "ACTIVE" }, requestId: context.requestId, correlationId, eventType: "LEGAL_HOLD_CREATED", payload: { legalHoldId: id, entityType, entityId } };
+      await d1.batch(createLegalHoldStatements(d1, { id, facilityId: authorization.facilityId, entityType, entityId, reason, actorUserId: authorization.userId, now }, event));
       return securityResponse({ id, status: "ACTIVE" }, 201, context.requestId);
     }
     const holdId = typeof body.holdId === "string" ? body.holdId.trim() : "";
@@ -38,10 +39,15 @@ export async function POST(request: Request) {
     const hold = await d1.prepare("SELECT id, entity_type, entity_id, status FROM legal_holds WHERE id = ? AND facility_id = ?").bind(holdId, authorization.facilityId).first<{ id: string; entity_type: string; entity_id: string; status: string }>();
     if (!hold) throw new SecurityError("LEGAL_HOLD_NOT_FOUND", 404);
     if (hold.status === "RELEASED") return securityResponse({ id: holdId, status: "RELEASED", idempotent: true }, 200, context.requestId);
-    await d1.prepare("UPDATE legal_holds SET status = 'RELEASED', released_by = ?, released_at = ?, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'ACTIVE'").bind(authorization.userId, now, now, holdId, authorization.facilityId).run();
-    const remaining = await d1.prepare("SELECT 1 FROM legal_holds WHERE facility_id = ? AND entity_type = ? AND entity_id = ? AND status = 'ACTIVE' LIMIT 1").bind(authorization.facilityId, hold.entity_type, hold.entity_id).first();
-    if (!remaining) await d1.prepare("UPDATE evidence_documents SET legal_hold = 0, updated_at = ? WHERE facility_id = ? AND ((? = 'verification_case' AND verification_case_id = ?) OR (? = 'evidence_document' AND id = ?))").bind(now, authorization.facilityId, hold.entity_type, hold.entity_id, hold.entity_type, hold.entity_id).run();
-    await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Auditor", facilityId: authorization.facilityId, actionType: "LEGAL_HOLD_RELEASED", entityType: hold.entity_type, entityId: hold.entity_id, reason, requestId: context.requestId, correlationId: crypto.randomUUID(), eventType: "LEGAL_HOLD_RELEASED", payload: { holdId } });
+    await requireStepUp({ purpose: "legal_hold_change", userId: authorization.userId, targetId: `${authorization.facilityId}:legal_hold:${holdId}`, payload: { action: "RELEASE", holdId, reason } });
+    const correlationId = crypto.randomUUID();
+    const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Auditor", facilityId: authorization.facilityId, actionType: "LEGAL_HOLD_RELEASED", entityType: hold.entity_type, entityId: hold.entity_id, reason, oldValues: { status: "ACTIVE" }, newValues: { status: "RELEASED" }, requestId: context.requestId, correlationId, eventType: "LEGAL_HOLD_RELEASED", payload: { legalHoldId: holdId } };
+    const results = await d1.batch(releaseLegalHoldStatements(d1, { id: holdId, facilityId: authorization.facilityId, entityType: hold.entity_type, entityId: hold.entity_id, actorUserId: authorization.userId, now }, event));
+    if (!results[0]?.meta.changes) {
+      const latest = await d1.prepare("SELECT status FROM legal_holds WHERE id = ? AND facility_id = ?").bind(holdId, authorization.facilityId).first<{ status: string }>();
+      if (latest?.status === "RELEASED") return securityResponse({ id: holdId, status: "RELEASED", idempotent: true }, 200, context.requestId);
+      throw new SecurityError("LEGAL_HOLD_RELEASE_CONFLICT", 409);
+    }
     return securityResponse({ id: holdId, status: "RELEASED" }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }

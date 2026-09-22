@@ -55,11 +55,11 @@ export async function PATCH(request: Request) {
     const status = typeof body.status === "string" && statuses.includes(body.status as typeof statuses[number]) ? body.status : "";
     const reason = assertReason(body.reason);
     if (!userId || !status) throw new SecurityError("INVALID_STAFF_STATUS", 400);
-    if (status === "DISABLED") await requireStepUp("staff_disable", authorization.userId);
     const d1 = await getD1();
     const current = await d1.prepare("SELECT u.id, u.status, u.version FROM users u INNER JOIN staff_profiles sp ON sp.user_id = u.id WHERE u.id = ? AND u.user_type = 'STAFF' AND sp.facility_id = ?").bind(userId, authorization.facilityId).first<{ id: string; status: string; version: number }>();
     if (!current) throw new SecurityError("STAFF_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_STAFF_RECORD", 409);
+    if (status === "DISABLED") await requireStepUp({ purpose: "staff_disable", userId: authorization.userId, targetId: userId, payload: { status, expectedVersion: body.expectedVersion ?? current.version, reason } });
     if (current.status === status) return securityResponse({ userId, status, version: current.version, idempotent: true }, 200, context.requestId);
     const now = new Date().toISOString();
     const updated = await d1.prepare("UPDATE users SET status = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?").bind(status, now, userId, current.version).run();

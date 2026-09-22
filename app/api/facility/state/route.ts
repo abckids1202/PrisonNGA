@@ -25,12 +25,17 @@ export async function POST(request: Request) {
     const authorization = await requirePermission("facility.state.change");
     const body = await request.json() as { state?: string; reason?: string; expectedVersion?: number };
     if (!allowedStates.includes(body.state as FacilityState)) throw new SecurityError("INVALID_FACILITY_STATE", 400);
-    if (body.state === "LOCKDOWN" || body.state === "EMERGENCY_CLOSURE") await requireStepUp(`facility_state:${body.state}`, authorization.userId);
     const reason = assertReason(body.reason);
     const db = await getDb();
     const [current] = await db.select().from(facilities).where(eq(facilities.id, authorization.facilityId)).limit(1);
     if (!current) throw new SecurityError("FACILITY_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && body.expectedVersion !== current.version) throw new SecurityError("STALE_FACILITY_STATE", 409);
+    if (body.state === "LOCKDOWN" || body.state === "EMERGENCY_CLOSURE") await requireStepUp({
+      purpose: `facility_state:${body.state}`,
+      userId: authorization.userId,
+      targetId: authorization.facilityId,
+      payload: { state: body.state, reason, expectedVersion: body.expectedVersion ?? current.version },
+    });
     if (current.currentState === body.state) return securityResponse({ facility: current, changed: false }, 200, context.requestId);
     const nextVersion = current.version + 1;
     const changedAt = new Date().toISOString();

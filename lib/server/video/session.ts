@@ -7,6 +7,7 @@ export type SessionRecord = {
   facility_id: string;
   visitor_user_id: string;
   visitor_name: string;
+  prisoner_name: string;
   prisoner_id: string;
   appointment_status: string;
   appointment_version: number;
@@ -26,10 +27,10 @@ export type SessionRecord = {
   version: number;
 };
 
-export async function getVisitorSession(visitId: string): Promise<SessionRecord> {
+export async function getVisitorSession(visitId: string, allowTerminal = false): Promise<SessionRecord> {
   const visitor = await requireVisitorIdentity();
   const d1 = await getD1();
-  const record = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
+  const record = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, p.display_name AS prisoner_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
       p.status AS prisoner_status, p.visitation_status, f.current_state AS facility_state,
       vs.status, vs.provider, vs.provider_room_name, vs.authorized_start_at, vs.authorized_end_at, vs.actual_started_at, vs.actual_ended_at, vs.termination_reason, vs.recording_policy, vs.recording_status, vs.version
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id INNER JOIN users u ON u.id = a.visitor_user_id
@@ -37,15 +38,16 @@ export async function getVisitorSession(visitId: string): Promise<SessionRecord>
       INNER JOIN facilities f ON f.id = a.facility_id
     WHERE vs.appointment_id = ? AND a.visitor_user_id = ?`).bind(visitId, visitor.userId).first<SessionRecord>();
   if (!record) throw new SecurityError("VISIT_NOT_FOUND", 404);
-  assertVisitorJoinAllowed(record);
+  if (!allowTerminal) assertVisitorJoinAllowed(record);
   return record;
 }
 
 export async function getStaffSession(sessionId: string, facilityId: string): Promise<SessionRecord> {
   const d1 = await getD1();
-  const record = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
+  const record = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, p.display_name AS prisoner_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
       vs.status, vs.provider, vs.provider_room_name, vs.authorized_start_at, vs.authorized_end_at, vs.actual_started_at, vs.actual_ended_at, vs.termination_reason, vs.recording_policy, vs.recording_status, vs.version
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id INNER JOIN users u ON u.id = a.visitor_user_id
+      INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
     WHERE vs.id = ? AND vs.facility_id = ?`).bind(sessionId, facilityId).first<SessionRecord>();
   if (!record) throw new SecurityError("SESSION_NOT_FOUND", 404);
   return record;
@@ -72,6 +74,7 @@ export function toSessionPayload(record: SessionRecord) {
     id: record.id,
     visitId: record.appointment_id,
     status: record.status,
+    appointmentStatus: record.appointment_status,
     provider: record.provider,
     authorizedStartAt: record.authorized_start_at,
     authorizedEndAt: record.authorized_end_at,
@@ -79,7 +82,7 @@ export function toSessionPayload(record: SessionRecord) {
     actualEndedAt: record.actual_ended_at,
     recordingPolicy: record.recording_policy,
     recordingStatus: record.recording_status,
-    visitor: record.visitor_name,
-    prisonerId: record.prisoner_id,
+    visitorName: record.visitor_name,
+    prisonerName: record.prisoner_name,
   };
 }
