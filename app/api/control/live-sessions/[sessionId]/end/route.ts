@@ -1,21 +1,73 @@
 import { getD1 } from "@/db/runtime";
-import { consumeVisitCredit, releaseVisitCredit } from "@/lib/server/credits";
+import { finalizeLiveSessionStatements, requestLiveSessionEndStatements } from "@/lib/server/live-session-finalization";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { getStaffSession } from "@/lib/server/video/session";
 import { createLiveKitProvider } from "@/lib/server/video/provider";
 
 type RouteContext = { params: Promise<{ sessionId: string }> };
+type EndMode = "normal" | "terminate";
 
 export async function POST(request: Request, context: RouteContext) {
   const requestContext = await getRequestContext();
   try {
     const authorization = await requirePermission("session.monitor");
     const { sessionId } = await context.params;
-    const body = await request.json() as { reason?: string; expectedVersion?: number; mode?: "normal" | "terminate" };
-    const reason = assertReason(body.reason);
+    const body = await request.json() as { reason?: unknown; expectedVersion?: unknown; mode?: unknown };
+    if (body.mode !== undefined && body.mode !== "normal" && body.mode !== "terminate") throw new SecurityError("INVALID_SESSION_END_MODE", 400);
     const session = await getStaffSession(sessionId, authorization.facilityId);
-    if (["ENDED", "TERMINATED", "CANCELLED"].includes(session.status)) return securityResponse({ sessionId, status: session.status, idempotent: true }, 200, requestContext.requestId);
+    const d1 = await getD1();
+    const appointment = await d1.prepare(`SELECT a.status, a.version, ca.id AS credit_account_id
+      FROM appointments a LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
+      WHERE a.id = ? AND a.facility_id = ?`).bind(session.appointment_id, authorization.facilityId)
+      .first<{ status: string; version: number; credit_account_id: string | null }>();
+    if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
+
+    if (["ENDED", "TERMINATED", "CANCELLED"].includes(session.status)) {
+      if (session.status === "CANCELLED") return securityResponse({ sessionId, status: session.status, idempotent: true }, 200, requestContext.requestId);
+      const expectedStatus = session.status === "ENDED" ? "COMPLETED" : "TECHNICAL_FAILURE";
+      const expectedEntry = session.status === "ENDED" ? "CONSUMPTION" : "RESERVATION_RELEASE";
+      const settled = appointment.credit_account_id && appointment.status === expectedStatus
+        ? await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = ?")
+          .bind(session.appointment_id, appointment.credit_account_id, expectedEntry).first()
+        : null;
+      if (!settled) throw new SecurityError("SESSION_SETTLEMENT_REQUIRES_RECONCILIATION", 503);
+      return securityResponse({ sessionId, status: session.status, idempotent: true }, 200, requestContext.requestId);
+    }
+
     if (body.expectedVersion !== undefined && body.expectedVersion !== session.version) throw new SecurityError("STALE_SESSION_STATE", 409);
+    if (!appointment.credit_account_id) throw new SecurityError("CREDIT_RESERVATION_NOT_FOUND", 409);
+    if (appointment.status !== "IN_PROGRESS") throw new SecurityError("APPOINTMENT_NOT_IN_PROGRESS", 409);
+    const mode: EndMode = session.status === "ENDING"
+      ? session.termination_reason?.startsWith("STAFF_TERMINATE:") ? "terminate" : "normal"
+      : (body.mode as EndMode | undefined) || "normal";
+    if (session.status === "ENDING" && body.mode !== undefined && body.mode !== mode) throw new SecurityError("SESSION_END_ALREADY_REQUESTED", 409);
+    if (!["CONNECTING", "ACTIVE", "RECONNECTING", "ENDING"].includes(session.status)) throw new SecurityError("SESSION_NOT_ENDABLE", 409);
+    if (mode === "normal" && !session.actual_started_at) throw new SecurityError("VISIT_NOT_STARTED_MUST_BE_TERMINATED", 409);
+    const reason = session.status === "ENDING" && session.termination_reason?.startsWith("STAFF_TERMINATE:")
+      ? session.termination_reason.slice("STAFF_TERMINATE:".length)
+      : assertReason(body.reason);
+    const now = new Date().toISOString();
+    const correlationId = crypto.randomUUID();
+    if (session.status !== "ENDING") {
+      const requested = await d1.batch(requestLiveSessionEndStatements(d1, {
+        sessionId,
+        appointmentId: session.appointment_id,
+        facilityId: authorization.facilityId,
+        sessionVersion: session.version,
+        sessionStatus: session.status,
+        appointmentVersion: appointment.version,
+        creditAccountId: appointment.credit_account_id,
+        actorUserId: authorization.userId,
+        actorRole: authorization.roles[0] || "STAFF",
+        requestId: requestContext.requestId,
+        correlationId,
+        now,
+        reason,
+        mode,
+      }));
+      if (!requested[0]?.meta.changes) throw new SecurityError("STALE_SESSION_STATE", 409);
+    }
+
     try {
       const provider = await createLiveKitProvider();
       await provider.endRoom(session.provider_room_name);
@@ -23,35 +75,63 @@ export async function POST(request: Request, context: RouteContext) {
       if (error instanceof Error && error.message === "VIDEO_PROVIDER_NOT_CONFIGURED") throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
       throw new SecurityError("VIDEO_PROVIDER_END_FAILED", 502);
     }
-    const now = new Date().toISOString();
-    const status = body.mode === "terminate" ? "TERMINATED" : "ENDED";
-    const correlationId = crypto.randomUUID();
-    const d1 = await getD1();
-    const appointment = await d1.prepare("SELECT a.version, a.visitor_user_id, ca.id AS credit_account_id FROM appointments a LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id WHERE a.id = ? AND a.facility_id = ?").bind(session.appointment_id, authorization.facilityId).first<{ version: number; visitor_user_id: string; credit_account_id: string | null }>();
-    if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
-    const results = await d1.batch([
-      d1.prepare("UPDATE visit_sessions SET status = ?, actual_ended_at = ?, termination_reason = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(status, now, reason, now, sessionId, authorization.facilityId, session.version),
-      d1.prepare("UPDATE appointments SET status = 'COMPLETED', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(now, session.appointment_id, authorization.facilityId, appointment.version),
-      d1.prepare("UPDATE resource_reservations SET status = 'RELEASED' WHERE appointment_id = ? AND facility_id = ? AND status IN ('RESERVED', 'ACTIVE')").bind(session.appointment_id, authorization.facilityId),
-      d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), sessionId, status === "ENDED" ? "SESSION_ENDED" : "SESSION_TERMINATED", "STAFF", "FACILITY", JSON.stringify({ reason }), correlationId, now),
-      d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, status === "ENDED" ? "VISIT_ENDED" : "VISIT_TERMINATED", "visit_session", sessionId, reason, JSON.stringify({ status: session.status, version: session.version }), JSON.stringify({ status, version: session.version + 1 }), correlationId, requestContext.requestId, now),
-      d1.prepare(`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), status === "ENDED" ? "VISIT_COMPLETED" : "VISIT_TERMINATED", "visit_session", sessionId, authorization.facilityId, JSON.stringify({ sessionId, appointmentId: session.appointment_id, status }), correlationId, now),
-    ]);
-    if (!results[0]?.meta.changes || !results[1]?.meta.changes) throw new SecurityError("STALE_SESSION_STATE", 409);
-    if (appointment.credit_account_id) {
-      if (status === "ENDED") {
-        await consumeVisitCredit(d1, { accountId: appointment.credit_account_id, appointmentId: session.appointment_id, actorUserId: authorization.userId, reason: "Completed live visit." });
-      } else {
-        await releaseVisitCredit(d1, { accountId: appointment.credit_account_id, appointmentId: session.appointment_id, actorUserId: authorization.userId, reason: "Visit terminated before completion." });
-      }
+
+    const latest = await d1.prepare(`SELECT vs.status, vs.version, a.status AS appointment_status, a.version AS appointment_version
+      FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
+      WHERE vs.id = ? AND vs.facility_id = ?`).bind(sessionId, authorization.facilityId)
+      .first<{ status: string; version: number; appointment_status: string; appointment_version: number }>();
+    if (!latest) throw new SecurityError("SESSION_NOT_FOUND", 404);
+    const finalSessionStatus = mode === "terminate" ? "TERMINATED" : "ENDED";
+    const finalAppointmentStatus = mode === "terminate" ? "TECHNICAL_FAILURE" : "COMPLETED";
+    const creditOutcome = mode === "terminate" ? "RELEASE" : "CONSUME";
+    if (latest.status === finalSessionStatus && latest.appointment_status === finalAppointmentStatus) {
+      const expectedEntry = mode === "terminate" ? "RESERVATION_RELEASE" : "CONSUMPTION";
+      const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = ?")
+        .bind(session.appointment_id, appointment.credit_account_id, expectedEntry).first();
+      if (settled) return securityResponse({ sessionId, status: latest.status, idempotent: true }, 200, requestContext.requestId);
+      throw new SecurityError("SESSION_SETTLEMENT_REQUIRES_RECONCILIATION", 503);
     }
-    return securityResponse({ sessionId, status, endedAt: now, correlationId }, 200, requestContext.requestId);
+    if (latest.status !== "ENDING") throw new SecurityError("STALE_SESSION_STATE", 409);
+
+    const finalized = await d1.batch(finalizeLiveSessionStatements(d1, {
+      sessionId,
+      appointmentId: session.appointment_id,
+      facilityId: authorization.facilityId,
+      sessionVersion: latest.version,
+      sessionStatus: "ENDING",
+      finalSessionStatus,
+      appointmentVersion: latest.appointment_version,
+      finalAppointmentStatus,
+      creditAccountId: appointment.credit_account_id,
+      creditOutcome,
+      actorUserId: authorization.userId,
+      actorRole: authorization.roles[0] || "STAFF",
+      requestId: requestContext.requestId,
+      correlationId,
+      now: new Date().toISOString(),
+      reason,
+      event: {
+        id: crypto.randomUUID(),
+        eventType: mode === "terminate" ? "SESSION_TERMINATED" : "SESSION_ENDED",
+        source: "STAFF",
+        participantRole: "FACILITY",
+        metadata: { reason, mode },
+      },
+    }));
+    if (!finalized[1]?.meta.changes || !finalized[2]?.meta.changes || !finalized[4]?.meta.changes) {
+      const raced = await d1.prepare(`SELECT vs.status, a.status AS appointment_status FROM visit_sessions vs
+        INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
+        WHERE vs.id = ? AND vs.facility_id = ?`).bind(sessionId, authorization.facilityId)
+        .first<{ status: string; appointment_status: string }>();
+      if (raced?.status === finalSessionStatus && raced.appointment_status === finalAppointmentStatus) {
+        const expectedEntry = mode === "terminate" ? "RESERVATION_RELEASE" : "CONSUMPTION";
+        const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = ?")
+          .bind(session.appointment_id, appointment.credit_account_id, expectedEntry).first();
+        if (settled) return securityResponse({ sessionId, status: raced.status, idempotent: true }, 200, requestContext.requestId);
+      }
+      throw new SecurityError("STALE_SESSION_STATE", 409);
+    }
+    return securityResponse({ sessionId, status: finalSessionStatus, appointmentStatus: finalAppointmentStatus, endedAt: new Date().toISOString(), correlationId }, 200, requestContext.requestId);
   } catch (error) {
     return securityErrorResponse(error, requestContext.requestId);
   }

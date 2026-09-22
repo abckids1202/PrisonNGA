@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     if (newSession) {
       statements.push(d1.prepare(`INSERT INTO visit_sessions (id, appointment_id, facility_id, provider, provider_room_name, provider_room_sid, status, authorized_start_at, authorized_end_at, actual_started_at, created_by, recording_policy, recording_status, version, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(newSession.id, body.appointmentId, authorization.facilityId, "livekit", newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), now, authorization.userId, "OFF", "NOT_RECORDED", 1, now, now));
+        .bind(newSession.id, body.appointmentId, authorization.facilityId, "livekit", newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), null, authorization.userId, "OFF", "NOT_RECORDED", 1, now, now));
       statements.push(d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
         .bind(crypto.randomUUID(), newSession.id, "SESSION_CREATED", "SECUREVISIT", "FACILITY", JSON.stringify({ appointmentId: body.appointmentId }), correlationId, now));

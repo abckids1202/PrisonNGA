@@ -2,7 +2,8 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { validateEnvironment } from "../lib/server/config";
-import { consumeVisitCredit, releaseVisitCredit } from "../lib/server/credits";
+import { finalizeLiveSessionStatements, getExpiredSessionDisposition } from "../lib/server/live-session-finalization";
+import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 
 interface Env {
@@ -25,7 +26,7 @@ interface ExecutionContext {
 }
 
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
-type ExpiredSession = { id: string; appointment_id: string; facility_id: string; version: number; status: string; actual_started_at: string | null; credit_account_id: string | null };
+type ExpiredSession = { id: string; appointment_id: string; facility_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
 
 async function processOutbox(env: Env): Promise<void> {
   await env.DB.prepare("UPDATE outbox_events SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim.' WHERE status = 'PROCESSING' AND created_at < datetime('now', '-5 minutes')").run();
@@ -71,29 +72,75 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
 }
 
 async function reconcileExpiredSessions(env: Env): Promise<void> {
-  const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.version, vs.status, vs.actual_started_at, ca.id AS credit_account_id
-    FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id
+  const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.version, vs.status, vs.actual_started_at,
+      vs.termination_reason, vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
+    FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
     LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
-    WHERE vs.status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING', 'ENDING') AND vs.authorized_end_at <= CURRENT_TIMESTAMP
-      AND (vs.status <> 'ENDING' OR vs.updated_at <= datetime('now', '-1 minute')) LIMIT 25`).all<ExpiredSession>();
+    WHERE a.status = 'IN_PROGRESS' AND (
+      (vs.status = 'ENDING' AND vs.updated_at <= datetime('now', '-1 minute'))
+      OR (vs.status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING') AND vs.authorized_end_at <= CURRENT_TIMESTAMP)
+    ) LIMIT 25`).all<ExpiredSession>();
+  if (!sessions.results.length) return;
+
+  let provider: Awaited<ReturnType<typeof createLiveKitProvider>>;
+  try {
+    provider = await createLiveKitProvider();
+  } catch (error) {
+    console.error(JSON.stringify({ event: "EXPIRED_SESSION_PROVIDER_UNAVAILABLE", error: error instanceof Error ? error.message : "UNKNOWN" }));
+    return;
+  }
+
   for (const session of sessions.results) {
     const now = new Date().toISOString();
-    const claimed = await env.DB.prepare("UPDATE visit_sessions SET status = 'ENDING', termination_reason = 'AUTHORIZED_WINDOW_EXPIRED', version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING', 'ENDING')").bind(now, session.id, session.version).run();
-    if (!claimed.meta.changes && session.status !== "ENDING") continue;
-    const started = Boolean(session.actual_started_at);
-    await env.DB.batch([
-      env.DB.prepare("UPDATE appointments SET status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status IN ('IN_PROGRESS', 'WAITING', 'APPROVED')").bind(started ? "COMPLETED" : "TECHNICAL_FAILURE", now, session.appointment_id, session.facility_id),
-      env.DB.prepare("UPDATE resource_reservations SET status = 'RELEASED' WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')").bind(session.appointment_id, session.facility_id),
-      env.DB.prepare("UPDATE waiting_room_sessions SET state = 'CANCELLED', version = version + 1, updated_at = ? WHERE appointment_id = ? AND facility_id = ? AND state <> 'CANCELLED'").bind(now, session.appointment_id, session.facility_id),
-      env.DB.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
-        VALUES (?, ?, ?, 'SECUREVISIT_SCHEDULER', NULL, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), session.id, started ? "SESSION_EXPIRED" : "SESSION_ABANDONED", JSON.stringify({ authorizedWindowExpired: true }), crypto.randomUUID(), now),
-    ]);
-    if (session.credit_account_id) {
-      if (started) await consumeVisitCredit(env.DB, { accountId: session.credit_account_id, appointmentId: session.appointment_id, actorUserId: "system:scheduler", reason: "Authorized live-session window expired." });
-      else await releaseVisitCredit(env.DB, { accountId: session.credit_account_id, appointmentId: session.appointment_id, actorUserId: "system:scheduler", reason: "Live-session window expired before the visit started." });
+    try {
+      await provider.endRoom(session.provider_room_name);
+    } catch (error) {
+      console.error(JSON.stringify({ event: "EXPIRED_SESSION_ROOM_CLOSE_FAILED", sessionId: session.id, facilityId: session.facility_id, error: error instanceof Error ? error.message : "UNKNOWN" }));
+      continue;
     }
-    await env.DB.prepare("UPDATE visit_sessions SET status = ?, actual_ended_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND status = 'ENDING'").bind(started ? "ENDED" : "TERMINATED", now, now, session.id).run();
+    if (!session.credit_account_id) {
+      console.error(JSON.stringify({ event: "EXPIRED_SESSION_CREDIT_ACCOUNT_MISSING", sessionId: session.id, appointmentId: session.appointment_id, facilityId: session.facility_id }));
+      continue;
+    }
+
+    const disposition = getExpiredSessionDisposition(session);
+    const correlationId = crypto.randomUUID();
+    try {
+      const results = await env.DB.batch(finalizeLiveSessionStatements(env.DB, {
+        sessionId: session.id,
+        appointmentId: session.appointment_id,
+        facilityId: session.facility_id,
+        sessionVersion: session.version,
+        sessionStatus: session.status,
+        finalSessionStatus: disposition.finalSessionStatus,
+        appointmentVersion: session.appointment_version,
+        finalAppointmentStatus: disposition.finalAppointmentStatus,
+        creditAccountId: session.credit_account_id,
+        creditOutcome: disposition.creditOutcome,
+        actorUserId: "system:scheduler",
+        actorRole: "SYSTEM",
+        requestId: correlationId,
+        correlationId,
+        now,
+        reason: disposition.reason,
+        event: {
+          id: crypto.randomUUID(),
+          eventType: disposition.eventType,
+          source: "SECUREVISIT_SCHEDULER",
+          participantRole: null,
+          metadata: { authorizedWindowExpired: true, terminationRequested: disposition.terminationRequested },
+        },
+      }));
+      if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[4]?.meta.changes) {
+        const latest = await env.DB.prepare("SELECT status FROM visit_sessions WHERE id = ? AND facility_id = ?")
+          .bind(session.id, session.facility_id).first<{ status: string }>();
+        if (latest && !["ENDED", "TERMINATED", "CANCELLED"].includes(latest.status)) {
+          console.error(JSON.stringify({ event: "EXPIRED_SESSION_FINALIZATION_CONFLICT", sessionId: session.id, facilityId: session.facility_id }));
+        }
+      }
+    } catch (error) {
+      console.error(JSON.stringify({ event: "EXPIRED_SESSION_FINALIZATION_FAILED", sessionId: session.id, facilityId: session.facility_id, error: error instanceof Error ? error.message : "UNKNOWN" }));
+    }
   }
 }
 

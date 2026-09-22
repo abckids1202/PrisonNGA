@@ -1,4 +1,4 @@
-import { AccessToken, RoomServiceClient, type VideoGrant } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, ServerError, type VideoGrant } from "livekit-server-sdk";
 
 export type ParticipantRole = "VISITOR" | "FACILITY" | "STAFF_OBSERVER";
 export type VideoConfig = { provider: "livekit"; configured: boolean; url: string | null; apiKey: string | null; apiSecret: string | null };
@@ -69,6 +69,11 @@ class LiveKitVideoProvider implements VideoProvider {
   }
 
   async endRoom(roomName: string) {
-    await this.service.deleteRoom(roomName);
+    try {
+      await this.service.deleteRoom(roomName);
+    } catch (error) {
+      if (error instanceof ServerError && ["not_found", "room_not_found"].includes(error.code || "")) return;
+      throw error;
+    }
   }
 }

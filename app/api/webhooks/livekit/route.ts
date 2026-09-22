@@ -16,11 +16,11 @@ export async function POST(request: Request) {
     await enforceRateLimit(d1, { key: `livekit-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const roomName = event.room?.name;
     if (!roomName) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
-    const session = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.status, vs.version, vs.actual_started_at,
+    const session = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.status, vs.version, vs.actual_started_at, vs.termination_reason,
       a.status AS appointment_status, a.version AS appointment_version, ca.id AS credit_account_id
       FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id
       LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
-      WHERE vs.provider_room_name = ?`).bind(roomName).first<{ id: string; appointment_id: string; facility_id: string; status: string; version: number; actual_started_at: string | null; appointment_status: string; appointment_version: number; credit_account_id: string | null }>();
+      WHERE vs.provider_room_name = ?`).bind(roomName).first<{ id: string; appointment_id: string; facility_id: string; status: string; version: number; actual_started_at: string | null; termination_reason: string | null; appointment_status: string; appointment_version: number; credit_account_id: string | null }>();
     if (!session) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
     const now = new Date().toISOString();
     const eventId = typeof event.id === "string" ? event.id.trim() : "";
@@ -31,13 +31,22 @@ export async function POST(request: Request) {
     const priorEvent = await d1.prepare("SELECT session_id, event_type FROM visit_session_events WHERE id = ?").bind(eventId).first<{ session_id: string; event_type: string }>();
     if (priorEvent) {
       if (priorEvent.session_id !== session.id || priorEvent.event_type !== eventType) throw new SecurityError("LIVEKIT_EVENT_ID_REUSED", 409);
-      return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
+      if (event.event !== "room_finished" || ["ENDED", "TERMINATED", "CANCELLED"].includes(session.status)) {
+        return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
+      }
     }
 
     if (event.event === "room_finished") {
-      if (session.status === "ENDED" && session.appointment_status === "COMPLETED") {
-        const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'CONSUMPTION'")
-          .bind(session.appointment_id, session.credit_account_id || "").first();
+      const staffTerminationReason = session.termination_reason?.startsWith("STAFF_TERMINATE:")
+        ? session.termination_reason.slice("STAFF_TERMINATE:".length)
+        : null;
+      const terminating = Boolean(staffTerminationReason) || !session.actual_started_at;
+      const finalSessionStatus = terminating ? "TERMINATED" : "ENDED";
+      const finalAppointmentStatus = terminating ? "TECHNICAL_FAILURE" : "COMPLETED";
+      const creditEntryType = terminating ? "RESERVATION_RELEASE" : "CONSUMPTION";
+      if (session.status === finalSessionStatus && session.appointment_status === finalAppointmentStatus) {
+        const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = ?")
+          .bind(session.appointment_id, session.credit_account_id || "", creditEntryType).first();
         if (settled) return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
         throw new SecurityError("SESSION_SETTLEMENT_REQUIRES_RECONCILIATION", 503);
       }
@@ -49,15 +58,18 @@ export async function POST(request: Request) {
         facilityId: session.facility_id,
         sessionVersion: session.version,
         sessionStatus: session.status,
+        finalSessionStatus,
         appointmentVersion: session.appointment_version,
+        finalAppointmentStatus,
         creditAccountId: session.credit_account_id,
+        creditOutcome: terminating ? "RELEASE" : "CONSUME",
         actorUserId: "system:livekit",
         actorRole: "SYSTEM",
         requestId: context.requestId,
         correlationId,
         now,
-        reason: "LiveKit room completed.",
-        providerEvent: { id: eventId, eventType, participantRole, metadata: eventMetadata },
+        reason: staffTerminationReason || (terminating ? "LiveKit room ended before the visit started." : "LiveKit room completed."),
+        event: { id: eventId, eventType, source: "LIVEKIT_WEBHOOK", participantRole, metadata: eventMetadata },
       }));
       if (finalized[1]?.meta.changes && finalized[2]?.meta.changes && finalized[4]?.meta.changes) {
         return securityResponse({ accepted: true, event: event.event, sessionId: session.id, status: "COMPLETED", correlationId }, 200, context.requestId);
@@ -65,15 +77,15 @@ export async function POST(request: Request) {
       const latest = await d1.prepare(`SELECT vs.status, a.status AS appointment_status
         FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
         WHERE vs.id = ? AND vs.facility_id = ?`).bind(session.id, session.facility_id).first<{ status: string; appointment_status: string }>();
-      if (latest?.status === "ENDED" && latest.appointment_status === "COMPLETED") {
-        const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'CONSUMPTION'")
-          .bind(session.appointment_id, session.credit_account_id).first();
+      if (latest?.status === finalSessionStatus && latest.appointment_status === finalAppointmentStatus) {
+        const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = ?")
+          .bind(session.appointment_id, session.credit_account_id, creditEntryType).first();
         if (settled) return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
       }
       throw new SecurityError("LIVE_SESSION_FINALIZATION_CONFLICT", 409);
     }
 
-    const nextStatus = event.event === "room_started" || event.event === "participant_joined" ? "ACTIVE" : event.event === "participant_connection_aborted" ? "RECONNECTING" : session.status;
+    const nextStatus = session.status === "ENDING" ? session.status : event.event === "room_started" || event.event === "participant_joined" ? "ACTIVE" : event.event === "participant_connection_aborted" ? "RECONNECTING" : session.status;
     const statements = [
       d1.prepare(`INSERT OR IGNORE INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
         VALUES (?, ?, ?, 'LIVEKIT_WEBHOOK', ?, ?, ?, ?)`)
