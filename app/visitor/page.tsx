@@ -612,6 +612,8 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
   const [facilities, setFacilities] = useState<VisitorFacility[]>([]);
   const [pricePerCredit, setPricePerCredit] = useState<number | null>(null);
   const [demoPrice, setDemoPrice] = useState(false);
+  const [checkoutAvailable, setCheckoutAvailable] = useState(false);
+  const [checkoutUnavailableReason, setCheckoutUnavailableReason] = useState<string | null>(null);
   const [facilityId, setFacilityId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -625,7 +627,7 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
     let active = true;
     Promise.all([
       fetch("/api/visitor/credits", { credentials: "include" }).then(async (response) => { const body = await response.json() as { accounts?: VisitorCreditAccount[]; ledger?: VisitorCreditLedgerEntry[]; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load your credit balance."); return body; }),
-      fetch("/api/visitor/payments", { credentials: "include" }).then(async (response) => { const body = await response.json() as { paymentIntents?: VisitorPaymentIntent[]; pricing?: { perCreditMinor: number; currency: string; demo: boolean }; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load payment options."); return body; }),
+      fetch("/api/visitor/payments", { credentials: "include" }).then(async (response) => { const body = await response.json() as { paymentIntents?: VisitorPaymentIntent[]; pricing?: { perCreditMinor: number; currency: string; demo: boolean } | null; checkoutAvailable?: boolean; checkoutUnavailableReason?: string | null; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load payment history."); return body; }),
       fetch("/api/visitor/facilities", { credentials: "include" }).then(async (response) => { const body = await response.json() as { facilities?: VisitorFacility[]; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load available facilities."); return body; }),
     ]).then(([creditBody, paymentBody, facilityBody]) => {
       if (!active) return;
@@ -636,6 +638,8 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
       setPayments(paymentBody.paymentIntents || []);
       setPricePerCredit(paymentBody.pricing?.perCreditMinor ?? null);
       setDemoPrice(paymentBody.pricing?.demo ?? false);
+      setCheckoutAvailable(paymentBody.checkoutAvailable === true);
+      setCheckoutUnavailableReason(paymentBody.checkoutUnavailableReason || null);
       const nextFacilities = facilityBody.facilities || [];
       setFacilities(nextFacilities);
       setFacilityId((current) => current || nextFacilities[0]?.id || "");
@@ -647,6 +651,7 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
 
   async function startPurchase(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!checkoutAvailable) return setError(checkoutUnavailableReason === "VISIT_CREDIT_PRICE_NOT_CONFIGURED" ? "The facility has not configured an approved Visit Credit price." : "Secure checkout is not configured at this facility yet. Your balance has not been charged.");
     if (!facilityId || pricePerCredit === null) return setError("Choose an available facility before continuing.");
     const fingerprint = `${facilityId}:${quantity}`;
     if (!idempotencyRef.current || idempotencyRef.current.fingerprint !== fingerprint) idempotencyRef.current = { fingerprint, key: crypto.randomUUID() };
@@ -690,11 +695,12 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
     {reserved > 0 && <div className="sv4-credit-note"><span>i</span><p><strong>{reserved} {reserved === 1 ? "credit is" : "credits are"} reserved</strong><br />for approved or upcoming visits.</p></div>}
     <section className="sv4-credit-purchase"><div><p className="sv4-kicker">Top up securely</p><h2>Choose a credit pack</h2><p>Checkout opens with the configured payment service. Credits are added only after its signed confirmation.</p></div>
       {demoPrice && <p className="sv4-request-hint">Development example price: {pricePerCredit === null ? "—" : currency.format(pricePerCredit)} per credit. This is not an approved production tariff.</p>}
+      {!checkoutAvailable && !loading && <p className="sv4-request-hint" role="status">{checkoutUnavailableReason === "VISIT_CREDIT_PRICE_NOT_CONFIGURED" ? "Purchases are paused until the facility sets an approved Visit Credit price." : "Secure checkout is not connected yet. Your existing balance and payment history remain available, but purchases are disabled."}</p>}
       <form onSubmit={startPurchase}>
         <label>Facility<select value={facilityId} onChange={(event) => { setFacilityId(event.target.value); idempotencyRef.current = null; }} disabled={loading || !facilities.length} required>{facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}</select></label>
         <div className="sv4-credit-packs" role="radiogroup" aria-label="Visit Credit quantity">{[1, 3, 5].map((pack) => <label key={pack} className={`sv4-credit-pack ${quantity === pack ? "selected" : ""}`}><input type="radio" name="credit-pack" checked={quantity === pack} onChange={() => { setQuantity(pack); idempotencyRef.current = null; }} /><strong>{pack}</strong><span>{pack === 1 ? "credit" : "credits"}</span>{pricePerCredit !== null && <small>{currency.format(pricePerCredit * pack)}</small>}</label>)}</div>
         {error && <p className="sv4-request-error" role="alert">{error}</p>}{notice && <p className="sv4-request-success" role="status">{notice}</p>}
-        <button className="sv4-button sv4-button-primary" disabled={loading || busy || !facilityId || pricePerCredit === null}>{busy ? "Preparing secure checkout…" : `Continue · ${pricePerCredit === null ? "price unavailable" : currency.format(pricePerCredit * quantity)}`}</button>
+        <button className="sv4-button sv4-button-primary" disabled={loading || busy || !checkoutAvailable || !facilityId || pricePerCredit === null}>{busy ? "Preparing secure checkout…" : checkoutAvailable ? `Continue · ${pricePerCredit === null ? "price unavailable" : currency.format(pricePerCredit * quantity)}` : "Purchases unavailable"}</button>
         {!facilities.length && !loading && <p className="sv4-request-hint">No facility is currently accepting Visit Credit purchases.</p>}
       </form>
     </section>

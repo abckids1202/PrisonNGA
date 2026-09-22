@@ -75,11 +75,20 @@ export async function GET() {
   try {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
-    const [result, pricing] = await Promise.all([
+    const [result, provider] = await Promise.all([
       d1.prepare(`SELECT id, facility_id, provider, credit_quantity, amount_minor, currency, status, provider_reference, checkout_url, version, created_at, updated_at FROM payment_intents WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`).bind(visitor.userId).all(),
-      getCreditPricing(),
+      getPaymentProvider(),
     ]);
-    return securityResponse({ paymentIntents: result.results, pricing }, 200, context.requestId);
+    let pricing: Awaited<ReturnType<typeof getCreditPricing>> | null = null;
+    let checkoutUnavailableReason: string | null = null;
+    try {
+      pricing = await getCreditPricing();
+    } catch (error) {
+      if (!(error instanceof SecurityError) || error.code !== "VISIT_CREDIT_PRICE_NOT_CONFIGURED") throw error;
+      checkoutUnavailableReason = "VISIT_CREDIT_PRICE_NOT_CONFIGURED";
+    }
+    if (!provider) checkoutUnavailableReason = "PAYMENT_PROVIDER_NOT_CONFIGURED";
+    return securityResponse({ paymentIntents: result.results, pricing, checkoutAvailable: Boolean(provider && pricing), checkoutUnavailableReason }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }
