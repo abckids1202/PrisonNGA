@@ -47,10 +47,13 @@ try {
   const args = action === "seed"
     ? [wranglerCli, "d1", "execute", "DB", "--local", "--file", path.join(projectRoot, "db", "seed.sql"), "--config", configPath]
     : [wranglerCli, "d1", "migrations", action, "DB", target, "--config", configPath];
+  const configuredLocalStateDir = process.env.SECUREVISIT_LOCAL_D1_STATE_DIR?.trim();
   const persistPath = isRemote
     ? undefined
-    : path.join(projectRoot, ".wrangler", "state");
-  if (persistPath) args.push("--persist-to", path.resolve(projectRoot, persistPath));
+    : configuredLocalStateDir
+      ? path.resolve(projectRoot, configuredLocalStateDir)
+      : path.join(projectRoot, ".wrangler", "state");
+  if (persistPath) args.push("--persist-to", persistPath);
 
   const result = spawnSync(process.execPath, args, { cwd: projectRoot, stdio: "inherit" });
   if (result.error) throw result.error;
