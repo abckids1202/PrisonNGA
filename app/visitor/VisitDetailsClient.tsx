@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { getVisitorVisitViewState, type VisitorVisitViewState } from "@/lib/visitor/visit-details-state";
 
 type AppointmentDetail = {
   id: string;
@@ -47,24 +48,6 @@ type AppointmentDetail = {
 
 type StatusEvent = { from_status: string | null; to_status: string; created_at: string };
 type VisitApiResponse = { appointment?: AppointmentDetail; statusHistory?: StatusEvent[]; error?: string };
-type ViewState = "review" | "approved" | "waiting" | "ready" | "live" | "completed" | "cancelled" | "rejected" | "issue";
-
-function viewState(appointment: AppointmentDetail): ViewState {
-  if (appointment.session_status === "CONNECTING") return "ready";
-  if (["ACTIVE", "RECONNECTING", "ENDING"].includes(appointment.session_status || "")) return "live";
-  if (appointment.status === "COMPLETED" || ["ENDED", "TERMINATED"].includes(appointment.session_status || "")) return "completed";
-  if (appointment.status === "CANCELLED_BY_FACILITY" || appointment.status === "CANCELLED_BY_VISITOR") return "cancelled";
-  if (appointment.status === "REJECTED") return "rejected";
-  if (["FAILED", "NO_SHOW"].includes(appointment.status) || appointment.waiting_room_state === "TECHNICAL_ISSUE") return "issue";
-  if (["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status)) return "review";
-  if (appointment.status === "WAITING") {
-    if (appointment.waiting_room_state === "LIVE") return "live";
-    return "waiting";
-  }
-  if (appointment.status === "IN_PROGRESS") return "issue";
-  return "approved";
-}
-
 function formatDate(value: string, timezone: string, options: Intl.DateTimeFormatOptions = { dateStyle: "full" }) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Schedule unavailable" : new Intl.DateTimeFormat("en-GB", { ...options, timeZone: timezone || "Asia/Jakarta" }).format(date);
@@ -80,10 +63,10 @@ function prettyStatus(value: string) {
   return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function stateContent(state: ViewState, appointment: AppointmentDetail) {
+function stateContent(state: VisitorVisitViewState, appointment: AppointmentDetail) {
   const name = appointment.prisoner_name;
   const facility = appointment.facility_name;
-  const content: Record<ViewState, { eyebrow: string; title: string; copy: string; action: string | null; tone: "orange" | "blue" | "green" | "muted" }> = {
+  const content: Record<VisitorVisitViewState, { eyebrow: string; title: string; copy: string; action: string | null; tone: "orange" | "blue" | "green" | "muted" }> = {
     review: { eyebrow: "VISIT REQUEST", title: "Your request is with the facility", copy: `We’ll update you when the facility team has reviewed your request to visit ${name}.`, action: null, tone: "blue" },
     approved: { eyebrow: "YOUR UPCOMING VISIT", title: "Your visit is approved", copy: `You’re approved to visit ${name} at ${facility}. Check your device before the visit.`, action: "Check this device", tone: "orange" },
     waiting: { eyebrow: "WAITING ROOM", title: "The facility is preparing your visit", copy: `Stay nearby. We’ll let you know when ${facility} is ready for you.`, action: null, tone: "green" },
@@ -103,23 +86,45 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
   const [history, setHistory] = useState<StatusEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch(`/api/visitor/appointments/${encodeURIComponent(visitId)}`, { credentials: "include", headers: { accept: "application/json" }, signal: controller.signal })
-      .then(async (response) => {
+    let active = true;
+    let controller: AbortController | null = null;
+    const refresh = async () => {
+      controller?.abort();
+      const nextController = new AbortController();
+      controller = nextController;
+      try {
+        const response = await fetch(`/api/visitor/appointments/${encodeURIComponent(visitId)}`, { credentials: "include", headers: { accept: "application/json" }, cache: "no-store", signal: nextController.signal });
         const body = await response.json() as VisitApiResponse;
-        if (!response.ok || !body.appointment) throw new Error(response.status === 404 ? "We couldn’t find that visit in your account." : body.error || "We couldn’t load this visit.");
+        if (!response.ok || !body.appointment) throw new Error(response.status === 404 ? "We couldn’t find that visit in your account." : body.error || "We couldn’t refresh this visit.");
+        if (!active) return;
         setAppointment(body.appointment);
         setHistory(body.statusHistory || []);
+        setLastUpdated(new Date().toISOString());
         setError("");
-      })
-      .catch((cause: unknown) => {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message.replaceAll("_", " ") : "We couldn’t load this visit.");
-      })
-      .finally(() => !controller.signal.aborted && setLoading(false));
-    return () => controller.abort();
+      } catch (cause) {
+        if (!active || nextController.signal.aborted) return;
+        setError(cause instanceof Error ? cause.message.replaceAll("_", " ") : "We couldn’t refresh this visit.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    const initial = window.setTimeout(() => void refresh(), 0);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 15000);
+    const onFocus = () => { if (document.visibilityState === "visible") void refresh(); };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      active = false;
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      controller?.abort();
+    };
   }, [visitId]);
 
   useEffect(() => {
@@ -127,13 +132,17 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
     return () => window.clearInterval(timer);
   }, []);
 
-  const state = useMemo(() => appointment ? viewState(appointment) : null, [appointment]);
+  const state = useMemo(() => appointment ? getVisitorVisitViewState(appointment) : null, [appointment]);
   const startsIn = appointment && now !== null ? Date.parse(appointment.requested_start) - now : 0;
   const countdown = startsIn > 0 && startsIn < 48 * 60 * 60 * 1000 && state === "approved";
   const presentation = appointment && state ? stateContent(state, appointment) : null;
   const duration = appointment ? Math.max(0, Math.round((Date.parse(appointment.requested_end) - Date.parse(appointment.requested_start)) / 60000)) : 0;
   const initials = appointment?.prisoner_name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "—";
-  const completedSteps = state === "review" ? 1 : state === "approved" ? 3 : state === "completed" || state === "cancelled" ? 5 : 4;
+  const decisionComplete = Boolean(appointment && !["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status));
+  const creditComplete = Boolean(appointment && appointment.visit_credit_status !== "NOT_RESERVED");
+  const deviceCheckComplete = Boolean(appointment?.device_check_id);
+  const videoStepComplete = Boolean(appointment?.actual_started_at && (state === "live" || state === "completed"));
+  const completedSteps = 1 + Number(decisionComplete) + Number(creditComplete) + Number(deviceCheckComplete) + Number(videoStepComplete);
 
   function openDeviceCheck() {
     if (appointment && state === "approved") router.push(`/visitor/visits/${encodeURIComponent(appointment.id)}/device-check`);
@@ -144,16 +153,17 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
   }
 
   if (loading) return <VisitPageMessage title="Loading your visit" body="Checking the latest status in your SecureVisit account." />;
-  if (error || !appointment || !presentation || !state) return <VisitPageMessage title="Visit details unavailable" body={error || "We couldn’t find that visit in your account."} action="Back to My Visits" />;
+  if ((!appointment && error) || !appointment || !presentation || !state) return <VisitPageMessage title="Visit details unavailable" body={error || "We couldn’t find that visit in your account."} action="Back to My Visits" />;
 
   const credit = appointment.visit_credit_status;
-  const historyRows = history.length ? history : [{ from_status: null, to_status: appointment.status, created_at: appointment.created_at }];
+  const historyRows = history;
   const action = presentation.action === "Check this device" ? openDeviceCheck : openLiveVisit;
 
   return <div className="sv3-visitor-app sv4-visitor-app sv5-details-app">
     <header className="sv4-header"><div className="sv4-header-inner"><Link className="sv4-brand" href="/visitor"><span className="sv4-brand-mark">+</span><span><strong>SecureVisit</strong><small>Visitor</small></span></Link><nav className="sv4-desktop-nav" aria-label="Visitor navigation"><Link href="/visitor">Home</Link><Link className="active" href="/visitor?section=Visits">Visits</Link><Link href="/visitor?section=Connections">Connections</Link><Link href="/visitor?section=Credits">Credits</Link></nav><div className="sv4-header-actions"><span className="sv4-secure-note"><i />Secure session</span></div></div></header>
     <main className="sv4-main sv5-details-main"><div className="sv5-details-page">
       <Link className="sv5-back-link" href="/visitor?section=Visits">← <span>My Visits</span></Link>
+      {error && <p className="sv5-sync-warning" role="status">We couldn’t refresh this visit. Showing the last saved details{lastUpdated ? ` from ${formatDate(lastUpdated, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}` : ""}. {error}</p>}
       <section className={`sv5-visit-hero sv5-visit-hero-${presentation.tone}`}>
         <div className="sv5-hero-copy"><p className="sv4-kicker">{presentation.eyebrow}</p><div className="sv5-hero-person"><span className="sv4-avatar sv4-avatar-sage">{initials}</span><div><h1>{presentation.title}</h1><p>{presentation.copy}</p></div></div><div className="sv5-hero-meta"><span className={`sv4-status sv4-status-${presentation.tone === "orange" ? "orange" : presentation.tone === "blue" ? "blue" : "green"}`}><i />{prettyStatus(appointment.status)}</span><span>{appointment.prisoner_name} · {prettyStatus(appointment.appointment_type)} · {duration} minutes</span></div>{presentation.action && <button className="sv4-button sv4-button-primary sv5-primary-action" onClick={action}>{presentation.action} <span>→</span></button>}</div>
         <div className="sv5-hero-art" aria-hidden="true"><div className="sv5-art-sun" /><div className="sv5-art-arc" /><div className="sv5-art-portrait"><span>{initials}</span><i /></div><div className="sv5-art-card"><span>SECURE VISIT</span><strong>{formatDate(appointment.requested_start, appointment.timezone, { hour: "2-digit", minute: "2-digit" })}</strong><small>{appointment.timezone}</small></div></div>
@@ -161,13 +171,13 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
       </section>
 
       <section className="sv5-prep-layout">
-        <article className="sv5-panel sv5-preparation-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Your visit status</p><h2>{state === "review" ? "Waiting for the facility" : state === "completed" ? "Visit finished" : "Your next step"}</h2></div><strong>{completedSteps} of 5</strong></div><div className="sv5-progress-track" role="progressbar" aria-valuenow={completedSteps} aria-valuemin={0} aria-valuemax={5} aria-label={`Visit progress: ${completedSteps} of 5 steps`}><i style={{ width: `${completedSteps * 20}%` }} /></div><p className="sv5-progress-copy">Progress is based on saved appointment and session records.<span>{completedSteps * 20}%</span></p><div className="sv5-prep-list"><PreparationItem title="Request received" state={formatDate(appointment.created_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })} done /><PreparationItem title="Facility decision" state={prettyStatus(appointment.status)} done={!["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status)} current={state === "review"} /><PreparationItem title="Visit credit" state={prettyStatus(credit)} done={credit !== "NOT_RESERVED"} /><PreparationItem title="Device check" state={appointment.device_checked_at ? `Last checked ${formatDate(appointment.device_checked_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}` : "Not completed yet"} done={Boolean(appointment.device_check_id)} current={state === "approved" && !appointment.device_check_id} /><PreparationItem title="Secure video visit" state={appointment.session_status ? prettyStatus(appointment.session_status) : "Not started"} done={state === "completed" || state === "live"} current={state === "ready"} /></div>{state === "approved" && <button className="sv4-button sv4-button-primary" onClick={openDeviceCheck}>Check this device <span>→</span></button>}{state === "ready" && <button className="sv4-button sv4-button-primary" onClick={openLiveVisit}>Join your visit <span>→</span></button>}</article>
+        <article className="sv5-panel sv5-preparation-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Your visit status</p><h2>{state === "review" ? "Waiting for the facility" : state === "completed" ? "Visit finished" : "Your next step"}</h2></div><strong>{completedSteps} of 5</strong></div><div className="sv5-progress-track" role="progressbar" aria-valuenow={completedSteps} aria-valuemin={0} aria-valuemax={5} aria-label={`Visit progress: ${completedSteps} of 5 steps`}><i style={{ width: `${completedSteps * 20}%` }} /></div><p className="sv5-progress-copy">Progress is based on saved appointment and session records.<span>{completedSteps * 20}%</span></p><div className="sv5-prep-list"><PreparationItem title="Request received" state={formatDate(appointment.created_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })} done /><PreparationItem title="Facility decision" state={prettyStatus(appointment.status)} done={!["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status)} current={state === "review"} /><PreparationItem title="Visit credit" state={prettyStatus(credit)} done={credit !== "NOT_RESERVED"} /><PreparationItem title="Device check" state={appointment.device_checked_at ? `Last checked ${formatDate(appointment.device_checked_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}` : "Not completed yet"} done={Boolean(appointment.device_check_id)} current={state === "approved" && !appointment.device_check_id} /><PreparationItem title="Secure video visit" state={appointment.session_status ? prettyStatus(appointment.session_status) : "Not started"} done={videoStepComplete} current={state === "ready"} /></div>{state === "approved" && <button className="sv4-button sv4-button-primary" onClick={openDeviceCheck}>Check this device <span>→</span></button>}{state === "ready" && <button className="sv4-button sv4-button-primary" onClick={openLiveVisit}>Join your visit <span>→</span></button>}</article>
         <article className={`sv5-panel sv5-waiting-panel sv5-waiting-${["waiting", "ready", "live"].includes(state) ? "open" : "closed"}`}><div className="sv5-waiting-illustration"><span>◷</span><i /></div><p className="sv4-kicker">Facility readiness</p><h2>{state === "ready" ? "Ready to join" : state === "live" ? "Visit in progress" : state === "waiting" ? "Waiting for staff" : "Waiting room"}</h2><p>{state === "waiting" ? "Your check-in is recorded. Stay on this page for the facility’s next update." : state === "ready" ? "The facility has marked your visit ready. Join using the secure visit button." : state === "live" ? "Your session has been started. Return to the live visit when needed." : "The waiting room and visit actions will appear here when the facility opens them."}</p><div className="sv5-waiting-time"><span>Scheduled time</span><strong>{formatTimeRange(appointment)}</strong></div>{state === "ready" && <button className="sv4-button sv4-button-primary" onClick={openLiveVisit}>Join your visit →</button>}</article>
       </section>
 
       <section className="sv5-info-layout"><article className="sv5-panel sv5-info-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Visit information</p><h2>The details you need</h2></div><span className="sv5-info-icon">⌁</span></div><div className="sv5-detail-grid"><Detail label="Date" value={formatDate(appointment.requested_start, appointment.timezone)} /><Detail label="Time" value={formatTimeRange(appointment)} /><Detail label="Visit type" value={prettyStatus(appointment.appointment_type)} /><Detail label="Duration" value={`${duration} minutes`} /><Detail label="Facility" value={appointment.facility_name} /><Detail label="Connection" value={`${appointment.prisoner_name} · ${appointment.relationship_type || "Approved connection"}`} /></div></article><article className="sv5-panel sv5-credit-panel"><div className="sv5-credit-symbol">◇</div><p className="sv4-kicker">Visit Credit</p><h2>{credit === "CONSUMED" ? "Credit used" : credit === "RETURNED" ? "Credit returned" : credit === "RESERVED" ? "Credit reserved" : "Not reserved yet"}</h2><p>{credit === "CONSUMED" ? "The ledger records this credit as used for the completed visit." : credit === "RETURNED" ? "The ledger records this credit as returned to your balance." : credit === "RESERVED" ? "One visit credit is reserved for this appointment." : "A credit has not been reserved for this appointment."}</p><Link className="sv5-inline-link" href="/visitor?section=Credits">View my credits →</Link></article></section>
 
-      <section className="sv5-panel sv5-journey-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Saved history</p><h2>What has changed</h2></div><code>{appointment.id}</code></div><div className="sv5-journey-list">{historyRows.map((event, index) => <div className="sv5-journey-item sv5-journey-done" key={`${event.to_status}-${event.created_at}-${index}`}><span className="sv5-journey-marker">✓</span><span><strong>{prettyStatus(event.to_status)}</strong><small>{formatDate(event.created_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}</small></span></div>)}</div></section>
+      <section className="sv5-panel sv5-journey-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Saved history</p><h2>What has changed</h2></div><code>{appointment.id}</code></div><div className="sv5-journey-list">{historyRows.length ? historyRows.map((event, index) => <div className="sv5-journey-item sv5-journey-done" key={`${event.to_status}-${event.created_at}-${index}`}><span className="sv5-journey-marker">✓</span><span><strong>{prettyStatus(event.to_status)}</strong><small>{formatDate(event.created_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}</small></span></div>) : <p className="sv5-history-empty">No status changes have been recorded yet.</p>}</div></section>
       {appointment.device_checked_at && <section className="sv5-panel sv5-guidelines-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Device preparation</p><h2>Last check results</h2></div></div><p>Checked {formatDate(appointment.device_checked_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}. These visitor-reported results help you prepare; facility preflight is still required before a call can start.</p><div className="sv5-detail-grid"><Detail label="Camera" value={prettyStatus(appointment.device_camera_result || "unknown")} /><Detail label="Microphone" value={prettyStatus(appointment.device_microphone_result || "unknown")} /><Detail label="Connection" value={`${prettyStatus(appointment.device_network_result || "unknown")}${appointment.device_latency_ms === null ? "" : ` · ${appointment.device_latency_ms} ms`}`} /></div></section>}
       <section className="sv5-guidance-layout"><article className="sv5-panel sv5-guidelines-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Before your visit</p><h2>A few things to remember</h2></div></div><div className="sv5-guideline-list"><Guideline number="01" text="Join from a quiet, well-lit place." /><Guideline number="02" text="Use a working camera, microphone, and stable connection." /><Guideline number="03" text="Only approved participants may be present." /></div></article><article className="sv5-help-panel"><span className="sv5-help-spark">✦</span><p className="sv4-kicker">Need a hand?</p><h2>We’re here for your visit.</h2><p>Contact the facility if the details or status shown here do not look right.</p><Link className="sv4-button" href="/visitor?section=Visits">Back to My Visits →</Link></article></section>
     </div></main>
