@@ -15,6 +15,13 @@ CREATE TABLE `incident_events` (`id` text PRIMARY KEY NOT NULL, `incident_id` te
 --> statement-breakpoint
 CREATE INDEX `incident_events_incident_idx` ON `incident_events` (`incident_id`,`created_at`);
 --> statement-breakpoint
+INSERT OR IGNORE INTO roles (id, name, description) VALUES
+  ('role-scheduling-officer', 'Scheduling Officer', 'Reviews and coordinates visitation appointments.'),
+  ('role-verification-officer', 'Verification Officer', 'Reviews visitor identity and relationship evidence.'),
+  ('role-monitoring-officer', 'Monitoring Officer', 'Monitors authorized active sessions and incidents.'),
+  ('role-supervisor', 'Supervisor', 'Approves exceptional actions and facility state changes.'),
+  ('role-auditor', 'Auditor', 'Reads compliance records and exports authorized audit reports.');
+--> statement-breakpoint
 INSERT OR IGNORE INTO permissions (id, permission_key, description) VALUES ('perm-incident-read', 'incident.read', 'Read facility incident records.'), ('perm-incident-manage', 'incident.manage', 'Create and resolve facility incidents.');
 --> statement-breakpoint
 INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES ('role-monitoring-officer', 'perm-incident-read'), ('role-monitoring-officer', 'perm-incident-manage'), ('role-supervisor', 'perm-incident-read'), ('role-supervisor', 'perm-incident-manage'), ('role-auditor', 'perm-incident-read');
