@@ -7,8 +7,8 @@ export async function GET() {
   try {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
-    const result = await d1.prepare(`SELECT vr.id, vr.facility_id, vr.prisoner_id, p.prisoner_number, p.display_name AS prisoner_name, vr.relationship_type, vr.status, vr.review_reason, vr.version, vr.created_at, vr.updated_at, vc.status AS verification_status
-      FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id
+    const result = await d1.prepare(`SELECT vr.id, vr.facility_id, f.name AS facility_name, vr.prisoner_id, p.prisoner_number, p.display_name AS prisoner_name, vr.relationship_type, vr.status, vr.review_reason, vr.version, vr.created_at, vr.updated_at, vc.status AS verification_status
+      FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id INNER JOIN facilities f ON f.id = vr.facility_id LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id
       WHERE vr.visitor_user_id = ? ORDER BY vr.created_at DESC`).bind(visitor.userId).all();
     return securityResponse({ relationships: result.results }, 200, context.requestId);
   } catch (error) {

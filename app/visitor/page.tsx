@@ -6,7 +6,8 @@ import "./visitor-auth.css";
 type Tab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
 type NoticeTone = "success" | "info";
 type VisitorAppointmentRecord = { id: string; status: string; requested_start: string; requested_end: string; prisoner_name: string; appointment_type: string };
-type VisitorRelationshipRecord = { id: string; status: string; prisoner_name: string; relationship_type: string };
+type VisitorRelationshipRecord = { id: string; status: string; prisoner_name: string; relationship_type: string; facility_name?: string };
+type VisitorPrisonerRecord = { id: string; facility_id: string; facility_name: string; prisoner_number: string; display_name: string; relationship_status: string };
 type VisitorCreditAccount = { available_credits: number; reserved_credits: number; facility_name: string };
 type VisitorData = { appointments: VisitorAppointmentRecord[]; relationships: VisitorRelationshipRecord[]; credits: VisitorCreditAccount[]; unreadNotifications: number; loading: boolean };
 
@@ -140,7 +141,7 @@ export default function VisitorPage() {
       <main className="sv4-main">
         {tab === "Home" && <VisitorHome onAction={action} onOpenVisit={openVisitDetails} onNavigate={navigate} />}
         {tab === "Visits" && <VisitorVisits onAction={action} onOpenVisit={openVisitDetails} />}
-        {tab === "Connections" && <VisitorConnections onAction={action} />}
+        {tab === "Connections" && <VisitorConnections onAction={action} onRelationshipAdded={(relationship) => setVisitorData((current) => ({ ...current, relationships: [relationship, ...current.relationships.filter((item) => item.id !== relationship.id)] }))} />}
         {tab === "Credits" && <VisitorCredits onAction={action} />}
         {tab === "Account" && <VisitorAccount onAction={action} />}
       </main>
@@ -305,8 +306,80 @@ function HistoryRow({ name, date, status }: { name: string; date: string; status
   return <div className="sv4-history-row"><VisitorAvatar initials={name === "A. Rahman" ? "AR" : "CF"} color="sage" /><span><strong>{name}</strong><small>{date} · Family visit</small></span><VisitorStatus tone="blue">{status}</VisitorStatus><b>→</b></div>;
 }
 
-function VisitorConnections({ onAction }: { onAction: (message: string, tone?: NoticeTone) => void }) {
-  return <div className="sv4-page sv4-inner-page"><div className="sv4-page-intro sv4-intro-split"><div><p className="sv4-kicker">Your people</p><h1>Connections</h1><p>People you’re approved to visit, all in one place.</p></div><VisitorButton primary onClick={() => onAction("Connection requests are coming soon.", "info")}>＋ Add a connection</VisitorButton></div><article className="sv4-feature-connection"><div className="sv4-feature-art"><div className="sv4-feature-sun" /><div className="sv4-feature-person one">AR</div><div className="sv4-feature-person two">SA</div></div><div className="sv4-feature-copy"><VisitorStatus>CONNECTION APPROVED</VisitorStatus><h2>A. Rahman</h2><p>Family connection · Central Facility</p><div className="sv4-feature-rule" /><p className="sv4-feature-note">You can request a visit whenever you’re ready. We’ll let you know as soon as it’s approved.</p><VisitorButton primary onClick={() => onAction("Available times will appear here when booking opens.", "info")}>Find available times <span>→</span></VisitorButton></div></article><div className="sv4-section-heading sv4-connection-heading"><div><p className="sv4-kicker">Your circle</p><h2>All connections</h2></div></div><div className="sv4-connection-list"><ConnectionCard initials="AR" name="A. Rahman" relation="Family · Central Facility" color="sage" onClick={() => onAction("A. Rahman is ready for your next visit.", "info")} /><button className="sv4-new-connection" onClick={() => onAction("Connection requests are coming soon.", "info")}><span>＋</span><strong>Add someone new</strong><small>Start a secure connection request</small></button></div></div>;
+function VisitorConnections({ onAction, onRelationshipAdded }: { onAction: (message: string, tone?: NoticeTone) => void; onRelationshipAdded: (relationship: VisitorRelationshipRecord) => void }) {
+  const { relationships, loading } = useContext(VisitorDataContext);
+  const [prisoners, setPrisoners] = useState<VisitorPrisonerRecord[]>([]);
+  const [prisonersLoading, setPrisonersLoading] = useState(true);
+  const [prisonerError, setPrisonerError] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [prisonerId, setPrisonerId] = useState("");
+  const [relationshipType, setRelationshipType] = useState("Family member");
+  const [search, setSearch] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/visitor/prisoners", { credentials: "include", headers: { accept: "application/json" } })
+      .then(async (response) => {
+        const body = await response.json() as { prisoners?: VisitorPrisonerRecord[]; error?: string };
+        if (!response.ok) throw new Error(body.error || "We couldn’t load the facility directory.");
+        if (active) setPrisoners(body.prisoners || []);
+      })
+      .catch((error: unknown) => active && setPrisonerError(error instanceof Error ? error.message : "We couldn’t load the facility directory."))
+      .finally(() => active && setPrisonersLoading(false));
+    return () => { active = false; };
+  }, []);
+
+  const matchingPrisoners = prisoners.filter((person) => `${person.display_name} ${person.prisoner_number}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const selectedPrisoner = prisoners.find((person) => person.id === prisonerId);
+  const statusLabel = (status: string) => status === "APPROVED" ? "Approved" : status === "REJECTED" ? "Not approved" : status === "NEEDS_INFO" ? "More information needed" : "In review";
+  const statusTone = (status: string): "green" | "orange" | "blue" => status === "APPROVED" ? "green" : status === "REJECTED" ? "blue" : "orange";
+
+  async function submitRelationship(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedPrisoner) return setFormError("Choose a person from the facility directory.");
+    setSubmitting(true);
+    setFormError("");
+    try {
+      const response = await fetch("/api/visitor/relationships", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ facilityId: selectedPrisoner.facility_id, prisonerId: selectedPrisoner.id, relationshipType }),
+      });
+      const body = await response.json() as { relationshipId?: string; status?: string; error?: string };
+      if (!response.ok || !body.relationshipId) throw new Error(body.error || "We couldn’t submit this connection request.");
+      onRelationshipAdded({ id: body.relationshipId, status: body.status || "PENDING", prisoner_name: selectedPrisoner.display_name, relationship_type: relationshipType, facility_name: selectedPrisoner.facility_name });
+      setFormOpen(false);
+      setPrisonerId("");
+      setSearch("");
+      onAction(body.status === "APPROVED" ? "This connection is already approved." : "Request sent. The facility team will review your connection.");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "We couldn’t submit this connection request.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <div className="sv4-page sv4-inner-page">
+    <div className="sv4-page-intro sv4-intro-split"><div><p className="sv4-kicker">Your people</p><h1>Connections</h1><p>Request permission to visit someone. The facility team reviews every connection.</p></div><VisitorButton primary onClick={() => { setFormOpen((open) => !open); setFormError(""); }}>＋ Request a connection</VisitorButton></div>
+    {formOpen && <form className="sv4-connection-request" onSubmit={submitRelationship}>
+      <div><p className="sv4-kicker">New connection</p><h2>Who would you like to visit?</h2><p>We’ll send your request to the facility team for review.</p></div>
+      {prisonerError && <p className="sv4-request-error" role="alert">{prisonerError}</p>}
+      <label>Find the person<input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPrisonerId(""); }} placeholder="Search by name or prisoner ID" disabled={prisonersLoading || !!prisonerError} /></label>
+      <div className="sv4-prisoner-options" role="radiogroup" aria-label="Available people">
+        {prisonersLoading ? <p className="sv4-request-hint">Loading the facility directory…</p> : matchingPrisoners.length ? matchingPrisoners.map((person) => <label key={person.id} className={`sv4-prisoner-option ${prisonerId === person.id ? "selected" : ""} ${person.relationship_status !== "NOT_CONNECTED" ? "unavailable" : ""}`}><input type="radio" name="prisoner" value={person.id} checked={prisonerId === person.id} disabled={person.relationship_status !== "NOT_CONNECTED"} onChange={() => setPrisonerId(person.id)} /><span><strong>{person.display_name}</strong><small>{person.facility_name} · ID {person.prisoner_number}</small></span>{person.relationship_status !== "NOT_CONNECTED" && <em>{statusLabel(person.relationship_status)}</em>}</label>) : <p className="sv4-request-hint">No available people match that search.</p>}
+      </div>
+      <label>Your relationship<select value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)}><option>Family member</option><option>Spouse or partner</option><option>Friend</option><option>Legal representative</option><option>Other</option></select></label>
+      <p className="sv4-request-hint">You may be asked to provide identity or relationship documents after submitting. Don’t include sensitive information in this request.</p>
+      {formError && <p className="sv4-request-error" role="alert">{formError}</p>}
+      <div className="sv4-request-actions"><button type="button" className="sv11-back-button" onClick={() => setFormOpen(false)} disabled={submitting}>Cancel</button><button className="sv4-button sv4-button-primary" disabled={submitting || prisonersLoading || !prisonerId}>{submitting ? "Sending request…" : "Send for review"}</button></div>
+    </form>}
+    {relationships[0] && <article className="sv4-feature-connection"><div className="sv4-feature-art"><div className="sv4-feature-sun" /><div className="sv4-feature-person one">{relationships[0].prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div><div className="sv4-feature-person two">{relationships[0].status === "APPROVED" ? "✓" : "…"}</div></div><div className="sv4-feature-copy"><VisitorStatus tone={statusTone(relationships[0].status)}>{statusLabel(relationships[0].status).toUpperCase()}</VisitorStatus><h2>{relationships[0].prisoner_name}</h2><p>{relationships[0].relationship_type} · {relationships[0].facility_name || "Facility review"}</p><div className="sv4-feature-rule" /><p className="sv4-feature-note">{relationships[0].status === "APPROVED" ? "This connection is approved. You can request a visit when booking is available." : "Your request is saved. We’ll update your account when the facility team has reviewed it."}</p></div></article>}
+    <div className="sv4-section-heading sv4-connection-heading"><div><p className="sv4-kicker">Your circle</p><h2>All connection requests</h2></div></div>
+    {loading ? <div className="sv4-empty-inline">Loading your connections…</div> : relationships.length ? <div className="sv4-connection-list sv4-relationship-list">{relationships.map((relationship) => <article key={relationship.id} className="sv4-relationship-card"><VisitorAvatar initials={relationship.prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()} color="sage" /><span><strong>{relationship.prisoner_name}</strong><small>{relationship.relationship_type} · {relationship.facility_name || "Facility review"}</small></span><VisitorStatus tone={statusTone(relationship.status)}>{statusLabel(relationship.status)}</VisitorStatus></article>)}</div> : <div className="sv4-empty-state"><span>↔</span><h2>Your connections will appear here</h2><p>Send a request to begin the facility’s identity and relationship review.</p></div>}
+    {!formOpen && <button className="sv4-new-connection" onClick={() => setFormOpen(true)}><span>＋</span><strong>Request another connection</strong><small>Start a secure facility review</small></button>}
+  </div>;
 }
 
 function VisitorCredits({ onAction }: { onAction: (message: string, tone?: NoticeTone) => void }) {
