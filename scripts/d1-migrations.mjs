@@ -47,8 +47,10 @@ try {
   const args = action === "seed"
     ? [wranglerCli, "d1", "execute", "DB", "--local", "--file", path.join(projectRoot, "db", "seed.sql"), "--config", configPath]
     : [wranglerCli, "d1", "migrations", action, "DB", target, "--config", configPath];
-  const persistPath = process.env.D1_LOCAL_PERSIST_PATH?.trim();
-  if (!isRemote && persistPath) args.push("--persist-to", path.resolve(projectRoot, persistPath));
+  const persistPath = isRemote
+    ? undefined
+    : path.join(projectRoot, ".wrangler", "state");
+  if (persistPath) args.push("--persist-to", path.resolve(projectRoot, persistPath));
 
   const result = spawnSync(process.execPath, args, { cwd: projectRoot, stdio: "inherit" });
   if (result.error) throw result.error;

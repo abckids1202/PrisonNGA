@@ -11,7 +11,9 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vinext. The production checks are:
+To choose a port, pass it through to Vinext, for example `npm run dev -- --port 5174`, then open `http://localhost:5174`. This is a full-stack development server: the page and its `/api/*` routes share that origin. There is no separate backend-only server on port 8001 in this project.
+
+The production checks are:
 
 ```bash
 npm run build
@@ -30,7 +32,7 @@ npm run db:seed:local
 npm run dev
 ```
 
-Both the app's local Worker binding and the migration command use the same local D1 binding name and placeholder ID. Local migration commands do not require Cloudflare credentials. The SQL files in `drizzle/` are the migration source of truth and are applied by Wrangler's D1 migration tracker. `db:seed:local` loads explicitly fictional baseline facility and role records after migrations; it is local-only. Drizzle Kit generation is intentionally not exposed as an npm script while the legacy snapshot journal is being reconciled.
+Both the app's local Worker binding and the migration command use the same local D1 binding name, placeholder ID, and `.wrangler/state` persistence directory. Local migration commands do not require Cloudflare credentials. The SQL files in `drizzle/` are the migration source of truth and are applied by Wrangler's D1 migration tracker. `db:seed:local` loads explicitly fictional baseline facility and role records after migrations; it is local-only. Drizzle Kit generation is intentionally not exposed as an npm script while the legacy snapshot journal is being reconciled.
 
 For a real Cloudflare D1 database, copy `.env.example` to the ignored `.env.local` and set `D1_DATABASE_ID` to that database's exact UUID and `D1_DATABASE_NAME` to its configured name. Review pending changes with `npm run db:migrations:list` before applying them with `npm run db:migrate:remote`. Remote commands refuse to run with a missing, malformed, or local-placeholder database ID. Do not point these commands at a production database until the migration has been reviewed and a backup/restore procedure is in place.
 
