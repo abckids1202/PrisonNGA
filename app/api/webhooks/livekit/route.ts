@@ -1,6 +1,6 @@
 import { WebhookReceiver } from "livekit-server-sdk";
 import { getD1 } from "@/db/runtime";
-import { consumeVisitCredit } from "@/lib/server/credits";
+import { finalizeLiveSessionStatements } from "@/lib/server/live-session-finalization";
 import { getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { getVideoConfig } from "@/lib/server/video/provider";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
@@ -16,27 +16,76 @@ export async function POST(request: Request) {
     await enforceRateLimit(d1, { key: `livekit-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const roomName = event.room?.name;
     if (!roomName) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
-    const session = await d1.prepare("SELECT vs.id, vs.appointment_id, vs.facility_id, vs.status, vs.version, ca.id AS credit_account_id FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id WHERE vs.provider_room_name = ?").bind(roomName).first<{ id: string; appointment_id: string; facility_id: string; status: string; version: number; credit_account_id: string | null }>();
+    const session = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.status, vs.version, vs.actual_started_at,
+      a.status AS appointment_status, a.version AS appointment_version, ca.id AS credit_account_id
+      FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id
+      LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
+      WHERE vs.provider_room_name = ?`).bind(roomName).first<{ id: string; appointment_id: string; facility_id: string; status: string; version: number; actual_started_at: string | null; appointment_status: string; appointment_version: number; credit_account_id: string | null }>();
     if (!session) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
     const now = new Date().toISOString();
     const eventId = typeof event.id === "string" ? event.id.trim() : "";
     if (!eventId) throw new SecurityError("LIVEKIT_WEBHOOK_EVENT_ID_REQUIRED", 400);
-    const nextStatus = event.event === "room_started" || event.event === "participant_joined" ? "ACTIVE" : event.event === "participant_connection_aborted" ? "RECONNECTING" : event.event === "room_finished" ? "ENDED" : session.status;
-    const results = await d1.batch([
-      d1.prepare(`INSERT OR IGNORE INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(eventId, session.id, `PROVIDER_${String(event.event || "UNKNOWN").toUpperCase()}`, "LIVEKIT_WEBHOOK", event.participant?.identity?.startsWith("visitor:") ? "VISITOR" : event.participant?.identity?.startsWith("facility:") ? "FACILITY" : null, JSON.stringify({ roomName, participantIdentity: event.participant?.identity || null }), context.requestId, now),
-      d1.prepare("UPDATE visit_sessions SET status = ?, actual_started_at = CASE WHEN ? = 'ACTIVE' AND actual_started_at IS NULL THEN ? ELSE actual_started_at END, actual_ended_at = CASE WHEN ? = 'ENDED' THEN ? ELSE actual_ended_at END, version = version + 1, updated_at = ? WHERE id = ? AND version = ?").bind(nextStatus, nextStatus, now, nextStatus, now, now, session.id, session.version),
-    ]);
-    if (nextStatus === "ENDED" && results[1]?.meta.changes) {
-      await d1.batch([
-        d1.prepare("UPDATE appointments SET status = 'COMPLETED', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'IN_PROGRESS'").bind(now, session.appointment_id, session.facility_id),
-        d1.prepare("UPDATE resource_reservations SET status = 'RELEASED' WHERE appointment_id = ? AND facility_id = ? AND status IN ('RESERVED', 'ACTIVE')").bind(session.appointment_id, session.facility_id),
-      ]);
-      if (session.credit_account_id) {
-        await consumeVisitCredit(d1, { accountId: session.credit_account_id, appointmentId: session.appointment_id, actorUserId: "system:livekit", reason: "LiveKit room completed." });
-      }
+    const eventType = `PROVIDER_${String(event.event || "UNKNOWN").toUpperCase()}`;
+    const participantRole = event.participant?.identity?.startsWith("visitor:") ? "VISITOR" : event.participant?.identity?.startsWith("facility:") ? "FACILITY" : null;
+    const eventMetadata = { roomName, participantIdentity: event.participant?.identity || null };
+    const priorEvent = await d1.prepare("SELECT session_id, event_type FROM visit_session_events WHERE id = ?").bind(eventId).first<{ session_id: string; event_type: string }>();
+    if (priorEvent) {
+      if (priorEvent.session_id !== session.id || priorEvent.event_type !== eventType) throw new SecurityError("LIVEKIT_EVENT_ID_REUSED", 409);
+      return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
     }
+
+    if (event.event === "room_finished") {
+      if (session.status === "ENDED" && session.appointment_status === "COMPLETED") {
+        const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'CONSUMPTION'")
+          .bind(session.appointment_id, session.credit_account_id || "").first();
+        if (settled) return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
+        throw new SecurityError("SESSION_SETTLEMENT_REQUIRES_RECONCILIATION", 503);
+      }
+      if (!session.credit_account_id) throw new SecurityError("CREDIT_RESERVATION_NOT_FOUND", 409);
+      const correlationId = crypto.randomUUID();
+      const finalized = await d1.batch(finalizeLiveSessionStatements(d1, {
+        sessionId: session.id,
+        appointmentId: session.appointment_id,
+        facilityId: session.facility_id,
+        sessionVersion: session.version,
+        sessionStatus: session.status,
+        appointmentVersion: session.appointment_version,
+        creditAccountId: session.credit_account_id,
+        actorUserId: "system:livekit",
+        actorRole: "SYSTEM",
+        requestId: context.requestId,
+        correlationId,
+        now,
+        reason: "LiveKit room completed.",
+        providerEvent: { id: eventId, eventType, participantRole, metadata: eventMetadata },
+      }));
+      if (finalized[1]?.meta.changes && finalized[2]?.meta.changes && finalized[4]?.meta.changes) {
+        return securityResponse({ accepted: true, event: event.event, sessionId: session.id, status: "COMPLETED", correlationId }, 200, context.requestId);
+      }
+      const latest = await d1.prepare(`SELECT vs.status, a.status AS appointment_status
+        FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
+        WHERE vs.id = ? AND vs.facility_id = ?`).bind(session.id, session.facility_id).first<{ status: string; appointment_status: string }>();
+      if (latest?.status === "ENDED" && latest.appointment_status === "COMPLETED") {
+        const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'CONSUMPTION'")
+          .bind(session.appointment_id, session.credit_account_id).first();
+        if (settled) return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
+      }
+      throw new SecurityError("LIVE_SESSION_FINALIZATION_CONFLICT", 409);
+    }
+
+    const nextStatus = event.event === "room_started" || event.event === "participant_joined" ? "ACTIVE" : event.event === "participant_connection_aborted" ? "RECONNECTING" : session.status;
+    const statements = [
+      d1.prepare(`INSERT OR IGNORE INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
+        VALUES (?, ?, ?, 'LIVEKIT_WEBHOOK', ?, ?, ?, ?)`)
+        .bind(eventId, session.id, eventType, participantRole, JSON.stringify(eventMetadata), context.requestId, now),
+    ];
+    if (nextStatus !== session.status || (nextStatus === "ACTIVE" && !session.actual_started_at)) {
+      statements.push(d1.prepare(`UPDATE visit_sessions SET status = ?, actual_started_at = CASE WHEN ? = 'ACTIVE' AND actual_started_at IS NULL THEN ? ELSE actual_started_at END,
+        version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND status = ? AND changes() = 1`)
+        .bind(nextStatus, nextStatus, now, now, session.id, session.version, session.status));
+    }
+    const results = await d1.batch(statements);
+    if (!results[0]?.meta.changes) return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
     return securityResponse({ accepted: true, event: event.event, sessionId: session.id }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

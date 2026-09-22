@@ -1,6 +1,7 @@
 import { SecurityError } from "./security";
 
 type CreditReservation = { creditAccountId: string; appointmentId: string; created: boolean };
+type CreditSettlementGuard = { sql: string; values: unknown[] };
 
 export async function settlePaymentPurchase(
   d1: D1Database,
@@ -53,16 +54,7 @@ export async function releaseVisitCredit(
   input: { accountId: string; appointmentId: string; actorUserId: string; reason: string },
 ) {
   const now = new Date().toISOString();
-  const results = await d1.batch([
-    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-      SELECT ?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
-        AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
-        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))`)
-      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId, input.accountId, input.appointmentId),
-    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(now, input.accountId),
-  ]);
+  const results = await d1.batch(releaseVisitCreditStatements(d1, { ...input, now }));
   if (results[0]?.meta.changes) return { released: true };
 
   const existing = await d1.prepare("SELECT entry_type FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION', 'RESERVATION_RELEASE', 'CONSUMPTION') ORDER BY CASE entry_type WHEN 'CONSUMPTION' THEN 0 WHEN 'RESERVATION_RELEASE' THEN 1 ELSE 2 END LIMIT 1")
@@ -77,22 +69,49 @@ export async function consumeVisitCredit(
   input: { accountId: string; appointmentId: string; actorUserId: string; reason: string },
 ) {
   const now = new Date().toISOString();
-  const results = await d1.batch([
-    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-      SELECT ?, ?, ?, 'CONSUMPTION', 0, ?, ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
-        AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
-        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))`)
-      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:consumption`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId, input.accountId, input.appointmentId),
-    d1.prepare("UPDATE credit_accounts SET reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(now, input.accountId),
-  ]);
+  const results = await d1.batch(consumeVisitCreditStatements(d1, { ...input, now }));
   if (results[0]?.meta.changes) return { consumed: true };
 
   const existing = await d1.prepare("SELECT entry_type FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION', 'RESERVATION_RELEASE', 'CONSUMPTION') ORDER BY CASE entry_type WHEN 'CONSUMPTION' THEN 0 WHEN 'RESERVATION_RELEASE' THEN 1 ELSE 2 END LIMIT 1")
     .bind(input.appointmentId).first<{ entry_type: string }>();
   if (existing?.entry_type === "CONSUMPTION") return { consumed: false, idempotent: true };
   throw new SecurityError("CREDIT_RESERVATION_NOT_FOUND", 409);
+}
+
+export function releaseVisitCreditStatements(
+  d1: D1Database,
+  input: { accountId: string; appointmentId: string; actorUserId: string; reason: string; now: string; guard?: CreditSettlementGuard },
+): D1PreparedStatement[] {
+  return [
+    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
+      SELECT ?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
+        AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
+        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))
+        AND (${input.guard?.sql || "1 = 1"})`)
+      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, input.now,
+        input.accountId, input.appointmentId, input.accountId, input.appointmentId, ...(input.guard?.values || [])),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+      .bind(input.now, input.accountId),
+  ];
+}
+
+export function consumeVisitCreditStatements(
+  d1: D1Database,
+  input: { accountId: string; appointmentId: string; actorUserId: string; reason: string; now: string; guard?: CreditSettlementGuard },
+): D1PreparedStatement[] {
+  return [
+    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
+      SELECT ?, ?, ?, 'CONSUMPTION', 0, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
+        AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
+        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))
+        AND (${input.guard?.sql || "1 = 1"})`)
+      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:consumption`, input.reason, input.actorUserId, input.now,
+        input.accountId, input.appointmentId, input.accountId, input.appointmentId, ...(input.guard?.values || [])),
+    d1.prepare("UPDATE credit_accounts SET reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+      .bind(input.now, input.accountId),
+  ];
 }
 
 export async function refundPurchasedCredits(
