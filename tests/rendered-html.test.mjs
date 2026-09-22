@@ -50,10 +50,8 @@ test("server-renders a distinct visitor application shell", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /SecureVisit/);
-  assert.match(html, /Hello, Sarah/);
-  assert.match(html, /Your next visit/);
-  assert.match(html, /Connections/);
-  assert.match(html, /Credits/);
+  assert.match(html, /Checking your secure session/);
+  assert.doesNotMatch(html, /Hello, Sarah/);
   assert.doesNotMatch(html, /Action center/);
 });
 

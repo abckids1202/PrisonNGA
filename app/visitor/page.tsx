@@ -5,16 +5,16 @@ import "./visitor-auth.css";
 
 type Tab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
 type NoticeTone = "success" | "info";
-type VisitorAppointmentRecord = { id: string; status: string; requested_start: string; requested_end: string; prisoner_name: string; appointment_type: string };
-type VisitorRelationshipRecord = { id: string; status: string; prisoner_name: string; relationship_type: string; facility_name?: string };
+type VisitorAppointmentRecord = { id: string; facility_id: string; prisoner_id: string; status: string; requested_start: string; requested_end: string; timezone: string; version: number; prisoner_name: string; appointment_type: string; created_at?: string; updated_at?: string };
+type VisitorRelationshipRecord = { id: string; facility_id: string; prisoner_id: string; status: string; prisoner_name: string; relationship_type: string; facility_name?: string; created_at?: string; updated_at?: string };
 type VisitorPrisonerRecord = { id: string; facility_id: string; facility_name: string; prisoner_number: string; display_name: string; relationship_status: string };
 type VisitorCreditAccount = { facility_id: string; available_credits: number; reserved_credits: number; facility_name: string };
 type VisitorCreditLedgerEntry = { id: string; entry_type: string; amount: number; reason: string; created_at: string };
 type VisitorPaymentIntent = { id: string; facility_id: string; status: string; credit_quantity: number; amount_minor: number; currency: string; checkout_url: string | null; created_at: string };
 type VisitorFacility = { id: string; name: string; timezone: string; current_state: string };
-type VisitorData = { appointments: VisitorAppointmentRecord[]; relationships: VisitorRelationshipRecord[]; credits: VisitorCreditAccount[]; unreadNotifications: number; loading: boolean };
+type VisitorData = { appointments: VisitorAppointmentRecord[]; relationships: VisitorRelationshipRecord[]; credits: VisitorCreditAccount[]; unreadNotifications: number; loading: boolean; refreshAppointments: () => Promise<void> };
 
-const VisitorDataContext = createContext<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true });
+const VisitorDataContext = createContext<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true, refreshAppointments: async () => undefined });
 
 const navItems: { label: Tab; icon: string }[] = [
   { label: "Home", icon: "⌂" },
@@ -51,9 +51,9 @@ function VisitorAvatar({ initials, color = "sage" }: { initials: string; color?:
 }
 
 export default function VisitorPage() {
-  const [authState, setAuthState] = useState<"loading" | "authenticated" | "signed_out">(() => typeof window === "undefined" ? "authenticated" : "loading");
+  const [authState, setAuthState] = useState<"loading" | "authenticated" | "signed_out">("loading");
   const [visitorName, setVisitorName] = useState("Sarah");
-  const [visitorData, setVisitorData] = useState<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true });
+  const [visitorData, setVisitorData] = useState<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true, refreshAppointments: async () => undefined });
   const [tab, setTab] = useState<Tab>(() => {
     if (typeof window === "undefined") return "Home";
     const requested = new URLSearchParams(window.location.search).get("section");
@@ -62,6 +62,12 @@ export default function VisitorPage() {
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const syncVisitorCredits = useCallback((credits: VisitorCreditAccount[]) => setVisitorData((current) => ({ ...current, credits })), []);
+  const refreshAppointments = useCallback(async () => {
+    const response = await fetch("/api/visitor/appointments", { credentials: "include", headers: { accept: "application/json" } });
+    const body = await response.json() as { appointments?: VisitorAppointmentRecord[]; error?: string };
+    if (!response.ok) throw new Error(body.error || "Could not refresh your visits.");
+    setVisitorData((current) => ({ ...current, appointments: body.appointments || [] }));
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -92,7 +98,7 @@ export default function VisitorPage() {
       fetch("/api/visitor/notifications", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ notifications?: Array<{ status?: string }> }> : { notifications: [] as Array<{ status?: string }> }),
     ]).then(([appointments, relationships, credits, notifications]) => {
       if (!active) return;
-      setVisitorData({ appointments: appointments.appointments || [], relationships: relationships.relationships || [], credits: credits.accounts || [], unreadNotifications: (notifications.notifications || []).filter((item: { status?: string }) => item.status !== "READ").length, loading: false });
+      setVisitorData((current) => ({ ...current, appointments: appointments.appointments || [], relationships: relationships.relationships || [], credits: credits.accounts || [], unreadNotifications: (notifications.notifications || []).filter((item: { status?: string }) => item.status !== "READ").length, loading: false }));
     }).catch(() => active && setVisitorData((current) => ({ ...current, loading: false })));
     return () => { active = false; };
   }, [authState]);
@@ -108,14 +114,10 @@ export default function VisitorPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function openVisitDetails() {
-    window.location.href = "/visitor/visits/SV-260814-018";
-  }
-
   if (authState !== "authenticated") return <VisitorAuthGate loading={authState === "loading"} onAuthenticated={(name) => { setVisitorName(name); setAuthState("authenticated"); }} />;
 
   return (
-    <VisitorDataContext.Provider value={visitorData}>
+    <VisitorDataContext.Provider value={{ ...visitorData, refreshAppointments }}>
     <div className="sv3-visitor-app sv4-visitor-app">
       <header className="sv4-header">
         <div className="sv4-header-inner">
@@ -143,8 +145,8 @@ export default function VisitorPage() {
       </header>
 
       <main className="sv4-main">
-        {tab === "Home" && <VisitorHome onAction={action} onOpenVisit={openVisitDetails} onNavigate={navigate} />}
-        {tab === "Visits" && <VisitorVisits onAction={action} onOpenVisit={openVisitDetails} />}
+        {tab === "Home" && <VisitorHome visitorName={visitorName} onAction={action} onOpenVisit={() => navigate("Visits")} onNavigate={navigate} />}
+        {tab === "Visits" && <VisitorVisits onAction={action} onNavigate={navigate} />}
         {tab === "Connections" && <VisitorConnections onAction={action} onRelationshipAdded={(relationship) => setVisitorData((current) => ({ ...current, relationships: [relationship, ...current.relationships.filter((item) => item.id !== relationship.id)] }))} />}
         {tab === "Credits" && <VisitorCredits onAction={action} onCreditsLoaded={syncVisitorCredits} />}
         {tab === "Account" && <VisitorAccount onAction={action} />}
@@ -211,10 +213,12 @@ function VisitorAuthGate({ loading, onAuthenticated }: { loading: boolean; onAut
 }
 
 function VisitorHome({
+  visitorName,
   onAction,
   onOpenVisit,
   onNavigate,
 }: {
+  visitorName: string;
   onAction: (message: string, tone?: NoticeTone) => void;
   onOpenVisit: () => void;
   onNavigate: (tab: Tab) => void;
@@ -225,10 +229,14 @@ function VisitorHome({
   const nextVisit = appointments.find((visit) => ["APPROVED", "WAITING", "IN_PROGRESS"].includes(visit.status));
   const connection = relationships.find((item) => item.status === "APPROVED");
   const availableCredits = credits.reduce((sum, account) => sum + Number(account.available_credits || 0), 0);
+  const recentActivity = [
+    ...appointments.map((item) => ({ id: `appointment:${item.id}`, title: item.status === "APPROVED" ? `Visit approved with ${item.prisoner_name}` : item.status === "COMPLETED" ? `Visit completed with ${item.prisoner_name}` : `Visit request · ${item.prisoner_name} · ${visitorVisitStatus(item.status)}`, time: activityTime(item.updated_at || item.created_at), timestamp: Date.parse(item.updated_at || item.created_at || ""), tone: item.status === "APPROVED" || item.status === "COMPLETED" ? "green" : "orange", icon: item.status === "APPROVED" || item.status === "COMPLETED" ? "✓" : "◷" })),
+    ...relationships.map((item) => ({ id: `relationship:${item.id}`, title: `Connection ${visitorVisitStatus(item.status).toLowerCase()} · ${item.prisoner_name}`, time: activityTime(item.updated_at || item.created_at), timestamp: Date.parse(item.updated_at || item.created_at || ""), tone: item.status === "APPROVED" ? "blue" : "sage", icon: "↔" })),
+  ].sort((a, b) => (Number.isFinite(b.timestamp) ? b.timestamp : 0) - (Number.isFinite(a.timestamp) ? a.timestamp : 0)).slice(0, 4);
   const slides = [
-    { eyebrow: "Your next visit", title: nextVisit ? "Your visit is scheduled" : "Plan your first visit", copy: nextVisit ? `${nextVisit.prisoner_name} is ready to see you.` : "Start by adding a connection and submitting a visit request.", button: nextVisit ? "Prepare for visit" : "View connections", status: nextVisit ? "VISIT APPROVED" : "GET STARTED", theme: "peach", action: nextVisit ? onOpenVisit : () => onNavigate("Connections") },
-    { eyebrow: "Before your visit", title: "Make sure you’re ready", copy: "Test your camera, microphone, and connection before tomorrow.", button: "Check my device", status: "RECOMMENDED", theme: "blue", action: () => onAction("Device check is ready when you are.", "info") },
-    { eyebrow: "Good to know", title: "Join 10 minutes early", copy: "Your waiting room opens at 09:50 WIB so you have time to settle in.", button: "View visit guidelines", status: "READY WHEN YOU ARE", theme: "sage", action: () => onAction("Guidelines opened — you’re all set.", "info") },
+    { eyebrow: "Your next visit", title: nextVisit ? "Your visit is scheduled" : "Plan your first visit", copy: nextVisit ? `${nextVisit.prisoner_name} is ready to see you.` : "Start by adding a connection and submitting a visit request.", button: nextVisit ? "View my visits" : "View connections", status: nextVisit ? "VISIT APPROVED" : "GET STARTED", theme: "peach", action: nextVisit ? onOpenVisit : () => onNavigate("Connections") },
+    { eyebrow: "Before your visit", title: "Make sure you’re ready", copy: "Test your camera, microphone, and connection before your scheduled visit.", button: "View my visits", status: "RECOMMENDED", theme: "blue", action: () => onNavigate("Visits") },
+    { eyebrow: "Good to know", title: "Join a little early", copy: "The waiting room opens shortly before your scheduled visit so you have time to settle in.", button: "View visit guidelines", status: "READY WHEN YOU ARE", theme: "sage", action: () => onAction("Visit guidance will be available with your appointment details.", "info") },
   ];
   const current = slides[slide];
 
@@ -241,7 +249,7 @@ function VisitorHome({
   return (
     <div className="sv4-page">
       <section className="sv4-greeting">
-        <div><p className="sv4-kicker">Wednesday · 13 August 2026</p><h1>Hello, Sarah</h1><p className="sv4-lead">It’s good to see you. Here’s everything for your next visit.</p></div>
+        <div><p className="sv4-kicker">Your visitor account</p><h1>Hello, {visitorName}</h1><p className="sv4-lead">Here’s the latest from your visits and connections.</p></div>
         <button className="sv4-help-link" onClick={() => onAction("Our visitor support team is here to help.", "info")}>Need a hand? <span>Visit support →</span></button>
       </section>
 
@@ -252,7 +260,7 @@ function VisitorHome({
       </section>
 
       <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">Make it easy</p><h2>What would you like to do?</h2></div><button className="sv4-text-link" onClick={() => onNavigate("Visits")}>See all visits →</button></div><div className="sv4-action-grid">
-        <QuickAction icon="＋" title="Book a visit" copy="Find a time to see someone" onClick={() => onAction("Choose a connection to start booking.", "info")} tone="orange" />
+        <QuickAction icon="＋" title="Book a visit" copy="Find a time to see someone" onClick={() => onNavigate("Visits")} tone="orange" />
         <QuickAction icon="◷" title="My visits" copy="See upcoming and past visits" onClick={() => onNavigate("Visits")} tone="blue" />
         <QuickAction icon="↔" title="My connections" copy="People you’re approved to see" onClick={() => onNavigate("Connections")} tone="sage" />
         <QuickAction icon="◇" title="Visit credits" copy="Check your available balance" onClick={() => onNavigate("Credits")} tone="lilac" />
@@ -265,13 +273,13 @@ function VisitorHome({
         <div className="sv4-next-visit-time"><span>{new Date(nextVisit.requested_start).toLocaleDateString()}</span><strong>{new Date(nextVisit.requested_start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}–{new Date(nextVisit.requested_end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><small>Open Visit Details to prepare</small></div><span className="sv4-round-arrow">→</span>
       </section> : <section className="sv4-next-visit-card sv4-next-visit-empty"><div className="sv4-next-visit-main"><div className="sv4-card-overline"><span>Your next visit</span><VisitorStatus tone="blue">NOT SCHEDULED</VisitorStatus></div><h2>{loading ? "Loading your visits" : "Nothing scheduled yet"}</h2><div className="sv4-person-row"><VisitorAvatar initials="+" /><div><strong>{loading ? "Checking your account" : "Add a connection to begin"}</strong><span>{loading ? "Your latest information is on its way." : "Your approved connections will appear here."}</span></div></div></div><span className="sv4-round-arrow">→</span></section>}
 
-      <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">People in your circle</p><h2>Your connections</h2></div><button className="sv4-text-link" onClick={() => onNavigate("Connections")}>Manage connections →</button></div><div className="sv4-connection-scroll">{connection ? <ConnectionCard initials={connection.prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2)} name={connection.prisoner_name} relation={connection.relationship_type} color="sage" onClick={onOpenVisit} /> : <div className="sv4-empty-inline">{loading ? "Loading connections…" : "No approved connections yet."}</div>}<button className="sv4-add-card" onClick={() => onNavigate("Connections")}><span>＋</span><strong>Add a connection</strong><small>Who would you like to see?</small></button></div></section>
+      <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">People in your circle</p><h2>Your connections</h2></div><button className="sv4-text-link" onClick={() => onNavigate("Connections")}>Manage connections →</button></div><div className="sv4-connection-scroll">{connection ? <ConnectionCard initials={connection.prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2)} name={connection.prisoner_name} relation={connection.relationship_type} color="sage" onClick={() => onNavigate("Connections")} /> : <div className="sv4-empty-inline">{loading ? "Loading connections…" : "No approved connections yet."}</div>}<button className="sv4-add-card" onClick={() => onNavigate("Connections")}><span>＋</span><strong>Add a connection</strong><small>Who would you like to see?</small></button></div></section>
 
-      <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">A little help along the way</p><h2>For you</h2></div></div><div className="sv4-recommend-grid"><Recommendation icon="⌁" title="Device ready" copy="Take a quick check before you join." action="Check device" onClick={() => onAction("Device check is ready when you are.", "info")} tone="blue" /><Recommendation icon="◷" title={nextVisit ? "Visit scheduled" : "Plan a visit"} copy={nextVisit ? "Everything is in place for your visit." : "Add a connection to get started."} action={nextVisit ? "View details" : "View connections"} onClick={nextVisit ? onOpenVisit : () => onNavigate("Connections")} tone="orange" /><Recommendation icon="◇" title={`${availableCredits} Visit Credit${availableCredits === 1 ? "" : "s"}`} copy={availableCredits ? "Available for an approved visit." : "Top up when you are ready to book."} action="View credits" onClick={() => onNavigate("Credits")} tone="sage" /></div></section>
+      <section className="sv4-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">A little help along the way</p><h2>For you</h2></div></div><div className="sv4-recommend-grid"><Recommendation icon="⌁" title="Device ready" copy="Take a quick check before you join." action="View my visits" onClick={() => onNavigate("Visits")} tone="blue" /><Recommendation icon="◷" title={nextVisit ? "Visit scheduled" : "Plan a visit"} copy={nextVisit ? "Everything is in place for your visit." : "Add a connection to get started."} action={nextVisit ? "View my visits" : "View connections"} onClick={nextVisit ? onOpenVisit : () => onNavigate("Connections")} tone="orange" /><Recommendation icon="◇" title={`${availableCredits} Visit Credit${availableCredits === 1 ? "" : "s"}`} copy={availableCredits ? "Available for an approved visit." : "Top up when you are ready to book."} action="View credits" onClick={() => onNavigate("Credits")} tone="sage" /></div></section>
 
       <section className="sv4-section sv4-guidance-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">Feel ready</p><h2>Before your visit</h2></div><button className="sv4-text-link" onClick={() => onAction("All visit guidance opened.", "info")}>See all guidance →</button></div><div className="sv4-guidance-grid"><GuidanceCard number="01" title="Find a quiet place" copy="A calm space helps you focus on the conversation." /><GuidanceCard number="02" title="Test your connection" copy="Check your camera, microphone, and internet." /><GuidanceCard number="03" title="Join a little early" copy="Your waiting room opens ten minutes before." /></div></section>
 
-      <section className="sv4-section sv4-activity-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">Your SecureVisit story</p><h2>Recent activity</h2></div></div><div className="sv4-activity-list"><Activity icon="✓" title="Your visit was approved" time="Yesterday · 14:32" tone="green" /><Activity icon="◇" title="Visit Credit reserved" time="Yesterday · 14:32" tone="orange" /><Activity icon="↔" title="Connection approved" time="12 Aug · 09:10" tone="blue" /></div></section>
+      <section className="sv4-section sv4-activity-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">Your SecureVisit story</p><h2>Recent activity</h2></div></div><div className="sv4-activity-list">{recentActivity.length ? recentActivity.map((item) => <Activity key={item.id} icon={item.icon} title={item.title} time={item.time} tone={item.tone} />) : <div className="sv4-empty-inline">Your visit and connection updates will appear here.</div>}</div></section>
     </div>
   );
 }
@@ -293,21 +301,162 @@ function GuidanceCard({ number, title, copy }: { number: string; title: string; 
 }
 
 function Activity({ icon, title, time, tone }: { icon: string; title: string; time: string; tone: string }) {
-  return <button className="sv4-activity-row" onClick={() => undefined}><span className={`sv4-activity-icon sv4-tone-${tone}`}>{icon}</span><span><strong>{title}</strong><small>{time}</small></span><b>→</b></button>;
+  return <div className="sv4-activity-row"><span className={`sv4-activity-icon sv4-tone-${tone}`}>{icon}</span><span><strong>{title}</strong><small>{time}</small></span></div>;
 }
 
-function VisitorVisits({ onAction, onOpenVisit }: { onAction: (message: string, tone?: NoticeTone) => void; onOpenVisit: () => void }) {
+function activityTime(value?: string) {
+  if (!value) return "Recently";
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "Recently";
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (elapsedMinutes < 1) return "Just now";
+  if (elapsedMinutes < 60) return `${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"} ago`;
+  if (elapsedMinutes < 1440) {
+    const hours = Math.floor(elapsedMinutes / 60);
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(timestamp));
+}
+
+function visitorLocalDate(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function visitorVisitStatus(status: string) {
+  return status.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function visitorVisitTime(value: string, timeZone?: string) {
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(date);
+}
+
+function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, tone?: NoticeTone) => void; onNavigate: (tab: Tab) => void }) {
+  const { appointments, relationships, credits, loading, refreshAppointments } = useContext(VisitorDataContext);
   const [view, setView] = useState("Upcoming");
-  return <div className="sv4-page sv4-inner-page"><div className="sv4-page-intro"><p className="sv4-kicker">Your visits</p><h1>Time together, made simple.</h1><p>Keep track of your upcoming visits, requests, and memories.</p></div><div className="sv4-segmented">{["Upcoming", "Requests", "History"].map((item) => <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>{item}{item === "Upcoming" && <b>1</b>}</button>)}</div>{view === "Upcoming" && <div className="sv4-visits-layout"><article className="sv4-visit-detail-card"><div className="sv4-card-overline"><span>Tomorrow · 10:00 WIB</span><VisitorStatus>APPROVED</VisitorStatus></div><div className="sv4-visit-person"><VisitorAvatar initials="AR" color="sage" /><div><h2>A. Rahman</h2><p>Family visit · Central Facility</p></div></div><div className="sv4-visit-meta"><span><small>Date</small><strong>14 August 2026</strong></span><span><small>Duration</small><strong>20 minutes</strong></span><span><small>Waiting room</small><strong>09:50 WIB</strong></span></div><VisitorButton primary onClick={onOpenVisit}>Prepare for visit <span>→</span></VisitorButton></article><JourneyCard onAction={onAction} /></div>}{view === "Requests" && <div className="sv4-empty-state"><span>↗</span><h2>No requests waiting</h2><p>When you request a new visit, you’ll see its progress here.</p><VisitorButton primary onClick={() => onAction("Choose a connection to start a visit request.", "info")}>Start a request</VisitorButton></div>}{view === "History" && <div className="sv4-history-list"><HistoryRow name="A. Rahman" date="08 August 2026" status="Completed" /><HistoryRow name="A. Rahman" date="25 July 2026" status="Completed" /><HistoryRow name="Central Facility" date="11 July 2026" status="Completed" /></div>}</div>;
-}
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [relationshipId, setRelationshipId] = useState("");
+  const [bookingDate, setBookingDate] = useState(() => visitorLocalDate(new Date(Date.now() + 86400000)));
+  const [duration, setDuration] = useState(15);
+  const [slots, setSlots] = useState<string[]>([]);
+  const [availabilityTimezone, setAvailabilityTimezone] = useState("Asia/Jakarta");
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [selectedSlot, setSelectedSlot] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const requestKey = useRef<string | null>(null);
+  const approvedRelationships = relationships.filter((item) => item.status === "APPROVED");
+  const selectedRelationship = approvedRelationships.find((item) => item.id === relationshipId);
+  const availableCredits = credits.find((item) => item.facility_id === selectedRelationship?.facility_id)?.available_credits || 0;
 
-function JourneyCard({ onAction }: { onAction: (message: string, tone?: NoticeTone) => void }) {
-  const steps = [["Request submitted", "12 Aug · 09:10"], ["Visit approved", "12 Aug · 14:32"], ["Credit reserved", "12 Aug · 14:32"], ["Prepare for visit", "You are here"], ["Waiting room opens", "Tomorrow · 09:50"]];
-  return <article className="sv4-journey-card"><div className="sv4-card-overline"><span>Your visit journey</span><span>4 of 5</span></div><h2>You’re nearly ready.</h2><div className="sv4-journey">{steps.map(([title, copy], index) => <div key={title} className={`sv4-journey-step ${index < 3 ? "done" : index === 3 ? "current" : ""}`}><span>{index < 3 ? "✓" : index + 1}</span><div><strong>{title}</strong><small>{copy}</small></div></div>)}</div><VisitorButton onClick={() => onAction("Device check is ready when you are.", "info")}>Test my device <span>→</span></VisitorButton></article>;
-}
+  useEffect(() => {
+    if (!bookingOpen || !selectedRelationship) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({ facilityId: selectedRelationship.facility_id, prisonerId: selectedRelationship.prisoner_id, date: bookingDate, duration: String(duration) });
+    fetch(`/api/visitor/availability?${query}`, { credentials: "include", headers: { accept: "application/json" }, signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json() as { slots?: string[]; timezone?: string; error?: string };
+        if (!response.ok) throw new Error(body.error || "Could not load visit availability.");
+        setSlots(body.slots || []);
+        setAvailabilityTimezone(body.timezone || "Asia/Jakarta");
+        setSelectedSlot("");
+        setAvailabilityError("");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setSlots([]);
+        setAvailabilityError(error instanceof Error ? error.message : "Could not load visit availability.");
+      })
+      .finally(() => !controller.signal.aborted && setAvailabilityLoading(false));
+    return () => controller.abort();
+  }, [appointments, bookingDate, bookingOpen, duration, selectedRelationship]);
 
-function HistoryRow({ name, date, status }: { name: string; date: string; status: string }) {
-  return <div className="sv4-history-row"><VisitorAvatar initials={name === "A. Rahman" ? "AR" : "CF"} color="sage" /><span><strong>{name}</strong><small>{date} · Family visit</small></span><VisitorStatus tone="blue">{status}</VisitorStatus><b>→</b></div>;
+  const requests = appointments.filter((item) => ["SUBMITTED", "UNDER_REVIEW"].includes(item.status));
+  const upcoming = appointments.filter((item) => ["APPROVED", "WAITING", "IN_PROGRESS"].includes(item.status));
+  const history = appointments.filter((item) => ["COMPLETED", "CANCELLED_BY_VISITOR", "CANCELLED_BY_FACILITY", "REJECTED", "FAILED", "NO_SHOW"].includes(item.status));
+
+  function openBooking() {
+    setFormError("");
+    if (!approvedRelationships.length) {
+      onNavigate("Connections");
+      onAction("A connection must be approved by the facility before you can request a visit.", "info");
+      return;
+    }
+    setRelationshipId((current) => current || approvedRelationships[0].id);
+    setSlots([]);
+    setSelectedSlot("");
+    setAvailabilityLoading(true);
+    setAvailabilityError("");
+    setBookingOpen(true);
+  }
+
+  function closeBooking() {
+    setBookingOpen(false);
+    setSlots([]);
+    setSelectedSlot("");
+    setAvailabilityLoading(false);
+    setAvailabilityError("");
+    requestKey.current = null;
+  }
+
+  async function submitVisitRequest(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedRelationship || !selectedSlot) return setFormError("Choose an available time before continuing.");
+    if (availableCredits < 1) return setFormError("Add at least one Visit Credit for this facility before requesting a visit.");
+    setSubmitting(true);
+    setFormError("");
+    requestKey.current ||= crypto.randomUUID();
+    try {
+      const start = new Date(selectedSlot);
+      const end = new Date(start.getTime() + duration * 60_000);
+      const response = await fetch("/api/visitor/appointments", { method: "POST", credentials: "include", headers: { "content-type": "application/json", "Idempotency-Key": requestKey.current }, body: JSON.stringify({ relationshipId: selectedRelationship.id, requestedStart: start.toISOString(), requestedEnd: end.toISOString(), appointmentType: "FAMILY" }) });
+      const body = await response.json() as { appointmentId?: string; error?: string };
+      if (!response.ok) throw new Error(body.error || "Your visit request could not be sent.");
+      requestKey.current = null;
+      setBookingOpen(false);
+      setView("Requests");
+      await refreshAppointments();
+      onAction("Your request was sent to the facility for review.", "success");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message.replaceAll("_", " ") : "Your visit request could not be sent. Please retry.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function cancelVisit(appointment: VisitorAppointmentRecord) {
+    if (!window.confirm("Cancel this visit request? The facility will see that it was cancelled.")) return;
+    try {
+      const response = await fetch("/api/visitor/appointments", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ appointmentId: appointment.id, action: "cancel", expectedVersion: appointment.version }) });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "This visit could not be cancelled.");
+      await refreshAppointments();
+      onAction("Your visit request has been cancelled.", "success");
+    } catch (error) {
+      onAction(error instanceof Error ? error.message.replaceAll("_", " ") : "This visit could not be cancelled.", "info");
+    }
+  }
+
+  const tabs = ["Upcoming", "Requests", "History"];
+  const visibleAppointments = view === "Requests" ? requests : view === "History" ? history : upcoming;
+
+  return <div className="sv4-page sv4-inner-page">
+    <div className="sv4-page-intro sv4-visits-intro"><div><p className="sv4-kicker">Your visits</p><h1>Time together, made simple.</h1><p>Request a time, follow the facility’s decision, and prepare when your visit is approved.</p></div><VisitorButton primary onClick={openBooking}>＋ Request a visit</VisitorButton></div>
+    <div className="sv4-segmented">{tabs.map((item) => <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>{item}{item === "Requests" && requests.length > 0 && <b>{requests.length}</b>}{item === "Upcoming" && upcoming.length > 0 && <b>{upcoming.length}</b>}</button>)}</div>
+    {bookingOpen && <section className="sv4-visit-booking" aria-labelledby="sv4-booking-title"><div className="sv4-booking-heading"><div><p className="sv4-kicker">A few simple steps</p><h2 id="sv4-booking-title">Request a visit</h2><p>Choose an approved connection and an available time. The facility makes the final decision.</p></div><button type="button" className="sv11-back-button" onClick={closeBooking} disabled={submitting}>Close</button></div>
+      <form onSubmit={submitVisitRequest}>
+        <label>Who would you like to see?<select value={relationshipId} onChange={(event) => { setRelationshipId(event.target.value); setSlots([]); setSelectedSlot(""); setAvailabilityLoading(true); setAvailabilityError(""); requestKey.current = null; }} required>{approvedRelationships.map((item) => <option key={item.id} value={item.id}>{item.prisoner_name} · {item.facility_name}</option>)}</select></label>
+        <div className="sv4-booking-fields"><label>Choose a day<input type="date" min={visitorLocalDate(new Date())} value={bookingDate} onChange={(event) => { setBookingDate(event.target.value); setSlots([]); setSelectedSlot(""); setAvailabilityLoading(true); setAvailabilityError(""); requestKey.current = null; }} required /></label><label>Visit length<select value={duration} onChange={(event) => { setDuration(Number(event.target.value)); setSlots([]); setSelectedSlot(""); setAvailabilityLoading(true); setAvailabilityError(""); requestKey.current = null; }}><option value={15}>15 minutes</option><option value={30}>30 minutes</option></select></label></div>
+        <div className="sv4-available-times"><div><strong>Available times</strong><span>{availableCredits} Visit Credit{availableCredits === 1 ? "" : "s"} available</span></div>{availabilityLoading ? <p className="sv4-booking-message">Checking the facility schedule…</p> : availabilityError ? <p className="sv4-request-error" role="alert">{availabilityError.replaceAll("_", " ")}</p> : slots.length ? <div className="sv4-slot-grid" role="radiogroup" aria-label="Available visit times">{slots.map((slot) => <label key={slot} className={selectedSlot === slot ? "selected" : ""}><input type="radio" name="visit-time" value={slot} checked={selectedSlot === slot} onChange={() => { setSelectedSlot(slot); requestKey.current = null; }} /><span>{new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: availabilityTimezone }).format(new Date(slot))}</span></label>)}</div> : <p className="sv4-booking-message">No available times for this day. Try another date.</p>}</div>
+        {availableCredits < 1 && <div className="sv4-booking-credit-note"><span>You’ll need a Visit Credit before sending this request.</span><button type="button" onClick={() => onNavigate("Credits")}>View credits →</button></div>}
+        {formError && <p className="sv4-request-error" role="alert">{formError}</p>}
+        <div className="sv4-request-actions"><button type="button" className="sv11-back-button" onClick={closeBooking} disabled={submitting}>Not now</button><button className="sv4-button sv4-button-primary" disabled={submitting || availabilityLoading || !selectedSlot || availableCredits < 1}>{submitting ? "Sending request…" : "Send visit request"}</button></div>
+      </form>
+    </section>}
+    {loading ? <div className="sv4-empty-inline">Loading your visits…</div> : visibleAppointments.length ? <div className="sv4-appointment-list">{visibleAppointments.map((appointment) => <article className="sv4-appointment-card" key={appointment.id}><div className="sv4-appointment-date"><strong>{new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: appointment.timezone || "Asia/Jakarta" }).format(new Date(appointment.requested_start))}</strong><span>{new Intl.DateTimeFormat("en", { month: "short", timeZone: appointment.timezone || "Asia/Jakarta" }).format(new Date(appointment.requested_start))}</span></div><div className="sv4-appointment-copy"><div className="sv4-appointment-title"><h2>{appointment.prisoner_name}</h2><VisitorStatus tone={["APPROVED", "WAITING", "IN_PROGRESS"].includes(appointment.status) ? "green" : ["REJECTED", "CANCELLED_BY_VISITOR", "CANCELLED_BY_FACILITY", "FAILED"].includes(appointment.status) ? "blue" : "orange"}>{visitorVisitStatus(appointment.status)}</VisitorStatus></div><p>{visitorVisitTime(appointment.requested_start, appointment.timezone)} · {Math.round((Date.parse(appointment.requested_end) - Date.parse(appointment.requested_start)) / 60000)} minutes</p><small>Request ID · {appointment.id}</small></div><div className="sv4-appointment-actions">{["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(appointment.status) && <button className="muted" onClick={() => void cancelVisit(appointment)}>Cancel</button>}</div></article>)}</div> : <div className="sv4-empty-state"><span>{view === "History" ? "◷" : view === "Requests" ? "↗" : "＋"}</span><h2>{view === "History" ? "No past visits yet" : view === "Requests" ? "No requests in review" : "Nothing scheduled yet"}</h2><p>{view === "History" ? "Completed and cancelled visits will appear here." : view === "Requests" ? "New requests and facility decisions will appear here." : "Start with one of your approved connections to find a time."}</p>{view === "Upcoming" && <VisitorButton primary onClick={openBooking}>Request a visit <span>→</span></VisitorButton>}</div>}
+  </div>;
 }
 
 function VisitorConnections({ onAction, onRelationshipAdded }: { onAction: (message: string, tone?: NoticeTone) => void; onRelationshipAdded: (relationship: VisitorRelationshipRecord) => void }) {
@@ -353,7 +502,7 @@ function VisitorConnections({ onAction, onRelationshipAdded }: { onAction: (mess
       });
       const body = await response.json() as { relationshipId?: string; status?: string; error?: string };
       if (!response.ok || !body.relationshipId) throw new Error(body.error || "We couldn’t submit this connection request.");
-      onRelationshipAdded({ id: body.relationshipId, status: body.status || "PENDING", prisoner_name: selectedPrisoner.display_name, relationship_type: relationshipType, facility_name: selectedPrisoner.facility_name });
+      onRelationshipAdded({ id: body.relationshipId, facility_id: selectedPrisoner.facility_id, prisoner_id: selectedPrisoner.id, status: body.status || "PENDING", prisoner_name: selectedPrisoner.display_name, relationship_type: relationshipType, facility_name: selectedPrisoner.facility_name });
       setFormOpen(false);
       setPrisonerId("");
       setSearch("");
@@ -493,8 +642,4 @@ function VisitorAccount({ onAction }: { onAction: (message: string, tone?: Notic
 
 function VisitorNotifications({ onAction }: { onAction: (message: string, tone?: NoticeTone) => void }) {
   return <aside className="sv4-notifications"><div className="sv4-notifications-head"><div><p className="sv4-kicker">Your inbox</p><h2>Notifications</h2></div><span>2 new</span></div><button onClick={() => onAction("Your visit details are ready.", "info")}><span className="sv4-notification-icon orange">✓</span><span><strong>Visit approved</strong><small>Your visit with A. Rahman is tomorrow.</small><em>Yesterday</em></span><b>●</b></button><button onClick={() => onAction("Device check is ready when you are.", "info")}><span className="sv4-notification-icon blue">⌁</span><span><strong>Device check recommended</strong><small>Take a quick check before your visit.</small><em>Yesterday</em></span><b>●</b></button><button onClick={() => onAction("A credit was returned to your balance.", "success")}><span className="sv4-notification-icon sage">◇</span><span><strong>Credit returned</strong><small>Your completed visit returned one credit.</small><em>12 Aug</em></span></button><button className="sv4-notifications-all" onClick={() => onAction("All notifications marked as read.", "success")}>Mark all as read</button></aside>;
-}
-
-function VisitorVisitSheet({ onClose, onAction }: { onClose: () => void; onAction: (message: string, tone?: NoticeTone) => void }) {
-  return <div className="sv4-sheet-backdrop" onClick={onClose}><aside className="sv4-visit-sheet" onClick={(event) => event.stopPropagation()}><button className="sv4-sheet-close" onClick={onClose} aria-label="Close visit details">×</button><div className="sv4-sheet-handle" /><div className="sv4-sheet-top"><VisitorStatus>APPROVED</VisitorStatus><span>Tomorrow · 10:00 WIB</span></div><div className="sv4-sheet-person"><VisitorAvatar initials="AR" color="sage" /><div><p className="sv4-kicker">Your next visit</p><h2>A. Rahman</h2><p>Family visit · Central Facility</p></div></div><div className="sv4-sheet-details"><span><small>Duration</small><strong>20 minutes</strong></span><span><small>Waiting room</small><strong>09:50 WIB</strong></span><span><small>Visit Credit</small><strong>1 reserved</strong></span></div><div className="sv4-sheet-note"><span>✦</span><p><strong>You’re all set.</strong><br />We’ll remind you when your waiting room opens.</p></div><VisitorButton primary onClick={() => onAction("Device check is ready when you are.", "info")}>Prepare for visit <span>→</span></VisitorButton></aside></div>;
 }

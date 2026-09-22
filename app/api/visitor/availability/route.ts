@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     if (!relationship) throw new SecurityError("RELATIONSHIP_NOT_APPROVED", 409);
     const dayStart = facilityLocalDateTime(date, policy.daily_start_time, facility.timezone);
     const dayEnd = facilityLocalDateTime(date, policy.daily_end_time, facility.timezone);
-    const appointments = await d1.prepare(`SELECT requested_start, requested_end FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS') AND requested_start < ? AND requested_end > ?`).bind(facilityId, prisonerId, dayEnd.toISOString(), dayStart.toISOString()).all<{ requested_start: string; requested_end: string }>();
+    const appointments = await d1.prepare(`SELECT requested_start, requested_end FROM appointments WHERE facility_id = ? AND (prisoner_id = ? OR visitor_user_id = ?) AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS') AND requested_start < ? AND requested_end > ?`).bind(facilityId, prisonerId, visitor.userId, dayEnd.toISOString(), dayStart.toISOString()).all<{ requested_start: string; requested_end: string }>();
     const slots: string[] = [];
     for (let cursor = dayStart.getTime(); cursor + duration * 60000 <= dayEnd.getTime(); cursor += slotMinutes * 60000) {
       const end = cursor + duration * 60000;
