@@ -15,7 +15,16 @@ export type AppointmentDecisionInput = {
   correlationId: string;
   now: string;
   creditAccountId?: string;
-  approval?: { creditAccountId: string; startsAt: string; endsAt: string };
+  approval?: {
+    creditAccountId: string;
+    startsAt: string;
+    endsAt: string;
+    policyVersion: number;
+    facilityTimezone: string;
+    durationMinutes: number;
+    earliestStartAt: string;
+    latestStartAt: string;
+  };
 };
 
 export function appointmentDecisionStatements(d1: D1Database, input: AppointmentDecisionInput): D1PreparedStatement[] {
@@ -45,15 +54,32 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
       AND EXISTS (SELECT 1 FROM appointments a
         INNER JOIN prisoners p ON p.id = a.prisoner_id
         INNER JOIN facilities f ON f.id = a.facility_id
+        INNER JOIN visit_policies vp ON vp.facility_id = f.id
         WHERE a.id = appointments.id AND a.facility_id = appointments.facility_id
           AND p.status = 'ACTIVE' AND p.visitation_status = 'APPROVED' AND f.current_state = 'NORMAL_OPERATIONS'
-          AND EXISTS (SELECT 1 FROM visitor_relationships vr WHERE vr.facility_id = a.facility_id AND vr.prisoner_id = a.prisoner_id AND vr.visitor_user_id = a.visitor_user_id AND vr.status = 'APPROVED'))` : "";
+          AND vp.version = ? AND vp.version = appointments.policy_version
+          AND f.timezone = ? AND appointments.timezone = f.timezone
+          AND appointments.duration_minutes = ?
+          AND appointments.requested_start = ? AND appointments.requested_end = ?
+          AND appointments.requested_start >= ? AND appointments.requested_start <= ?
+          AND appointments.duration_minutes >= vp.min_duration_minutes AND appointments.duration_minutes <= vp.max_duration_minutes
+          AND appointments.duration_minutes % 15 = 0
+          AND ABS((julianday(appointments.requested_end) - julianday(appointments.requested_start)) * 1440 - appointments.duration_minutes) < 0.01
+          AND EXISTS (SELECT 1 FROM visitor_relationships vr WHERE vr.facility_id = a.facility_id AND vr.prisoner_id = a.prisoner_id AND vr.visitor_user_id = a.visitor_user_id AND vr.status = 'APPROVED'))
+      AND NOT EXISTS (SELECT 1 FROM appointments conflicting
+        WHERE conflicting.id <> appointments.id AND conflicting.facility_id = appointments.facility_id
+          AND (conflicting.visitor_user_id = appointments.visitor_user_id OR conflicting.prisoner_id = appointments.prisoner_id)
+          AND conflicting.status IN ('APPROVED', 'WAITING', 'IN_PROGRESS')
+          AND conflicting.requested_start < appointments.requested_end
+          AND conflicting.requested_end > appointments.requested_start)` : "";
   if (input.approval) {
     approvalValues.push(
       input.appointmentId, input.approval.creditAccountId, input.appointmentId, input.approval.creditAccountId,
       input.appointmentId, input.approval.creditAccountId,
       input.appointmentId, input.facilityId, input.facilityId, input.facilityId, input.appointmentId, input.approval.endsAt, input.approval.startsAt,
       input.appointmentId, input.facilityId, input.facilityId, input.facilityId, input.appointmentId, input.approval.endsAt, input.approval.startsAt,
+      input.approval.policyVersion, input.approval.facilityTimezone, input.approval.durationMinutes,
+      input.approval.startsAt, input.approval.endsAt, input.approval.earliestStartAt, input.approval.latestStartAt,
     );
   }
 

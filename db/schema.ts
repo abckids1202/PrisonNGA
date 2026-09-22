@@ -206,6 +206,8 @@ export const appointments = sqliteTable("appointments", {
   requestedStart: text("requested_start").notNull(),
   requestedEnd: text("requested_end").notNull(),
   timezone: text("timezone").notNull().default("Asia/Jakarta"),
+  policyVersion: integer("policy_version"),
+  durationMinutes: integer("duration_minutes"),
   appointmentType: text("appointment_type").notNull().default("FAMILY"),
   version: integer("version").notNull().default(1),
   lastTransitionId: text("last_transition_id"),

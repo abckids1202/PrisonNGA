@@ -4,6 +4,7 @@ import { releaseVisitCredit } from "../../../../lib/server/credits";
 import { releaseVisitResources } from "../../../../lib/server/resources";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim } from "../../../../lib/server/idempotency";
+import { validateVisitWindow } from "../../../../lib/server/visit-policy";
 
 const activeStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"];
 
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     const startMs = Date.parse(requestedStart);
     const endMs = Date.parse(requestedEnd);
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
-    if (!relationshipId || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs || endMs - startMs < 15 * 60_000 || endMs - startMs > 30 * 60_000) throw new SecurityError("INVALID_APPOINTMENT_WINDOW", 400);
+    if (!relationshipId || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) throw new SecurityError("INVALID_APPOINTMENT_WINDOW", 400);
     const d1 = await getD1();
     const idempotencyScope = `visitor:${visitor.userId}:appointment:create`;
     const requestHash = await hashIdempotencyPayload({ relationshipId, requestedStart, requestedEnd, appointmentType });
@@ -46,18 +47,17 @@ export async function POST(request: Request) {
     if (!relationship || relationship.status !== "APPROVED" || relationship.prisoner_status !== "ACTIVE" || relationship.visitation_status !== "APPROVED") throw new SecurityError("RELATIONSHIP_NOT_APPROVED", 409);
     const creditAccount = await d1.prepare("SELECT available_credits FROM credit_accounts WHERE user_id = ? AND facility_id = ?").bind(visitor.userId, relationship.facility_id).first<{ available_credits: number }>();
     if (!creditAccount || creditAccount.available_credits < 1) throw new SecurityError("VISIT_CREDIT_REQUIRED", 409);
-    const policy = await d1.prepare("SELECT f.timezone, f.current_state, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time FROM facilities f LEFT JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(relationship.facility_id).first<{ timezone: string; current_state: string; min_duration_minutes: number | null; max_duration_minutes: number | null; min_advance_minutes: number | null; max_advance_days: number | null; daily_start_time: string | null; daily_end_time: string | null }>();
-    if (!policy || policy.min_duration_minutes == null || policy.max_duration_minutes == null || policy.min_advance_minutes == null || policy.max_advance_days == null || !policy.daily_start_time || !policy.daily_end_time) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
-    const durationMinutes = (endMs - startMs) / 60000;
+    const policy = await d1.prepare("SELECT f.timezone, f.current_state, vp.version AS policy_version, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time FROM facilities f LEFT JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(relationship.facility_id).first<{ timezone: string | null; current_state: string; policy_version: number | null; min_duration_minutes: number | null; max_duration_minutes: number | null; min_advance_minutes: number | null; max_advance_days: number | null; daily_start_time: string | null; daily_end_time: string | null }>();
+    if (!policy) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
     if (policy.current_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
-    if (durationMinutes < policy.min_duration_minutes || durationMinutes > policy.max_duration_minutes || durationMinutes % 15 !== 0) throw new SecurityError("DURATION_NOT_ALLOWED", 400);
-    if (startMs < Date.now() + policy.min_advance_minutes * 60000 || startMs > Date.now() + policy.max_advance_days * 86400000) throw new SecurityError("APPOINTMENT_OUTSIDE_BOOKING_HORIZON", 400);
-    const localParts = new Intl.DateTimeFormat("en-GB", { timeZone: policy.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(startMs));
-    const localTime = `${localParts.find((part) => part.type === "hour")?.value || "00"}:${localParts.find((part) => part.type === "minute")?.value || "00"}`;
-    if (localTime < policy.daily_start_time || localTime > policy.daily_end_time || new Date(endMs).toLocaleDateString("en-CA", { timeZone: policy.timezone }) !== new Date(startMs).toLocaleDateString("en-CA", { timeZone: policy.timezone })) throw new SecurityError("APPOINTMENT_OUTSIDE_OPERATING_HOURS", 400);
-    const overlap = await d1.prepare(`SELECT id FROM appointments WHERE visitor_user_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(visitor.userId, ...activeStatuses, requestedEnd, requestedStart).first<{ id: string }>();
+    if (policy.policy_version === null || !policy.timezone) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
+    const window = validateVisitWindow(requestedStart, requestedEnd, Date.now(), policy);
+    if (!window.ok) throw new SecurityError(window.reason, window.reason.startsWith("FACILITY_") ? 503 : 400);
+    const canonicalStart = window.requestedStart;
+    const canonicalEnd = window.requestedEnd;
+    const overlap = await d1.prepare(`SELECT id FROM appointments WHERE visitor_user_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(visitor.userId, ...activeStatuses, canonicalEnd, canonicalStart).first<{ id: string }>();
     if (overlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
-    const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(relationship.facility_id, relationship.prisoner_id, ...activeStatuses, requestedEnd, requestedStart).first<{ id: string }>();
+    const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(relationship.facility_id, relationship.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first<{ id: string }>();
     if (prisonerOverlap) throw new SecurityError("PRISONER_APPOINTMENT_OVERLAP", 409);
     const appointmentId = `SV-${new Date(startMs).toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const now = new Date().toISOString();
@@ -71,17 +71,17 @@ export async function POST(request: Request) {
       entityType: "appointment",
       entityId: appointmentId,
       reason: "Visitor submitted an appointment request.",
-      newValues: { status: "SUBMITTED", requestedStart, requestedEnd, prisonerId: relationship.prisoner_id },
+      newValues: { status: "SUBMITTED", requestedStart: canonicalStart, requestedEnd: canonicalEnd, prisonerId: relationship.prisoner_id },
       requestId: context.requestId,
       correlationId,
       eventType: "APPOINTMENT_SUBMITTED",
       payload: { appointmentId, visitorUserId: visitor.userId },
     });
     await d1.batch([
-      d1.prepare(`INSERT INTO appointments (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, appointment_type, version, created_at, updated_at)
-        SELECT ?, ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, 1, ?, ?
+      d1.prepare(`INSERT INTO appointments (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, policy_version, duration_minutes, appointment_type, version, created_at, updated_at)
+        SELECT ?, ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, ?, ?, 1, ?, ?
         WHERE EXISTS (SELECT 1 FROM idempotency_records WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING')`)
-        .bind(appointmentId, relationship.facility_id, visitor.userId, relationship.prisoner_id, requestedStart, requestedEnd, policy.timezone, appointmentType, now, now, activeClaim!.claimId, activeClaim!.scope, activeClaim!.key),
+        .bind(appointmentId, relationship.facility_id, visitor.userId, relationship.prisoner_id, canonicalStart, canonicalEnd, policy.timezone, policy.policy_version, Math.round((endMs - startMs) / 60_000), appointmentType, now, now, activeClaim!.claimId, activeClaim!.scope, activeClaim!.key),
       d1.prepare(`INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, NULL, 'SUBMITTED', ?, 'VISITOR_SUBMITTED', 'Visitor submitted an appointment request.', ?, ?)`)
         .bind(crypto.randomUUID(), appointmentId, visitor.userId, correlationId, now),
       ...auditStatements,
@@ -110,7 +110,7 @@ export async function PATCH(request: Request) {
     const action = body.action === "cancel" || body.action === "reschedule" ? body.action : "";
     if (!appointmentId || !action) throw new SecurityError("INVALID_APPOINTMENT_ACTION", 400);
     const d1 = await getD1();
-    const appointment = await d1.prepare(`SELECT a.id, a.facility_id, a.prisoner_id, a.status, a.version, a.requested_start, a.requested_end, f.current_state, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time, f.timezone, ca.id AS credit_account_id
+    const appointment = await d1.prepare(`SELECT a.id, a.facility_id, a.prisoner_id, a.status, a.version, a.requested_start, a.requested_end, f.current_state, vp.version AS policy_version, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time, f.timezone, ca.id AS credit_account_id
       FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id LEFT JOIN visit_policies vp ON vp.facility_id = a.facility_id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
       WHERE a.id = ? AND a.visitor_user_id = ?`).bind(appointmentId, visitor.userId).first<Record<string, string | number | null>>();
     if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
@@ -136,16 +136,26 @@ export async function PATCH(request: Request) {
     const requestedEnd = typeof body.requestedEnd === "string" ? body.requestedEnd : "";
     const startMs = Date.parse(requestedStart);
     const endMs = Date.parse(requestedEnd);
-    const minDuration = Number(appointment.min_duration_minutes || 15);
-    const maxDuration = Number(appointment.max_duration_minutes || 30);
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs || (endMs - startMs) / 60000 < minDuration || (endMs - startMs) / 60000 > maxDuration || (endMs - startMs) % (15 * 60000) !== 0) throw new SecurityError("INVALID_APPOINTMENT_WINDOW", 400);
-    if (startMs < Date.now() + Number(appointment.min_advance_minutes || 60) * 60000 || startMs > Date.now() + Number(appointment.max_advance_days || 30) * 86400000) throw new SecurityError("APPOINTMENT_OUTSIDE_BOOKING_HORIZON", 400);
-    const overlap = await d1.prepare(`SELECT id FROM appointments WHERE id <> ? AND facility_id = ? AND (visitor_user_id = ? OR prisoner_id = ?) AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(appointmentId, appointment.facility_id, visitor.userId, appointment.prisoner_id, ...activeStatuses, requestedEnd, requestedStart).first();
+    if (appointment.current_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
+    const window = validateVisitWindow(requestedStart, requestedEnd, Date.now(), {
+      timezone: typeof appointment.timezone === "string" ? appointment.timezone : null,
+      min_duration_minutes: appointment.min_duration_minutes == null ? null : Number(appointment.min_duration_minutes),
+      max_duration_minutes: appointment.max_duration_minutes == null ? null : Number(appointment.max_duration_minutes),
+      min_advance_minutes: appointment.min_advance_minutes == null ? null : Number(appointment.min_advance_minutes),
+      max_advance_days: appointment.max_advance_days == null ? null : Number(appointment.max_advance_days),
+      daily_start_time: typeof appointment.daily_start_time === "string" ? appointment.daily_start_time : null,
+      daily_end_time: typeof appointment.daily_end_time === "string" ? appointment.daily_end_time : null,
+    });
+    if (!window.ok) throw new SecurityError(window.reason, window.reason.startsWith("FACILITY_") ? 503 : 400);
+    if (appointment.policy_version == null || typeof appointment.timezone !== "string") throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
+    const canonicalStart = window.requestedStart;
+    const canonicalEnd = window.requestedEnd;
+    const overlap = await d1.prepare(`SELECT id FROM appointments WHERE id <> ? AND facility_id = ? AND (visitor_user_id = ? OR prisoner_id = ?) AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(appointmentId, appointment.facility_id, visitor.userId, appointment.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first();
     if (overlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
-    const updated = await d1.prepare("UPDATE appointments SET requested_start = ?, requested_end = ?, status = 'UNDER_REVIEW', version = version + 1, updated_at = ? WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW')").bind(requestedStart, requestedEnd, now, appointmentId, visitor.userId, Number(appointment.version)).run();
+    const updated = await d1.prepare("UPDATE appointments SET requested_start = ?, requested_end = ?, timezone = ?, policy_version = ?, duration_minutes = ?, status = 'UNDER_REVIEW', version = version + 1, updated_at = ? WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW')").bind(canonicalStart, canonicalEnd, appointment.timezone, Number(appointment.policy_version), Math.round((endMs - startMs) / 60_000), now, appointmentId, visitor.userId, Number(appointment.version)).run();
     if (!updated.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
     await d1.prepare("INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, ?, 'UNDER_REVIEW', ?, 'VISITOR_RESCHEDULED', 'Visitor requested a new appointment window.', ?, ?)").bind(crypto.randomUUID(), appointmentId, appointment.status, visitor.userId, correlationId, now).run();
-    await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: String(appointment.facility_id), actionType: "APPOINTMENT_RESCHEDULED", entityType: "appointment", entityId: appointmentId, reason: "Visitor requested a new appointment window.", oldValues: { status: appointment.status, requestedStart: appointment.requested_start, requestedEnd: appointment.requested_end }, newValues: { status: "UNDER_REVIEW", requestedStart, requestedEnd }, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_RESCHEDULED", payload: { appointmentId, visitorUserId: visitor.userId } });
-    return securityResponse({ appointmentId, status: "UNDER_REVIEW", requestedStart, requestedEnd, version: Number(appointment.version) + 1, correlationId }, 200, context.requestId);
+    await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: String(appointment.facility_id), actionType: "APPOINTMENT_RESCHEDULED", entityType: "appointment", entityId: appointmentId, reason: "Visitor requested a new appointment window.", oldValues: { status: appointment.status, requestedStart: appointment.requested_start, requestedEnd: appointment.requested_end }, newValues: { status: "UNDER_REVIEW", requestedStart: canonicalStart, requestedEnd: canonicalEnd }, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_RESCHEDULED", payload: { appointmentId, visitorUserId: visitor.userId } });
+    return securityResponse({ appointmentId, status: "UNDER_REVIEW", requestedStart: canonicalStart, requestedEnd: canonicalEnd, version: Number(appointment.version) + 1, correlationId }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
