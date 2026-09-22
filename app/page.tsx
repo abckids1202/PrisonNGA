@@ -33,6 +33,16 @@ type Appointment = {
   kiosk: string;
   type: "Family" | "Legal";
   status: AppointmentStatus;
+  rawStatus?: string;
+  version?: number;
+  relationshipType?: string | null;
+  relationshipStatus?: string | null;
+  prisonerStatus?: string | null;
+  visitationStatus?: string | null;
+  facilityState?: string | null;
+  availableCredits?: number;
+  reservedCredits?: number;
+  activeCreditReservation?: boolean;
   issue?: string;
 };
 type PeopleRecord = {
@@ -91,13 +101,16 @@ const activities = [
   ["09:46", "Waiting room opened for the morning schedule", "System"],
 ] as const;
 
-function mapBackendAppointment(row: { id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; appointment_type?: string; status: string }): Appointment {
+function mapBackendAppointment(row: { id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; timezone?: string | null; appointment_type?: string; status: string; version?: number; room_name?: string | null; kiosk_name?: string | null; relationship_type?: string | null; relationship_status?: string | null; prisoner_status?: string | null; visitation_status?: string | null; facility_state?: string | null; available_credits?: number; reserved_credits?: number; active_credit_reservation?: number }): Appointment {
   const start = new Date(row.requested_start);
   const end = new Date(row.requested_end);
-  const status: AppointmentStatus = row.status === "APPROVED" ? "Approved" : row.status === "IN_PROGRESS" ? "Live" : row.status === "COMPLETED" ? "Completed" : row.status === "REJECTED" || row.status === "CANCELLED_BY_FACILITY" ? "Blocked" : row.status === "UNDER_REVIEW" ? "Requires action" : "Ready";
+  const status: AppointmentStatus = row.status === "APPROVED" ? "Approved" : row.status === "WAITING" ? "Ready" : row.status === "IN_PROGRESS" ? "Live" : row.status === "COMPLETED" ? "Completed" : ["REJECTED", "CANCELLED_BY_FACILITY", "CANCELLED_BY_VISITOR", "FAILED", "NO_SHOW"].includes(row.status) ? "Blocked" : ["SUBMITTED", "UNDER_REVIEW"].includes(row.status) ? "Requires action" : "Ready";
   const visitor = row.visitor_name || "Visitor";
   const prisoner = row.prisoner_name || "Prisoner";
-  return { id: row.id, visitor, visitorInitials: visitor.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), prisoner, time: `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}–${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, date: start.toLocaleDateString(), room: "Unassigned", kiosk: "Unassigned", type: row.appointment_type === "LEGAL" ? "Legal" : "Family", status };
+  const timeZone = row.timezone || "Asia/Jakarta";
+  const time = (value: Date) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone }).format(value);
+  const date = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone }).format(start);
+  return { id: row.id, visitor, visitorInitials: visitor.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), prisoner, time: `${time(start)}–${time(end)}`, date, room: row.room_name || "Unassigned", kiosk: row.kiosk_name || "Unassigned", type: row.appointment_type === "LEGAL" ? "Legal" : "Family", status, rawStatus: row.status, version: row.version, relationshipType: row.relationship_type, relationshipStatus: row.relationship_status, prisonerStatus: row.prisoner_status, visitationStatus: row.visitation_status, facilityState: row.facility_state, availableCredits: row.available_credits, reservedCredits: row.reserved_credits, activeCreditReservation: row.active_credit_reservation === 1, issue: status === "Requires action" ? "Visitor request awaits staff review" : undefined };
 }
 
 function Avatar({ initials, tone = "blue" }: { initials: string; tone?: string }) {
@@ -140,7 +153,7 @@ export default function ControlApp() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("operations");
   const [page, setPage] = useState("Command Center");
-  const [appointments, setAppointments] = useState(initialAppointments);
+  const [appointments, setAppointments] = useState<Appointment[]>(initialAppointments);
   const [facilityState, setFacilityState] = useState("NORMAL_OPERATIONS");
   const [facilityVersion, setFacilityVersion] = useState(1);
   const [backendStatus, setBackendStatus] = useState<"connected" | "demo">("demo");
@@ -173,7 +186,7 @@ export default function ControlApp() {
     let active = true;
     fetch("/api/control/appointments", { headers: { accept: "application/json" }, credentials: "include" }).then(async (response) => {
       if (!active || !response.ok) return;
-      const body = await response.json() as { appointments?: Array<{ id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; appointment_type?: string; status: string }> };
+      const body = await response.json() as { appointments?: Array<{ id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; timezone?: string | null; appointment_type?: string; status: string; version?: number; room_name?: string | null; kiosk_name?: string | null; relationship_type?: string | null; relationship_status?: string | null; prisoner_status?: string | null; visitation_status?: string | null; facility_state?: string | null; available_credits?: number; reserved_credits?: number; active_credit_reservation?: number }> };
       if (body.appointments) {
         setAppointments(body.appointments.map(mapBackendAppointment));
         setBackendStatus("connected");
@@ -227,23 +240,22 @@ export default function ControlApp() {
   async function updateAppointment(id: string, status: AppointmentStatus) {
     const command = status === "Approved" ? "approve" : status === "Blocked" ? "reject" : "request_info";
     try {
-      const response = await fetch("/api/control/appointments", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ appointmentId: id, command, reason: `Staff selected ${command.replaceAll("_", " ")} from the appointment review workflow.` }) });
-      if (response.ok) {
-        setBackendStatus("connected");
-        const body = await response.json() as { status?: string };
-        setAppointments((current) => current.map((appointment) => appointment.id === id ? { ...appointment, status: body.status === "APPROVED" ? "Approved" : body.status === "REJECTED" ? "Blocked" : appointment.status, issue: undefined } : appointment));
-        notify(status === "Approved" ? "Visit approved and persisted to the facility workflow." : `Visit decision persisted as ${command.replaceAll("_", " ")}.`, status === "Approved" ? "success" : "warning");
-        setSelectedAppointment(null);
-        setApprovalAppointment(null);
-        return;
-      }
-    } catch {
-      // The local demo fallback below remains available when the protected staff API is not provisioned.
+      const appointment = appointments.find((item) => item.id === id);
+      if (!appointment || !Number.isSafeInteger(appointment.version)) throw new Error("APPOINTMENT_VERSION_UNAVAILABLE");
+      const response = await fetch("/api/control/appointments", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ appointmentId: id, command, expectedVersion: appointment.version, reason: `Staff selected ${command.replaceAll("_", " ")} from the appointment review workflow.` }) });
+      const body = await response.json() as { status?: string; error?: string; version?: number; idempotent?: boolean; allocation?: { roomName?: string; deviceName?: string } | null };
+      if (!response.ok) throw new Error(body.error || "APPOINTMENT_DECISION_FAILED");
+      setBackendStatus("connected");
+      const statusByCode: Record<string, AppointmentStatus> = { APPROVED: "Approved", REJECTED: "Blocked", UNDER_REVIEW: "Requires action", CANCELLED_BY_FACILITY: "Blocked" };
+      setAppointments((current) => current.map((item) => item.id === id ? { ...item, status: statusByCode[body.status || ""] || item.status, rawStatus: body.status || item.rawStatus, version: body.version ?? (body.idempotent ? item.version : (item.version || 0) + 1), room: body.allocation?.roomName || item.room, kiosk: body.allocation?.deviceName || item.kiosk, activeCreditReservation: body.status === "APPROVED" ? true : item.activeCreditReservation, availableCredits: body.status === "APPROVED" && !item.activeCreditReservation ? Math.max(0, (item.availableCredits || 0) - 1) : item.availableCredits, issue: undefined } : item));
+      notify(status === "Approved" ? "Visit approved and persisted to the facility workflow." : `Visit decision persisted as ${command.replaceAll("_", " ")}.`, status === "Approved" ? "success" : "warning");
+      setSelectedAppointment(null);
+      setApprovalAppointment(null);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "APPOINTMENT_DECISION_FAILED";
+      const message = code === "STALE_APPOINTMENT" ? "This appointment changed since it was opened. Refresh the queue before deciding." : code === "APPOINTMENT_VERSION_UNAVAILABLE" ? "This demo record cannot be changed. Select a saved appointment from the facility API." : code === "AUTHENTICATION_REQUIRED" || code === "PERMISSION_DENIED" ? "Your staff session does not have permission to change this appointment." : "The decision was not saved. No local status change was made.";
+      notify(message, "error");
     }
-    setAppointments((current) => current.map((appointment) => appointment.id === id ? { ...appointment, status, issue: undefined } : appointment));
-    notify(status === "Approved" ? "Demo decision applied locally; staff API is not connected." : `Demo visit marked ${status.toLowerCase()}.`, status === "Approved" ? "success" : "warning");
-    setSelectedAppointment(null);
-    setApprovalAppointment(null);
   }
 
   function reassignAppointment(id: string) {
@@ -785,7 +797,14 @@ function DetailRow({ label, value, mono = false, positive = false }: { label: st
 function DrawerFooter({ children }: { children: ReactNode }) { return <div className="sv3-drawer-actions">{children}</div>; }
 
 function ImpactDialog({ appointment, onClose, onConfirm }: { appointment: Appointment; onClose: () => void; onConfirm: () => void }) {
-  return <div className="sv3-modal-backdrop" onClick={onClose}><section className="sv3-dialog sv3-impact-dialog" role="dialog" aria-modal="true" aria-labelledby="impact-title" onClick={(event) => event.stopPropagation()}><div className="sv3-dialog-head"><div><span className="sv3-eyebrow">Approval impact</span><h2 id="impact-title">Approve visit</h2><p>{appointment.visitor} ↔ {appointment.prisoner} · <span className="sv3-mono-value">{appointment.time}</span></p></div><button type="button" onClick={onClose} aria-label="Close approval dialog">×</button></div><div className="sv3-impact-list"><strong>Approval will:</strong><span>✓ Reserve {appointment.room}</span><span>✓ Reserve {appointment.kiosk}</span><span>✓ Reserve 1 Visit Credit</span><span>✓ Notify visitor and assigned staff</span><span>✓ Create an audit event</span></div><div className="sv3-policy-check"><strong>Policy checks</strong><span>✓ No blocking conditions detected</span></div><div className="sv3-dialog-actions"><Button variant="quiet" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={onConfirm}>Approve visit</Button></div></section></div>;
+  const checks = [
+    { label: "Visitor relationship", ready: appointment.relationshipStatus === "APPROVED", value: appointment.relationshipStatus?.replaceAll("_", " ") || "Not verified" },
+    { label: "Prisoner eligibility", ready: appointment.prisonerStatus === "ACTIVE" && appointment.visitationStatus === "APPROVED", value: appointment.prisonerStatus === "ACTIVE" && appointment.visitationStatus === "APPROVED" ? "Eligible" : "Not confirmed" },
+    { label: "Facility operating state", ready: appointment.facilityState === "NORMAL_OPERATIONS", value: appointment.facilityState?.replaceAll("_", " ") || "Not confirmed" },
+    { label: "Visit credit", ready: appointment.activeCreditReservation || (appointment.availableCredits || 0) > 0, value: appointment.activeCreditReservation ? "Already reserved" : `${appointment.availableCredits ?? 0} available` },
+  ];
+  const canApprove = Number.isSafeInteger(appointment.version) && checks.every((check) => check.ready);
+  return <div className="sv3-modal-backdrop" onClick={onClose}><section className="sv3-dialog sv3-impact-dialog" role="dialog" aria-modal="true" aria-labelledby="impact-title" onClick={(event) => event.stopPropagation()}><div className="sv3-dialog-head"><div><span className="sv3-eyebrow">Approval impact</span><h2 id="impact-title">Approve visit</h2><p>{appointment.visitor} ↔ {appointment.prisoner} · <span className="sv3-mono-value">{appointment.time}</span></p></div><button type="button" onClick={onClose} aria-label="Close approval dialog">×</button></div><div className="sv3-impact-list"><strong>Approval will:</strong><span>✓ Reserve an available room{appointment.room !== "Unassigned" ? ` (currently ${appointment.room})` : ""}</span><span>✓ Reserve an available facility device{appointment.kiosk !== "Unassigned" ? ` (currently ${appointment.kiosk})` : ""}</span><span>✓ {appointment.activeCreditReservation ? "Keep the existing Visit Credit reservation" : "Reserve 1 Visit Credit"}</span><span>✓ Queue a visitor notification and record the decision in the audit history</span></div><div className="sv3-policy-check"><strong>Current eligibility</strong>{checks.map((check) => <span key={check.label}>{check.ready ? "✓" : "!"} {check.label}: {check.value}</span>)}<span>! Room/device conflicts and policy are checked again when you confirm.</span></div>{!canApprove ? <p role="alert" className="sv3-alert-note">Approval is unavailable because required eligibility data is missing or a current check failed. No decision has been submitted.</p> : null}<div className="sv3-dialog-actions"><Button variant="quiet" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={onConfirm} disabled={!canApprove}>Approve visit</Button></div></section></div>;
 }
 
 function AlertDialog({ title, description, stats, onCancel, onConfirm }: { title: string; description: string; stats: string[]; onCancel: () => void; onConfirm: () => void }) {
@@ -799,7 +818,10 @@ function CommandPalette({ appointments, onClose, onOpenAppointment, onOpenDrawer
 }
 
 function AppointmentDrawer({ appointment, onClose, onRequestApproval, onUpdate }: { appointment: Appointment; onClose: () => void; onRequestApproval: () => void; onUpdate: (id: string, status: AppointmentStatus) => void }) {
-  return <div className="sv3-drawer-backdrop" onClick={onClose}><aside className="sv3-drawer" role="dialog" aria-modal="true" aria-labelledby="appointment-drawer-title" onClick={(event) => event.stopPropagation()}><div className="sv3-drawer-head"><div><span className="sv3-eyebrow">Appointment review</span><h2 id="appointment-drawer-title"><CopyableId value={appointment.id} /></h2></div><button onClick={onClose} aria-label="Close review">×</button></div><div className="sv3-drawer-person"><Avatar initials={appointment.visitorInitials} tone="orange" /><div><strong>{appointment.visitor}</strong><span>{appointment.type} visit with {appointment.prisoner}</span></div><Status tone={appointment.status === "Blocked" ? "red" : appointment.status === "Live" ? "green" : "orange"}>{appointment.status}</Status></div><div className="sv3-drawer-details"><div><span>Requested</span><strong className="sv3-mono-value">{appointment.date} · {appointment.time}</strong></div><div><span>Resources</span><strong>{appointment.room} · {appointment.kiosk}</strong></div><div><span>Relationship</span><strong>Sister · approved</strong></div><div><span>Credits</span><strong>1 available · reservation ready</strong></div></div><div className="sv3-approval-preview"><span className="sv3-eyebrow">If approved</span><p>This action will reserve the room, kiosk, monitoring slot, and one Visit Credit; notify the visitor; and create an audit event.</p><span>✓ Eligibility checks passed</span><span>✓ Visitor identity verified</span><span>! Relationship evidence requires review</span></div><div className="sv3-drawer-actions"><Button variant="quiet" onClick={onClose}>Close</Button>{appointment.status !== "Approved" && appointment.status !== "Live" ? <><Button variant="danger" onClick={() => onUpdate(appointment.id, "Blocked")}>Decline</Button><Button variant="primary" onClick={onRequestApproval}>Approve visit</Button></> : null}</div></aside></div>;
+  const reviewable = ["SUBMITTED", "UNDER_REVIEW"].includes(appointment.rawStatus || "") && Number.isSafeInteger(appointment.version);
+  const relationship = appointment.relationshipStatus ? `${appointment.relationshipType || "Relationship"} · ${appointment.relationshipStatus.toLowerCase()}` : "Not available";
+  const credit = appointment.activeCreditReservation ? "Reserved for this visit" : `${appointment.availableCredits ?? 0} available · ${appointment.reservedCredits ?? 0} reserved overall`;
+  return <div className="sv3-drawer-backdrop" onClick={onClose}><aside className="sv3-drawer" role="dialog" aria-modal="true" aria-labelledby="appointment-drawer-title" onClick={(event) => event.stopPropagation()}><div className="sv3-drawer-head"><div><span className="sv3-eyebrow">Appointment review</span><h2 id="appointment-drawer-title"><CopyableId value={appointment.id} /></h2></div><button onClick={onClose} aria-label="Close review">×</button></div><div className="sv3-drawer-person"><Avatar initials={appointment.visitorInitials} tone="orange" /><div><strong>{appointment.visitor}</strong><span>{appointment.type} visit with {appointment.prisoner}</span></div><Status tone={appointment.status === "Blocked" ? "red" : appointment.status === "Live" ? "green" : "orange"}>{appointment.status}</Status></div><div className="sv3-drawer-details"><div><span>Requested</span><strong className="sv3-mono-value">{appointment.date} · {appointment.time}</strong></div><div><span>Resources</span><strong>{appointment.room} · {appointment.kiosk}</strong></div><div><span>Relationship</span><strong>{relationship}</strong></div><div><span>Visit credits</span><strong>{credit}</strong></div></div><div className="sv3-approval-preview"><span className="sv3-eyebrow">Eligibility snapshot</span><p>These values are read from the facility record. The server will recheck eligibility, policy, available resources, and credit when a decision is submitted.</p><span>{appointment.prisonerStatus === "ACTIVE" && appointment.visitationStatus === "APPROVED" ? "✓" : "!"} Prisoner {appointment.prisonerStatus?.toLowerCase() || "status unavailable"} · visitation {appointment.visitationStatus?.toLowerCase() || "not confirmed"}</span><span>{appointment.facilityState === "NORMAL_OPERATIONS" ? "✓" : "!"} Facility {appointment.facilityState?.toLowerCase().replaceAll("_", " ") || "state unavailable"}</span><span>{appointment.relationshipStatus === "APPROVED" ? "✓" : "!"} Visitor relationship {appointment.relationshipStatus?.toLowerCase() || "not verified"}</span><span>{appointment.activeCreditReservation || (appointment.availableCredits || 0) > 0 ? "✓" : "!"} {credit}</span></div><div className="sv3-drawer-actions"><Button variant="quiet" onClick={onClose}>Close</Button>{reviewable ? <>{appointment.rawStatus === "SUBMITTED" ? <Button variant="quiet" onClick={() => onUpdate(appointment.id, "Requires action")}>Request information</Button> : null}<Button variant="danger" onClick={() => onUpdate(appointment.id, "Blocked")}>Decline</Button><Button variant="primary" onClick={onRequestApproval}>Approve visit</Button></> : null}</div></aside></div>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

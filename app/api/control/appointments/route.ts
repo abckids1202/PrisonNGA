@@ -1,4 +1,5 @@
 import { getD1 } from "../../../../db/runtime";
+import { controlAppointmentsStatement } from "../../../../lib/server/control-appointments";
 import { releaseVisitCredit } from "../../../../lib/server/credits";
 import { releaseVisitResources, type Allocation } from "../../../../lib/server/resources";
 import { appointmentDecisionStatements } from "../../../../lib/server/appointment-decisions";
@@ -27,9 +28,7 @@ export async function GET(request: Request) {
     const authorization = await requirePermission("appointment.review");
     const status = new URL(request.url).searchParams.get("status")?.trim();
     const d1 = await getD1();
-    const result = status
-      ? await d1.prepare(`SELECT a.id, a.visitor_user_id, u.display_name AS visitor_name, a.prisoner_id, p.prisoner_number, p.display_name AS prisoner_name, a.status, a.requested_start, a.requested_end, a.appointment_type, a.version, a.created_at, a.updated_at FROM appointments a INNER JOIN users u ON u.id = a.visitor_user_id INNER JOIN prisoners p ON p.id = a.prisoner_id WHERE a.facility_id = ? AND a.status = ? ORDER BY a.requested_start ASC`).bind(authorization.facilityId, status).all()
-      : await d1.prepare(`SELECT a.id, a.visitor_user_id, u.display_name AS visitor_name, a.prisoner_id, p.prisoner_number, p.display_name AS prisoner_name, a.status, a.requested_start, a.requested_end, a.appointment_type, a.version, a.created_at, a.updated_at FROM appointments a INNER JOIN users u ON u.id = a.visitor_user_id INNER JOIN prisoners p ON p.id = a.prisoner_id WHERE a.facility_id = ? ORDER BY a.requested_start ASC`).bind(authorization.facilityId).all();
+    const result = await controlAppointmentsStatement(d1, authorization.facilityId, status).all();
     return securityResponse({ appointments: result.results, facilityId: authorization.facilityId }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
