@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { refundPurchasedCredits, settlePaymentPurchase } from "../lib/server/credits.ts";
+import { consumeVisitCredit, refundPurchasedCredits, releaseVisitCredit, reserveVisitCredit, settlePaymentPurchase } from "../lib/server/credits.ts";
 
 class SQLiteD1Statement {
   values = [];
@@ -87,5 +87,52 @@ test("refund reversal is atomic, idempotent, and refuses to overdraw a credit ac
     d1.sqlite.prepare("UPDATE credit_accounts SET available_credits = 0 WHERE user_id = ?").run("visitor-4");
     await assert.rejects(refundPurchasedCredits(d1, { paymentIntentId: "payment-4", actorUserId: "system", reason: "Late refund." }), /CREDIT_REVERSAL_REQUIRES_REVIEW/);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 1);
+  } finally { d1.close(); }
+});
+
+test("visit credit reservation is atomic and duplicate approval cannot debit twice", async () => {
+  const d1 = new SQLiteD1();
+  const now = new Date().toISOString();
+  try {
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("account-1", "facility-1", "visitor-1", 1, 0, 1, now, now);
+    const input = { accountId: "account-1", appointmentId: "visit-1", actorUserId: "staff-1", reason: "Approved visit." };
+    assert.deepEqual(await reserveVisitCredit(d1, input), { creditAccountId: "account-1", appointmentId: "visit-1", created: true });
+    assert.deepEqual(await reserveVisitCredit(d1, input), { creditAccountId: "account-1", appointmentId: "visit-1", created: false });
+    const account = d1.sqlite.prepare("SELECT available_credits, reserved_credits FROM credit_accounts WHERE id = ?").get("account-1");
+    assert.equal(account.available_credits, 0);
+    assert.equal(account.reserved_credits, 1);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION'").get("visit-1").count, 1);
+    await assert.rejects(reserveVisitCredit(d1, { ...input, appointmentId: "visit-2" }), /INSUFFICIENT_VISIT_CREDITS/);
+  } finally { d1.close(); }
+});
+
+test("reservation release and consumption keep the account and append-only ledger atomic", async () => {
+  const d1 = new SQLiteD1();
+  const now = new Date().toISOString();
+  try {
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("account-2", "facility-1", "visitor-2", 2, 0, 1, now, now);
+    const first = { accountId: "account-2", appointmentId: "visit-release", actorUserId: "staff-1", reason: "Approved visit." };
+    await reserveVisitCredit(d1, first);
+    d1.sqlite.exec("CREATE TRIGGER fail_credit_balance BEFORE UPDATE ON credit_accounts BEGIN SELECT RAISE(ABORT, 'simulated credit transition failure'); END;");
+    await assert.rejects(releaseVisitCredit(d1, first), /simulated credit transition failure/);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE appointment_id = 'visit-release' AND entry_type = 'RESERVATION_RELEASE'").get().count, 0);
+    const afterReleaseFailure = d1.sqlite.prepare("SELECT available_credits, reserved_credits FROM credit_accounts WHERE id = 'account-2'").get();
+    assert.equal(afterReleaseFailure.available_credits, 1);
+    assert.equal(afterReleaseFailure.reserved_credits, 1);
+    d1.sqlite.exec("DROP TRIGGER fail_credit_balance");
+    assert.deepEqual(await releaseVisitCredit(d1, first), { released: true });
+    assert.deepEqual(await releaseVisitCredit(d1, first), { released: false, idempotent: true });
+
+    const second = { accountId: "account-2", appointmentId: "visit-consume", actorUserId: "staff-1", reason: "Approved visit." };
+    await reserveVisitCredit(d1, second);
+    d1.sqlite.exec("CREATE TRIGGER fail_credit_balance BEFORE UPDATE ON credit_accounts BEGIN SELECT RAISE(ABORT, 'simulated credit transition failure'); END;");
+    await assert.rejects(consumeVisitCredit(d1, second), /simulated credit transition failure/);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE appointment_id = 'visit-consume' AND entry_type = 'CONSUMPTION'").get().count, 0);
+    d1.sqlite.exec("DROP TRIGGER fail_credit_balance");
+    assert.deepEqual(await consumeVisitCredit(d1, second), { consumed: true });
+    assert.deepEqual(await consumeVisitCredit(d1, second), { consumed: false, idempotent: true });
+    const afterConsumption = d1.sqlite.prepare("SELECT available_credits, reserved_credits FROM credit_accounts WHERE id = 'account-2'").get();
+    assert.equal(afterConsumption.available_credits, 1);
+    assert.equal(afterConsumption.reserved_credits, 0);
   } finally { d1.close(); }
 });

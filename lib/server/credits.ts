@@ -1,6 +1,6 @@
 import { SecurityError } from "./security";
 
-type CreditReservation = { creditAccountId: string; appointmentId: string };
+type CreditReservation = { creditAccountId: string; appointmentId: string; created: boolean };
 
 export async function settlePaymentPurchase(
   d1: D1Database,
@@ -27,85 +27,72 @@ export async function reserveVisitCredit(
   d1: D1Database,
   input: { accountId: string; appointmentId: string; actorUserId: string; reason: string },
 ): Promise<CreditReservation> {
-  const existing = await d1.prepare(
-    "SELECT credit_account_id FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION' LIMIT 1",
-  ).bind(input.appointmentId).first<{ credit_account_id: string }>();
-  if (existing) return { creditAccountId: existing.credit_account_id, appointmentId: input.appointmentId };
-
   const now = new Date().toISOString();
-  const debit = await d1.prepare(
-    "UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND available_credits >= 1",
-  ).bind(now, input.accountId).run();
-  if (!debit.meta.changes) throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
+  const results = await d1.batch([
+    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
+      SELECT ?, ?, ?, 'RESERVATION', -1, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND available_credits >= 1)
+        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION')`)
+      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+      .bind(now, input.accountId),
+  ]);
+  if (results[0]?.meta.changes) return { creditAccountId: input.accountId, appointmentId: input.appointmentId, created: true };
 
-  try {
-    await d1.prepare(
-      `INSERT INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-       VALUES (?, ?, ?, 'RESERVATION', -1, ?, ?, ?, ?)`,
-    ).bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, now).run();
-    return { creditAccountId: input.accountId, appointmentId: input.appointmentId };
-  } catch (error) {
-    // Never leave the account debited if the append-only reservation cannot be recorded.
-    await releaseVisitCredit(d1, { accountId: input.accountId, appointmentId: input.appointmentId, actorUserId: input.actorUserId, reason: "Reservation ledger write failed." });
-    const raced = await d1.prepare(
-      "SELECT credit_account_id FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION' LIMIT 1",
-    ).bind(input.appointmentId).first<{ credit_account_id: string }>();
-    if (raced) return { creditAccountId: raced.credit_account_id, appointmentId: input.appointmentId };
-    const rollbackNow = new Date().toISOString();
-    await d1.prepare(
-      "UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND reserved_credits >= 1",
-    ).bind(rollbackNow, input.accountId).run();
-    await d1.prepare(
-      `INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-       VALUES (?, ?, ?, 'MANUAL_ADJUSTMENT', 1, ?, ?, ?, ?)`,
-    ).bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation-rollback`, "Reservation ledger rollback.", input.actorUserId, rollbackNow).run();
-    throw error;
+  const existing = await d1.prepare("SELECT credit_account_id FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION' LIMIT 1")
+    .bind(input.appointmentId).first<{ credit_account_id: string }>();
+  if (existing) {
+    if (existing.credit_account_id !== input.accountId) throw new SecurityError("CREDIT_RESERVATION_ACCOUNT_MISMATCH", 409);
+    return { creditAccountId: existing.credit_account_id, appointmentId: input.appointmentId, created: false };
   }
+  throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
 }
 
 export async function releaseVisitCredit(
   d1: D1Database,
   input: { accountId: string; appointmentId: string; actorUserId: string; reason: string },
 ) {
-  const reservation = await d1.prepare(
-    "SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION' LIMIT 1",
-  ).bind(input.appointmentId).first<{ id: string }>();
-  if (!reservation) return { released: false };
-  const alreadyReleased = await d1.prepare(
-    "SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION_RELEASE' LIMIT 1",
-  ).bind(input.appointmentId).first<{ id: string }>();
-  if (alreadyReleased) return { released: false, idempotent: true };
-
   const now = new Date().toISOString();
-  const account = await d1.prepare(
-    "UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND reserved_credits >= 1",
-  ).bind(now, input.accountId).run();
-  if (!account.meta.changes) throw new SecurityError("CREDIT_RESERVATION_NOT_FOUND", 409);
-  await d1.prepare(
-    `INSERT INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-     VALUES (?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?)`,
-  ).bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, now).run();
-  return { released: true };
+  const results = await d1.batch([
+    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
+      SELECT ?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
+        AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
+        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))`)
+      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId, input.accountId, input.appointmentId),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+      .bind(now, input.accountId),
+  ]);
+  if (results[0]?.meta.changes) return { released: true };
+
+  const existing = await d1.prepare("SELECT entry_type FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION', 'RESERVATION_RELEASE', 'CONSUMPTION') ORDER BY CASE entry_type WHEN 'CONSUMPTION' THEN 0 WHEN 'RESERVATION_RELEASE' THEN 1 ELSE 2 END LIMIT 1")
+    .bind(input.appointmentId).first<{ entry_type: string }>();
+  if (!existing || existing.entry_type === "CONSUMPTION") return { released: false };
+  if (existing.entry_type === "RESERVATION_RELEASE") return { released: false, idempotent: true };
+  throw new SecurityError("CREDIT_RESERVATION_NOT_FOUND", 409);
 }
 
 export async function consumeVisitCredit(
   d1: D1Database,
   input: { accountId: string; appointmentId: string; actorUserId: string; reason: string },
 ) {
-  const existing = await d1.prepare(
-    "SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'CONSUMPTION' LIMIT 1",
-  ).bind(input.appointmentId).first<{ id: string }>();
-  if (existing) return { consumed: false, idempotent: true };
   const now = new Date().toISOString();
-  const account = await d1.prepare(
-    "UPDATE credit_accounts SET reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND reserved_credits >= 1",
-  ).bind(now, input.accountId).run();
-  if (!account.meta.changes) throw new SecurityError("CREDIT_RESERVATION_NOT_FOUND", 409);
-  await d1.prepare(
-    `INSERT INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-     VALUES (?, ?, ?, 'CONSUMPTION', 0, ?, ?, ?, ?)`,
-  ).bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:consumption`, input.reason, input.actorUserId, now).run();
-  return { consumed: true };
+  const results = await d1.batch([
+    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
+      SELECT ?, ?, ?, 'CONSUMPTION', 0, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
+        AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
+        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))`)
+      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:consumption`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId, input.accountId, input.appointmentId),
+    d1.prepare("UPDATE credit_accounts SET reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+      .bind(now, input.accountId),
+  ]);
+  if (results[0]?.meta.changes) return { consumed: true };
+
+  const existing = await d1.prepare("SELECT entry_type FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION', 'RESERVATION_RELEASE', 'CONSUMPTION') ORDER BY CASE entry_type WHEN 'CONSUMPTION' THEN 0 WHEN 'RESERVATION_RELEASE' THEN 1 ELSE 2 END LIMIT 1")
+    .bind(input.appointmentId).first<{ entry_type: string }>();
+  if (existing?.entry_type === "CONSUMPTION") return { consumed: false, idempotent: true };
+  throw new SecurityError("CREDIT_RESERVATION_NOT_FOUND", 409);
 }
 
 export async function refundPurchasedCredits(

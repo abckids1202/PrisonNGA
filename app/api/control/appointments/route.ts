@@ -1,6 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { releaseVisitCredit, reserveVisitCredit } from "../../../../lib/server/credits";
-import { allocateVisitResources, releaseVisitResources } from "../../../../lib/server/resources";
+import { allocateVisitResources, releaseVisitResources, type Allocation } from "../../../../lib/server/resources";
 import { appendAuditAndOutbox } from "../../../../lib/server/events";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { canTransitionAppointment } from "../../../../lib/server/workflow";
@@ -38,7 +38,13 @@ export async function POST(request: Request) {
     if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_APPOINTMENT", 409);
     const nextStatus = command === "approve" ? "APPROVED" : command === "reject" ? "REJECTED" : command === "request_info" ? "UNDER_REVIEW" : "CANCELLED_BY_FACILITY";
-    if (current.status === nextStatus) return securityResponse({ appointmentId, status: nextStatus, idempotent: true }, 200, context.requestId);
+    if (current.status === nextStatus) {
+      if (command === "cancel") {
+        if (current.credit_account_id) await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Appointment cancelled by facility." });
+        await releaseVisitResources(d1, appointmentId, authorization.facilityId);
+      }
+      return securityResponse({ appointmentId, status: nextStatus, idempotent: true }, 200, context.requestId);
+    }
     if (!canTransitionAppointment(current.status, nextStatus)) throw new SecurityError("INVALID_APPOINTMENT_TRANSITION", 409);
     if (command === "approve" && current.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
     if (command === "approve" && (!current.credit_account_id || Number(current.available_credits || 0) < 1)) throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
@@ -50,13 +56,13 @@ export async function POST(request: Request) {
     ];
     let reservationCreated = false;
     let resourcesAllocated = false;
-    let allocation: { roomId: string; roomName: string; deviceId: string; deviceName: string } | null = null;
+    let allocation: Allocation | null = null;
     if (command === "approve" && current.credit_account_id) {
-      await reserveVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason });
-      reservationCreated = true;
+      const reservation = await reserveVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason });
+      reservationCreated = reservation.created;
       try {
         allocation = await allocateVisitResources(d1, { facilityId: authorization.facilityId, appointmentId, startsAt: current.requested_start, endsAt: current.requested_end });
-        resourcesAllocated = true;
+        resourcesAllocated = allocation.created;
       } catch (error) {
         await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Resource allocation failed; credit reservation released." });
         throw error;
@@ -80,12 +86,15 @@ export async function POST(request: Request) {
       throw new SecurityError("STALE_APPOINTMENT", 409);
     }
     if (command === "approve" && !reservationCreated) throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
-    if (command === "cancel" && current.credit_account_id && ["APPROVED", "WAITING"].includes(current.status)) {
-      await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: "Appointment cancelled by facility." });
+    if ((command === "cancel" || command === "reject") && current.credit_account_id) {
+      await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: `Appointment ${command}ed by facility.` });
+      await releaseVisitResources(d1, appointmentId, authorization.facilityId);
+    } else if (command === "cancel") {
       await releaseVisitResources(d1, appointmentId, authorization.facilityId);
     }
     await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Scheduling Officer", facilityId: authorization.facilityId, actionType: `APPOINTMENT_${command.toUpperCase()}`, entityType: "appointment", entityId: appointmentId, reason, oldValues: { status: current.status }, newValues: { status: nextStatus }, requestId: context.requestId, correlationId, eventType: `APPOINTMENT_${command.toUpperCase()}`, payload: { appointmentId, status: nextStatus, visitorUserId: current.visitor_user_id } });
-    return securityResponse({ appointmentId, status: nextStatus, version: current.version + 1, allocation, correlationId }, 200, context.requestId);
+    const assignedResources = allocation ? { roomId: allocation.roomId, roomName: allocation.roomName, deviceId: allocation.deviceId, deviceName: allocation.deviceName } : null;
+    return securityResponse({ appointmentId, status: nextStatus, version: current.version + 1, allocation: assignedResources, correlationId }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }
