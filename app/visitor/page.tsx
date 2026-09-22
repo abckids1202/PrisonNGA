@@ -6,7 +6,7 @@ import "./visitor-auth.css";
 type Tab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
 type NoticeTone = "success" | "info";
 type VisitorAppointmentRecord = { id: string; facility_id: string; prisoner_id: string; status: string; requested_start: string; requested_end: string; timezone: string; version: number; prisoner_name: string; appointment_type: string; created_at?: string; updated_at?: string };
-type VisitorRelationshipRecord = { id: string; facility_id: string; prisoner_id: string; status: string; prisoner_name: string; relationship_type: string; facility_name?: string; created_at?: string; updated_at?: string };
+type VisitorRelationshipRecord = { id: string; facility_id: string; prisoner_id: string; status: string; prisoner_name: string; relationship_type: string; facility_name?: string; verification_case_id?: string | null; verification_status?: string; evidence_count?: number; created_at?: string; updated_at?: string };
 type VisitorPrisonerRecord = { id: string; facility_id: string; facility_name: string; prisoner_number: string; display_name: string; relationship_status: string };
 type VisitorCreditAccount = { facility_id: string; available_credits: number; reserved_credits: number; facility_name: string };
 type VisitorCreditLedgerEntry = { id: string; entry_type: string; amount: number; reason: string; created_at: string };
@@ -470,6 +470,8 @@ function VisitorConnections({ onAction, onRelationshipAdded }: { onAction: (mess
   const [search, setSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [uploadingCaseId, setUploadingCaseId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -488,10 +490,24 @@ function VisitorConnections({ onAction, onRelationshipAdded }: { onAction: (mess
   const selectedPrisoner = prisoners.find((person) => person.id === prisonerId);
   const statusLabel = (status: string) => status === "APPROVED" ? "Approved" : status === "REJECTED" ? "Not approved" : status === "NEEDS_INFO" ? "More information needed" : "In review";
   const statusTone = (status: string): "green" | "orange" | "blue" => status === "APPROVED" ? "green" : status === "REJECTED" ? "blue" : "orange";
+  const displayStatus = (relationship: VisitorRelationshipRecord) => relationship.verification_status === "MORE_INFO" ? "NEEDS_INFO" : relationship.status;
+
+  async function uploadEvidence(verificationCaseId: string, file: File) {
+    if (file.size < 1 || file.size > 10 * 1024 * 1024 || !["image/jpeg", "image/png", "application/pdf"].includes(file.type)) throw new Error("Choose a JPG, PNG, or PDF up to 10 MB.");
+    const form = new FormData();
+    form.set("verificationCaseId", verificationCaseId);
+    form.set("file", file);
+    const response = await fetch("/api/visitor/verification/evidence", { method: "POST", credentials: "include", body: form });
+    const body = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(body.error === "EVIDENCE_STORAGE_NOT_CONFIGURED" ? "Secure document upload is not available yet. Your request is saved; try again when the facility enables uploads." : body.error || "We couldn’t upload this document.");
+    const relationship = relationships.find((item) => item.verification_case_id === verificationCaseId);
+    if (relationship) onRelationshipAdded({ ...relationship, evidence_count: Number(relationship.evidence_count || 0) + 1 });
+  }
 
   async function submitRelationship(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedPrisoner) return setFormError("Choose a person from the facility directory.");
+    if (!evidenceFile) return setFormError("Choose an identity or relationship document to send with your request.");
     setSubmitting(true);
     setFormError("");
     try {
@@ -500,13 +516,20 @@ function VisitorConnections({ onAction, onRelationshipAdded }: { onAction: (mess
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ facilityId: selectedPrisoner.facility_id, prisonerId: selectedPrisoner.id, relationshipType }),
       });
-      const body = await response.json() as { relationshipId?: string; status?: string; error?: string };
+      const body = await response.json() as { relationshipId?: string; verificationId?: string; status?: string; error?: string };
       if (!response.ok || !body.relationshipId) throw new Error(body.error || "We couldn’t submit this connection request.");
-      onRelationshipAdded({ id: body.relationshipId, facility_id: selectedPrisoner.facility_id, prisoner_id: selectedPrisoner.id, status: body.status || "PENDING", prisoner_name: selectedPrisoner.display_name, relationship_type: relationshipType, facility_name: selectedPrisoner.facility_name });
+      const relationship = { id: body.relationshipId, facility_id: selectedPrisoner.facility_id, prisoner_id: selectedPrisoner.id, status: body.status || "PENDING", prisoner_name: selectedPrisoner.display_name, relationship_type: relationshipType, facility_name: selectedPrisoner.facility_name, verification_case_id: body.verificationId || null, evidence_count: 0 };
+      onRelationshipAdded(relationship);
+      if (relationship.status !== "APPROVED") {
+        if (!body.verificationId) throw new Error("Your request was saved, but its review case could not be opened. Refresh Connections before continuing.");
+        await uploadEvidence(body.verificationId, evidenceFile);
+        onRelationshipAdded({ ...relationship, evidence_count: 1 });
+      }
       setFormOpen(false);
       setPrisonerId("");
       setSearch("");
-      onAction(body.status === "APPROVED" ? "This connection is already approved." : "Request sent. The facility team will review your connection.");
+      setEvidenceFile(null);
+      onAction(relationship.status === "APPROVED" ? "This connection is already approved." : "Request and supporting document sent. The facility team will review your connection.");
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "We couldn’t submit this connection request.");
     } finally {
@@ -524,13 +547,14 @@ function VisitorConnections({ onAction, onRelationshipAdded }: { onAction: (mess
         {prisonersLoading ? <p className="sv4-request-hint">Loading the facility directory…</p> : matchingPrisoners.length ? matchingPrisoners.map((person) => <label key={person.id} className={`sv4-prisoner-option ${prisonerId === person.id ? "selected" : ""} ${person.relationship_status !== "NOT_CONNECTED" ? "unavailable" : ""}`}><input type="radio" name="prisoner" value={person.id} checked={prisonerId === person.id} disabled={person.relationship_status !== "NOT_CONNECTED"} onChange={() => setPrisonerId(person.id)} /><span><strong>{person.display_name}</strong><small>{person.facility_name} · ID {person.prisoner_number}</small></span>{person.relationship_status !== "NOT_CONNECTED" && <em>{statusLabel(person.relationship_status)}</em>}</label>) : <p className="sv4-request-hint">No available people match that search.</p>}
       </div>
       <label>Your relationship<select value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)}><option>Family member</option><option>Spouse or partner</option><option>Friend</option><option>Legal representative</option><option>Other</option></select></label>
-      <p className="sv4-request-hint">You may be asked to provide identity or relationship documents after submitting. Don’t include sensitive information in this request.</p>
+      <label>Identity or relationship document<input type="file" accept="image/jpeg,image/png,application/pdf" onChange={(event) => setEvidenceFile(event.target.files?.[0] || null)} required /><small>JPG, PNG, or PDF · up to 10 MB. Files are stored in protected facility storage.</small></label>
+      <p className="sv4-request-hint">Your document is shared with authorized facility reviewers for this request. Don’t upload unrelated records.</p>
       {formError && <p className="sv4-request-error" role="alert">{formError}</p>}
       <div className="sv4-request-actions"><button type="button" className="sv11-back-button" onClick={() => setFormOpen(false)} disabled={submitting}>Cancel</button><button className="sv4-button sv4-button-primary" disabled={submitting || prisonersLoading || !prisonerId}>{submitting ? "Sending request…" : "Send for review"}</button></div>
     </form>}
-    {relationships[0] && <article className="sv4-feature-connection"><div className="sv4-feature-art"><div className="sv4-feature-sun" /><div className="sv4-feature-person one">{relationships[0].prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div><div className="sv4-feature-person two">{relationships[0].status === "APPROVED" ? "✓" : "…"}</div></div><div className="sv4-feature-copy"><VisitorStatus tone={statusTone(relationships[0].status)}>{statusLabel(relationships[0].status).toUpperCase()}</VisitorStatus><h2>{relationships[0].prisoner_name}</h2><p>{relationships[0].relationship_type} · {relationships[0].facility_name || "Facility review"}</p><div className="sv4-feature-rule" /><p className="sv4-feature-note">{relationships[0].status === "APPROVED" ? "This connection is approved. You can request a visit when booking is available." : "Your request is saved. We’ll update your account when the facility team has reviewed it."}</p></div></article>}
+    {relationships[0] && <article className="sv4-feature-connection"><div className="sv4-feature-art"><div className="sv4-feature-sun" /><div className="sv4-feature-person one">{relationships[0].prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div><div className="sv4-feature-person two">{displayStatus(relationships[0]) === "APPROVED" ? "✓" : "…"}</div></div><div className="sv4-feature-copy"><VisitorStatus tone={statusTone(displayStatus(relationships[0]))}>{statusLabel(displayStatus(relationships[0])).toUpperCase()}</VisitorStatus><h2>{relationships[0].prisoner_name}</h2><p>{relationships[0].relationship_type} · {relationships[0].facility_name || "Facility review"}</p><div className="sv4-feature-rule" /><p className="sv4-feature-note">{displayStatus(relationships[0]) === "APPROVED" ? "This connection is approved. You can request a visit when booking is available." : displayStatus(relationships[0]) === "NEEDS_INFO" ? "The facility team needs more information. Add the requested document to continue the review." : "Your request is saved. We’ll update your account when the facility team has reviewed it."}</p></div></article>}
     <div className="sv4-section-heading sv4-connection-heading"><div><p className="sv4-kicker">Your circle</p><h2>All connection requests</h2></div></div>
-    {loading ? <div className="sv4-empty-inline">Loading your connections…</div> : relationships.length ? <div className="sv4-connection-list sv4-relationship-list">{relationships.map((relationship) => <article key={relationship.id} className="sv4-relationship-card"><VisitorAvatar initials={relationship.prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()} color="sage" /><span><strong>{relationship.prisoner_name}</strong><small>{relationship.relationship_type} · {relationship.facility_name || "Facility review"}</small></span><VisitorStatus tone={statusTone(relationship.status)}>{statusLabel(relationship.status)}</VisitorStatus></article>)}</div> : <div className="sv4-empty-state"><span>↔</span><h2>Your connections will appear here</h2><p>Send a request to begin the facility’s identity and relationship review.</p></div>}
+    {loading ? <div className="sv4-empty-inline">Loading your connections…</div> : relationships.length ? <div className="sv4-connection-list sv4-relationship-list">{relationships.map((relationship) => { const state = displayStatus(relationship); const canAddEvidence = state !== "APPROVED" && state !== "REJECTED"; const needsMoreEvidence = Number(relationship.evidence_count || 0) === 0 || state === "NEEDS_INFO"; return <article key={relationship.id} className="sv4-relationship-card"><VisitorAvatar initials={relationship.prisoner_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()} color="sage" /><span><strong>{relationship.prisoner_name}</strong><small>{relationship.relationship_type} · {relationship.facility_name || "Facility review"}</small>{canAddEvidence && <small>{Number(relationship.evidence_count || 0) > 0 ? `${relationship.evidence_count} supporting document${relationship.evidence_count === 1 ? "" : "s"} received` : "Supporting document still needed"}</small>}</span><VisitorStatus tone={statusTone(state)}>{statusLabel(state)}</VisitorStatus>{canAddEvidence && needsMoreEvidence && relationship.verification_case_id && <label className="sv4-evidence-retry">{state === "NEEDS_INFO" ? "Add information" : "Add document"}<input type="file" accept="image/jpeg,image/png,application/pdf" disabled={uploadingCaseId === relationship.verification_case_id} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; const caseId = relationship.verification_case_id!; setUploadingCaseId(caseId); try { await uploadEvidence(caseId, file); onAction("Supporting document uploaded."); } catch (error) { onAction(error instanceof Error ? error.message : "We couldn’t upload this document.", "info"); } finally { setUploadingCaseId(""); event.target.value = ""; } }} />{uploadingCaseId === relationship.verification_case_id ? "Uploading…" : ""}</label>}</article>; })}</div> : <div className="sv4-empty-state"><span>↔</span><h2>Your connections will appear here</h2><p>Send a request to begin the facility’s identity and relationship review.</p></div>}
     {!formOpen && <button className="sv4-new-connection" onClick={() => setFormOpen(true)}><span>＋</span><strong>Request another connection</strong><small>Start a secure facility review</small></button>}
   </div>;
 }

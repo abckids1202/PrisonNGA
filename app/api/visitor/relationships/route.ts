@@ -7,7 +7,8 @@ export async function GET() {
   try {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
-    const result = await d1.prepare(`SELECT vr.id, vr.facility_id, f.name AS facility_name, vr.prisoner_id, p.prisoner_number, p.display_name AS prisoner_name, vr.relationship_type, vr.status, vr.review_reason, vr.version, vr.created_at, vr.updated_at, vc.status AS verification_status
+    const result = await d1.prepare(`SELECT vr.id, vr.facility_id, f.name AS facility_name, vr.prisoner_id, p.prisoner_number, p.display_name AS prisoner_name, vr.relationship_type, vr.status, vr.review_reason, vr.version, vr.created_at, vr.updated_at, vc.id AS verification_case_id, vc.status AS verification_status,
+        (SELECT COUNT(*) FROM evidence_documents ed WHERE ed.verification_case_id = vc.id AND ed.facility_id = vc.facility_id AND ed.status = 'AVAILABLE') AS evidence_count
       FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id INNER JOIN facilities f ON f.id = vr.facility_id LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id
       WHERE vr.visitor_user_id = ? ORDER BY vr.created_at DESC`).bind(visitor.userId).all();
     return securityResponse({ relationships: result.results }, 200, context.requestId);
@@ -28,8 +29,8 @@ export async function POST(request: Request) {
     const d1 = await getD1();
     const prisoner = await d1.prepare("SELECT id, facility_id, status, visitation_status FROM prisoners WHERE id = ? AND facility_id = ?").bind(prisonerId, facilityId).first<{ id: string; facility_id: string; status: string; visitation_status: string }>();
     if (!prisoner || prisoner.status !== "ACTIVE" || prisoner.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 404);
-    const existing = await d1.prepare("SELECT id, status FROM visitor_relationships WHERE visitor_user_id = ? AND prisoner_id = ?").bind(visitor.userId, prisonerId).first<{ id: string; status: string }>();
-    if (existing) return securityResponse({ relationshipId: existing.id, status: existing.status, idempotent: true }, 200, context.requestId);
+    const existing = await d1.prepare(`SELECT vr.id, vr.status, vc.id AS verification_id FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id WHERE vr.visitor_user_id = ? AND vr.prisoner_id = ?`).bind(visitor.userId, prisonerId).first<{ id: string; status: string; verification_id: string | null }>();
+    if (existing) return securityResponse({ relationshipId: existing.id, verificationId: existing.verification_id, status: existing.status, idempotent: true }, 200, context.requestId);
     const relationshipId = crypto.randomUUID();
     const verificationId = crypto.randomUUID();
     const now = new Date().toISOString();
