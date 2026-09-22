@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     } else {
       if (typeof body.sessionId !== "string" || !body.sessionId.trim()) throw new SecurityError("SESSION_ID_REQUIRED", 400);
       const result = await db.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.id, body.sessionId.trim()), eq(authSessions.userId, account.id), isNull(authSessions.revokedAt)));
-      if (!result.rowsAffected) throw new SecurityError("SESSION_NOT_FOUND", 404);
+      if (!result.meta.changes) throw new SecurityError("SESSION_NOT_FOUND", 404);
     }
     await db.insert(securityEvents).values({ id: crypto.randomUUID(), userId: account.id, eventType: "SESSION_REVOKED", severity: "WARNING", requestId: context.requestId, metadata: { revokeAll: body.revokeAll === true } });
     return securityResponse({ ok: true, revokedAt: now }, 200, context.requestId);

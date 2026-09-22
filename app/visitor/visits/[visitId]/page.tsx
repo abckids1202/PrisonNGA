@@ -88,7 +88,7 @@ export default function VisitDetailsPage() {
   const [seconds, setSeconds] = useState(18 * 3600 + 42 * 60 + 15);
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [infoPanel, setInfoPanel] = useState<InfoPanel>(null);
-  const [expandedJourney, setExpandedJourney] = useState("prepare");
+  const [expandedJourney, setExpandedJourney] = useState<string | null>("prepare");
   const [demoMode] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1");
   const [showSticky, setShowSticky] = useState(false);
   const primaryActionRef = useRef<HTMLButtonElement>(null);

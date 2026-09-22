@@ -130,10 +130,9 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
     setMicEnabled(true);
     const localVideoTrack = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track;
     if (localVideoTrack && localRef.current) {
-      localVideoTrack.attach().forEach((element) => {
-        element.classList.add("sv9-local-media");
-        if (localRef.current && !localRef.current.contains(element)) localRef.current.appendChild(element);
-      });
+      const element = localVideoTrack.attach();
+      element.classList.add("sv9-local-media");
+      if (!localRef.current.contains(element)) localRef.current.appendChild(element);
     }
     room.remoteParticipants.forEach((participant) => {
       setRemoteConnected(true);
@@ -148,11 +147,9 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
     setRemoteConnected(true);
     setRemoteName(participant.name || participant.identity.replace(/^visitor:|^facility:/, ""));
     if (isVideoTrack(track)) setRemoteVideo(true);
-    const elements = track.attach();
-    elements.forEach((element) => {
-      element.classList.add("sv9-remote-media");
-      if (remoteRef.current && !remoteRef.current.contains(element)) remoteRef.current.appendChild(element);
-    });
+    const element = track.attach();
+    element.classList.add("sv9-remote-media");
+    if (!remoteRef.current.contains(element)) remoteRef.current.appendChild(element);
   }
 
   function detachTrack(track: RemoteTrack) {

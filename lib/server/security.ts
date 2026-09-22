@@ -180,7 +180,7 @@ export async function requireStepUp(purpose: string, userId: string): Promise<vo
   if (!valid) throw new SecurityError("STEP_UP_INVALID", 403);
 }
 
-function hexToBytes(value: string): Uint8Array {
+function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(value.length / 2);
   for (let index = 0; index < bytes.length; index += 1) bytes[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
   return bytes;

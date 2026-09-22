@@ -52,6 +52,7 @@ type DrawerPayload =
   | { kind: "waiting"; visitor: "Sarah Amelia" | "Nurul Hidayah" }
   | { kind: "incident"; id: string }
   | { kind: "activity"; event: string; source: string; relatedId: string };
+type DrawerInput = DrawerPayload | { kind: "appointment" | "activity"; appointment?: Appointment; event?: string; source?: string; relatedId?: string };
 
 const operationsNav = [
   ["Command Center", "⌂"],
@@ -116,7 +117,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="sv3-section-label">{children}</div>;
 }
 
-function PageHeader({ eyebrow, title, description, actions }: { eyebrow: string; title: string; description: string; actions?: ReactNode }) {
+function PageHeader({ eyebrow, title, description, actions }: { eyebrow: string; title: string; description: ReactNode; actions?: ReactNode }) {
   return <header className="sv3-page-header"><div><span className="sv3-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{actions ? <div className="sv3-header-actions">{actions}</div> : null}</header>;
 }
 
@@ -180,7 +181,7 @@ export default function ControlApp() {
     let active = true;
     fetch("/api/facility/state", { headers: { accept: "application/json" } }).then(async (response) => {
       if (!response.ok) return;
-      const body = await response.json();
+      const body = await response.json() as { facility?: { currentState: string; version: number } };
       if (active && body.facility) {
         setFacilityState(body.facility.currentState);
         setFacilityVersion(body.facility.version);
@@ -204,7 +205,7 @@ export default function ControlApp() {
     try {
       const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: nextState === "LOCKDOWN" ? "Demo supervisor declared a controlled facility lockdown." : "Demo supervisor restored normal operations." }) });
       if (response.ok) {
-        const body = await response.json();
+        const body = await response.json() as { facility?: { version?: number } };
         setFacilityVersion(body.facility?.version || nextVersion);
         setBackendStatus("connected");
         notify(nextState === "LOCKDOWN" ? "Facility lockdown declared and audit event created." : "Facility returned to normal operations.", nextState === "LOCKDOWN" ? "warning" : "success");
@@ -246,15 +247,28 @@ export default function ControlApp() {
     notify("Device reassigned. Kiosk 06 is now reserved.", "success");
   }
 
-  function openDrawer(payload: DrawerPayload) {
-    if (payload.kind === "activity" && payload.relatedId.startsWith("SV-")) {
-      const appointment = appointments.find((item) => item.id === payload.relatedId);
-      if (appointment) {
-        setSelectedDrawer({ kind: "appointment", appointment });
-        return;
-      }
+  function openDrawer(payload: DrawerInput) {
+    if (payload.kind === "appointment") {
+      if (!payload.appointment) return;
+      setSelectedDrawer({ kind: "appointment", appointment: payload.appointment });
+      return;
     }
-    setSelectedDrawer(payload);
+    if (payload.kind === "activity") {
+      const { event, source, relatedId } = payload;
+      if (!event || !source || !relatedId) return;
+      if (relatedId.startsWith("SV-")) {
+        const appointment = appointments.find((item) => item.id === relatedId);
+        if (appointment) {
+          setSelectedDrawer({ kind: "appointment", appointment });
+          return;
+        }
+      }
+      setSelectedDrawer({ kind: "activity", event, source, relatedId });
+      return;
+    }
+    if (payload.kind === "device") setSelectedDrawer({ kind: "device", device: payload.device });
+    else if (payload.kind === "waiting") setSelectedDrawer({ kind: "waiting", visitor: payload.visitor });
+    else if (payload.kind === "incident") setSelectedDrawer({ kind: "incident", id: payload.id });
   }
 
   function navigate(nextPage: string, nextMode = mode) {
@@ -322,7 +336,7 @@ function LegacyCommandCenterPage({ appointments, facilityState, simulationPaused
   </>;
 }
 
-function CommandCenterPage({ appointments, facilityState, simulationPaused, simulationTick, onFacilityStateChange, onPause, onAdvance, onNavigate, onOpenDrawer, onOpenAppointment, onOpenPopover, onNotify, popover }: { appointments: Appointment[]; facilityState: string; simulationPaused: boolean; simulationTick: number; onFacilityStateChange: (state: string) => void; onPause: () => void; onAdvance: () => void; onNavigate: (page: string) => void; onOpenDrawer: (payload: DrawerPayload) => void; onOpenAppointment: (appointment: Appointment) => void; onOpenPopover: (kind: Exclude<PopoverKind, null>) => void; onNotify: (message: string, tone?: Notice["tone"]) => void; popover: PopoverKind }) {
+function CommandCenterPage({ appointments, facilityState, simulationPaused, simulationTick, onFacilityStateChange, onPause, onAdvance, onNavigate, onOpenDrawer, onOpenAppointment, onOpenPopover, onNotify, popover }: { appointments: Appointment[]; facilityState: string; simulationPaused: boolean; simulationTick: number; onFacilityStateChange: (state: string) => void; onPause: () => void; onAdvance: () => void; onNavigate: (page: string) => void; onOpenDrawer: (payload: DrawerInput) => void; onOpenAppointment: (appointment: Appointment) => void; onOpenPopover: (kind: Exclude<PopoverKind, null>) => void; onNotify: (message: string, tone?: Notice["tone"]) => void; popover: PopoverKind }) {
   const lockdown = facilityState === "LOCKDOWN";
   const [lockdownDialog, setLockdownDialog] = useState(false);
   const [propagating, setPropagating] = useState(false);
@@ -784,7 +798,15 @@ function ControlCheck({ label, detail, warning = false }: { label: string; detai
 function CompliancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [tab, setTab] = useState("Audit");
   const [events, setEvents] = useState([["09:42:16", "APPOINTMENT APPROVED", "Maya Santoso · Scheduling Officer", "SV-260813-031", "All eligibility requirements satisfied", "COR-93842"], ["09:38:04", "DEVICE HEALTH WARNING", "System monitor", "Kiosk 04", "Heartbeat missed for 10 minutes", "COR-93838"], ["09:21:33", "CREDIT RESERVED", "System", "Sarah Amelia", "One Visit Credit reserved", "COR-93821"]]);
-  useEffect(() => { fetch("/api/audit/events?limit=20", { headers: { accept: "application/json" } }).then(async (response) => { if (!response.ok) return; const body = await response.json(); if (body.events?.length) setEvents(body.events.map((event: { createdAt: string; actionType: string; actorRole?: string | null; entityId?: string | null; reason?: string | null; correlationId: string }) => [event.createdAt.slice(11, 19), event.actionType, event.actorRole || "System", event.entityId || "Facility", event.reason || "Recorded action", event.correlationId])); }).catch(() => undefined); }, []);
+  useEffect(() => {
+    fetch("/api/audit/events?limit=20", { headers: { accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = await response.json() as { events?: Array<{ createdAt: string; actionType: string; actorRole?: string | null; entityId?: string | null; reason?: string | null; correlationId: string }> };
+        if (body.events?.length) setEvents(body.events.map((event) => [event.createdAt.slice(11, 19), event.actionType, event.actorRole || "System", event.entityId || "Facility", event.reason || "Recorded action", event.correlationId]));
+      })
+      .catch(() => undefined);
+  }, []);
   return <><PageHeader eyebrow="Management · Compliance" title="Compliance" description="Investigate the record of what changed, who accessed sensitive material, and which reports are ready." actions={<><Button onClick={() => onNotify("Audit integrity verified for the current facility scope.", "success")}>✓ Verify integrity</Button><Button variant="primary" onClick={() => onNotify("Scoped compliance export requested.")}>Export scoped report</Button></>} /><div className="sv3-compliance-tabs">{["Audit", "Recording Access", "Reports", "Security Events"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>{tab === "Audit" ? <div className="sv3-audit-layout"><section className="sv3-audit-stream"><div className="sv3-audit-head"><div><span className="sv3-eyebrow">Chronological investigation trail</span><h2>Facility audit</h2></div><span className="sv3-toolbar-meta">{events.length} events · live scope</span></div>{events.map((event) => <button className="sv3-audit-event" key={event[5]} onClick={() => onNotify(`${event[5]} expanded with before-and-after values.`)}><time>{event[0]}</time><span className="sv3-audit-dot" /><div><strong>{event[1]}</strong><small>{event[2]} · {event[3]}</small><p>{event[4]}</p><em>Correlation {event[5]}</em></div><b>›</b></button>)}</section><aside className="sv3-audit-side"><div className="sv3-surface"><span className="sv3-eyebrow">Access posture</span><strong className="sv3-posture">Protected</strong><p>Identity, facility scope, and permission checks are enforced before sensitive records are returned.</p><div className="sv3-posture-line"><span>Audit retention</span><b>Configured</b></div><div className="sv3-posture-line"><span>Request IDs</span><b>Enabled</b></div><div className="sv3-posture-line"><span>Outbox</span><b>12 pending</b></div></div><div className="sv3-surface"><span className="sv3-eyebrow">Need to investigate?</span><h2>Open a case</h2><p>Link audit events, appointment records, and evidence access into a controlled review.</p><Button variant="primary" onClick={() => onNotify("Compliance investigation case opened.")}>Start investigation</Button></div></aside></div> : <ComplianceTab tab={tab} onNotify={onNotify} />}</>;
 }
 

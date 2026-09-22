@@ -81,10 +81,10 @@ export default function VisitorPage() {
     if (authState !== "authenticated") return;
     let active = true;
     Promise.all([
-      fetch("/api/visitor/appointments", { credentials: "include" }).then((response) => response.ok ? response.json() : { appointments: [] }),
-      fetch("/api/visitor/relationships", { credentials: "include" }).then((response) => response.ok ? response.json() : { relationships: [] }),
-      fetch("/api/visitor/credits", { credentials: "include" }).then((response) => response.ok ? response.json() : { accounts: [] }),
-      fetch("/api/visitor/notifications", { credentials: "include" }).then((response) => response.ok ? response.json() : { notifications: [] }),
+      fetch("/api/visitor/appointments", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ appointments?: VisitorAppointmentRecord[] }> : { appointments: [] as VisitorAppointmentRecord[] }),
+      fetch("/api/visitor/relationships", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ relationships?: VisitorRelationshipRecord[] }> : { relationships: [] as VisitorRelationshipRecord[] }),
+      fetch("/api/visitor/credits", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ accounts?: VisitorCreditAccount[] }> : { accounts: [] as VisitorCreditAccount[] }),
+      fetch("/api/visitor/notifications", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ notifications?: Array<{ status?: string }> }> : { notifications: [] as Array<{ status?: string }> }),
     ]).then(([appointments, relationships, credits, notifications]) => {
       if (!active) return;
       setVisitorData({ appointments: appointments.appointments || [], relationships: relationships.relationships || [], credits: credits.accounts || [], unreadNotifications: (notifications.notifications || []).filter((item: { status?: string }) => item.status !== "READ").length, loading: false });

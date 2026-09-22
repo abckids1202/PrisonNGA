@@ -72,5 +72,5 @@ async function verifyIdToken(token: string, discovery: Discovery, clientId: stri
 }
 
 function parseJson<T>(value: string): T { try { return JSON.parse(new TextDecoder().decode(decodeBase64Url(value))) as T; } catch { throw new SecurityError("STAFF_OIDC_ID_TOKEN_INVALID", 401); } }
-function decodeBase64Url(value: string): Uint8Array { const padded = value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - value.length % 4) % 4); const binary = atob(padded); return Uint8Array.from(binary, (char) => char.charCodeAt(0)); }
+function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> { const padded = value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - value.length % 4) % 4); const binary = atob(padded); const bytes = new Uint8Array(binary.length); for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index); return bytes; }
 function isHttps(value: unknown): value is string { try { return typeof value === "string" && new URL(value).protocol === "https:"; } catch { return false; } }
