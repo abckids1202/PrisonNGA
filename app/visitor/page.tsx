@@ -13,6 +13,8 @@ type VisitorCreditAccount = { facility_id: string; available_credits: number; re
 type VisitorCreditLedgerEntry = { id: string; entry_type: string; amount: number; reason: string; created_at: string };
 type VisitorPaymentIntent = { id: string; facility_id: string; status: string; credit_quantity: number; amount_minor: number; currency: string; checkout_url: string | null; created_at: string };
 type VisitorFacility = { id: string; name: string; timezone: string; current_state: string };
+type VisitorProfile = { userId?: string; legalName: string; preferredName: string | null; phone: string | null; phoneVerifiedAt: string | null; profileStatus: string };
+type VisitorNotification = { id: string; channel: string; template: string; title: string; body: string; payload: string | Record<string, unknown> | null; status: string; created_at: string; read_at: string | null };
 type VisitorData = { appointments: VisitorAppointmentRecord[]; relationships: VisitorRelationshipRecord[]; credits: VisitorCreditAccount[]; unreadNotifications: number; loading: boolean; refreshAppointments: () => Promise<void> };
 
 const VisitorDataContext = createContext<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true, refreshAppointments: async () => undefined });
@@ -63,6 +65,7 @@ export default function VisitorPage() {
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const syncVisitorCredits = useCallback((credits: VisitorCreditAccount[]) => setVisitorData((current) => ({ ...current, credits })), []);
+  const updateUnreadNotifications = useCallback((count: number) => setVisitorData((current) => ({ ...current, unreadNotifications: count })), []);
   const refreshAppointments = useCallback(async () => {
     const response = await fetch("/api/visitor/appointments", { credentials: "include", headers: { accept: "application/json" } });
     const body = await response.json() as { appointments?: VisitorAppointmentRecord[]; error?: string };
@@ -142,7 +145,7 @@ export default function VisitorPage() {
             </button>
           </div>
         </div>
-        {notificationsOpen && <VisitorNotifications onAction={action} />}
+        {notificationsOpen && <VisitorNotifications onAction={action} onUnreadChange={updateUnreadNotifications} />}
       </header>
 
       <main className="sv4-main">
@@ -150,7 +153,7 @@ export default function VisitorPage() {
         {tab === "Visits" && <VisitorVisits onAction={action} onNavigate={navigate} />}
         {tab === "Connections" && <VisitorConnections onAction={action} onRelationshipAdded={(relationship) => setVisitorData((current) => ({ ...current, relationships: [relationship, ...current.relationships.filter((item) => item.id !== relationship.id)] }))} />}
         {tab === "Credits" && <VisitorCredits onAction={action} onCreditsLoaded={syncVisitorCredits} />}
-        {tab === "Account" && <VisitorAccount onAction={action} />}
+        {tab === "Account" && <VisitorAccount initialName={visitorName} onNameChange={setVisitorName} onAction={action} onSignOut={async () => { const response = await fetch("/api/auth/logout", { method: "POST", credentials: "include", headers: { accept: "application/json" } }); const body = await response.json() as { error?: string; signOutPath?: string | null }; if (!response.ok) throw new Error(body.error || "Could not sign out safely."); if (body.signOutPath) window.location.assign(body.signOutPath); else setAuthState("signed_out"); }} />}
       </main>
 
       <nav className="sv4-mobile-nav" aria-label="Mobile visitor navigation">
@@ -702,10 +705,127 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
   </div>;
 }
 
-function VisitorAccount({ onAction }: { onAction: (message: string, tone?: NoticeTone) => void }) {
-  return <div className="sv4-page sv4-inner-page"><div className="sv4-account-hero"><VisitorAvatar initials="SA" color="coral" /><div><p className="sv4-kicker">Your account</p><h1>Sarah Amelia</h1><p>Member since June 2026</p></div><VisitorStatus>PROFILE COMPLETE</VisitorStatus></div><div className="sv4-profile-progress"><div><strong>Your profile</strong><span>75% complete</span></div><div className="sv4-progress"><i /></div><p>Add an emergency contact to finish setting up your profile.</p></div><div className="sv4-account-list"><button onClick={() => onAction("Profile editing is ready for your details.", "info")}><span>◎</span><strong>Personal details</strong><small>Update your name, email, and phone</small><b>→</b></button><button onClick={() => onAction("Notification preferences opened.", "info")}><span>♢</span><strong>Notifications</strong><small>Choose how we keep you updated</small><b>→</b></button><button onClick={() => onAction("Privacy and security settings opened.", "info")}><span>⌁</span><strong>Privacy & security</strong><small>Manage your secure account</small><b>→</b></button><button onClick={() => onAction("Help center opened.", "info")}><span>?</span><strong>Help center</strong><small>Find answers and contact support</small><b>→</b></button></div><button className="sv4-signout" onClick={() => onAction("You are still signed in to this secure session.", "info")}>Sign out of SecureVisit</button></div>;
+function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { initialName: string; onNameChange: (name: string) => void; onAction: (message: string, tone?: NoticeTone) => void; onSignOut: () => Promise<void> }) {
+  const [profile, setProfile] = useState<VisitorProfile | null>(null);
+  const [legalName, setLegalName] = useState(initialName);
+  const [preferredName, setPreferredName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [error, setError] = useState("");
+  const [signOutError, setSignOutError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/visitor/profile", { credentials: "include", headers: { accept: "application/json" } })
+      .then(async (response) => {
+        const body = await response.json() as { profile?: VisitorProfile; error?: string };
+        if (!response.ok) throw new Error(body.error || "Could not load your profile.");
+        if (!active || !body.profile) return;
+        setProfile(body.profile);
+        setLegalName(body.profile.legalName || initialName);
+        setPreferredName(body.profile.preferredName || "");
+        setPhone(body.profile.phone || "");
+      })
+      .catch((reason: unknown) => active && setError(reason instanceof Error ? reason.message : "Could not load your profile."))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, [initialName]);
+
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/visitor/profile", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ legalName, preferredName, phone }),
+      });
+      const body = await response.json() as { profile?: VisitorProfile; error?: string };
+      if (!response.ok || !body.profile) throw new Error(body.error || "Your profile could not be saved.");
+      setProfile(body.profile);
+      onNameChange(body.profile.preferredName || body.profile.legalName);
+      onAction("Your profile was saved securely.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Your profile could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function signOut() {
+    setSigningOut(true);
+    setSignOutError("");
+    try { await onSignOut(); }
+    catch (reason) { setSignOutError(reason instanceof Error ? reason.message : "Could not sign out safely."); }
+    finally { setSigningOut(false); }
+  }
+
+  const name = profile?.preferredName || profile?.legalName || initialName;
+  return <div className="sv4-page sv4-inner-page">
+    <div className="sv4-account-hero"><VisitorAvatar initials={name.split(/\\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()} color="coral" /><div><p className="sv4-kicker">Your account</p><h1>{name}</h1><p>Your visitor profile and contact details</p></div><VisitorStatus tone={profile?.phoneVerifiedAt ? "green" : "orange"}>{profile?.phoneVerifiedAt ? "PHONE VERIFIED" : phone ? "PHONE UNVERIFIED" : "SETUP IN PROGRESS"}</VisitorStatus></div>
+    <section className="sv4-profile-progress"><div><strong>Contact verification</strong><span>{profile?.phoneVerifiedAt ? "Verified" : phone ? "Not verified" : "No phone on file"}</span></div><p>{profile?.phoneVerifiedAt ? "Your saved phone number has been verified." : phone ? "A phone number is saved, but SecureVisit has not verified ownership. Do not rely on it for account recovery or visit alerts." : "No phone number is saved. Email sign-in remains the available verified contact method for this account."}</p></section>
+    <section className="sv4-account-form"><div><p className="sv4-kicker">Personal details</p><h2>Keep your information current</h2><p>These details help the facility identify and contact you about a visit.</p></div>
+      <form onSubmit={(event) => void saveProfile(event)}>
+        <label>Legal name<input autoComplete="name" required minLength={2} maxLength={160} value={legalName} onChange={(event) => setLegalName(event.target.value)} /></label>
+        <label>Name you go by <span className="sv4-field-optional">Optional</span><input autoComplete="nickname" maxLength={120} value={preferredName} onChange={(event) => setPreferredName(event.target.value)} /></label>
+        <label>Mobile number<input autoComplete="tel" type="tel" maxLength={40} value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Add a number for visit updates" /><small>{profile?.phoneVerifiedAt ? "Verified contact" : "Not verified yet — saving a number does not verify ownership."}</small></label>
+        {error && <p className="sv4-request-error" role="alert">{error}</p>}
+        <button className="sv4-button sv4-button-primary" disabled={loading || saving}>{saving ? "Saving…" : loading ? "Loading profile…" : "Save changes"}</button>
+      </form>
+    </section>
+    <section className="sv4-account-security"><div><p className="sv4-kicker">Security</p><h2>Secure session</h2><p>Signing out revokes this visitor session on SecureVisit.</p></div><button className="sv4-signout" onClick={() => void signOut()} disabled={signingOut}>{signingOut ? "Signing out…" : "Sign out"}</button>{signOutError && <p className="sv4-request-error" role="alert">{signOutError}</p>}</section>
+  </div>;
 }
 
-function VisitorNotifications({ onAction }: { onAction: (message: string, tone?: NoticeTone) => void }) {
-  return <aside className="sv4-notifications"><div className="sv4-notifications-head"><div><p className="sv4-kicker">Your inbox</p><h2>Notifications</h2></div><span>2 new</span></div><button onClick={() => onAction("Your visit details are ready.", "info")}><span className="sv4-notification-icon orange">✓</span><span><strong>Visit approved</strong><small>Your visit with A. Rahman is tomorrow.</small><em>Yesterday</em></span><b>●</b></button><button onClick={() => onAction("Device check is ready when you are.", "info")}><span className="sv4-notification-icon blue">⌁</span><span><strong>Device check recommended</strong><small>Take a quick check before your visit.</small><em>Yesterday</em></span><b>●</b></button><button onClick={() => onAction("A credit was returned to your balance.", "success")}><span className="sv4-notification-icon sage">◇</span><span><strong>Credit returned</strong><small>Your completed visit returned one credit.</small><em>12 Aug</em></span></button><button className="sv4-notifications-all" onClick={() => onAction("All notifications marked as read.", "success")}>Mark all as read</button></aside>;
+function VisitorNotifications({ onAction, onUnreadChange }: { onAction: (message: string, tone?: NoticeTone) => void; onUnreadChange: (count: number) => void }) {
+  const [notifications, setNotifications] = useState<VisitorNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/visitor/notifications", { credentials: "include", headers: { accept: "application/json" }, cache: "no-store" });
+      const body = await response.json() as { notifications?: VisitorNotification[]; error?: string };
+      if (!response.ok) throw new Error(body.error || "Could not load your inbox.");
+      const items = body.notifications || [];
+      setNotifications(items);
+      onUnreadChange(items.filter((item) => item.status !== "READ").length);
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load your inbox.");
+    } finally { setLoading(false); }
+  }, [onUnreadChange]);
+
+  useEffect(() => {
+    const initial = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(initial);
+  }, [load]);
+
+  async function markRead(ids: string[]) {
+    if (!ids.length || busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/visitor/notifications", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ notificationIds: ids }) });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "Could not update your inbox.");
+      const next = notifications.map((item) => ids.includes(item.id) ? { ...item, status: "READ" } : item);
+      setNotifications(next);
+      onUnreadChange(next.filter((item) => item.status !== "READ").length);
+      onAction(ids.length === 1 ? "Notification marked as read." : "Notifications marked as read.", "success");
+    } catch (reason) {
+      onAction(reason instanceof Error ? reason.message : "Could not update your inbox.", "info");
+    } finally { setBusy(false); }
+  }
+
+  return <aside className="sv4-notifications" aria-label="Notifications"><div className="sv4-notifications-head"><div><p className="sv4-kicker">Your inbox</p><h2>Notifications</h2></div><span>{notifications.filter((item) => item.status !== "READ").length} unread</span></div>
+    {loading ? <p className="sv4-notification-empty">Loading your notifications…</p> : error ? <div className="sv4-notification-empty" role="alert">{error}<button type="button" onClick={() => void load()}>Try again</button></div> : notifications.length ? <>
+      {notifications.map((notification) => <button className={notification.status === "READ" ? "sv4-notification-read" : ""} key={notification.id} disabled={busy} onClick={() => { if (notification.status !== "READ") void markRead([notification.id]); else onAction(notification.title, "info"); }}><span className={`sv4-notification-icon ${notification.status === "READ" ? "sage" : "orange"}`}>{notification.template.toLowerCase().includes("payment") ? "◇" : notification.template.toLowerCase().includes("visit") ? "◷" : "i"}</span><span><strong>{notification.title}</strong><small>{notification.body}</small><em>{new Date(notification.created_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</em></span>{notification.status !== "READ" && <b aria-label="Unread">●</b>}</button>)}
+      {notifications.some((item) => item.status !== "READ") && <button type="button" className="sv4-notifications-all" disabled={busy} onClick={() => void markRead(notifications.filter((item) => item.status !== "READ").map((item) => item.id))}>Mark all as read</button>}
+    </> : <p className="sv4-notification-empty">You’re all caught up. New visit and credit updates will appear here.</p>}
+  </aside>;
 }
