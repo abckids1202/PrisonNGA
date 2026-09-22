@@ -2,6 +2,15 @@ export type PaymentCheckout = { provider: string; providerReference: string; che
 
 export type PaymentWebhook = { eventId: string; eventType: string; paymentIntentId?: string; providerReference?: string; status?: string };
 
+export function serializePaymentWebhookSnapshot(payload: Pick<PaymentWebhook, "eventType" | "paymentIntentId" | "providerReference" | "status">): string {
+  return JSON.stringify({
+    eventType: payload.eventType.trim().toUpperCase(),
+    paymentIntentId: payload.paymentIntentId?.trim() || null,
+    providerReference: payload.providerReference?.trim() || null,
+    status: payload.status?.trim().toUpperCase() || null,
+  });
+}
+
 export interface PaymentProvider {
   createCheckout(input: { paymentIntentId: string; email: string; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout>;
 }
@@ -60,10 +69,10 @@ export async function verifyPaymentWebhookSignature(payload: string, suppliedSig
   if (!secret || !suppliedSignature) return false;
   const normalized = suppliedSignature.trim().replace(/^sha256=/i, "").toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(normalized)) return false;
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)));
-  const expected = Array.from(digest).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  let equal = expected.length === normalized.length;
-  for (let index = 0; index < expected.length; index += 1) equal = equal && expected.charCodeAt(index) === normalized.charCodeAt(index);
-  return equal;
+  const signature = new Uint8Array(32);
+  for (let index = 0; index < signature.length; index += 1) {
+    signature[index] = Number.parseInt(normalized.slice(index * 2, index * 2 + 2), 16);
+  }
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  return crypto.subtle.verify("HMAC", key, signature, new TextEncoder().encode(payload));
 }

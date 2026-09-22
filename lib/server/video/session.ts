@@ -1,5 +1,5 @@
 import { getD1 } from "../../../db/runtime";
-import { getWorkspaceIdentity, SecurityError } from "../../../lib/server/security";
+import { requireVisitorIdentity, SecurityError } from "../../../lib/server/security";
 
 export type SessionRecord = {
   id: string;
@@ -10,6 +10,9 @@ export type SessionRecord = {
   prisoner_id: string;
   appointment_status: string;
   appointment_version: number;
+  prisoner_status?: string;
+  visitation_status?: string;
+  facility_state?: string;
   status: string;
   provider: string;
   provider_room_name: string;
@@ -24,15 +27,17 @@ export type SessionRecord = {
 };
 
 export async function getVisitorSession(visitId: string): Promise<SessionRecord> {
-  const identity = await getWorkspaceIdentity();
-  if (!identity) throw new SecurityError("AUTHENTICATION_REQUIRED", 401);
+  const visitor = await requireVisitorIdentity();
   const d1 = await getD1();
   const record = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
+      p.status AS prisoner_status, p.visitation_status, f.current_state AS facility_state,
       vs.status, vs.provider, vs.provider_room_name, vs.authorized_start_at, vs.authorized_end_at, vs.actual_started_at, vs.actual_ended_at, vs.termination_reason, vs.recording_policy, vs.recording_status, vs.version
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id INNER JOIN users u ON u.id = a.visitor_user_id
-    WHERE vs.appointment_id = ? AND u.external_id = ?`).bind(visitId, identity.externalId).first<SessionRecord>();
+      INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
+      INNER JOIN facilities f ON f.id = a.facility_id
+    WHERE vs.appointment_id = ? AND a.visitor_user_id = ?`).bind(visitId, visitor.userId).first<SessionRecord>();
   if (!record) throw new SecurityError("VISIT_NOT_FOUND", 404);
-  assertJoinable(record);
+  assertVisitorJoinAllowed(record);
   return record;
 }
 
@@ -53,6 +58,13 @@ export function assertJoinable(record: SessionRecord): void {
   }
   const end = Date.parse(record.authorized_end_at);
   if (Number.isFinite(end) && Date.now() > end + 60_000) throw new SecurityError("SESSION_EXPIRED", 409);
+}
+
+export function assertVisitorJoinAllowed(record: SessionRecord): void {
+  assertJoinable(record);
+  if (record.appointment_status !== "IN_PROGRESS") throw new SecurityError("APPOINTMENT_NOT_IN_PROGRESS", 409);
+  if (record.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
+  if (record.prisoner_status !== "ACTIVE" || record.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
 }
 
 export function toSessionPayload(record: SessionRecord) {

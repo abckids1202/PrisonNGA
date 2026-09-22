@@ -44,6 +44,10 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [kioskDeviceId, setKioskDeviceId] = useState(kioskId || "");
+  const [kioskDeviceIdInput, setKioskDeviceIdInput] = useState(kioskId || "");
+  const [kioskCredential, setKioskCredential] = useState("");
+  const [kioskCredentialInput, setKioskCredentialInput] = useState("");
   const roomRef = useRef<Room | null>(null);
   const remoteRef = useRef<HTMLDivElement>(null);
   const localRef = useRef<HTMLDivElement>(null);
@@ -56,6 +60,7 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
   useEffect(() => {
     let active = true;
     async function start() {
+      if (!isVisitor && (!kioskDeviceId || !kioskCredential)) return;
       try {
         const detailsUrl = isVisitor ? `/api/visitor/visits/${encodeURIComponent(visitId)}/live-session` : null;
         const detailsResponse = detailsUrl ? await fetch(detailsUrl, { headers: { accept: "application/json" } }) : null;
@@ -67,7 +72,7 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
           setRemoteName(isVisitor ? sessionBody.prisonerId === "F. Hidayat" ? "F. Hidayat" : "A. Rahman" : "Sarah Amelia");
         }
         const tokenUrl = isVisitor ? detailsUrl! : `/api/kiosk/visits/${encodeURIComponent(visitId)}/live-session`;
-        const tokenResponse = await fetch(tokenUrl, { method: "POST", headers: { accept: "application/json", ...(isVisitor ? {} : { "x-securevisit-kiosk-id": kioskId || "" }) } });
+        const tokenResponse = await fetch(tokenUrl, { method: "POST", headers: { accept: "application/json", ...(isVisitor ? {} : { "x-securevisit-kiosk-id": kioskDeviceId, "x-securevisit-kiosk-token": kioskCredential }) } });
         const tokenBody = await tokenResponse.json() as Record<string, unknown>;
         if (!tokenResponse.ok) throw new Error(apiError(tokenBody, "Secure video could not start."));
         const token = typeof tokenBody.token === "string" ? tokenBody.token : "";
@@ -79,6 +84,7 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
         await connectRoom(serverUrl, token);
       } catch (caught) {
         if (!active) return;
+        if (!isVisitor && caught instanceof Error && caught.message === "This facility device is not authorized for this visit.") setKioskCredential("");
         setStage("error");
         setError(caught instanceof Error ? caught.message : "Secure video could not start.");
       }
@@ -91,7 +97,7 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
     };
     // The session is intentionally initialized once per visit/role.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visitId, role]);
+  }, [visitId, role, kioskDeviceId, kioskCredential]);
 
   useEffect(() => {
     if (!session) return;
@@ -205,6 +211,7 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
   const statusCopy = stage === "reconnecting" ? "Connection interrupted · reconnecting" : remoteConnected ? `${connectionLabel} connection` : "Waiting for the other side";
   const visitorEndedCopy = remaining === 0 ? "Your visit time has ended." : "You left the secure visit.";
 
+  if (!isVisitor && !kioskCredential) return <div className="sv9-live-app sv9-kiosk-live"><LiveHeader role={role} /><main className="sv9-state-screen sv9-state-error"><span className="sv9-state-mark">▣</span><p className="sv9-kicker">CONTROLLED FACILITY DEVICE</p><h1>Connect this kiosk</h1><p>Enter the registered device ID and its facility-issued credential. It stays in this page’s memory and is not added to the URL or saved in browser storage.</p>{error && <p role="alert">{error}</p>}<form className="sv9-kiosk-auth-form" onSubmit={(event) => { event.preventDefault(); const id = kioskDeviceIdInput.trim(); const secret = kioskCredentialInput.trim(); if (!id || !secret) return; setKioskDeviceId(id); setKioskCredential(secret); setKioskCredentialInput(""); setError(""); setStage("loading"); }}><label>Registered kiosk ID<input autoComplete="off" value={kioskDeviceIdInput} onChange={(event) => setKioskDeviceIdInput(event.target.value)} required /></label><label>One-time device credential<input type="password" autoComplete="off" spellCheck={false} value={kioskCredentialInput} onChange={(event) => setKioskCredentialInput(event.target.value)} required /></label><button className="sv9-button sv9-button-primary" type="submit" disabled={!kioskDeviceIdInput.trim() || !kioskCredentialInput.trim()}>Authenticate kiosk</button></form></main></div>;
   if (stage === "loading" || stage === "connecting") return <div className={`sv9-live-app ${isVisitor ? "sv9-visitor-live" : "sv9-kiosk-live"}`}><LiveHeader role={role} /><main className="sv9-state-screen"><span className="sv9-state-mark">◌</span><p className="sv9-kicker">SECURE VISIT</p><h1>{stage === "loading" ? "Preparing your secure visit" : "Connecting your secure video"}</h1><p>{stage === "loading" ? "Checking the visit authorization and session window." : "Your camera and microphone stay protected while we connect."}</p><span className="sv9-loading-line" /></main></div>;
   if (stage === "error") return <div className={`sv9-live-app ${isVisitor ? "sv9-visitor-live" : "sv9-kiosk-live"}`}><LiveHeader role={role} /><main className="sv9-state-screen sv9-state-error"><span className="sv9-state-mark">!</span><p className="sv9-kicker">SECURE VIDEO</p><h1>We couldn’t start this visit</h1><p>{error}</p><div className="sv9-state-actions"><button className="sv9-button sv9-button-primary" onClick={() => window.location.reload()}>Try again</button>{isVisitor ? <button className="sv9-button" onClick={() => { window.location.href = `/visitor/visits/${visitId}`; }}>Back to visit details</button> : null}</div></main></div>;
   if (stage === "ended") return <div className={`sv9-live-app ${isVisitor ? "sv9-visitor-live" : "sv9-kiosk-live"}`}><LiveHeader role={role} /><main className="sv9-state-screen sv9-state-complete"><span className="sv9-state-mark">✓</span><p className="sv9-kicker">{remaining === 0 ? "VISIT COMPLETE" : "VISIT ENDED"}</p><h1>{remaining === 0 ? "Your visit is complete" : "You’ve left the visit"}</h1><p>{remaining === 0 ? `You spent ${session ? "the scheduled time" : "time"} with ${title}.` : visitorEndedCopy}</p>{isVisitor ? <button className="sv9-button sv9-button-primary" onClick={() => { window.location.href = `/visitor/visits/${visitId}?state=completed`; }}>Back to visit summary <span>→</span></button> : <span className="sv9-kiosk-lock">This facility device is ready for the next assigned visit.</span>}</main></div>;

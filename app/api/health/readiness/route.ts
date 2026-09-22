@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { getRuntimeValue, securityResponse } from "../../../../lib/server/security";
 
-const requiredTables = ["users", "facilities", "visit_policies", "appointments", "verification_cases", "evidence_documents", "payment_intents", "notifications", "outbox_events", "idempotency_records", "auth_federation_states"];
+const requiredTables = ["users", "facilities", "prisoners", "visit_policies", "visit_policy_history", "appointments", "verification_cases", "evidence_documents", "payment_intents", "notifications", "outbox_events", "idempotency_records", "auth_federation_states", "saml_request_cache", "kiosk_credentials"];
 
 export async function GET() {
   const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development";

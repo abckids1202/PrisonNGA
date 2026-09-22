@@ -31,6 +31,9 @@ class SQLiteD1 {
         entry_type TEXT NOT NULL, amount INTEGER NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
         reason TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
       );
+      CREATE TABLE payment_intents (
+        id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, user_id TEXT NOT NULL, status TEXT NOT NULL
+      );
     `);
   }
 
@@ -73,6 +76,71 @@ test("failed balance update rolls back the purchase ledger so a retry can recove
     d1.sqlite.exec("DROP TRIGGER fail_credit_balance");
     assert.deepEqual(await settlePaymentPurchase(d1, purchase), { purchased: true, idempotent: false });
     assert.equal(d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE user_id = ?").get("visitor-2").available_credits, 2);
+  } finally { d1.close(); }
+});
+
+test("a success webhook cannot mint credits after its payment intent was refunded or disputed", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    d1.sqlite.prepare("INSERT INTO payment_intents VALUES (?, ?, ?, ?)")
+      .run("payment-payable", "facility-1", "visitor-payable", "CHECKOUT_CREATED");
+    assert.deepEqual(await settlePaymentPurchase(d1, {
+      paymentIntentId: "payment-payable",
+      facilityId: "facility-1",
+      userId: "visitor-payable",
+      amount: 2,
+      reason: "Verified successful payment.",
+      requirePayableIntent: true,
+    }), { purchased: true, idempotent: false });
+
+    d1.sqlite.prepare("INSERT INTO payment_intents VALUES (?, ?, ?, ?)")
+      .run("payment-refunded", "facility-1", "visitor-refunded", "PENDING");
+    d1.sqlite.prepare("UPDATE payment_intents SET status = 'REFUNDED' WHERE id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'REFUNDED', 'DISPUTED')")
+      .run("payment-refunded");
+    assert.deepEqual(await settlePaymentPurchase(d1, {
+      paymentIntentId: "payment-refunded",
+      facilityId: "facility-1",
+      userId: "visitor-refunded",
+      amount: 3,
+      reason: "Late success webhook.",
+      requirePayableIntent: true,
+    }), { purchased: false, idempotent: false, terminal: true });
+
+    const refundedAccount = d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE user_id = ?").get("visitor-refunded");
+    assert.equal(refundedAccount.available_credits, 0);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE idempotency_key = 'payment:payment-refunded:purchase'").get().count, 0);
+
+    d1.sqlite.prepare("INSERT INTO payment_intents VALUES (?, ?, ?, ?)")
+      .run("payment-disputed", "facility-1", "visitor-disputed", "DISPUTED");
+    const disputed = await settlePaymentPurchase(d1, {
+      paymentIntentId: "payment-disputed",
+      facilityId: "facility-1",
+      userId: "visitor-disputed",
+      amount: 1,
+      reason: "Late success webhook.",
+      requirePayableIntent: true,
+    });
+    assert.equal(disputed.terminal, true);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE idempotency_key = 'payment:payment-disputed:purchase'").get().count, 0);
+
+    d1.sqlite.prepare("INSERT INTO payment_intents VALUES (?, ?, ?, ?)")
+      .run("payment-refund-after-purchase", "facility-1", "visitor-refund-after-purchase", "CHECKOUT_CREATED");
+    await settlePaymentPurchase(d1, {
+      paymentIntentId: "payment-refund-after-purchase",
+      facilityId: "facility-1",
+      userId: "visitor-refund-after-purchase",
+      amount: 2,
+      reason: "Successful payment arrived first.",
+      requirePayableIntent: true,
+    });
+    d1.sqlite.prepare("UPDATE payment_intents SET status = 'REFUNDED' WHERE id = ?")
+      .run("payment-refund-after-purchase");
+    assert.deepEqual(await refundPurchasedCredits(d1, {
+      paymentIntentId: "payment-refund-after-purchase",
+      actorUserId: "system:payment-webhook",
+      reason: "Refund event arrived after success.",
+    }), { refunded: true });
+    assert.equal(d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE user_id = ?").get("visitor-refund-after-purchase").available_credits, 0);
   } finally { d1.close(); }
 });
 

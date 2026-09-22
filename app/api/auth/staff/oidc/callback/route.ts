@@ -1,5 +1,5 @@
 import { getD1 } from "../../../../../../db/runtime";
-import { discover, exchangeCode, getOidcConfig, hashFederationState } from "../../../../../../lib/server/auth/oidc";
+import { discover, exchangeCode, getOidcConfig, hasVerifiedStaffEmail, hashFederationState } from "../../../../../../lib/server/auth/oidc";
 import { applySecurityHeaders, getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
 
 async function staffCookie(token: string): Promise<string> { return `securevisit_staff_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${(await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) === "production" ? "; Secure" : ""}`; }
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     if (!pending || pending.consumed_at || Date.parse(pending.expires_at) <= Date.now() || pending.redirect_uri !== config.redirectUri) throw new SecurityError("STAFF_OIDC_STATE_INVALID", 401);
     const discovery = await discover(config);
     const claims = await exchangeCode(discovery, config, code, pending.code_verifier);
-    if (claims.nonce !== pending.nonce || !claims.email) throw new SecurityError("STAFF_OIDC_CLAIMS_INVALID", 401);
+    if (claims.nonce !== pending.nonce || !hasVerifiedStaffEmail(claims)) throw new SecurityError("STAFF_OIDC_CLAIMS_INVALID", 401);
     const externalId = `oidc:${claims.iss}:${claims.sub}`;
     const displayName = (claims.name || claims.preferred_username || claims.email).trim().slice(0, 160);
     const consumed = await d1.prepare("UPDATE auth_federation_states SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND expires_at > ?").bind(new Date().toISOString(), pending.id, new Date().toISOString()).run();

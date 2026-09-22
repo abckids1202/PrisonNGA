@@ -63,6 +63,15 @@ test("server-renders the visitor Live Session entry point", async () => {
   assert.match(html, /Encrypted media channel/);
 });
 
+test("server-renders a kiosk credential prompt without putting device secrets in the URL", async () => {
+  const response = await renderPath("/kiosk/visits/SV-260814-018/live?kiosk=kiosk-02");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Connect this kiosk/);
+  assert.match(html, /One-time device credential/);
+  assert.match(html, /type="password"/);
+});
+
 test("rejects unauthenticated API requests with security headers", async () => {
   const response = await renderApi("/api/auth/me");
   assert.equal(response.status, 401);
@@ -92,6 +101,12 @@ test("protects the facility resource catalog", async () => {
   assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
+test("protects the facility prisoner directory", async () => {
+  const response = await renderApi("/api/control/prisoners");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
 test("protects the incident management API", async () => {
   const response = await renderApi("/api/control/incidents");
   assert.equal(response.status, 401);
@@ -103,6 +118,10 @@ test("protects kiosk token issuance", async () => {
   assert.equal(response.status, 401);
   const body = await response.json();
   assert.equal(body.error, "KIOSK_AUTHENTICATION_REQUIRED");
+
+  const idOnly = await renderApi("/api/kiosk/visits/SV-260814-018/live-session", "POST", undefined, { "x-securevisit-kiosk-id": "kiosk-02" });
+  assert.equal(idOnly.status, 401);
+  assert.equal((await idOnly.json()).error, "KIOSK_AUTHENTICATION_REQUIRED");
 });
 
 test("protects visitor Live Session token issuance", async () => {

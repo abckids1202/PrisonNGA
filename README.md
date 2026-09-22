@@ -55,6 +55,7 @@ Each workspace uses a different interaction pattern: timelines and action center
 - Audit activity surface and secure-mode messaging
 - Persisted visitor profile, relationship verification/evidence review, prisoner, and appointment workflow APIs
 - LiveKit-backed Live Session V1 with visitor and controlled kiosk routes, scoped tokens, timer, reconnect states, staff monitoring authorization, and completion lifecycle
+- Kiosk LiveKit tokens require a per-device, revocable credential; a kiosk ID by itself is not authentication
 - Responsive layout for desktop and smaller screens
 
 ## Production boundaries

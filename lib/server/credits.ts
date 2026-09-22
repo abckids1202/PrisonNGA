@@ -5,7 +5,7 @@ type CreditSettlementGuard = { sql: string; values: unknown[] };
 
 export async function settlePaymentPurchase(
   d1: D1Database,
-  input: { paymentIntentId: string; facilityId: string; userId: string; amount: number; reason: string },
+  input: { paymentIntentId: string; facilityId: string; userId: string; amount: number; reason: string; requirePayableIntent?: boolean },
 ) {
   const now = new Date().toISOString();
   await d1.prepare("INSERT OR IGNORE INTO credit_accounts (id, facility_id, user_id, available_credits, reserved_credits, version, created_at, updated_at) VALUES (?, ?, ?, 0, 0, 1, ?, ?)")
@@ -13,14 +13,30 @@ export async function settlePaymentPurchase(
   const account = await d1.prepare("SELECT id FROM credit_accounts WHERE user_id = ? AND facility_id = ?").bind(input.userId, input.facilityId).first<{ id: string }>();
   if (!account) throw new SecurityError("CREDIT_ACCOUNT_NOT_FOUND", 500);
   const purchaseKey = `payment:${input.paymentIntentId}:purchase`;
+  const payableIntentGuard = input.requirePayableIntent
+    ? `AND EXISTS (SELECT 1 FROM payment_intents pi WHERE pi.id = ? AND pi.facility_id = ? AND pi.user_id = ? AND pi.status NOT IN ('REFUNDED', 'DISPUTED'))`
+    : "";
   const results = await d1.batch([
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-      VALUES (?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ?)`)
-      .bind(crypto.randomUUID(), account.id, input.amount, purchaseKey, input.reason, now),
+      SELECT ?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ? WHERE 1 = 1 ${payableIntentGuard}`)
+      .bind(crypto.randomUUID(), account.id, input.amount, purchaseKey, input.reason, now,
+        ...(input.requirePayableIntent ? [input.paymentIntentId, input.facilityId, input.userId] : [])),
     d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
       .bind(input.amount, now, account.id),
   ]);
-  if (!results[0]?.meta.changes) return { purchased: false, idempotent: true };
+  if (!results[0]?.meta.changes) {
+    const existingPurchase = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ? AND entry_type = 'PURCHASE'")
+      .bind(purchaseKey).first<{ id: string }>();
+    if (existingPurchase) return { purchased: false, idempotent: true };
+    if (input.requirePayableIntent) {
+      const intent = await d1.prepare("SELECT status FROM payment_intents WHERE id = ? AND facility_id = ? AND user_id = ?")
+        .bind(input.paymentIntentId, input.facilityId, input.userId).first<{ status: string }>();
+      if (!intent) throw new SecurityError("PAYMENT_INTENT_NOT_FOUND", 409);
+      if (intent.status === "REFUNDED" || intent.status === "DISPUTED") return { purchased: false, idempotent: false, terminal: true };
+      throw new SecurityError("PAYMENT_PURCHASE_NOT_SETTLED", 503);
+    }
+    return { purchased: false, idempotent: true };
+  }
   return { purchased: true, idempotent: false };
 }
 

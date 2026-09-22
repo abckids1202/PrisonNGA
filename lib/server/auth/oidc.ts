@@ -1,7 +1,11 @@
 import { getRuntimeValue, SecurityError } from "../security";
 
 type Discovery = { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string };
-type OidcClaims = { iss: string; sub: string; aud: string | string[]; exp: number; nonce?: string; email?: string; name?: string; preferred_username?: string };
+type OidcClaims = { iss: string; sub: string; aud: string | string[]; exp: number; nonce?: string; email?: string; email_verified?: boolean; name?: string; preferred_username?: string };
+
+export function hasVerifiedStaffEmail(claims: Pick<OidcClaims, "email" | "email_verified">): claims is Pick<OidcClaims, "email" | "email_verified"> & { email: string; email_verified: true } {
+  return typeof claims.email === "string" && claims.email.trim().length > 0 && claims.email_verified === true;
+}
 
 function base64Url(bytes: Uint8Array): string {
   let binary = "";

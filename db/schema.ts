@@ -49,6 +49,19 @@ export const visitPolicies = sqliteTable("visit_policies", {
   ...timestamps,
 }, (table) => ({ facilityIdx: uniqueIndex("visit_policies_facility_idx").on(table.facilityId) }));
 
+export const visitPolicyHistory = sqliteTable("visit_policy_history", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  version: integer("version").notNull(),
+  actorUserId: text("actor_user_id").notNull().references(() => users.id),
+  reason: text("reason").notNull(),
+  snapshot: text("snapshot").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  facilityVersionIdx: uniqueIndex("visit_policy_history_facility_version_idx").on(table.facilityId, table.version),
+  facilityCreatedIdx: index("visit_policy_history_facility_created_idx").on(table.facilityId, table.createdAt),
+}));
+
 export const staffProfiles = sqliteTable("staff_profiles", {
   userId: text("user_id").primaryKey().references(() => users.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
@@ -143,6 +156,16 @@ export const authFederationStates = sqliteTable("auth_federation_states", {
 }, (table) => ({
   stateHashIdx: uniqueIndex("auth_federation_states_hash_idx").on(table.stateHash),
   expiresIdx: index("auth_federation_states_expires_idx").on(table.expiresAt),
+}));
+
+export const samlRequestCache = sqliteTable("saml_request_cache", {
+  requestId: text("request_id").primaryKey(),
+  issueInstant: text("issue_instant").notNull(),
+  stateHash: text("state_hash").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => ({
+  createdIdx: index("saml_request_cache_created_idx").on(table.createdAt),
+  stateHashIdx: index("saml_request_cache_state_hash_idx").on(table.stateHash),
 }));
 
 export const securityEvents = sqliteTable("security_events", {
@@ -352,6 +375,18 @@ export const resources = sqliteTable("resources", {
   version: integer("version").notNull().default(1),
   ...timestamps,
 }, (table) => ({ facilityTypeIdx: index("resources_facility_type_idx").on(table.facilityId, table.resourceType, table.status), facilityNameIdx: uniqueIndex("resources_facility_name_idx").on(table.facilityId, table.displayName) }));
+
+export const kioskCredentials = sqliteTable("kiosk_credentials", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  resourceId: text("resource_id").notNull().references(() => resources.id),
+  credentialHash: text("credential_hash").notNull(),
+  status: text("status", { enum: ["ACTIVE", "REVOKED"] }).notNull().default("ACTIVE"),
+  createdBy: text("created_by").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  lastUsedAt: text("last_used_at"),
+  revokedAt: text("revoked_at"),
+}, (table) => ({ activeResourceIdx: uniqueIndex("kiosk_credentials_active_resource_idx").on(table.resourceId).where(sql`${table.status} = 'ACTIVE'`), facilityStatusIdx: index("kiosk_credentials_facility_status_idx").on(table.facilityId, table.status) }));
 
 export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   appointmentId: text("appointment_id").primaryKey().references(() => appointments.id),
