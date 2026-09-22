@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     const facilityId = search.get("facilityId")?.trim() || "";
     const prisonerId = search.get("prisonerId")?.trim() || "";
     const date = search.get("date")?.trim() || "";
+    const excludeAppointmentId = search.get("excludeAppointmentId")?.trim() || "";
     const duration = Number(search.get("duration") || "15");
     if (!facilityId || !prisonerId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isInteger(duration)) throw new SecurityError("INVALID_AVAILABILITY_REQUEST", 400);
     const d1 = await getD1();
@@ -22,9 +23,15 @@ export async function GET(request: Request) {
     if (duration < policy.min_duration_minutes || duration > policy.max_duration_minutes || duration % slotMinutes !== 0) throw new SecurityError("DURATION_NOT_ALLOWED", 400);
     const relationship = await d1.prepare("SELECT id FROM visitor_relationships WHERE visitor_user_id = ? AND facility_id = ? AND prisoner_id = ? AND status = 'APPROVED'").bind(visitor.userId, facilityId, prisonerId).first();
     if (!relationship) throw new SecurityError("RELATIONSHIP_NOT_APPROVED", 409);
+    if (excludeAppointmentId) {
+      const reschedulable = await d1.prepare("SELECT id FROM appointments WHERE id = ? AND facility_id = ? AND prisoner_id = ? AND visitor_user_id = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW')")
+        .bind(excludeAppointmentId, facilityId, prisonerId, visitor.userId)
+        .first();
+      if (!reschedulable) throw new SecurityError("APPOINTMENT_NOT_RESCHEDULABLE", 409);
+    }
     const dayStart = facilityLocalDateTime(date, policy.daily_start_time, facility.timezone);
     const dayEnd = facilityLocalDateTime(date, policy.daily_end_time, facility.timezone);
-    const appointments = await d1.prepare(`SELECT requested_start, requested_end FROM appointments WHERE facility_id = ? AND (prisoner_id = ? OR visitor_user_id = ?) AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS') AND requested_start < ? AND requested_end > ?`).bind(facilityId, prisonerId, visitor.userId, dayEnd.toISOString(), dayStart.toISOString()).all<{ requested_start: string; requested_end: string }>();
+    const appointments = await d1.prepare(`SELECT requested_start, requested_end FROM appointments WHERE ((facility_id = ? AND prisoner_id = ?) OR visitor_user_id = ?) AND (? = '' OR id <> ?) AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS') AND requested_start < ? AND requested_end > ?`).bind(facilityId, prisonerId, visitor.userId, excludeAppointmentId, excludeAppointmentId, dayEnd.toISOString(), dayStart.toISOString()).all<{ requested_start: string; requested_end: string }>();
     const slots: string[] = [];
     for (let cursor = dayStart.getTime(); cursor + duration * 60000 <= dayEnd.getTime(); cursor += slotMinutes * 60000) {
       const end = cursor + duration * 60000;

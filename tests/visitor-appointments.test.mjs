@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { createVisitorAppointmentStatements } from "../lib/server/visitor-appointments.ts";
+import { createVisitorAppointmentStatements, rescheduleVisitorAppointmentStatements } from "../lib/server/visitor-appointments.ts";
 
 class Statement {
   constructor(db, sql) { this.db = db; this.sql = sql; }
@@ -72,6 +72,32 @@ async function submit(db, data) {
   return db.batch(createVisitorAppointmentStatements(db, data));
 }
 
+function rescheduleInput(id = "reschedule-1", version = 2) {
+  const now = "2026-09-22T03:00:00.000Z";
+  const correlationId = `cor-${id}`;
+  return {
+    appointmentId: "visit-1", facilityId: "f1", visitorUserId: "v1", prisonerId: "p1",
+    expectedVersion: version, previousStatus: "UNDER_REVIEW",
+    requestedStart: "2026-10-02T02:00:00.000Z", requestedEnd: "2026-10-02T02:30:00.000Z",
+    timezone: "Asia/Jakarta", policyVersion: 4, durationMinutes: 30, now, correlationId, requestId: `req-${id}`,
+    idempotency: { claimId: `claim-${id}`, scope: "visitor:v1:appointment:reschedule:visit-1", key: `key-${id}` },
+    responseBody: { appointmentId: "visit-1", status: "UNDER_REVIEW", requestedStart: "2026-10-02T02:00:00.000Z", requestedEnd: "2026-10-02T02:30:00.000Z", version: version + 1, correlationId },
+  };
+}
+
+function seedPendingAppointment(db, status = "UNDER_REVIEW") {
+  db.sqlite.prepare(`INSERT INTO appointments
+    (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, policy_version, duration_minutes, appointment_type, version, created_at, updated_at)
+    VALUES ('visit-1', 'f1', 'v1', 'p1', ?, '2026-10-01T02:00:00.000Z', '2026-10-01T02:30:00.000Z', 'Asia/Jakarta', 4, 30, 'FAMILY', 2, 'created', 'updated')`).run(status);
+}
+
+async function submitReschedule(db, data) {
+  seedPendingAppointment(db, data.previousStatus);
+  db.sqlite.prepare("INSERT INTO idempotency_records (id, scope, idempotency_key, request_hash, status, created_at) VALUES (?, ?, ?, 'hash', 'PROCESSING', ?)")
+    .run(data.idempotency.claimId, data.idempotency.scope, data.idempotency.key, data.now);
+  return db.batch(rescheduleVisitorAppointmentStatements(db, data));
+}
+
 test("appointment create atomically rejects overlapping visitor slots without partial records", async () => {
   const db = new D1();
   try {
@@ -114,5 +140,58 @@ test("appointment, audit, outbox, and idempotency completion roll back together"
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointment_status_events").get().n, 0);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM outbox_events").get().n, 0);
     assert.equal(db.sqlite.prepare("SELECT status FROM idempotency_records WHERE id = 'claim-a1'").get().status, "PROCESSING");
+  } finally { db.close(); }
+});
+
+test("visitor reschedule atomically changes time and records decision history", async () => {
+  const db = new D1();
+  try {
+    const data = rescheduleInput();
+    assert.equal((await submitReschedule(db, data))[0].meta.changes, 1);
+    const updated = db.sqlite.prepare("SELECT requested_start, requested_end, status, version, last_transition_id FROM appointments WHERE id = 'visit-1'").get();
+    assert.equal(updated.requested_start, data.requestedStart);
+    assert.equal(updated.status, "UNDER_REVIEW");
+    assert.equal(updated.version, 3);
+    assert.equal(updated.last_transition_id, data.correlationId);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointment_status_events WHERE from_status = 'UNDER_REVIEW' AND to_status = 'UNDER_REVIEW'").get().n, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action_type = 'APPOINTMENT_RESCHEDULED'").get().n, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM outbox_events WHERE event_type = 'APPOINTMENT_RESCHEDULED'").get().n, 1);
+    assert.equal(db.sqlite.prepare("SELECT status FROM idempotency_records WHERE id = ?").get(data.idempotency.claimId).status, "COMPLETED");
+  } finally { db.close(); }
+});
+
+test("visitor reschedule refuses a conflicting slot without partial writes", async () => {
+  const db = new D1();
+  try {
+    const data = rescheduleInput();
+    seedPendingAppointment(db);
+    db.sqlite.prepare(`INSERT INTO appointments
+      (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, appointment_type, version, created_at, updated_at)
+      VALUES ('conflict-1', 'f1', 'v1', 'p2', 'SUBMITTED', ?, ?, 'Asia/Jakarta', 'FAMILY', 1, 'created', 'created')`)
+      .run(data.requestedStart, data.requestedEnd);
+    db.sqlite.prepare("INSERT INTO idempotency_records (id, scope, idempotency_key, request_hash, status, created_at) VALUES (?, ?, ?, 'hash', 'PROCESSING', ?)")
+      .run(data.idempotency.claimId, data.idempotency.scope, data.idempotency.key, data.now);
+
+    assert.equal((await db.batch(rescheduleVisitorAppointmentStatements(db, data)))[0].meta.changes, 0);
+    assert.equal(db.sqlite.prepare("SELECT requested_start FROM appointments WHERE id = 'visit-1'").get().requested_start, "2026-10-01T02:00:00.000Z");
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_events").get().n, 0);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM outbox_events").get().n, 0);
+  } finally { db.close(); }
+});
+
+test("visitor reschedule rolls back its time update if audit writing fails", async () => {
+  const db = new D1();
+  try {
+    const data = rescheduleInput();
+    seedPendingAppointment(db);
+    db.sqlite.prepare("INSERT INTO idempotency_records (id, scope, idempotency_key, request_hash, status, created_at) VALUES (?, ?, ?, 'hash', 'PROCESSING', ?)")
+      .run(data.idempotency.claimId, data.idempotency.scope, data.idempotency.key, data.now);
+    db.sqlite.exec("CREATE TRIGGER reject_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END;");
+
+    await assert.rejects(db.batch(rescheduleVisitorAppointmentStatements(db, data)), /audit unavailable/);
+    assert.equal(db.sqlite.prepare("SELECT requested_start, version FROM appointments WHERE id = 'visit-1'").get().requested_start, "2026-10-01T02:00:00.000Z");
+    assert.equal(db.sqlite.prepare("SELECT version FROM appointments WHERE id = 'visit-1'").get().version, 2);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointment_status_events").get().n, 0);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM outbox_events").get().n, 0);
   } finally { db.close(); }
 });

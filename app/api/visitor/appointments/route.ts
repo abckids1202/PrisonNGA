@@ -5,7 +5,7 @@ import { releaseVisitResources } from "../../../../lib/server/resources";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { claimIdempotency, hashIdempotencyPayload, releaseIdempotencyClaim } from "../../../../lib/server/idempotency";
 import { validateVisitWindow } from "../../../../lib/server/visit-policy";
-import { createVisitorAppointmentStatements } from "../../../../lib/server/visitor-appointments";
+import { createVisitorAppointmentStatements, rescheduleVisitorAppointmentStatements } from "../../../../lib/server/visitor-appointments";
 
 const activeStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"];
 
@@ -108,6 +108,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   const context = await getRequestContext();
+  let activeClaim: { d1: D1Database; scope: string; key: string; claimId: string } | null = null;
   try {
     const visitor = await requireVisitorIdentity();
     const body = await request.json() as { appointmentId?: unknown; action?: unknown; requestedStart?: unknown; requestedEnd?: unknown; expectedVersion?: unknown };
@@ -139,8 +140,6 @@ export async function PATCH(request: Request) {
     if (!["SUBMITTED", "UNDER_REVIEW"].includes(String(appointment.status))) throw new SecurityError("APPOINTMENT_NOT_RESCHEDULABLE", 409);
     const requestedStart = typeof body.requestedStart === "string" ? body.requestedStart : "";
     const requestedEnd = typeof body.requestedEnd === "string" ? body.requestedEnd : "";
-    const startMs = Date.parse(requestedStart);
-    const endMs = Date.parse(requestedEnd);
     if (appointment.current_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     const window = validateVisitWindow(requestedStart, requestedEnd, Date.now(), {
       timezone: typeof appointment.timezone === "string" ? appointment.timezone : null,
@@ -155,12 +154,64 @@ export async function PATCH(request: Request) {
     if (appointment.policy_version == null || typeof appointment.timezone !== "string") throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
     const canonicalStart = window.requestedStart;
     const canonicalEnd = window.requestedEnd;
-    const overlap = await d1.prepare(`SELECT id FROM appointments WHERE id <> ? AND facility_id = ? AND (visitor_user_id = ? OR prisoner_id = ?) AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(appointmentId, appointment.facility_id, visitor.userId, appointment.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first();
-    if (overlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
-    const updated = await d1.prepare("UPDATE appointments SET requested_start = ?, requested_end = ?, timezone = ?, policy_version = ?, duration_minutes = ?, status = 'UNDER_REVIEW', version = version + 1, updated_at = ? WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW')").bind(canonicalStart, canonicalEnd, appointment.timezone, Number(appointment.policy_version), Math.round((endMs - startMs) / 60_000), now, appointmentId, visitor.userId, Number(appointment.version)).run();
-    if (!updated.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
-    await d1.prepare("INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, ?, 'UNDER_REVIEW', ?, 'VISITOR_RESCHEDULED', 'Visitor requested a new appointment window.', ?, ?)").bind(crypto.randomUUID(), appointmentId, appointment.status, visitor.userId, correlationId, now).run();
-    await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: String(appointment.facility_id), actionType: "APPOINTMENT_RESCHEDULED", entityType: "appointment", entityId: appointmentId, reason: "Visitor requested a new appointment window.", oldValues: { status: appointment.status, requestedStart: appointment.requested_start, requestedEnd: appointment.requested_end }, newValues: { status: "UNDER_REVIEW", requestedStart: canonicalStart, requestedEnd: canonicalEnd }, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_RESCHEDULED", payload: { appointmentId, visitorUserId: visitor.userId } });
-    return securityResponse({ appointmentId, status: "UNDER_REVIEW", requestedStart: canonicalStart, requestedEnd: canonicalEnd, version: Number(appointment.version) + 1, correlationId }, 200, context.requestId);
-  } catch (error) { return securityErrorResponse(error, context.requestId); }
+    if (Date.parse(canonicalStart) === Date.parse(String(appointment.requested_start)) && Date.parse(canonicalEnd) === Date.parse(String(appointment.requested_end))) throw new SecurityError("RESCHEDULE_TIME_UNCHANGED", 400);
+    if (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) !== Number(appointment.version)) throw new SecurityError("STALE_APPOINTMENT", 409);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    const idempotencyScope = `visitor:${visitor.userId}:appointment:reschedule:${appointmentId}`;
+    const requestHash = await hashIdempotencyPayload({ appointmentId, requestedStart: canonicalStart, requestedEnd: canonicalEnd, expectedVersion: Number(appointment.version) });
+    const claim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+    if ("replay" in claim) return securityResponse(claim.replay.body, claim.replay.status, context.requestId);
+    activeClaim = { d1, scope: idempotencyScope, key: idempotencyKey, claimId: claim.claimId };
+    const previousStatus = String(appointment.status) as "SUBMITTED" | "UNDER_REVIEW";
+    const responseBody = {
+      appointmentId,
+      status: "UNDER_REVIEW" as const,
+      requestedStart: canonicalStart,
+      requestedEnd: canonicalEnd,
+      version: Number(appointment.version) + 1,
+      correlationId,
+    };
+    const rescheduled = await d1.batch(rescheduleVisitorAppointmentStatements(d1, {
+      appointmentId,
+      facilityId: String(appointment.facility_id),
+      visitorUserId: visitor.userId,
+      prisonerId: String(appointment.prisoner_id),
+      expectedVersion: Number(appointment.version),
+      previousStatus,
+      requestedStart: canonicalStart,
+      requestedEnd: canonicalEnd,
+      timezone: appointment.timezone,
+      policyVersion: Number(appointment.policy_version),
+      durationMinutes: Math.round((Date.parse(canonicalEnd) - Date.parse(canonicalStart)) / 60_000),
+      now,
+      correlationId,
+      requestId: context.requestId,
+      idempotency: activeClaim,
+      responseBody,
+    }));
+    if (!rescheduled[0]?.meta.changes) {
+      const current = await d1.prepare("SELECT status, version FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ?").bind(appointmentId, appointment.facility_id, visitor.userId).first<{ status: string; version: number }>();
+      if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
+      if (Number(current.version) !== Number(appointment.version)) throw new SecurityError("STALE_APPOINTMENT", 409);
+      if (!["SUBMITTED", "UNDER_REVIEW"].includes(current.status)) throw new SecurityError("APPOINTMENT_NOT_RESCHEDULABLE", 409);
+      const visitorOverlap = await d1.prepare(`SELECT id FROM appointments WHERE id <> ? AND visitor_user_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(appointmentId, visitor.userId, ...activeStatuses, canonicalEnd, canonicalStart).first();
+      if (visitorOverlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
+      const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE id <> ? AND facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(appointmentId, appointment.facility_id, appointment.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first();
+      if (prisonerOverlap) throw new SecurityError("PRISONER_APPOINTMENT_OVERLAP", 409);
+      const relationship = await d1.prepare(`SELECT vr.status, p.status AS prisoner_status, p.visitation_status FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id AND p.facility_id = vr.facility_id WHERE vr.facility_id = ? AND vr.visitor_user_id = ? AND vr.prisoner_id = ?`).bind(appointment.facility_id, visitor.userId, appointment.prisoner_id).first<{ status: string; prisoner_status: string; visitation_status: string }>();
+      if (!relationship || relationship.status !== "APPROVED" || relationship.prisoner_status !== "ACTIVE" || relationship.visitation_status !== "APPROVED") throw new SecurityError("RELATIONSHIP_NOT_APPROVED", 409);
+      const currentPolicy = await d1.prepare("SELECT f.current_state, f.timezone, vp.version AS policy_version FROM facilities f LEFT JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(appointment.facility_id).first<{ current_state: string; timezone: string | null; policy_version: number | null }>();
+      if (!currentPolicy || currentPolicy.current_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
+      if (currentPolicy.timezone !== appointment.timezone || currentPolicy.policy_version !== appointment.policy_version) throw new SecurityError("FACILITY_POLICY_CHANGED", 409);
+      throw new SecurityError("APPOINTMENT_RESCHEDULE_CONFLICT", 409);
+    }
+    activeClaim = null;
+    return securityResponse(responseBody, 200, context.requestId);
+  } catch (error) {
+    if (activeClaim) {
+      try { await releaseIdempotencyClaim(activeClaim.d1, activeClaim); } catch { /* Stale claim recovery is the fallback if cleanup is unavailable. */ }
+    }
+    return securityErrorResponse(error, context.requestId);
+  }
 }

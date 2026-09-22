@@ -318,7 +318,12 @@ function activityTime(value?: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(timestamp));
 }
 
-function visitorLocalDate(date: Date) {
+function visitorLocalDate(date: Date, timeZone?: string) {
+  if (timeZone) {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 10);
 }
@@ -336,6 +341,7 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
   const { appointments, relationships, credits, loading, refreshAppointments } = useContext(VisitorDataContext);
   const [view, setView] = useState("Upcoming");
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<VisitorAppointmentRecord | null>(null);
   const [relationshipId, setRelationshipId] = useState("");
   const [bookingDate, setBookingDate] = useState(() => visitorLocalDate(new Date(Date.now() + 86400000)));
   const [duration, setDuration] = useState(15);
@@ -355,11 +361,12 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
     if (!bookingOpen || !selectedRelationship) return;
     const controller = new AbortController();
     const query = new URLSearchParams({ facilityId: selectedRelationship.facility_id, prisonerId: selectedRelationship.prisoner_id, date: bookingDate, duration: String(duration) });
+    if (rescheduleTarget) query.set("excludeAppointmentId", rescheduleTarget.id);
     fetch(`/api/visitor/availability?${query}`, { credentials: "include", headers: { accept: "application/json" }, signal: controller.signal })
       .then(async (response) => {
         const body = await response.json() as { slots?: string[]; timezone?: string; error?: string };
         if (!response.ok) throw new Error(body.error || "Could not load visit availability.");
-        setSlots(body.slots || []);
+        setSlots((body.slots || []).filter((slot) => !rescheduleTarget || slot !== rescheduleTarget.requested_start));
         setAvailabilityTimezone(body.timezone || "Asia/Jakarta");
         setSelectedSlot("");
         setAvailabilityError("");
@@ -371,7 +378,7 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
       })
       .finally(() => !controller.signal.aborted && setAvailabilityLoading(false));
     return () => controller.abort();
-  }, [appointments, bookingDate, bookingOpen, duration, selectedRelationship]);
+  }, [appointments, bookingDate, bookingOpen, duration, rescheduleTarget, selectedRelationship]);
 
   const requests = appointments.filter((item) => ["SUBMITTED", "UNDER_REVIEW"].includes(item.status));
   const upcoming = appointments.filter((item) => ["APPROVED", "WAITING", "IN_PROGRESS"].includes(item.status));
@@ -379,6 +386,7 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
 
   function openBooking() {
     setFormError("");
+    setRescheduleTarget(null);
     if (!approvedRelationships.length) {
       onNavigate("Connections");
       onAction("A connection must be approved by the facility before you can request a visit.", "info");
@@ -392,6 +400,26 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
     setBookingOpen(true);
   }
 
+  function openReschedule(appointment: VisitorAppointmentRecord) {
+    const relationship = approvedRelationships.find((item) => item.facility_id === appointment.facility_id && item.prisoner_id === appointment.prisoner_id);
+    if (!relationship) {
+      onAction("This connection is no longer approved. Contact the facility before changing the visit time.", "info");
+      return;
+    }
+    setFormError("");
+    setRescheduleTarget(appointment);
+    setRelationshipId(relationship.id);
+    setBookingDate(visitorLocalDate(new Date(appointment.requested_start), appointment.timezone || "Asia/Jakarta"));
+    setDuration(Math.round((Date.parse(appointment.requested_end) - Date.parse(appointment.requested_start)) / 60_000));
+    setSlots([]);
+    setSelectedSlot("");
+    setAvailabilityLoading(true);
+    setAvailabilityError("");
+    requestKey.current = null;
+    setView("Requests");
+    setBookingOpen(true);
+  }
+
   function closeBooking() {
     setBookingOpen(false);
     setSlots([]);
@@ -399,28 +427,41 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
     setAvailabilityLoading(false);
     setAvailabilityError("");
     requestKey.current = null;
+    setRescheduleTarget(null);
   }
 
   async function submitVisitRequest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedRelationship || !selectedSlot) return setFormError("Choose an available time before continuing.");
-    if (availableCredits < 1) return setFormError("Add at least one Visit Credit for this facility before requesting a visit.");
+    if (!rescheduleTarget && availableCredits < 1) return setFormError("Add at least one Visit Credit for this facility before requesting a visit.");
     setSubmitting(true);
     setFormError("");
     requestKey.current ||= crypto.randomUUID();
     try {
       const start = new Date(selectedSlot);
       const end = new Date(start.getTime() + duration * 60_000);
-      const response = await fetch("/api/visitor/appointments", { method: "POST", credentials: "include", headers: { "content-type": "application/json", "Idempotency-Key": requestKey.current }, body: JSON.stringify({ relationshipId: selectedRelationship.id, requestedStart: start.toISOString(), requestedEnd: end.toISOString(), appointmentType: "FAMILY" }) });
+      const rescheduleBody = rescheduleTarget ? {
+        appointmentId: rescheduleTarget.id,
+        action: "reschedule",
+        requestedStart: start.toISOString(),
+        requestedEnd: end.toISOString(),
+        expectedVersion: rescheduleTarget.version,
+      } : null;
+      const response = await fetch("/api/visitor/appointments", {
+        method: rescheduleTarget ? "PATCH" : "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", "Idempotency-Key": requestKey.current },
+        body: JSON.stringify(rescheduleBody || { relationshipId: selectedRelationship.id, requestedStart: start.toISOString(), requestedEnd: end.toISOString(), appointmentType: "FAMILY" }),
+      });
       const body = await response.json() as { appointmentId?: string; error?: string };
-      if (!response.ok) throw new Error(body.error || "Your visit request could not be sent.");
+      if (!response.ok) throw new Error(body.error || (rescheduleTarget ? "Your new time could not be requested." : "Your visit request could not be sent."));
       requestKey.current = null;
-      setBookingOpen(false);
+      closeBooking();
       setView("Requests");
       await refreshAppointments();
-      onAction("Your request was sent to the facility for review.", "success");
+      onAction(rescheduleTarget ? "Your new visit time was sent to the facility for review." : "Your request was sent to the facility for review.", "success");
     } catch (error) {
-      setFormError(error instanceof Error ? error.message.replaceAll("_", " ") : "Your visit request could not be sent. Please retry.");
+      setFormError(error instanceof Error ? error.message.replaceAll("_", " ") : rescheduleTarget ? "Your new time could not be requested. Please retry." : "Your visit request could not be sent. Please retry.");
     } finally {
       setSubmitting(false);
     }
@@ -445,17 +486,17 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
   return <div className="sv4-page sv4-inner-page">
     <div className="sv4-page-intro sv4-visits-intro"><div><p className="sv4-kicker">Your visits</p><h1>Time together, made simple.</h1><p>Request a time, follow the facility’s decision, and prepare when your visit is approved.</p></div><VisitorButton primary onClick={openBooking}>＋ Request a visit</VisitorButton></div>
     <div className="sv4-segmented">{tabs.map((item) => <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>{item}{item === "Requests" && requests.length > 0 && <b>{requests.length}</b>}{item === "Upcoming" && upcoming.length > 0 && <b>{upcoming.length}</b>}</button>)}</div>
-    {bookingOpen && <section className="sv4-visit-booking" aria-labelledby="sv4-booking-title"><div className="sv4-booking-heading"><div><p className="sv4-kicker">A few simple steps</p><h2 id="sv4-booking-title">Request a visit</h2><p>Choose an approved connection and an available time. The facility makes the final decision.</p></div><button type="button" className="sv11-back-button" onClick={closeBooking} disabled={submitting}>Close</button></div>
+    {bookingOpen && <section className="sv4-visit-booking" aria-labelledby="sv4-booking-title"><div className="sv4-booking-heading"><div><p className="sv4-kicker">A few simple steps</p><h2 id="sv4-booking-title">{rescheduleTarget ? "Choose a new time" : "Request a visit"}</h2><p>{rescheduleTarget ? "The facility will review your updated request before confirming a visit." : "Choose an approved connection and an available time. The facility makes the final decision."}</p></div><button type="button" className="sv11-back-button" onClick={closeBooking} disabled={submitting}>Close</button></div>
       <form onSubmit={submitVisitRequest}>
-        <label>Who would you like to see?<select value={relationshipId} onChange={(event) => { setRelationshipId(event.target.value); setSlots([]); setSelectedSlot(""); setAvailabilityLoading(true); setAvailabilityError(""); requestKey.current = null; }} required>{approvedRelationships.map((item) => <option key={item.id} value={item.id}>{item.prisoner_name} · {item.facility_name}</option>)}</select></label>
+        <label>Who would you like to see?<select value={relationshipId} disabled={Boolean(rescheduleTarget)} onChange={(event) => { setRelationshipId(event.target.value); setSlots([]); setSelectedSlot(""); setAvailabilityLoading(true); setAvailabilityError(""); requestKey.current = null; }} required>{approvedRelationships.map((item) => <option key={item.id} value={item.id}>{item.prisoner_name} · {item.facility_name}</option>)}</select></label>
         <div className="sv4-booking-fields"><label>Choose a day<input type="date" min={visitorLocalDate(new Date())} value={bookingDate} onChange={(event) => { setBookingDate(event.target.value); setSlots([]); setSelectedSlot(""); setAvailabilityLoading(true); setAvailabilityError(""); requestKey.current = null; }} required /></label><label>Visit length<select value={duration} onChange={(event) => { setDuration(Number(event.target.value)); setSlots([]); setSelectedSlot(""); setAvailabilityLoading(true); setAvailabilityError(""); requestKey.current = null; }}><option value={15}>15 minutes</option><option value={30}>30 minutes</option></select></label></div>
-        <div className="sv4-available-times"><div><strong>Available times</strong><span>{availableCredits} Visit Credit{availableCredits === 1 ? "" : "s"} available</span></div>{availabilityLoading ? <p className="sv4-booking-message">Checking the facility schedule…</p> : availabilityError ? <p className="sv4-request-error" role="alert">{availabilityError.replaceAll("_", " ")}</p> : slots.length ? <div className="sv4-slot-grid" role="radiogroup" aria-label="Available visit times">{slots.map((slot) => <label key={slot} className={selectedSlot === slot ? "selected" : ""}><input type="radio" name="visit-time" value={slot} checked={selectedSlot === slot} onChange={() => { setSelectedSlot(slot); requestKey.current = null; }} /><span>{new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: availabilityTimezone }).format(new Date(slot))}</span></label>)}</div> : <p className="sv4-booking-message">No available times for this day. Try another date.</p>}</div>
-        {availableCredits < 1 && <div className="sv4-booking-credit-note"><span>You’ll need a Visit Credit before sending this request.</span><button type="button" onClick={() => onNavigate("Credits")}>View credits →</button></div>}
+        <div className="sv4-available-times"><div><strong>Available times</strong><span>{rescheduleTarget ? "Existing request · no new credit needed" : `${availableCredits} Visit Credit${availableCredits === 1 ? "" : "s"} available`}</span></div>{availabilityLoading ? <p className="sv4-booking-message">Checking the facility schedule…</p> : availabilityError ? <p className="sv4-request-error" role="alert">{availabilityError.replaceAll("_", " ")}</p> : slots.length ? <div className="sv4-slot-grid" role="radiogroup" aria-label="Available visit times">{slots.map((slot) => <label key={slot} className={selectedSlot === slot ? "selected" : ""}><input type="radio" name="visit-time" value={slot} checked={selectedSlot === slot} onChange={() => { setSelectedSlot(slot); requestKey.current = null; }} /><span>{new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: availabilityTimezone }).format(new Date(slot))}</span></label>)}</div> : <p className="sv4-booking-message">No available times for this day. Try another date.</p>}</div>
+        {!rescheduleTarget && availableCredits < 1 && <div className="sv4-booking-credit-note"><span>You’ll need a Visit Credit before sending this request.</span><button type="button" onClick={() => onNavigate("Credits")}>View credits →</button></div>}
         {formError && <p className="sv4-request-error" role="alert">{formError}</p>}
-        <div className="sv4-request-actions"><button type="button" className="sv11-back-button" onClick={closeBooking} disabled={submitting}>Not now</button><button className="sv4-button sv4-button-primary" disabled={submitting || availabilityLoading || !selectedSlot || availableCredits < 1}>{submitting ? "Sending request…" : "Send visit request"}</button></div>
+        <div className="sv4-request-actions"><button type="button" className="sv11-back-button" onClick={closeBooking} disabled={submitting}>Not now</button><button className="sv4-button sv4-button-primary" disabled={submitting || availabilityLoading || !selectedSlot || (!rescheduleTarget && availableCredits < 1)}>{submitting ? "Sending request…" : rescheduleTarget ? "Request new time" : "Send visit request"}</button></div>
       </form>
     </section>}
-    {loading ? <div className="sv4-empty-inline">Loading your visits…</div> : visibleAppointments.length ? <div className="sv4-appointment-list">{visibleAppointments.map((appointment) => <article className="sv4-appointment-card" key={appointment.id}><div className="sv4-appointment-date"><strong>{new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: appointment.timezone || "Asia/Jakarta" }).format(new Date(appointment.requested_start))}</strong><span>{new Intl.DateTimeFormat("en", { month: "short", timeZone: appointment.timezone || "Asia/Jakarta" }).format(new Date(appointment.requested_start))}</span></div><div className="sv4-appointment-copy"><div className="sv4-appointment-title"><h2>{appointment.prisoner_name}</h2><VisitorStatus tone={["APPROVED", "WAITING", "IN_PROGRESS"].includes(appointment.status) ? "green" : ["REJECTED", "CANCELLED_BY_VISITOR", "CANCELLED_BY_FACILITY", "FAILED"].includes(appointment.status) ? "blue" : "orange"}>{visitorVisitStatus(appointment.status)}</VisitorStatus></div><p>{visitorVisitTime(appointment.requested_start, appointment.timezone)} · {Math.round((Date.parse(appointment.requested_end) - Date.parse(appointment.requested_start)) / 60000)} minutes</p><small>Request ID · {appointment.id}</small></div><div className="sv4-appointment-actions">{["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(appointment.status) && <button className="muted" onClick={() => void cancelVisit(appointment)}>Cancel</button>}</div></article>)}</div> : <div className="sv4-empty-state"><span>{view === "History" ? "◷" : view === "Requests" ? "↗" : "＋"}</span><h2>{view === "History" ? "No past visits yet" : view === "Requests" ? "No requests in review" : "Nothing scheduled yet"}</h2><p>{view === "History" ? "Completed and cancelled visits will appear here." : view === "Requests" ? "New requests and facility decisions will appear here." : "Start with one of your approved connections to find a time."}</p>{view === "Upcoming" && <VisitorButton primary onClick={openBooking}>Request a visit <span>→</span></VisitorButton>}</div>}
+    {loading ? <div className="sv4-empty-inline">Loading your visits…</div> : visibleAppointments.length ? <div className="sv4-appointment-list">{visibleAppointments.map((appointment) => <article className="sv4-appointment-card" key={appointment.id}><div className="sv4-appointment-date"><strong>{new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: appointment.timezone || "Asia/Jakarta" }).format(new Date(appointment.requested_start))}</strong><span>{new Intl.DateTimeFormat("en", { month: "short", timeZone: appointment.timezone || "Asia/Jakarta" }).format(new Date(appointment.requested_start))}</span></div><div className="sv4-appointment-copy"><div className="sv4-appointment-title"><h2>{appointment.prisoner_name}</h2><VisitorStatus tone={["APPROVED", "WAITING", "IN_PROGRESS"].includes(appointment.status) ? "green" : ["REJECTED", "CANCELLED_BY_VISITOR", "CANCELLED_BY_FACILITY", "FAILED"].includes(appointment.status) ? "blue" : "orange"}>{visitorVisitStatus(appointment.status)}</VisitorStatus></div><p>{visitorVisitTime(appointment.requested_start, appointment.timezone)} · {Math.round((Date.parse(appointment.requested_end) - Date.parse(appointment.requested_start)) / 60000)} minutes</p><small>Request ID · {appointment.id}</small></div><div className="sv4-appointment-actions">{["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status) && <button className="muted" onClick={() => openReschedule(appointment)}>Change time</button>}{["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(appointment.status) && <button className="muted" onClick={() => void cancelVisit(appointment)}>Cancel</button>}</div></article>)}</div> : <div className="sv4-empty-state"><span>{view === "History" ? "◷" : view === "Requests" ? "↗" : "＋"}</span><h2>{view === "History" ? "No past visits yet" : view === "Requests" ? "No requests in review" : "Nothing scheduled yet"}</h2><p>{view === "History" ? "Completed and cancelled visits will appear here." : view === "Requests" ? "New requests and facility decisions will appear here." : "Start with one of your approved connections to find a time."}</p>{view === "Upcoming" && <VisitorButton primary onClick={openBooking}>Request a visit <span>→</span></VisitorButton>}</div>}
   </div>;
 }
 
