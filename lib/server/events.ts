@@ -16,14 +16,13 @@ export type DomainEventInput = {
   payload: Record<string, unknown>;
 };
 
-export async function appendAuditAndOutbox(input: DomainEventInput): Promise<{ correlationId: string }> {
-  const d1 = await getD1();
+export function auditAndOutboxStatements(d1: D1Database, input: DomainEventInput): D1PreparedStatement[] {
   const correlationId = input.correlationId || crypto.randomUUID();
   const auditId = crypto.randomUUID();
   const outboxId = crypto.randomUUID();
   const createdAt = new Date().toISOString();
 
-  await d1.batch([
+  return [
     d1.prepare(`INSERT INTO audit_events
       (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -32,7 +31,13 @@ export async function appendAuditAndOutbox(input: DomainEventInput): Promise<{ c
       (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(outboxId, input.eventType, input.entityType, input.entityId, input.facilityId, JSON.stringify(input.payload), correlationId, createdAt),
-  ]);
+  ];
+}
+
+export async function appendAuditAndOutbox(input: DomainEventInput): Promise<{ correlationId: string }> {
+  const d1 = await getD1();
+  const correlationId = input.correlationId || crypto.randomUUID();
+  await d1.batch(auditAndOutboxStatements(d1, { ...input, correlationId }));
 
   return { correlationId };
 }

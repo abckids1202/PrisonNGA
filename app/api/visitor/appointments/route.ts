@@ -1,9 +1,9 @@
 import { getD1 } from "../../../../db/runtime";
-import { appendAuditAndOutbox } from "../../../../lib/server/events";
+import { appendAuditAndOutbox, auditAndOutboxStatements } from "../../../../lib/server/events";
 import { releaseVisitCredit } from "../../../../lib/server/credits";
 import { releaseVisitResources } from "../../../../lib/server/resources";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
-import { claimIdempotency, completeIdempotency, hashIdempotencyPayload } from "../../../../lib/server/idempotency";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim } from "../../../../lib/server/idempotency";
 
 const activeStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"];
 
@@ -22,6 +22,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
+  let activeClaim: { d1: D1Database; scope: string; key: string; claimId: string } | null = null;
   try {
     const visitor = await requireVisitorIdentity();
     const body = await request.json() as { relationshipId?: unknown; requestedStart?: unknown; requestedEnd?: unknown; appointmentType?: unknown };
@@ -34,8 +35,13 @@ export async function POST(request: Request) {
     const endMs = Date.parse(requestedEnd);
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     if (!relationshipId || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs || endMs - startMs < 15 * 60_000 || endMs - startMs > 30 * 60_000) throw new SecurityError("INVALID_APPOINTMENT_WINDOW", 400);
-    if (startMs < Date.now() - 60_000) throw new SecurityError("APPOINTMENT_MUST_BE_FUTURE", 400);
     const d1 = await getD1();
+    const idempotencyScope = `visitor:${visitor.userId}:appointment:create`;
+    const requestHash = await hashIdempotencyPayload({ relationshipId, requestedStart, requestedEnd, appointmentType });
+    const claim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+    if ("replay" in claim) return securityResponse(claim.replay.body, claim.replay.status, context.requestId);
+    activeClaim = { d1, scope: idempotencyScope, key: idempotencyKey, claimId: claim.claimId };
+    if (startMs < Date.now() - 60_000) throw new SecurityError("APPOINTMENT_MUST_BE_FUTURE", 400);
     const relationship = await d1.prepare(`SELECT vr.id, vr.facility_id, vr.prisoner_id, vr.status, p.status AS prisoner_status, p.visitation_status FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id WHERE vr.id = ? AND vr.visitor_user_id = ?`).bind(relationshipId, visitor.userId).first<{ id: string; facility_id: string; prisoner_id: string; status: string; prisoner_status: string; visitation_status: string }>();
     if (!relationship || relationship.status !== "APPROVED" || relationship.prisoner_status !== "ACTIVE" || relationship.visitation_status !== "APPROVED") throw new SecurityError("RELATIONSHIP_NOT_APPROVED", 409);
     const policy = await d1.prepare("SELECT f.timezone, f.current_state, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time FROM facilities f LEFT JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(relationship.facility_id).first<{ timezone: string; current_state: string; min_duration_minutes: number | null; max_duration_minutes: number | null; min_advance_minutes: number | null; max_advance_days: number | null; daily_start_time: string | null; daily_end_time: string | null }>();
@@ -51,24 +57,44 @@ export async function POST(request: Request) {
     if (overlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
     const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(relationship.facility_id, relationship.prisoner_id, ...activeStatuses, requestedEnd, requestedStart).first<{ id: string }>();
     if (prisonerOverlap) throw new SecurityError("PRISONER_APPOINTMENT_OVERLAP", 409);
-    const idempotencyScope = `visitor:${visitor.userId}:appointment:create`;
-    const requestHash = await hashIdempotencyPayload({ relationshipId, requestedStart, requestedEnd, appointmentType });
-    const replay = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
-    if (replay) return securityResponse(replay.body, replay.status, context.requestId);
     const appointmentId = `SV-${new Date(startMs).toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
+    const responseBody = { appointmentId, status: "SUBMITTED", correlationId };
+    const auditStatements = auditAndOutboxStatements(d1, {
+      actorUserId: visitor.userId,
+      actorRole: "VISITOR",
+      facilityId: relationship.facility_id,
+      actionType: "APPOINTMENT_SUBMITTED",
+      entityType: "appointment",
+      entityId: appointmentId,
+      reason: "Visitor submitted an appointment request.",
+      newValues: { status: "SUBMITTED", requestedStart, requestedEnd, prisonerId: relationship.prisoner_id },
+      requestId: context.requestId,
+      correlationId,
+      eventType: "APPOINTMENT_SUBMITTED",
+      payload: { appointmentId, visitorUserId: visitor.userId },
+    });
     await d1.batch([
-      d1.prepare(`INSERT INTO appointments (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, appointment_type, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, 1, ?, ?)`)
-        .bind(appointmentId, relationship.facility_id, visitor.userId, relationship.prisoner_id, requestedStart, requestedEnd, policy.timezone, appointmentType, now, now),
+      d1.prepare(`INSERT INTO appointments (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, appointment_type, version, created_at, updated_at)
+        SELECT ?, ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, 1, ?, ?
+        WHERE EXISTS (SELECT 1 FROM idempotency_records WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING')`)
+        .bind(appointmentId, relationship.facility_id, visitor.userId, relationship.prisoner_id, requestedStart, requestedEnd, policy.timezone, appointmentType, now, now, activeClaim!.claimId, activeClaim!.scope, activeClaim!.key),
       d1.prepare(`INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, NULL, 'SUBMITTED', ?, 'VISITOR_SUBMITTED', 'Visitor submitted an appointment request.', ?, ?)`)
         .bind(crypto.randomUUID(), appointmentId, visitor.userId, correlationId, now),
+      ...auditStatements,
+      completeIdempotencyStatement(d1, { claimId: activeClaim!.claimId, scope: activeClaim!.scope, key: activeClaim!.key, status: 201, body: responseBody }),
     ]);
-    await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: relationship.facility_id, actionType: "APPOINTMENT_SUBMITTED", entityType: "appointment", entityId: appointmentId, reason: "Visitor submitted an appointment request.", newValues: { status: "SUBMITTED", requestedStart, requestedEnd, prisonerId: relationship.prisoner_id }, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_SUBMITTED", payload: { appointmentId, visitorUserId: visitor.userId } });
-    const responseBody = { appointmentId, status: "SUBMITTED", correlationId };
-    await completeIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, status: 201, body: responseBody });
+    activeClaim = null;
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
+    if (activeClaim) {
+      try {
+        await releaseIdempotencyClaim(activeClaim.d1, activeClaim);
+      } catch {
+        // The ten-minute stale-claim recovery is the fallback if cleanup is unavailable.
+      }
+    }
     return securityErrorResponse(error, context.requestId);
   }
 }
