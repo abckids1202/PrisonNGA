@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { useParams, useRouter } from "next/navigation";
 
 type DeviceStep = "intro" | "permissions" | "camera" | "microphone" | "connection" | "summary" | "permission_error" | "unsupported";
 type CheckStatus = "checking" | "ready" | "warning" | "failed";
@@ -12,7 +13,7 @@ type NetworkResult = {
   warnings: string[];
 };
 
-const visitId = "SV-260814-018";
+type AppointmentContext = { id: string; status: string; prisoner_name: string };
 
 const progressSteps: { key: DeviceStep; label: string }[] = [
   { key: "camera", label: "Camera" },
@@ -28,11 +29,19 @@ function statusLabel(status: CheckStatus, kind: "camera" | "microphone") {
   return kind === "camera" ? "Checking your camera…" : "Listening for your voice…";
 }
 
-function DeviceCheckHeader({ onBack }: { onBack: () => void }) {
-  return <header className="sv4-header"><div className="sv4-header-inner"><button className="sv4-brand" onClick={onBack}><span className="sv4-brand-mark">+</span><span><strong>SecureVisit</strong><small>Visitor</small></span></button><div className="dc-header-context"><span>Visit preparation</span><b>·</b><strong>A. Rahman</strong></div><div className="sv4-header-actions"><span className="sv4-secure-note"><i />Secure session</span><span className="sv4-avatar sv4-avatar-coral">SA</span></div></div></header>;
+function DeviceCheckHeader({ onBack, prisonerName }: { onBack: () => void; prisonerName: string }) {
+  return <header className="sv4-header"><div className="sv4-header-inner"><button className="sv4-brand" onClick={onBack}><span className="sv4-brand-mark">+</span><span><strong>SecureVisit</strong><small>Visitor</small></span></button><div className="dc-header-context"><span>Visit preparation</span><b>·</b><strong>{prisonerName}</strong></div><div className="sv4-header-actions"><span className="sv4-secure-note"><i />Secure session</span><span className="sv4-avatar sv4-avatar-coral">SV</span></div></div></header>;
 }
 
 export default function DeviceCheckPage() {
+  const { visitId } = useParams<{ visitId: string }>();
+  const router = useRouter();
+  const [appointment, setAppointment] = useState<AppointmentContext | null>(null);
+  const [appointmentLoading, setAppointmentLoading] = useState(true);
+  const [appointmentError, setAppointmentError] = useState("");
+  const [savingCheck, setSavingCheck] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const idempotencyKey = useRef<string | null>(null);
   const [step, setStep] = useState<DeviceStep>("intro");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CheckStatus>("checking");
@@ -51,6 +60,20 @@ export default function DeviceCheckPage() {
   const audioFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const micSignalRef = useRef(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/visitor/appointments/${encodeURIComponent(visitId)}`, { credentials: "include", headers: { accept: "application/json" }, signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json() as { appointment?: AppointmentContext; error?: string };
+        if (!response.ok || !body.appointment) throw new Error(response.status === 404 ? "This visit is not available in your account." : body.error || "We couldn’t verify this visit.");
+        if (!["APPROVED", "WAITING"].includes(body.appointment.status)) throw new Error("Device preparation is available after your visit is approved.");
+        setAppointment(body.appointment);
+      })
+      .catch((error: unknown) => !controller.signal.aborted && setAppointmentError(error instanceof Error ? error.message.replaceAll("_", " ") : "We couldn’t verify this visit."))
+      .finally(() => !controller.signal.aborted && setAppointmentLoading(false));
+    return () => controller.abort();
+  }, [visitId]);
 
   useEffect(() => {
     streamRef.current = stream;
@@ -235,12 +258,34 @@ export default function DeviceCheckPage() {
     setStep("connection");
   }
 
-  function finishCheck() {
-    const result = { camera: cameraStatus, microphone: microphoneStatus, connection: network?.rating || "unknown", completedAt: new Date().toISOString() };
-    window.localStorage.setItem("securevisit:device-check:" + visitId, JSON.stringify(result));
+  async function finishCheck() {
+    if (!appointment || savingCheck) return;
+    setSavingCheck(true);
+    setSaveError("");
+    idempotencyKey.current ||= crypto.randomUUID();
+    try {
+      const response = await fetch(`/api/visitor/appointments/${encodeURIComponent(visitId)}/device-check`, {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json", "Idempotency-Key": idempotencyKey.current },
+        body: JSON.stringify({ cameraResult: cameraStatus, microphoneResult: microphoneStatus, networkResult: network?.rating || "unknown", latencyMs: network?.latencyMs ?? null }),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "DEVICE_CHECK_SAVE_FAILED");
+      idempotencyKey.current = null;
+      stopMedia();
+      stopAudioAnalysis();
+      router.push(`/visitor/visits/${encodeURIComponent(visitId)}`);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message.replaceAll("_", " ") : "We couldn’t save the results. Please retry.");
+    } finally {
+      setSavingCheck(false);
+    }
+  }
+
+  function returnToVisit() {
     stopMedia();
     stopAudioAnalysis();
-    window.location.href = "/visitor/visits/" + visitId;
+    router.push(`/visitor/visits/${encodeURIComponent(visitId)}`);
   }
 
   function resetCheck() {
@@ -257,21 +302,24 @@ export default function DeviceCheckPage() {
 
   const overallReady = cameraStatus !== "failed" && microphoneStatus !== "failed" && Boolean(network);
 
+  if (appointmentLoading) return <main className="sv11-auth-shell"><section className="sv11-auth-card"><h1>Checking your visit</h1><p>We’re confirming this appointment before opening device preparation.</p></section></main>;
+  if (!appointment || appointmentError) return <main className="sv11-auth-shell"><section className="sv11-auth-card"><h1>Device check unavailable</h1><p role="alert">{appointmentError || "This visit is not available in your account."}</p><a className="sv4-button sv4-button-primary" href="/visitor?section=Visits">Back to My Visits</a></section></main>;
+
   return <div className="sv3-visitor-app sv4-visitor-app dc-app">
-    <DeviceCheckHeader onBack={() => { stopMedia(); stopAudioAnalysis(); window.location.href = "/visitor/visits/" + visitId; }} />
+    <DeviceCheckHeader onBack={returnToVisit} prisonerName={appointment.prisoner_name} />
     <main className="sv4-main dc-main">
       <div className="dc-page">
-        <button className="dc-back" onClick={() => { stopMedia(); stopAudioAnalysis(); window.location.href = "/visitor/visits/" + visitId; }}>← <span>Back to visit</span></button>
+        <button className="dc-back" onClick={returnToVisit}>← <span>Back to visit</span></button>
         <section className="dc-intro"><div><p className="sv4-kicker">Visit preparation</p><h1>Let’s make sure you’re ready</h1><p>We’ll check your camera, microphone, and internet connection so you’re ready when your visit begins.</p></div><span className="dc-time-note">Usually takes less than a minute</span></section>
         <DeviceProgress step={step} />
-        {step === "intro" && <IntroCard onStart={startCheck} onBack={() => { window.location.href = "/visitor/visits/" + visitId; }} />}
+        {step === "intro" && <IntroCard onStart={startCheck} onBack={returnToVisit} />}
         {step === "permissions" && <PermissionCard />}
         {step === "permission_error" && <PermissionError onRetry={startCheck} onHelp={() => setPermissionHelp((value) => !value)} helpOpen={permissionHelp} />}
-        {step === "unsupported" && <UnsupportedCard onBack={() => { window.location.href = "/visitor/visits/" + visitId; }} />}
+        {step === "unsupported" && <UnsupportedCard onBack={returnToVisit} />}
         {step === "camera" && <CameraCard videoRef={videoRef} status={cameraStatus} devices={cameraDevices} selected={selectedCamera} onSelect={switchCamera} onContinue={continueFromCamera} onRetry={() => { setCameraStatus("checking"); setAttempt((value) => value + 1); }} errorMessage={errorMessage} />}
         {step === "microphone" && <MicrophoneCard status={microphoneStatus} level={micLevel} devices={microphoneDevices} selected={selectedMicrophone} onSelect={switchMicrophone} onContinue={continueFromMicrophone} onRetry={() => { setMicrophoneStatus("checking"); setAttempt((value) => value + 1); }} errorMessage={errorMessage} />}
         {step === "connection" && <ConnectionCard result={network} onRetry={() => setAttempt((value) => value + 1)} onContinue={() => setStep("summary")} />}
-        {step === "summary" && <SummaryCard camera={cameraStatus} microphone={microphoneStatus} network={network} ready={overallReady} onBack={finishCheck} onAgain={resetCheck} />}
+        {step === "summary" && <SummaryCard camera={cameraStatus} microphone={microphoneStatus} network={network} ready={overallReady} saving={savingCheck} error={saveError} onBack={() => void finishCheck()} onAgain={resetCheck} />}
         <section className="dc-privacy"><span>✦</span><p><strong>Your camera and microphone are used only for this device check and your visit.</strong><br />Raw media stays in the browser. SecureVisit stores only the readiness result.</p></section>
       </div>
     </main>
@@ -322,8 +370,8 @@ function DeviceStatus({ status, label }: { status: CheckStatus; label: string })
   return <span className={"dc-status dc-status-" + tone}><i />{label}</span>;
 }
 
-function SummaryCard({ camera, microphone, network, ready, onBack, onAgain }: { camera: CheckStatus; microphone: CheckStatus; network: NetworkResult | null; ready: boolean; onBack: () => void; onAgain: () => void }) {
-  return <section className="dc-card dc-summary-card"><div className="dc-summary-icon">{ready ? "✓" : "!"}</div><p className="sv4-kicker">{ready ? "Device check complete" : "One more look"}</p><h2>{ready ? "You’re ready for your visit" : "Your device needs attention"}</h2><p>{ready ? "Your device passed the readiness check." : "We found something that may affect your visit. You can run the check again."}</p><div className="dc-summary-grid"><ResultRow title="Camera" label={camera === "ready" ? "Ready" : camera === "warning" ? "Ready with note" : "Needs attention"} tone={camera === "failed" ? "danger" : camera === "warning" ? "orange" : "green"} /><ResultRow title="Microphone" label={microphone === "ready" ? "Ready" : microphone === "warning" ? "Ready with note" : "Needs attention"} tone={microphone === "failed" ? "danger" : microphone === "warning" ? "orange" : "green"} /><ResultRow title="Connection" label={network?.rating === "stable" ? "Stable" : network?.rating === "fair" ? "Fair" : network?.rating === "poor" ? "Poor" : "Unknown"} tone={network?.rating === "stable" ? "green" : network?.rating === "fair" ? "orange" : "danger"} /></div>{network?.warnings[0] && <div className="dc-summary-warning"><span>!</span><p>{network.warnings[0]}</p></div>}<div className="dc-actions"><button className="sv4-button sv4-button-primary" disabled={!ready} onClick={onBack}>Back to visit <span>→</span></button><button className="dc-secondary-button" onClick={onAgain}>Run check again</button></div></section>;
+function SummaryCard({ camera, microphone, network, ready, saving, error, onBack, onAgain }: { camera: CheckStatus; microphone: CheckStatus; network: NetworkResult | null; ready: boolean; saving: boolean; error: string; onBack: () => void; onAgain: () => void }) {
+  return <section className="dc-card dc-summary-card"><div className="dc-summary-icon">{ready ? "✓" : "!"}</div><p className="sv4-kicker">{ready ? "Device check complete" : "One more look"}</p><h2>{ready ? "You’re ready for your visit" : "Your device needs attention"}</h2><p>{ready ? "Your device passed the readiness check." : "We found something that may affect your visit. Save the result so the facility can see the issue, or run the check again."}</p><div className="dc-summary-grid"><ResultRow title="Camera" label={camera === "ready" ? "Ready" : camera === "warning" ? "Ready with note" : "Needs attention"} tone={camera === "failed" ? "danger" : camera === "warning" ? "orange" : "green"} /><ResultRow title="Microphone" label={microphone === "ready" ? "Ready" : microphone === "warning" ? "Ready with note" : "Needs attention"} tone={microphone === "failed" ? "danger" : microphone === "warning" ? "orange" : "green"} /><ResultRow title="Connection" label={network?.rating === "stable" ? "Stable" : network?.rating === "fair" ? "Fair" : network?.rating === "poor" ? "Poor" : "Unknown"} tone={network?.rating === "stable" ? "green" : network?.rating === "fair" ? "orange" : "danger"} /></div>{network?.warnings[0] && <div className="dc-summary-warning"><span>!</span><p>{network.warnings[0]}</p></div>}{error && <p className="dc-summary-warning" role="alert">{error}</p>}<div className="dc-actions"><button className="sv4-button sv4-button-primary" disabled={saving} onClick={onBack}>{saving ? "Saving results…" : "Save results and return"} <span>→</span></button><button className="dc-secondary-button" disabled={saving} onClick={onAgain}>Run check again</button></div></section>;
 }
 
 function ResultRow({ title, label, tone }: { title: string; label: string; tone: string }) {

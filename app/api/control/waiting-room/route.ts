@@ -16,7 +16,12 @@ export async function GET() {
     const result = await d1.prepare(`SELECT
         a.id, a.status AS appointment_status, a.prisoner_id, a.requested_start, a.requested_end, a.timezone, a.appointment_type, a.version AS appointment_version,
         u.display_name AS visitor_name, p.display_name AS prisoner_name,
-        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.restriction_state, w.assigned_room_id, w.assigned_kiosk_id, w.staff_notes, w.version, w.last_checked_at
+        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.restriction_state, w.assigned_room_id, w.assigned_kiosk_id, w.staff_notes, w.version, w.last_checked_at,
+        (SELECT dc.camera_result FROM visitor_device_check_attempts dc WHERE dc.appointment_id = a.id AND dc.visitor_user_id = a.visitor_user_id ORDER BY dc.created_at DESC, dc.id DESC LIMIT 1) AS visitor_camera_result,
+        (SELECT dc.microphone_result FROM visitor_device_check_attempts dc WHERE dc.appointment_id = a.id AND dc.visitor_user_id = a.visitor_user_id ORDER BY dc.created_at DESC, dc.id DESC LIMIT 1) AS visitor_microphone_result,
+        (SELECT dc.network_result FROM visitor_device_check_attempts dc WHERE dc.appointment_id = a.id AND dc.visitor_user_id = a.visitor_user_id ORDER BY dc.created_at DESC, dc.id DESC LIMIT 1) AS visitor_network_result,
+        (SELECT dc.latency_ms FROM visitor_device_check_attempts dc WHERE dc.appointment_id = a.id AND dc.visitor_user_id = a.visitor_user_id ORDER BY dc.created_at DESC, dc.id DESC LIMIT 1) AS visitor_latency_ms,
+        (SELECT dc.created_at FROM visitor_device_check_attempts dc WHERE dc.appointment_id = a.id AND dc.visitor_user_id = a.visitor_user_id ORDER BY dc.created_at DESC, dc.id DESC LIMIT 1) AS visitor_device_checked_at
       FROM appointments a
       INNER JOIN users u ON u.id = a.visitor_user_id
       INNER JOIN prisoners p ON p.id = a.prisoner_id

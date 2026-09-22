@@ -140,6 +140,14 @@ test("protects visitor-owned workflow APIs", async () => {
   assert.equal(relationships.status, 401);
   assert.equal((await relationships.json()).error, "AUTHENTICATION_REQUIRED");
 
+  const visitDetail = await renderApi("/api/visitor/appointments/visit-not-owned");
+  assert.equal(visitDetail.status, 401);
+  assert.equal((await visitDetail.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const deviceCheck = await renderApi("/api/visitor/appointments/visit-not-owned/device-check", "POST", { cameraResult: "ready", microphoneResult: "ready", networkResult: "stable" });
+  assert.equal(deviceCheck.status, 401);
+  assert.equal((await deviceCheck.json()).error, "AUTHENTICATION_REQUIRED");
+
   const evidence = await renderApi("/api/visitor/verification/evidence");
   assert.equal(evidence.status, 401);
   assert.equal((await evidence.json()).error, "AUTHENTICATION_REQUIRED");

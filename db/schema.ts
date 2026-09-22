@@ -429,6 +429,20 @@ export const visitSessions = sqliteTable("visit_sessions", {
   ...timestamps,
 }, (table) => ({ appointmentIdx: uniqueIndex("visit_sessions_appointment_idx").on(table.appointmentId), facilityStatusIdx: index("visit_sessions_facility_status_idx").on(table.facilityId, table.status) }));
 
+export const visitorDeviceCheckAttempts = sqliteTable("visitor_device_check_attempts", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  appointmentId: text("appointment_id").notNull().references(() => appointments.id),
+  visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
+  idempotencyKey: text("idempotency_key").notNull(),
+  cameraResult: text("camera_result", { enum: ["ready", "warning", "failed"] }).notNull(),
+  microphoneResult: text("microphone_result", { enum: ["ready", "warning", "failed"] }).notNull(),
+  networkResult: text("network_result", { enum: ["stable", "fair", "poor", "unknown"] }).notNull(),
+  latencyMs: integer("latency_ms"),
+  correlationId: text("correlation_id").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ idempotencyIdx: uniqueIndex("visitor_device_check_idempotency_idx").on(table.idempotencyKey), appointmentIdx: index("visitor_device_check_appointment_idx").on(table.appointmentId, table.createdAt), visitorIdx: index("visitor_device_check_visitor_idx").on(table.visitorUserId, table.createdAt) }));
+
 export const visitSessionEvents = sqliteTable("visit_session_events", {
   id: text("id").primaryKey(),
   sessionId: text("session_id").notNull().references(() => visitSessions.id),
