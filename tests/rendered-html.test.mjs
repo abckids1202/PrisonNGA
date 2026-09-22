@@ -149,6 +149,10 @@ test("protects staff verification workflow", async () => {
   const evidence = await renderApi("/api/control/verification/evidence?verificationCaseId=case-1");
   assert.equal(evidence.status, 401);
   assert.equal((await evidence.json()).error, "AUTHENTICATION_REQUIRED");
+
+  const evidenceFile = await renderApi("/api/control/verification/evidence/evidence-1");
+  assert.equal(evidenceFile.status, 401);
+  assert.equal((await evidenceFile.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
 test("protects staff provisioning workflow", async () => {

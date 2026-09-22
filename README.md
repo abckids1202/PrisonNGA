@@ -2,7 +2,7 @@
 
 SecureVisit is a staff-first prototype for controlled correctional visitation operations. It brings the approval queue, facility schedule, room readiness, live-session control, credit activity, visitor portal preview, and audit trail into one calm operations workspace.
 
-This build is still an MVP, but persisted D1 workflows now cover facility-managed prisoner records, visitor profiles, relationship requests/review, and appointment requests/decisions. The Visitor Credits screen can create a configured provider checkout and display persisted balances, ledger activity, and payment status; no real payment provider is enabled by default, so it does not process real payments until the adapter and webhook are configured and tested. The first pilot does not yet integrate with an external prisoner system. When configured, video media uses LiveKit WebRTC and recordings remain disabled by default.
+This build is still an MVP, but persisted D1 workflows now cover visitor connection requests, facility-scoped verification decisions, appointment requests/decisions, credit balances, and payment-intent records. Visitors can attach identity/relationship evidence when the protected R2 bucket is configured; reviewers can open available evidence through a facility-authorized route that writes an audit event. Verification approval is blocked until required evidence is available. The Visitor Credits screen can create a configured provider checkout and display persisted balances, ledger activity, and payment status; no real payment provider is enabled by default, so it does not process real payments until the adapter and webhook are configured and tested. The first pilot does not yet integrate with an external prisoner system. When configured, video media uses LiveKit WebRTC and recordings remain disabled by default.
 
 ## Run locally
 
@@ -51,15 +51,15 @@ Each workspace uses a different interaction pattern: timelines and action center
 - Approval queue with approve / decline interactions
 - Daily appointment agenda and room status
 - Visitor portal preview via the Staff view toggle
-- Fictional visitor, prisoner, appointment, and credit data
+- Fictional records remain in several Control dashboards and People tabs; the Visitor Connections flow and People → Verifications queue use persisted facility-scoped APIs
 - Audit activity surface and secure-mode messaging
-- Persisted visitor profile, relationship verification, prisoner, and appointment workflow APIs
+- Persisted visitor profile, relationship verification/evidence review, prisoner, and appointment workflow APIs
 - LiveKit-backed Live Session V1 with visitor and controlled kiosk routes, scoped tokens, timer, reconnect states, staff monitoring authorization, and completion lifecycle
 - Responsive layout for desktop and smaller screens
 
 ## Production boundaries
 
-Before institutional use, the platform still needs configured institutional OIDC/SAML authentication, a real visitor delivery provider, a real payment adapter, full resource/policy enforcement, notification delivery adapters, immutable audit export, provider operations, and legal/privacy review. Verification evidence metadata, retention policies, legal holds, and scheduled purge are now modeled; raw evidence upload remains fail-closed until an R2 `EVIDENCE_BUCKET` binding is configured. Recordings remain disabled.
+Before institutional use, the platform still needs configured institutional OIDC/SAML authentication, a real visitor delivery provider, a real payment adapter, full resource/policy enforcement, notification delivery adapters, immutable audit export, provider operations, and legal/privacy review. Verification evidence metadata, retention policies, and legal holds are modeled; evidence upload and protected reviewer access require an R2 `EVIDENCE_BUCKET` binding and fail closed without it. Every successful staff file access is audited; files are never exposed through public or presigned URLs. Scheduled purge still needs operational verification. Recordings remain disabled.
 
 The checkout adapter requires `VISIT_CREDIT_PRICE_MINOR` to be set to the institution-approved per-credit price in production. The local development fallback of 50,000 IDR is explicitly labeled as an example price and must not be treated as an approved tariff. The configured checkout service must honor the stable payment-intent idempotency key, return an HTTPS checkout URL, and send signed, idempotent payment events before any real purchase can be considered pilot-ready.
 
