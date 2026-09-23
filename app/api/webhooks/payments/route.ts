@@ -110,7 +110,8 @@ export async function POST(request: Request) {
         const current = await d1.prepare("SELECT status FROM payment_intents WHERE id = ?").bind(intent.id).first<{ status: string }>();
         if (!current) throw new SecurityError("PAYMENT_INTENT_STATE_UNAVAILABLE", 503);
         if (current.status === "REFUNDED") {
-          await refundPurchasedCredits(d1, { paymentIntentId: intent.id, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.` });
+          const refund = await refundPurchasedCredits(d1, { paymentIntentId: intent.id, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.` });
+          if ("pending" in refund && refund.pending) throw new SecurityError("PAYMENT_REFUND_PENDING", 503);
         }
         await d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ? WHERE provider = ? AND event_key = ?")
           .bind(now, provider, eventKey).run();

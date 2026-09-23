@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { serializePaymentWebhookSnapshot, verifyPaymentWebhookSignature } from "../lib/server/payments/provider.ts";
 
@@ -42,4 +43,11 @@ test("payment webhook HMAC verification accepts only the signed raw body", async
   assert.equal(await verifyPaymentWebhookSignature(rawBody, `sha256=${signature.slice(0, -2)}zz`, secret), false);
   assert.equal(await verifyPaymentWebhookSignature(rawBody, "", secret), false);
   assert.equal(await verifyPaymentWebhookSignature(rawBody, `sha256=${signature}`, null), false);
+});
+
+test("refund webhooks remain retryable until reserved credits can be released", async () => {
+  const source = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
+  assert.match(source, /const refund = await refundPurchasedCredits/);
+  assert.match(source, /PAYMENT_REFUND_PENDING/);
+  assert.match(source, /if \(\"pending\" in refund && refund\.pending\) throw/);
 });
