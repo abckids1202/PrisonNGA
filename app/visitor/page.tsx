@@ -56,6 +56,7 @@ function VisitorAvatar({ initials, color = "sage" }: { initials: string; color?:
 export default function VisitorPage() {
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "signed_out">("loading");
   const [visitorName, setVisitorName] = useState("Sarah");
+  const [dataError, setDataError] = useState<string | null>(null);
   const [visitorData, setVisitorData] = useState<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true, refreshAppointments: async () => undefined });
   const [tab, setTab] = useState<Tab>(() => {
     if (typeof window === "undefined") return "Home";
@@ -95,15 +96,21 @@ export default function VisitorPage() {
   useEffect(() => {
     if (authState !== "authenticated") return;
     let active = true;
+    const load = async <T,>(path: string) => {
+      const response = await fetch(path, { credentials: "include" });
+      if (!response.ok) throw new Error(`${path} unavailable`);
+      return response.json() as Promise<T>;
+    };
     Promise.all([
-      fetch("/api/visitor/appointments", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ appointments?: VisitorAppointmentRecord[] }> : { appointments: [] as VisitorAppointmentRecord[] }),
-      fetch("/api/visitor/relationships", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ relationships?: VisitorRelationshipRecord[] }> : { relationships: [] as VisitorRelationshipRecord[] }),
-      fetch("/api/visitor/credits", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ accounts?: VisitorCreditAccount[] }> : { accounts: [] as VisitorCreditAccount[] }),
-      fetch("/api/visitor/notifications", { credentials: "include" }).then((response) => response.ok ? response.json() as Promise<{ notifications?: Array<{ status?: string }> }> : { notifications: [] as Array<{ status?: string }> }),
+      load<{ appointments?: VisitorAppointmentRecord[] }>("/api/visitor/appointments"),
+      load<{ relationships?: VisitorRelationshipRecord[] }>("/api/visitor/relationships"),
+      load<{ accounts?: VisitorCreditAccount[] }>("/api/visitor/credits"),
+      load<{ notifications?: Array<{ status?: string }> }>("/api/visitor/notifications"),
     ]).then(([appointments, relationships, credits, notifications]) => {
       if (!active) return;
+      setDataError(null);
       setVisitorData((current) => ({ ...current, appointments: appointments.appointments || [], relationships: relationships.relationships || [], credits: credits.accounts || [], unreadNotifications: (notifications.notifications || []).filter((item: { status?: string }) => item.status !== "READ").length, loading: false }));
-    }).catch(() => active && setVisitorData((current) => ({ ...current, loading: false })));
+    }).catch(() => active && setDataError("We couldn’t load your visitor workspace. Your records have not been changed."));
     return () => { active = false; };
   }, [authState]);
 
@@ -149,11 +156,11 @@ export default function VisitorPage() {
       </header>
 
       <main className="sv4-main">
-        {tab === "Home" && <VisitorHome visitorName={visitorName} onAction={action} onOpenVisit={() => navigate("Visits")} onNavigate={navigate} />}
+        {dataError ? <section className="sv4-empty-state" role="alert"><span>!</span><h2>SecureVisit is temporarily unavailable</h2><p>{dataError}</p><button className="sv4-button sv4-button-primary" onClick={() => window.location.reload()}>Try again <span>↻</span></button></section> : <>{tab === "Home" && <VisitorHome visitorName={visitorName} onAction={action} onOpenVisit={() => navigate("Visits")} onNavigate={navigate} />}
         {tab === "Visits" && <VisitorVisits onAction={action} onNavigate={navigate} />}
         {tab === "Connections" && <VisitorConnections onAction={action} onRelationshipAdded={(relationship) => setVisitorData((current) => ({ ...current, relationships: [relationship, ...current.relationships.filter((item) => item.id !== relationship.id)] }))} />}
         {tab === "Credits" && <VisitorCredits onAction={action} onCreditsLoaded={syncVisitorCredits} />}
-        {tab === "Account" && <VisitorAccount initialName={visitorName} onNameChange={setVisitorName} onAction={action} onSignOut={async () => { const response = await fetch("/api/auth/logout", { method: "POST", credentials: "include", headers: { accept: "application/json" } }); const body = await response.json() as { error?: string; signOutPath?: string | null }; if (!response.ok) throw new Error(body.error || "Could not sign out safely."); if (body.signOutPath) window.location.assign(body.signOutPath); else setAuthState("signed_out"); }} />}
+        {tab === "Account" && <VisitorAccount initialName={visitorName} onNameChange={setVisitorName} onAction={action} onSignOut={async () => { const response = await fetch("/api/auth/logout", { method: "POST", credentials: "include", headers: { accept: "application/json" } }); const body = await response.json() as { error?: string; signOutPath?: string | null }; if (!response.ok) throw new Error(body.error || "Could not sign out safely."); if (body.signOutPath) window.location.assign(body.signOutPath); else setAuthState("signed_out"); }} />}</>}
       </main>
 
       <nav className="sv4-mobile-nav" aria-label="Mobile visitor navigation">
