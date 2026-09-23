@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     if (!facilityId || !Number.isInteger(creditQuantity) || creditQuantity < 1 || creditQuantity > 20) throw new SecurityError("INVALID_CREDIT_PURCHASE", 400);
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `payment-create:${visitor.userId}`, limit: 10, windowSeconds: 60 * 60 });
-    let existing = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency FROM payment_intents WHERE idempotency_key IN (?, ?) AND user_id = ? LIMIT 1").bind(storedIdempotencyKey, idempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
+    let existing = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE idempotency_key IN (?, ?) AND user_id = ? LIMIT 1").bind(storedIdempotencyKey, idempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
     if (existing && (existing.facility_id !== facilityId || Number(existing.credit_quantity) !== creditQuantity)) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
     if (existing && ["CHECKOUT_CREATED", "SUCCEEDED", "REFUNDED", "DISPUTED"].includes(String(existing.status))) {
       return securityResponse({ paymentIntent: existing, idempotent: true }, 200, context.requestId);
@@ -43,13 +43,26 @@ export async function POST(request: Request) {
       const now = new Date().toISOString();
       const created = await d1.prepare(`INSERT OR IGNORE INTO payment_intents (id, facility_id, user_id, provider, credit_quantity, amount_minor, currency, status, idempotency_key, version, created_at, updated_at) VALUES (?, ?, ?, 'webhook', ?, ?, 'IDR', 'PENDING', ?, 1, ?, ?)`).bind(paymentIntentId, facilityId, visitor.userId, creditQuantity, amountMinor, storedIdempotencyKey, now, now).run();
       if (!created.meta.changes) {
-        existing = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency FROM payment_intents WHERE idempotency_key = ? AND user_id = ?").bind(storedIdempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
+        existing = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE idempotency_key = ? AND user_id = ?").bind(storedIdempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
         if (!existing || existing.facility_id !== facilityId || Number(existing.credit_quantity) !== creditQuantity) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
         paymentIntentId = String(existing.id);
         amountMinor = Number(existing.amount_minor);
         if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new SecurityError("CREDIT_PRICE_INVALID", 503);
         if (["CHECKOUT_CREATED", "SUCCEEDED", "REFUNDED", "DISPUTED"].includes(String(existing.status))) return securityResponse({ paymentIntent: existing, idempotent: true }, 200, context.requestId);
       }
+    }
+    const claimVersion = Number(existing?.version || 1);
+    const claim = await d1.prepare("UPDATE payment_intents SET version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED')")
+      .bind(new Date().toISOString(), paymentIntentId, claimVersion)
+      .run();
+    if (!claim.meta.changes) {
+      const current = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE id = ? AND user_id = ?")
+        .bind(paymentIntentId, visitor.userId)
+        .first<Record<string, string | number | null>>();
+      if (current && ["CHECKOUT_CREATED", "SUCCEEDED", "REFUNDED", "DISPUTED"].includes(String(current.status))) {
+        return securityResponse({ paymentIntent: current, idempotent: true }, 200, context.requestId);
+      }
+      throw new SecurityError("PAYMENT_CHECKOUT_IN_PROGRESS", 409);
     }
     let checkout;
     try {
