@@ -466,6 +466,20 @@ export const visitSessionEvents = sqliteTable("visit_session_events", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ sessionIdx: index("visit_session_events_session_idx").on(table.sessionId, table.createdAt) }));
 
+export const visitSessionParticipants = sqliteTable("visit_session_participants", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().references(() => visitSessions.id),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  identity: text("identity").notNull(),
+  participantRole: text("participant_role").notNull(),
+  participantSid: text("participant_sid"),
+  status: text("status", { enum: ["CONNECTED", "RECONNECTING", "DISCONNECTED"] }).notNull(),
+  firstSeenAt: text("first_seen_at").notNull(),
+  lastSeenAt: text("last_seen_at").notNull(),
+  disconnectedAt: text("disconnected_at"),
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+}, (table) => ({ identityIdx: uniqueIndex("visit_session_participants_identity_idx").on(table.sessionId, table.identity), facilityStatusIdx: index("visit_session_participants_facility_status_idx").on(table.facilityId, table.status, table.lastSeenAt) }));
+
 export const creditAccounts = sqliteTable("credit_accounts", {
   id: text("id").primaryKey(),
   facilityId: text("facility_id").notNull().references(() => facilities.id),

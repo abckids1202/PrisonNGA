@@ -99,6 +99,13 @@ export async function POST(request: Request) {
         VALUES (?, ?, ?, 'LIVEKIT_WEBHOOK', ?, ?, ?, ?)`)
         .bind(eventId, session.id, eventType, participantRole, JSON.stringify(eventMetadata), context.requestId, now),
     ];
+    if (participantIdentity && participantRole && ["participant_joined", "participant_left", "participant_connection_aborted"].includes(event.event || "")) {
+      const participantStatus = event.event === "participant_joined" ? "CONNECTED" : event.event === "participant_connection_aborted" ? "RECONNECTING" : "DISCONNECTED";
+      statements.push(d1.prepare(`INSERT INTO visit_session_participants (id, session_id, facility_id, identity, participant_role, participant_sid, status, first_seen_at, last_seen_at, disconnected_at, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id, identity) DO UPDATE SET participant_sid = excluded.participant_sid, status = excluded.status, last_seen_at = excluded.last_seen_at, disconnected_at = excluded.disconnected_at, metadata = excluded.metadata`)
+        .bind(crypto.randomUUID(), session.id, session.facility_id, participantIdentity, participantRole, event.participant?.sid || null, participantStatus, now, now, participantStatus === "DISCONNECTED" ? now : null, JSON.stringify(eventMetadata)));
+    }
     if (nextStatus !== session.status || (nextStatus === "ACTIVE" && !session.actual_started_at)) {
       statements.push(d1.prepare(`UPDATE visit_sessions SET status = ?, actual_started_at = CASE WHEN ? = 'ACTIVE' AND actual_started_at IS NULL THEN ? ELSE actual_started_at END,
         version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND status = ? AND changes() = 1`)
