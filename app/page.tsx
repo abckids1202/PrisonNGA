@@ -46,6 +46,8 @@ type Appointment = {
   availableCredits?: number;
   reservedCredits?: number;
   activeCreditReservation?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   issue?: string;
 };
 type PeopleRecord = {
@@ -112,7 +114,7 @@ const activities = [
   ["09:46", "Waiting room opened for the morning schedule", "System"],
 ] as const;
 
-function mapBackendAppointment(row: { id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; timezone?: string | null; appointment_type?: string; status: string; version?: number; room_name?: string | null; kiosk_name?: string | null; relationship_type?: string | null; relationship_status?: string | null; prisoner_status?: string | null; visitation_status?: string | null; facility_state?: string | null; available_credits?: number; reserved_credits?: number; active_credit_reservation?: number }): Appointment {
+function mapBackendAppointment(row: { id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; timezone?: string | null; appointment_type?: string; status: string; version?: number; created_at?: string; updated_at?: string; room_name?: string | null; kiosk_name?: string | null; relationship_type?: string | null; relationship_status?: string | null; prisoner_status?: string | null; visitation_status?: string | null; facility_state?: string | null; available_credits?: number; reserved_credits?: number; active_credit_reservation?: number }): Appointment {
   const start = new Date(row.requested_start);
   const end = new Date(row.requested_end);
   const status: AppointmentStatus = row.status === "APPROVED" ? "Approved" : row.status === "WAITING" ? "Ready" : row.status === "IN_PROGRESS" ? "Live" : row.status === "COMPLETED" ? "Completed" : ["REJECTED", "CANCELLED_BY_FACILITY", "CANCELLED_BY_VISITOR", "FAILED", "NO_SHOW"].includes(row.status) ? "Blocked" : ["SUBMITTED", "UNDER_REVIEW"].includes(row.status) ? "Requires action" : "Ready";
@@ -121,7 +123,7 @@ function mapBackendAppointment(row: { id: string; visitor_name?: string; prisone
   const timeZone = row.timezone || "Asia/Jakarta";
   const time = (value: Date) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone }).format(value);
   const date = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone }).format(start);
-  return { id: row.id, visitor, visitorInitials: visitor.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), prisoner, time: `${time(start)}–${time(end)}`, date, room: row.room_name || "Unassigned", kiosk: row.kiosk_name || "Unassigned", type: row.appointment_type === "LEGAL" ? "Legal" : "Family", status, rawStatus: row.status, version: row.version, requestedStart: row.requested_start, requestedEnd: row.requested_end, relationshipType: row.relationship_type, relationshipStatus: row.relationship_status, prisonerStatus: row.prisoner_status, visitationStatus: row.visitation_status, facilityState: row.facility_state, availableCredits: row.available_credits, reservedCredits: row.reserved_credits, activeCreditReservation: row.active_credit_reservation === 1, issue: status === "Requires action" ? "Visitor request awaits staff review" : undefined };
+  return { id: row.id, visitor, visitorInitials: visitor.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), prisoner, time: `${time(start)}–${time(end)}`, date, room: row.room_name || "Unassigned", kiosk: row.kiosk_name || "Unassigned", type: row.appointment_type === "LEGAL" ? "Legal" : "Family", status, rawStatus: row.status, version: row.version, createdAt: row.created_at, updatedAt: row.updated_at, requestedStart: row.requested_start, requestedEnd: row.requested_end, relationshipType: row.relationship_type, relationshipStatus: row.relationship_status, prisonerStatus: row.prisoner_status, visitationStatus: row.visitation_status, facilityState: row.facility_state, availableCredits: row.available_credits, reservedCredits: row.reserved_credits, activeCreditReservation: row.active_credit_reservation === 1, issue: status === "Requires action" ? "Visitor request awaits staff review" : undefined };
 }
 
 function Avatar({ initials, tone = "blue" }: { initials: string; tone?: string }) {
@@ -521,7 +523,46 @@ function formatAuditTime(value: string) {
   return new Intl.DateTimeFormat("en-ID", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
 }
 
+function appointmentReadiness(appointment: Appointment) {
+  const checks = [
+    appointment.relationshipStatus === "APPROVED",
+    appointment.prisonerStatus === "ACTIVE" && appointment.visitationStatus === "APPROVED",
+    appointment.facilityState === "NORMAL_OPERATIONS",
+    appointment.activeCreditReservation || (appointment.availableCredits || 0) > 0,
+    appointment.room !== "Unassigned",
+    appointment.kiosk !== "Unassigned",
+  ];
+  const passed = checks.filter(Boolean).length;
+  return { passed, total: checks.length, blocked: passed < checks.length || appointment.status === "Blocked" };
+}
+
+function appointmentDecisionAge(appointment: Appointment) {
+  const source = appointment.status === "Requires action" ? appointment.createdAt : appointment.updatedAt || appointment.createdAt;
+  if (!source) return "Age unavailable";
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - Date.parse(source)) / 60_000));
+  if (!Number.isFinite(elapsedMinutes)) return "Age unavailable";
+  if (elapsedMinutes < 1) return "<1 min";
+  if (elapsedMinutes < 60) return `${elapsedMinutes} min`;
+  const hours = Math.floor(elapsedMinutes / 60);
+  return `${hours}h ${elapsedMinutes % 60}m`;
+}
+
 function AppointmentsPage({ appointments, onSelect, onNotify }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [view, setView] = useState("Queue");
+  const [filter, setFilter] = useState("Needs decision");
+  const [query, setQuery] = useState("");
+  const active = appointments.filter((appointment) => appointment.status !== "Completed");
+  const needsDecision = active.filter((appointment) => ["Requires action", "Ready"].includes(appointment.status));
+  const blocked = active.filter((appointment) => appointment.status === "Blocked");
+  const filtered = (filter === "Needs decision" ? needsDecision : filter === "Blocked" ? blocked : active).filter((appointment) => `${appointment.visitor} ${appointment.prisoner} ${appointment.id}`.toLowerCase().includes(query.toLowerCase()));
+  const statusLabel = (status: AppointmentStatus) => status === "Requires action" ? "Needs review" : status === "Ready" ? "Ready to approve" : status;
+  const tone = (status: AppointmentStatus) => status === "Blocked" ? "red" : status === "Requires action" ? "orange" : status === "Live" ? "green" : "blue";
+  return <div className="sv7-appointments-page"><PageHeader eyebrow="Operations · Appointments" title="Appointments" description="Review persisted visit requests and make decisions against the protected facility schedule." actions={<Button variant="primary" onClick={() => needsDecision[0] ? onSelect(needsDecision[0]) : onNotify("No persisted appointment currently requires a decision.", "info")} disabled={!needsDecision.length}>Review next decision</Button>} /><div className="sv7-appointment-summary"><button className={filter === "Needs decision" ? "active" : ""} onClick={() => setFilter("Needs decision")}><b>{needsDecision.length}</b><span>Needs review</span></button><i /><button className={filter === "Blocked" ? "active" : ""} onClick={() => setFilter("Blocked")}><b>{blocked.length}</b><span>Blocked</span></button><i /><button className={filter === "All active" ? "active" : ""} onClick={() => setFilter("All active")}><b>{active.length}</b><span>All active</span></button></div><div className="sv3-workspace-tabs sv7-appointment-tabs"><button className={view === "Queue" ? "active" : ""} onClick={() => setView("Queue")}>Queue <em>{filtered.length}</em></button><button className={view === "Timeline" ? "active" : ""} onClick={() => setView("Timeline")}>Timeline <em>{active.length}</em></button><button className={view === "Calendar" ? "active" : ""} onClick={() => setView("Calendar")}>Calendar</button></div>{view === "Queue" ? <section className="sv7-queue-surface"><div className="sv7-queue-toolbar"><div className="sv7-queue-search"><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search visitor, prisoner, or visit ID" /></label></div><div className="sv7-queue-meta"><span>{filtered.length} persisted records</span><button onClick={() => { setQuery(""); setFilter("All active"); }}>Clear filters</button></div></div>{filtered.length ? <div className="sv7-queue-list" role="list"><div className="sv7-queue-head" aria-hidden="true"><span>Request</span><span>Participants</span><span>Requested time</span><span>Readiness</span><span>Decision age</span><span>Status</span><span>Action</span></div>{filtered.map((appointment) => { const readiness = appointmentReadiness(appointment); return <button role="listitem" className="sv7-queue-row" key={appointment.id} onClick={() => onSelect(appointment)}><span className="sv7-request-cell"><strong>{appointment.type} visit</strong><small>{appointment.id}</small></span><span className="sv7-participant-cell"><strong>{appointment.visitor} <i>↔</i> {appointment.prisoner}</strong><small>{appointment.issue || "Persisted appointment record"}</small></span><span className="sv7-time-cell"><strong>{appointment.date}</strong><small>{appointment.time} WIB</small></span><span className={`sv7-readiness-cell ${readiness.blocked ? "warning" : "ready"}`}><strong>{readiness.blocked ? "!" : "✓"} {readiness.passed} / {readiness.total} ready</strong><small>{readiness.blocked ? "Eligibility, credit, or resources need review" : "Persisted checks are ready"}</small></span><span className="sv7-sla-cell">{appointmentDecisionAge(appointment)}</span><span><Status tone={tone(appointment.status)}>{statusLabel(appointment.status)}</Status></span><span className="sv7-row-action">Open <b>→</b></span></button>; })}</div> : <EmptyState title="No persisted appointments" body={query ? "No records match the current search." : "No appointment records are available in the current facility scope."} />}</section> : view === "Timeline" ? <TimelineView appointments={active} onSelect={onSelect} /> : <CalendarView appointments={active} onSelect={onSelect} />}</div>;
+}
+
+// Retained temporarily as a visual reference while the backend-driven queue below replaces the demo-era layout.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function LegacyAppointmentsPage({ appointments, onSelect, onNotify }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [view, setView] = useState("Queue");
   const [filter, setFilter] = useState("Needs decision");
   const [query, setQuery] = useState("");
