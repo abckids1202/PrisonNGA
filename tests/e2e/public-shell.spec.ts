@@ -18,7 +18,7 @@ test("visitor workspace is a separate authenticated boundary", async ({ page }) 
 
 test("development visitor OTP creates a real browser session", async ({ page }) => {
   const email = `e2e-${Date.now()}@example.test`;
-  const requestCode = await page.request.post("/api/auth/visitor/request", { data: { email } });
+  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": `198.51.100.${Math.floor(Math.random() * 200) + 1}` }, data: { email } });
   expect(requestCode.status()).toBe(201);
   const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
   expect(challenge.challengeId).toBeTruthy();
@@ -35,7 +35,7 @@ test("development visitor OTP creates a real browser session", async ({ page }) 
 
 test("development visitor SMS OTP creates a real browser session", async ({ page }) => {
   const phone = `+62812${String(Date.now()).slice(-8)}`;
-  const requestCode = await page.request.post("/api/auth/visitor/request", { data: { channel: "SMS", phone } });
+  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": `198.51.100.${Math.floor(Math.random() * 200) + 1}` }, data: { channel: "SMS", phone } });
   expect(requestCode.status()).toBe(201);
   const challenge = await requestCode.json() as { challengeId?: string; channel?: string; destination?: string; devCode?: string };
   expect(challenge.channel).toBe("SMS");
