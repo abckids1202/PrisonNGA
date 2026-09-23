@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../../../db/runtime";
 import { authenticateKiosk } from "../../../../../../lib/server/kiosk-credentials";
+import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 import { getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
 
 export async function POST(request: Request, { params }: { params: Promise<{ visitId: string }> }) {
@@ -12,6 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     const d1 = await getD1();
     const kiosk = await authenticateKiosk(d1, request);
     if (!kiosk) throw new SecurityError("KIOSK_AUTHENTICATION_REQUIRED", 401);
+    await enforceRateLimit(d1, { key: `kiosk-presence:${kiosk.facilityId}:${kiosk.resourceId}`, limit: 120, windowSeconds: 60 });
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.status AS appointment_status, a.version AS appointment_version,
         f.current_state AS facility_state, wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.prisoner_presence
       FROM appointments a
