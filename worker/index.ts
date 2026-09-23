@@ -29,6 +29,22 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+function liveKitConnectSources(env: Env): string {
+  const sources = new Set(["https://*.livekit.cloud", "wss://*.livekit.cloud", "https://*.livekit.io", "wss://*.livekit.io"]);
+  const configuredUrl = typeof env.LIVEKIT_URL === "string" ? env.LIVEKIT_URL.trim() : "";
+  if (configuredUrl) {
+    try {
+      const parsed = new URL(configuredUrl);
+      if (parsed.protocol === "https:" || parsed.protocol === "wss:") {
+        const origin = `${parsed.protocol}//${parsed.host}`;
+        sources.add(origin);
+        sources.add(`${parsed.protocol === "https:" ? "wss:" : "https:"}//${parsed.host}`);
+      }
+    } catch { /* Invalid provider configuration is reported by readiness validation. */ }
+  }
+  return [...sources].join(" ");
+}
+
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 type ExpiredSession = { id: string; appointment_id: string; facility_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
@@ -270,7 +286,7 @@ const worker = {
 
     const response = await handler.fetch(request, env, ctx);
     const securedResponse = new Response(response.body, response);
-    securedResponse.headers.set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.livekit.cloud wss://*.livekit.cloud https://*.livekit.io wss://*.livekit.io");
+    securedResponse.headers.set("Content-Security-Policy", `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' ${liveKitConnectSources(env)}`);
     securedResponse.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
     securedResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     securedResponse.headers.set("X-Content-Type-Options", "nosniff");
