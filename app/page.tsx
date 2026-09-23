@@ -75,6 +75,7 @@ type AuditEvent = {
   correlationId: string;
   createdAt: string;
 };
+type StaffShellIdentity = { displayName?: string; userType?: string; scope?: { facilityName?: string; jobTitle?: string } | null };
 type PopoverKind = "capacity" | "waiting" | "session" | "demo" | null;
 type DrawerPayload =
   | { kind: "appointment"; appointment: Appointment }
@@ -174,6 +175,8 @@ export default function ControlApp() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [simulationTick, setSimulationTick] = useState(0);
+  const [staffIdentity, setStaffIdentity] = useState<StaffShellIdentity | null>(null);
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -188,6 +191,17 @@ export default function ControlApp() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/me", { headers: { accept: "application/json" }, credentials: "include", cache: "no-store" }).then(async (response) => {
+      if (!response.ok) return;
+      const body = await response.json() as { identity?: StaffShellIdentity };
+      if (active && body.identity) setStaffIdentity(body.identity);
+    }).catch(() => undefined);
+    const timer = window.setInterval(() => setNow(new Date()), 30000);
+    return () => { active = false; window.clearInterval(timer); };
   }, []);
 
   useEffect(() => {
@@ -325,14 +339,14 @@ export default function ControlApp() {
   return <div className="sv3-app sv6-control-app">
     <aside className="sv3-sidebar">
       <div className="sv3-brand"><SecureVisitLogo /></div>
-      <div className="sv3-facility-chip"><span className="sv3-facility-icon">▣</span><div><strong>Central Facility</strong><small>Jakarta · Demo environment</small></div><span>⌄</span></div>
+      <div className="sv3-facility-chip"><span className="sv3-facility-icon">▣</span><div><strong>{staffIdentity?.scope?.facilityName || "Facility workspace"}</strong><small>{staffIdentity?.scope?.facilityName ? "Protected facility" : "Awaiting staff scope"}</small></div><span>⌄</span></div>
       <div className="sv3-mode-switch" role="tablist" aria-label="Staff workspace"><button className={mode === "operations" ? "active" : ""} onClick={() => navigate("Command Center", "operations")}>Operations</button><button className={mode === "management" ? "active" : ""} onClick={() => navigate("People", "management")}>Management</button></div>
       <SectionLabel>{mode === "operations" ? "Live operations" : "Records & policy"}</SectionLabel>
       <nav className="sv3-nav" aria-label={`${mode} navigation`}>{currentNav.map(([label, icon]) => <button key={label} className={page === label ? "active" : ""} onClick={() => navigate(label)}><span>{icon}</span><b>{label}</b>{label === "Appointments" && appointments.filter((appointment) => appointment.status !== "Completed").length > 0 ? <em>{appointments.filter((appointment) => appointment.status !== "Completed").length}</em> : label === "Waiting Room" && appointments.filter((appointment) => appointment.status === "Ready").length > 0 ? <em>{appointments.filter((appointment) => appointment.status === "Ready").length}</em> : null}</button>)}</nav>
-      <div className="sv3-sidebar-foot"><div className="sv3-connection"><span className={backendStatus === "connected" ? "online" : "demo"} />{backendStatus === "connected" ? "Protected API connected" : "Protected API unavailable"}</div><button className="sv3-user"><Avatar initials="MS" tone="orange" /><span><strong>Maya Santoso</strong><small>Demo Role · Supervisor</small></span><span>···</span></button></div>
+      <div className="sv3-sidebar-foot"><div className="sv3-connection"><span className={backendStatus === "connected" ? "online" : "demo"} />{backendStatus === "connected" ? "Protected API connected" : "Protected API unavailable"}</div><button className="sv3-user"><Avatar initials={(staffIdentity?.displayName || "Staff").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()} tone="orange" /><span><strong>{staffIdentity?.displayName || "Staff session"}</strong><small>{staffIdentity?.scope?.jobTitle || "Facility operator"}</small></span><span>···</span></button></div>
     </aside>
     <main className="sv3-main">
-      <div className="sv3-topbar"><div className="sv3-breadcrumb"><span>SecureVisit Control</span><i>/</i><strong>{mode === "operations" ? "Operations" : "Management"}</strong><i>/</i><strong>{page}</strong></div><div className="sv3-top-actions"><button type="button" className="sv3-demo-badge" onClick={() => setPopover(popover === "demo" ? null : "demo")}><i />DEMO ENVIRONMENT</button><span className="sv3-clock">13 Aug 2026 · 09:42 WIB</span><button className="sv3-icon-button" aria-label="Open command palette" onClick={() => setCommandOpen(true)}>⌕</button><button className="sv3-visitor-link" aria-label="Open Visitor Portal" onClick={() => router.push("/visitor")}><span>↗</span> Visitor Portal</button><button className="sv3-icon-button" aria-label="Notifications" onClick={() => notify("No new security notifications.")}>◔</button></div></div>
+      <div className="sv3-topbar"><div className="sv3-breadcrumb"><span>SecureVisit Control</span><i>/</i><strong>{mode === "operations" ? "Operations" : "Management"}</strong><i>/</i><strong>{page}</strong></div><div className="sv3-top-actions"><button type="button" className="sv3-demo-badge" onClick={() => setPopover(popover === "demo" ? null : "demo")}><i />DEMO ENVIRONMENT</button><span className="sv3-clock">{new Intl.DateTimeFormat("en-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(now)} WIB</span><button className="sv3-icon-button" aria-label="Open command palette" onClick={() => setCommandOpen(true)}>⌕</button><button className="sv3-visitor-link" aria-label="Open Visitor Portal" onClick={() => router.push("/visitor")}><span>↗</span> Visitor Portal</button><button className="sv3-icon-button" aria-label="Notifications" onClick={() => notify("No new security notifications.")}>◔</button></div></div>
       <div className="sv3-page-scroll">{pageContent}</div>
     </main>
     {popover === "demo" ? <div className="sv3-top-popover"><span className="sv3-eyebrow">Demo environment</span><strong>Synthetic facility data only</strong><span>Scenario · Normal day</span><span>Simulation · {simulationPaused ? "Paused" : "Running"}</span><Button variant="quiet" onClick={() => { setPopover(null); notify("Demo data reset to the current facility snapshot."); }}>Reset demo data</Button></div> : null}
