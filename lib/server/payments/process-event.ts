@@ -26,7 +26,7 @@ function paymentEventTrail(d1: D1Database, input: { intentId: string; facilityId
 export async function processPaymentProviderEvent(d1: D1Database, input: { provider: string; eventKey: string; payload: PaymentWebhook }): Promise<{ status: string; paymentIntentId?: string; ignored?: string }> {
   const { provider, eventKey, payload } = input;
   const correlationId = crypto.randomUUID();
-  const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, credit_quantity, status, version FROM payment_intents WHERE id = ? OR provider_reference = ? LIMIT 1`).bind(payload.paymentIntentId || "", payload.providerReference || "").first<{ id: string; facility_id: string; user_id: string; provider: string; credit_quantity: number; status: string; version: number }>();
+  const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, credit_quantity, status, version FROM payment_intents WHERE provider = ? AND (id = ? OR provider_reference = ?) LIMIT 1`).bind(provider, payload.paymentIntentId || "", payload.providerReference || "").first<{ id: string; facility_id: string; user_id: string; provider: string; credit_quantity: number; status: string; version: number }>();
   const now = new Date().toISOString();
   if (!intent) {
     await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();

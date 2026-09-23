@@ -45,6 +45,14 @@ test("payment webhook HMAC verification accepts only the signed raw body", async
   assert.equal(await verifyPaymentWebhookSignature(rawBody, `sha256=${signature}`, null), false);
 });
 
+test("payment webhook processing binds events to the configured provider", async () => {
+  const route = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
+  const processor = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
+  assert.match(route, /configuredProvider/);
+  assert.match(route, /PAYMENT_WEBHOOK_PROVIDER_MISMATCH/);
+  assert.match(processor, /WHERE provider = \? AND \(id = \? OR provider_reference = \?\)/);
+});
+
 test("refund webhooks remain retryable until reserved credits can be released", async () => {
   const source = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
   assert.match(source, /const refund = await refundPurchasedCredits/);

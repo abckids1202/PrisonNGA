@@ -8,7 +8,8 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const secret = await getRuntimeValue("PAYMENT_WEBHOOK_SECRET");
-    if (!secret) throw new SecurityError("PAYMENT_WEBHOOK_NOT_CONFIGURED", 503);
+    const configuredProvider = (await getRuntimeValue("PAYMENT_PROVIDER") || "").toLowerCase();
+    if (!secret || !configuredProvider || configuredProvider === "none" || configuredProvider === "console") throw new SecurityError("PAYMENT_WEBHOOK_NOT_CONFIGURED", 503);
     const rawBody = await request.text();
     if (!await verifyPaymentWebhookSignature(rawBody, request.headers.get("x-securevisit-signature"), secret)) throw new SecurityError("PAYMENT_WEBHOOK_SIGNATURE_INVALID", 401);
     const d1 = await getD1();
@@ -29,7 +30,9 @@ export async function POST(request: Request) {
       providerReference: untrustedPayload.providerReference?.trim(),
       status: untrustedPayload.status?.trim().toUpperCase(),
     };
-    const provider = (request.headers.get("x-payment-provider") || "configured-provider").trim().slice(0, 80);
+    const suppliedProvider = request.headers.get("x-payment-provider")?.trim().toLowerCase();
+    if (suppliedProvider && suppliedProvider !== configuredProvider) throw new SecurityError("PAYMENT_WEBHOOK_PROVIDER_MISMATCH", 400);
+    const provider = configuredProvider;
     const eventKey = payload.eventId || request.headers.get("x-payment-event-id")?.trim();
     if (!eventKey || eventKey.length > 256 || /[\u0000-\u001f\u007f]/.test(eventKey) || !provider) throw new SecurityError("PAYMENT_WEBHOOK_INVALID", 400);
     if (eventType.length > 80 || (payload.paymentIntentId?.length || 0) > 128 || (payload.providerReference?.length || 0) > 256 || (payload.status?.length || 0) > 80) {
