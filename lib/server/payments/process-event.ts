@@ -1,12 +1,31 @@
 import { refundPurchasedCredits, settlePaymentPurchase } from "../credits";
 import { SecurityError } from "../security";
+import { auditAndOutboxStatements } from "../events";
 import type { PaymentWebhook } from "./provider";
 
 const successfulEvents = new Set(["PAYMENT_SUCCEEDED", "PAYMENT_PAID", "PAYMENT_SUCCESS", "SUCCEEDED", "PAID"]);
 const failedEvents = new Set(["PAYMENT_FAILED", "PAYMENT_EXPIRED", "PAYMENT_REFUNDED", "PAYMENT_DISPUTED", "FAILED", "EXPIRED", "REFUNDED", "DISPUTED"]);
 
+function paymentEventTrail(d1: D1Database, input: { intentId: string; facilityId: string; userId: string; eventKey: string; status: string; eventType: string; correlationId: string }) {
+  return auditAndOutboxStatements(d1, {
+    actorUserId: "system:payment-webhook",
+    actorRole: "PAYMENT_PROVIDER",
+    facilityId: input.facilityId,
+    actionType: "PAYMENT_STATUS_UPDATED",
+    entityType: "payment_intent",
+    entityId: input.intentId,
+    reason: `Payment provider event ${input.eventKey} processed.`,
+    newValues: { status: input.status, providerEventType: input.eventType, providerEventKey: input.eventKey },
+    requestId: input.eventKey,
+    correlationId: input.correlationId,
+    eventType: "PAYMENT_STATUS_UPDATED",
+    payload: { paymentIntentId: input.intentId, visitorUserId: input.userId, status: input.status, providerEventType: input.eventType },
+  }, { sql: "changes() > 0", values: [] });
+}
+
 export async function processPaymentProviderEvent(d1: D1Database, input: { provider: string; eventKey: string; payload: PaymentWebhook }): Promise<{ status: string; paymentIntentId?: string; ignored?: string }> {
   const { provider, eventKey, payload } = input;
+  const correlationId = crypto.randomUUID();
   const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, credit_quantity, status, version FROM payment_intents WHERE id = ? OR provider_reference = ? LIMIT 1`).bind(payload.paymentIntentId || "", payload.providerReference || "").first<{ id: string; facility_id: string; user_id: string; provider: string; credit_quantity: number; status: string; version: number }>();
   const now = new Date().toISOString();
   if (!intent) {
@@ -26,6 +45,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
     await d1.batch([
       d1.prepare("UPDATE payment_intents SET provider = ?, status = 'SUCCEEDED', provider_reference = COALESCE(?, provider_reference), version = version + 1, updated_at = ? WHERE id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED', 'SUCCEEDED')").bind(provider, payload.providerReference || null, now, intent.id),
       d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
+      ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: "SUCCEEDED", eventType: payload.eventType, correlationId }),
     ]);
     return { status: "SUCCEEDED", paymentIntentId: intent.id };
   }
@@ -40,16 +60,19 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
         const refund = await refundPurchasedCredits(d1, { paymentIntentId: intent.id, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.` });
         if ("pending" in refund && refund.pending) throw new SecurityError("PAYMENT_REFUND_PENDING", 503);
       }
-      await d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
+      await d1.batch([
+        d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
+        ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
+      ]);
       return { status: current.status, paymentIntentId: intent.id };
     }
     await d1.batch([
       d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED')`).bind(provider, nextStatus, now, intent.id),
       d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
+      ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
     ]);
     return { status: nextStatus, paymentIntentId: intent.id };
   }
   await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
   return { status: "IGNORED", paymentIntentId: intent.id, ignored: "UNSUPPORTED_PAYMENT_EVENT" };
 }
-
