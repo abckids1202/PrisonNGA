@@ -409,6 +409,18 @@ export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   ...timestamps,
 }, (table) => ({ facilityStateIdx: index("waiting_room_sessions_facility_state_idx").on(table.facilityId, table.state), facilityAppointmentIdx: index("waiting_room_sessions_facility_appointment_idx").on(table.facilityId, table.appointmentId) }));
 
+export const visitorWaitingRoomCheckins = sqliteTable("visitor_waiting_room_checkins", {
+  id: text("id").primaryKey(),
+  appointmentId: text("appointment_id").notNull().references(() => appointments.id),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  state: text("state").notNull(),
+  version: integer("version").notNull(),
+  correlationId: text("correlation_id").notNull(),
+  ...timestamps,
+}, (table) => ({ appointmentIdx: index("visitor_waiting_room_checkins_appointment_idx").on(table.appointmentId, table.createdAt) }));
+
 export const visitSessions = sqliteTable("visit_sessions", {
   id: text("id").primaryKey(),
   appointmentId: text("appointment_id").notNull().references(() => appointments.id),

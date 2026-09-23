@@ -86,6 +86,7 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
   const [history, setHistory] = useState<StatusEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [checkInSaving, setCheckInSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [now, setNow] = useState<number | null>(null);
 
@@ -152,12 +153,35 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
     if (appointment && ["ready", "live"].includes(state || "")) router.push(`/visitor/visits/${encodeURIComponent(appointment.id)}/live`);
   }
 
+  async function enterWaitingRoom() {
+    if (!appointment || checkInSaving) return;
+    setCheckInSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/visitor/appointments/${encodeURIComponent(appointment.id)}/waiting-room`, {
+        method: "POST",
+        credentials: "include",
+        headers: { accept: "application/json", "Idempotency-Key": crypto.randomUUID() },
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "WAITING_ROOM_CHECK_IN_FAILED");
+      window.location.reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message.replaceAll("_", " ") : "We couldn’t open the waiting room.");
+    } finally {
+      setCheckInSaving(false);
+    }
+  }
+
   if (loading) return <VisitPageMessage title="Loading your visit" body="Checking the latest status in your SecureVisit account." />;
   if ((!appointment && error) || !appointment || !presentation || !state) return <VisitPageMessage title="Visit details unavailable" body={error || "We couldn’t find that visit in your account."} action="Back to My Visits" />;
 
   const credit = appointment.visit_credit_status;
   const historyRows = history;
-  const action = presentation.action === "Check this device" ? openDeviceCheck : openLiveVisit;
+  const visitorAlreadyWaiting = appointment.visitor_presence === "present" || ["WAITING", "IN_PROGRESS"].includes(appointment.status);
+  const canEnterWaitingRoom = deviceCheckComplete && appointment.status === "APPROVED" && !visitorAlreadyWaiting;
+  const action = canEnterWaitingRoom ? enterWaitingRoom : presentation.action === "Check this device" ? openDeviceCheck : openLiveVisit;
+  const actionLabel = canEnterWaitingRoom ? "Enter waiting room" : presentation.action;
 
   return <div className="sv3-visitor-app sv4-visitor-app sv5-details-app">
     <header className="sv4-header"><div className="sv4-header-inner"><Link className="sv4-brand" href="/visitor"><span className="sv4-brand-mark">+</span><span><strong>SecureVisit</strong><small>Visitor</small></span></Link><nav className="sv4-desktop-nav" aria-label="Visitor navigation"><Link href="/visitor">Home</Link><Link className="active" href="/visitor?section=Visits">Visits</Link><Link href="/visitor?section=Connections">Connections</Link><Link href="/visitor?section=Credits">Credits</Link></nav><div className="sv4-header-actions"><span className="sv4-secure-note"><i />Secure session</span></div></div></header>
@@ -165,7 +189,7 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
       <Link className="sv5-back-link" href="/visitor?section=Visits">← <span>My Visits</span></Link>
       {error && <p className="sv5-sync-warning" role="status">We couldn’t refresh this visit. Showing the last saved details{lastUpdated ? ` from ${formatDate(lastUpdated, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}` : ""}. {error}</p>}
       <section className={`sv5-visit-hero sv5-visit-hero-${presentation.tone}`}>
-        <div className="sv5-hero-copy"><p className="sv4-kicker">{presentation.eyebrow}</p><div className="sv5-hero-person"><span className="sv4-avatar sv4-avatar-sage">{initials}</span><div><h1>{presentation.title}</h1><p>{presentation.copy}</p></div></div><div className="sv5-hero-meta"><span className={`sv4-status sv4-status-${presentation.tone === "orange" ? "orange" : presentation.tone === "blue" ? "blue" : "green"}`}><i />{prettyStatus(appointment.status)}</span><span>{appointment.prisoner_name} · {prettyStatus(appointment.appointment_type)} · {duration} minutes</span></div>{presentation.action && <button className="sv4-button sv4-button-primary sv5-primary-action" onClick={action}>{presentation.action} <span>→</span></button>}</div>
+        <div className="sv5-hero-copy"><p className="sv4-kicker">{presentation.eyebrow}</p><div className="sv5-hero-person"><span className="sv4-avatar sv4-avatar-sage">{initials}</span><div><h1>{presentation.title}</h1><p>{presentation.copy}</p></div></div><div className="sv5-hero-meta"><span className={`sv4-status sv4-status-${presentation.tone === "orange" ? "orange" : presentation.tone === "blue" ? "blue" : "green"}`}><i />{prettyStatus(appointment.status)}</span><span>{appointment.prisoner_name} · {prettyStatus(appointment.appointment_type)} · {duration} minutes</span></div>{actionLabel && <button className="sv4-button sv4-button-primary sv5-primary-action" onClick={() => void action()} disabled={checkInSaving}>{checkInSaving ? "Opening waiting room…" : actionLabel} <span>→</span></button>}</div>
         <div className="sv5-hero-art" aria-hidden="true"><div className="sv5-art-sun" /><div className="sv5-art-arc" /><div className="sv5-art-portrait"><span>{initials}</span><i /></div><div className="sv5-art-card"><span>SECURE VISIT</span><strong>{formatDate(appointment.requested_start, appointment.timezone, { hour: "2-digit", minute: "2-digit" })}</strong><small>{appointment.timezone}</small></div></div>
         {countdown && <div className="sv5-countdown"><span>Scheduled start</span><strong>{formatDate(appointment.requested_start, appointment.timezone, { hour: "2-digit", minute: "2-digit" })}</strong><small>{formatDate(appointment.requested_start, appointment.timezone)}</small></div>}
       </section>
