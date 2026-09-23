@@ -57,3 +57,24 @@ test("browser requests to protected APIs are rejected without a session", async 
   expect(response.headers()["x-frame-options"]).toBe("DENY");
   await expect(response.json()).resolves.toMatchObject({ error: "AUTHENTICATION_REQUIRED" });
 });
+
+test("visitor can revoke the current browser session and loses protected access", async ({ page }) => {
+  const email = `session-${Date.now()}@example.test`;
+  const ipAddress = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": ipAddress }, data: { email } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
+  const verify = await page.request.post("/api/auth/visitor/verify", { headers: { "cf-connecting-ip": ipAddress }, data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Session Test Visitor" } });
+  expect(verify.status()).toBe(200);
+
+  const sessionsResponse = await page.request.get("/api/auth/sessions");
+  expect(sessionsResponse.status()).toBe(200);
+  const sessionsBody = await sessionsResponse.json() as { sessions?: Array<{ id: string; current?: boolean }> };
+  const current = sessionsBody.sessions?.find((session) => session.current);
+  expect(current?.id).toBeTruthy();
+
+  const revoke = await page.request.post("/api/auth/sessions", { data: { sessionId: current?.id } });
+  expect(revoke.status()).toBe(200);
+  const protectedResponse = await page.request.get("/api/auth/me");
+  expect(protectedResponse.status()).toBe(401);
+});
