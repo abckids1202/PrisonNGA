@@ -53,6 +53,13 @@ test("payment webhook processing binds events to the configured provider", async
   assert.match(processor, /WHERE provider = \? AND \(id = \? OR provider_reference = \?\)/);
 });
 
+test("direct webhook delivery claims an event before settlement and releases failed claims", async () => {
+  const route = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
+  assert.match(route, /status = 'PROCESSING', attempt_count = attempt_count \+ 1/);
+  assert.match(route, /status IN \('RECEIVED', 'FAILED'\)/);
+  assert.match(route, /status = 'FAILED', available_at = datetime\('now', '\+30 seconds'\)/);
+});
+
 test("refund webhooks remain retryable until reserved credits can be released", async () => {
   const source = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
   assert.match(source, /const refund = await refundPurchasedCredits/);
