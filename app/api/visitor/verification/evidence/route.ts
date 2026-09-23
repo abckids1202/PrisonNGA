@@ -1,5 +1,6 @@
 import { getD1, getEvidenceBucket } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
+import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const maxBytes = 10 * 1024 * 1024;
@@ -37,18 +38,40 @@ export async function POST(request: Request) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const existingEvidence = await d1.prepare(`SELECT id, retention_until FROM evidence_documents WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE' ORDER BY created_at DESC LIMIT 1`)
+      .bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null }>();
+    if (existingEvidence) return securityResponse({ evidenceId: existingEvidence.id, status: "AVAILABLE", retentionUntil: existingEvidence.retention_until, idempotent: true }, 200, context.requestId);
     const id = crypto.randomUUID();
     const storageKey = `${ownedCase.facility_id}/verification/${verificationCaseId}/${id}`;
     const now = new Date();
     const retentionDays = Math.max(1, Number(await getRuntimeValue("EVIDENCE_RETENTION_DAYS") || "365") || 365);
     const retentionUntil = new Date(now.getTime() + retentionDays * 86400000).toISOString();
     await bucket.put(storageKey, bytes, { httpMetadata: { contentType: file.type } });
+    const correlationId = crypto.randomUUID();
     try {
-      await d1.prepare(`INSERT INTO evidence_documents (id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, retention_until, legal_hold, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, 0, ?, ?, ?)`).bind(id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, file.size, sha256, retentionUntil, visitor.userId, now.toISOString(), now.toISOString()).run();
+      const inserted = await d1.batch([
+        d1.prepare(`INSERT INTO evidence_documents (id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, retention_until, legal_hold, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, 0, ?, ?, ?)`)
+          .bind(id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, file.size, sha256, retentionUntil, visitor.userId, now.toISOString(), now.toISOString()),
+        ...auditAndOutboxStatements(d1, {
+          actorUserId: visitor.userId,
+          actorRole: "VISITOR",
+          facilityId: ownedCase.facility_id,
+          actionType: "EVIDENCE_UPLOADED",
+          entityType: "evidence_document",
+          entityId: id,
+          reason: "Visitor uploaded supporting evidence for relationship verification.",
+          newValues: { verificationCaseId, contentType: file.type, byteSize: file.size, sha256, status: "AVAILABLE" },
+          requestId: context.requestId,
+          correlationId,
+          eventType: "EVIDENCE_UPLOADED",
+          payload: { evidenceId: id, verificationCaseId, visitorUserId: visitor.userId },
+        }, { sql: "changes() > 0", values: [] }),
+      ]);
+      if (!inserted[0]?.meta.changes) throw new SecurityError("EVIDENCE_UPLOAD_NOT_PERSISTED", 409);
     } catch (error) {
       await bucket.delete(storageKey);
       throw error;
     }
-    return securityResponse({ evidenceId: id, status: "AVAILABLE", retentionUntil }, 201, context.requestId);
+    return securityResponse({ evidenceId: id, status: "AVAILABLE", retentionUntil, correlationId }, 201, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
