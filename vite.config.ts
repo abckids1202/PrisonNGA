@@ -10,11 +10,17 @@ const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
+const environmentVars: Record<string, string> = {};
+if (process.env.SECUREVISIT_ENVIRONMENT) environmentVars.SECUREVISIT_ENVIRONMENT = process.env.SECUREVISIT_ENVIRONMENT;
 
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
   triggers: { crons: ["*/1 * * * *"] },
+  // Vite/Miniflare does not automatically forward process env into the
+  // Worker isolate. Only forward an explicitly supplied deployment mode;
+  // an absent value must remain fail-closed.
+  vars: environmentVars,
   d1_databases: d1
     ? [
         {
