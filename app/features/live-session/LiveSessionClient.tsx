@@ -8,7 +8,7 @@ import { liveSessionOutcome, nextLiveSessionViewStage, remoteSessionPerson, type
 type LiveRole = "VISITOR" | "FACILITY";
 type SessionPayload = { id: string; visitId: string; status: string; appointmentStatus: string; authorizedEndAt: string; actualStartedAt: string | null; actualEndedAt: string | null; recordingPolicy: string; recordingStatus: string; visitorName: string; prisonerName: string };
 
-type LiveSessionClientProps = { visitId: string; role: LiveRole; kioskId?: string };
+type LiveSessionClientProps = { visitId: string; role: LiveRole; kioskId?: string; initialKioskCredential?: string };
 
 function apiError(body: Record<string, unknown>, fallback: string) {
   const code = typeof body.error === "string" ? body.error : "";
@@ -31,7 +31,7 @@ function isVideoTrack(track: RemoteTrack | null): boolean {
   return Boolean(track && track.kind === Track.Kind.Video);
 }
 
-export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessionClientProps) {
+export default function LiveSessionClient({ visitId, role, kioskId, initialKioskCredential = "" }: LiveSessionClientProps) {
   const router = useRouter();
   const [stage, setStage] = useState<"loading" | "connecting" | "active" | "reconnecting" | "confirming" | "ended" | "left" | "error">("loading");
   const [error, setError] = useState("");
@@ -50,7 +50,7 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [kioskDeviceId, setKioskDeviceId] = useState(kioskId || "");
   const [kioskDeviceIdInput, setKioskDeviceIdInput] = useState(kioskId || "");
-  const [kioskCredential, setKioskCredential] = useState("");
+  const [kioskCredential, setKioskCredential] = useState(initialKioskCredential);
   const [kioskCredentialInput, setKioskCredentialInput] = useState("");
   const roomRef = useRef<Room | null>(null);
   const remoteRef = useRef<HTMLDivElement>(null);

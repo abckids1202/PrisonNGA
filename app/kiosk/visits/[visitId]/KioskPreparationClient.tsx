@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import LiveSessionClient from "@/app/features/live-session/LiveSessionClient";
 
 type Result = "ready" | "warning" | "failed";
 type NetworkResult = "stable" | "fair" | "poor" | "unknown";
@@ -27,6 +28,7 @@ export default function KioskPreparationClient({ visitId }: { visitId: string })
   const [microphone, setMicrophone] = useState<Result | null>(null);
   const [network, setNetwork] = useState<NetworkResult | null>(null);
   const [latency, setLatency] = useState<number | null>(null);
+  const [liveStarted, setLiveStarted] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const keyRef = useRef<string | null>(null);
 
@@ -44,13 +46,27 @@ export default function KioskPreparationClient({ visitId }: { visitId: string })
     return () => { active = false; window.clearInterval(timer); };
   }, [deviceId, credential, visitId]);
 
-  async function runChecks() {
+  useEffect(() => {
+    if (!deviceId || !credential || phase !== "ready" || liveStarted) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/live-session`, { headers: { accept: "application/json", "x-securevisit-kiosk-id": deviceId, "x-securevisit-kiosk-token": credential }, cache: "no-store" });
+        if (active && response.ok) setLiveStarted(true);
+      } catch { /* A temporary status failure leaves the kiosk on the preparation screen. */ }
+    };
+    void poll();
+    const timer = window.setInterval(() => { if (active) void poll(); }, 3_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [deviceId, credential, phase, liveStarted, visitId]);
+
+  async function runChecks(nextDeviceId = deviceId, nextCredential = credential) {
     setPhase("checking");
     setError("");
     setCamera(null);
     setMicrophone(null);
     setNetwork(null);
-    const authHeaders = { accept: "application/json", "x-securevisit-kiosk-id": deviceId, "x-securevisit-kiosk-token": credential };
+    const authHeaders = { accept: "application/json", "x-securevisit-kiosk-id": nextDeviceId, "x-securevisit-kiosk-token": nextCredential };
     try {
       let stream: MediaStream;
       try { stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); }
@@ -67,9 +83,9 @@ export default function KioskPreparationClient({ visitId }: { visitId: string })
       setLatency(elapsed);
       const networkResult: NetworkResult = !response.ok ? "poor" : elapsed <= 250 ? "stable" : elapsed <= 650 ? "fair" : "poor";
       setNetwork(networkResult);
-      const idempotencyKey = keyRef.current || (typeof window !== "undefined" ? window.sessionStorage.getItem(`securevisit:kiosk-device-check:${visitId}:${deviceId}`) : null) || crypto.randomUUID();
+      const idempotencyKey = keyRef.current || (typeof window !== "undefined" ? window.sessionStorage.getItem(`securevisit:kiosk-device-check:${visitId}:${nextDeviceId}`) : null) || crypto.randomUUID();
       keyRef.current = idempotencyKey;
-      if (typeof window !== "undefined") window.sessionStorage.setItem(`securevisit:kiosk-device-check:${visitId}:${deviceId}`, idempotencyKey);
+      if (typeof window !== "undefined") window.sessionStorage.setItem(`securevisit:kiosk-device-check:${visitId}:${nextDeviceId}`, idempotencyKey);
       const checkResponse = await fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/device-check`, { method: "POST", headers: { ...authHeaders, "content-type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ cameraResult: videoReady ? "ready" : "failed", microphoneResult: audioReady ? "ready" : "failed", networkResult, latencyMs: elapsed }), cache: "no-store" });
       const body = await checkResponse.json() as { error?: string };
       if (!checkResponse.ok) throw new Error(body.error || "The kiosk readiness result could not be saved.");
@@ -83,7 +99,9 @@ export default function KioskPreparationClient({ visitId }: { visitId: string })
     }
   }
 
-  if (phase === "auth") return <main className="sv-kiosk-shell"><header className="sv-kiosk-header"><span className="sv9-brand-mark">+</span><div><strong>SecureVisit</strong><small>Controlled facility device</small></div></header><section className="sv-kiosk-card"><span className="sv9-kicker">KIOSK PREPARATION</span><h1>Connect this assigned kiosk</h1><p>Use the facility-issued device ID and one-time credential. Credentials stay in this page’s memory.</p><form className="sv9-kiosk-auth-form" onSubmit={(event) => { event.preventDefault(); if (!deviceIdInput.trim() || !credentialInput.trim()) return; setDeviceId(deviceIdInput.trim()); setCredential(credentialInput.trim()); setCredentialInput(""); setPhase("checking"); void runChecks(); }}><label>Registered device ID<input autoComplete="off" value={deviceIdInput} onChange={(event) => setDeviceIdInput(event.target.value)} required /></label><label>Facility credential<input type="password" autoComplete="off" value={credentialInput} onChange={(event) => setCredentialInput(event.target.value)} required /></label><button className="sv9-button sv9-button-primary" type="submit">Start device check →</button></form></section></main>;
+  if (phase === "auth") return <main className="sv-kiosk-shell"><header className="sv-kiosk-header"><span className="sv9-brand-mark">+</span><div><strong>SecureVisit</strong><small>Controlled facility device</small></div></header><section className="sv-kiosk-card"><span className="sv9-kicker">KIOSK PREPARATION</span><h1>Connect this assigned kiosk</h1><p>Use the facility-issued device ID and one-time credential. Credentials stay in this page’s memory.</p><form className="sv9-kiosk-auth-form" onSubmit={(event) => { event.preventDefault(); const nextDeviceId = deviceIdInput.trim(); const nextCredential = credentialInput.trim(); if (!nextDeviceId || !nextCredential) return; setDeviceId(nextDeviceId); setCredential(nextCredential); setCredentialInput(""); void runChecks(nextDeviceId, nextCredential); }}><label>Registered device ID<input autoComplete="off" value={deviceIdInput} onChange={(event) => setDeviceIdInput(event.target.value)} required /></label><label>Facility credential<input type="password" autoComplete="off" value={credentialInput} onChange={(event) => setCredentialInput(event.target.value)} required /></label><button className="sv9-button sv9-button-primary" type="submit">Start device check →</button></form></section></main>;
+
+  if (liveStarted) return <LiveSessionClient visitId={visitId} role="FACILITY" kioskId={deviceId} initialKioskCredential={credential} />;
 
   const overallReady = camera === "ready" && microphone === "ready" && ["stable", "fair"].includes(network || "") && phase === "ready";
   return <main className="sv-kiosk-shell"><header className="sv-kiosk-header"><span className="sv9-brand-mark">+</span><div><strong>SecureVisit</strong><small>Controlled facility device · {deviceId}</small></div><span className="sv-kiosk-live-dot"><i /> Device connected</span></header><section className="sv-kiosk-card sv-kiosk-card-wide"><div className="sv-kiosk-card-heading"><div><span className="sv9-kicker">VISIT {visitId}</span><h1>{overallReady ? "This kiosk is ready" : phase === "checking" ? "Checking this kiosk" : "Kiosk needs attention"}</h1><p>{overallReady ? "The results are saved. Staff can now complete the pre-call checks and admit the visit." : phase === "checking" ? "Testing camera, microphone, and connection. Keep this page open." : error || "Resolve the failed checks and run the test again."}</p></div><span className={`sv-kiosk-overall ${overallReady ? "ready" : "pending"}`}>{overallReady ? "READY" : phase === "checking" ? "CHECKING" : "ACTION NEEDED"}</span></div><div className="sv-kiosk-check-grid"><KioskCheck label="Camera" result={camera} detail="Video input available" /><KioskCheck label="Microphone" result={microphone} detail="Audio input available" /><KioskCheck label="Network" result={network} detail={latency === null ? "Connection quality" : `${latency} ms response`} /></div><div className="sv-kiosk-actions">{phase !== "checking" && <button className="sv9-button sv9-button-primary" onClick={() => void runChecks()}>{overallReady ? "Run check again" : "Retry device check"} →</button>}<span>Presence is reported to the facility while this page is open.</span></div></section></main>;
