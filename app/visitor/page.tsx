@@ -133,7 +133,7 @@ export default function VisitorPage() {
             {navItems.slice(0, 4).map((item) => (
               <button key={item.label} className={tab === item.label ? "active" : ""} onClick={() => navigate(item.label)}>
                 {item.label}
-                {item.label === "Visits" && <b>1</b>}
+                {item.label === "Visits" && visitorData.appointments.length > 0 && <b>{visitorData.appointments.length}</b>}
               </button>
             ))}
           </nav>
@@ -159,7 +159,7 @@ export default function VisitorPage() {
       <nav className="sv4-mobile-nav" aria-label="Mobile visitor navigation">
         {navItems.map((item) => (
           <button key={item.label} className={tab === item.label ? "active" : ""} onClick={() => navigate(item.label)}>
-            <span>{item.icon}{item.label === "Visits" && <b>1</b>}</span><small>{item.label}</small>
+            <span>{item.icon}{item.label === "Visits" && visitorData.appointments.length > 0 && <b>{visitorData.appointments.length}</b>}</span><small>{item.label}</small>
           </button>
         ))}
       </nav>
