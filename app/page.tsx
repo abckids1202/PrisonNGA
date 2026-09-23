@@ -48,6 +48,7 @@ type Appointment = {
   issue?: string;
 };
 type PeopleRecord = {
+  id: string;
   name: string;
   status: string;
   connection: string;
@@ -1063,35 +1064,138 @@ function VerificationQueue({ onNotify }: { onNotify: (message: string, tone?: No
 function PeoplePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [tab, setTab] = useState("Visitors");
   const [search, setSearch] = useState("");
-  const [selectedName, setSelectedName] = useState("Sarah Amelia");
+  const [selectedId, setSelectedId] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [visitFilter, setVisitFilter] = useState("All visits");
+  const [visitorRows, setVisitorRows] = useState<PeopleRecord[]>([]);
+  const [relationshipRows, setRelationshipRows] = useState<PeopleRecord[]>([]);
+  const [counts, setCounts] = useState({ visitors: 0, prisoners: 0, awaitingVerification: 0, relationshipRequests: 0 });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [truncated, setTruncated] = useState(false);
   const reviewTabs = ["Visitors", "Prisoners", "Verifications", "Relationships"];
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/control/people", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as {
+          visitors?: Array<Record<string, unknown>>;
+          relationships?: Array<Record<string, unknown>>;
+          counts?: { visitors?: number; prisoners?: number; awaitingVerification?: number; relationshipRequests?: number };
+          truncated?: boolean;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(payload.error || "Unable to load the facility people directory.");
+        const rows = (payload.visitors || []).map((row): PeopleRecord => {
+          const displayName = String(row.display_name || "Visitor");
+          const relationshipStatus = String(row.relationship_status || "");
+          const verificationStatus = String(row.verification_status || "");
+          const accountStatus = String(row.account_status || "");
+          const profileStatus = String(row.profile_status || "");
+          const status = accountStatus === "SUSPENDED" || profileStatus === "SUSPENDED"
+            ? "SUSPENDED"
+            : relationshipStatus === "PENDING"
+              ? "PENDING"
+              : relationshipStatus === "APPROVED" && verificationStatus === "APPROVED"
+                ? "VERIFIED"
+                : "NEEDS INFO";
+          const visitAt = typeof row.next_visit_at === "string" ? new Date(row.next_visit_at) : null;
+          let nextDate = "No upcoming visit";
+          let nextTime = "—";
+          if (visitAt && !Number.isNaN(visitAt.getTime())) {
+            const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(visitAt);
+            const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+            const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            const tomorrowKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(tomorrow);
+            nextDate = dateKey === todayKey ? "Today" : dateKey === tomorrowKey ? "Tomorrow" : new Intl.DateTimeFormat("en-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short" }).format(visitAt);
+            const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(visitAt);
+            nextTime = `${time} WIB${row.next_room ? ` · ${String(row.next_room)}` : ""}`;
+          }
+          const relationshipType = typeof row.relationship_type === "string" ? row.relationship_type.replaceAll("_", " ").toLowerCase() : "No connection";
+          const connection = typeof row.prisoner_name === "string" ? row.prisoner_name : "No linked prisoner";
+          const relationship = relationshipStatus ? `${relationshipType} · ${relationshipStatus.toLowerCase()}` : "No relationship submitted";
+          const initials = displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+          return {
+            id: String(row.visitor_user_id || row.visitor_reference || displayName),
+            name: displayName,
+            status,
+            connection,
+            relationship,
+            nextDate,
+            nextTime,
+            activity: visitAt ? "Upcoming visit" : relationshipStatus === "PENDING" ? "Request pending" : "No upcoming visit",
+            initials,
+            tone: "blue",
+            meta: `Visitor · ${String(row.visitor_reference || "ID unavailable")}`,
+          };
+        });
+        const pendingRows = (payload.relationships || []).map((row): PeopleRecord => {
+          const displayName = String(row.visitor_name || "Visitor");
+          const relationshipType = String(row.relationship_type || "Relationship").replaceAll("_", " ").toLowerCase();
+          return {
+            id: String(row.relationship_id || row.visitor_user_id || displayName),
+            name: displayName,
+            status: "PENDING",
+            connection: String(row.prisoner_name || "Prisoner record unavailable"),
+            relationship: `${relationshipType} · pending review`,
+            nextDate: "No upcoming visit",
+            nextTime: "—",
+            activity: "Relationship review required",
+            initials: displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+            tone: "blue",
+            meta: `Request · ${String(row.visitor_reference || "Visitor ID unavailable")}`,
+          };
+        });
+        if (!active) return;
+        setVisitorRows(rows);
+        setRelationshipRows(pendingRows);
+        setCounts({
+          visitors: Number(payload.counts?.visitors ?? rows.length),
+          prisoners: Number(payload.counts?.prisoners || 0),
+          awaitingVerification: Number(payload.counts?.awaitingVerification || 0),
+          relationshipRequests: Number(payload.counts?.relationshipRequests || 0),
+        });
+        setTruncated(Boolean(payload.truncated));
+        setSelectedId((current) => current || rows[0]?.id || "");
+        setLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setLoadError(error instanceof Error ? error.message : "Unable to load the facility people directory.");
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
   if (tab === "Verifications") return <div className="sv6-people-page"><PageHeader eyebrow="Management · People" title="People" description="Review visitor identity and relationship evidence using facility-scoped records." /><div className="sv3-entity-tabs sv6-entity-tabs">{reviewTabs.map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>{item}</button>)}</div><VerificationQueue onNotify={onNotify} /></div>;
   if (tab === "Prisoners") return <div className="sv6-people-page"><PageHeader eyebrow="Management · People" title="Prisoners" description="Manage facility-scoped prisoner records and explicit visitation eligibility." /><div className="sv3-entity-tabs sv6-entity-tabs">{reviewTabs.map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>{item}</button>)}</div><PrisonerDirectory onNotify={onNotify} /></div>;
-  const visitorRows: PeopleRecord[] = [
-    { name: "Sarah Amelia", status: "VERIFIED", connection: "A. Rahman", relationship: "Wife · Approved", nextDate: "Today", nextTime: "10:00–10:20 WIB · Room 03", activity: "Upcoming visit", initials: "SA", tone: "orange", meta: "Visitor · VST-SA" },
-    { name: "Daniel Wijaya", status: "VERIFIED", connection: "R. Santoso", relationship: "Brother · Approved", nextDate: "Today", nextTime: "10:20–10:40 WIB · Room 01", activity: "Upcoming visit", initials: "DW", tone: "blue", meta: "Visitor · VST-DW" },
-    { name: "Alya Pratama", status: "PENDING", connection: "F. Pratama", relationship: "Sister · Review required", nextDate: "Today", nextTime: "10:40–11:00 WIB · Room 04", activity: "Request pending", initials: "AP", tone: "orange", meta: "Visitor · VST-AP" },
-    { name: "Nurul Hidayah", status: "VERIFIED", connection: "F. Hidayat", relationship: "Mother · Approved", nextDate: "Tomorrow", nextTime: "09:00–09:20 WIB · Room 02", activity: "Upcoming visit", initials: "NH", tone: "purple", meta: "Visitor · VST-NH" },
-    { name: "Rina Kusuma", status: "VERIFIED", connection: "A. Hakim", relationship: "Sister · Approved", nextDate: "Friday", nextTime: "14:00–14:20 WIB · Room 01", activity: "Upcoming visit", initials: "RK", tone: "blue", meta: "Visitor · VST-RK" },
-    { name: "Fajar Mahendra", status: "NEEDS INFO", connection: "B. Prakoso", relationship: "Brother · Evidence needed", nextDate: "No upcoming visit", nextTime: "—", activity: "Request pending", initials: "FM", tone: "orange", meta: "Visitor · VST-FM" },
-    { name: "Dewi Anggraini", status: "VERIFIED", connection: "M. Yusuf", relationship: "Spouse · Approved", nextDate: "Saturday", nextTime: "11:20–11:40 WIB · Room 04", activity: "Upcoming visit", initials: "DA", tone: "purple", meta: "Visitor · VST-DA" },
-    { name: "Bima Saputra", status: "PENDING", connection: "R. Santoso", relationship: "Counsel · Pending", nextDate: "No upcoming visit", nextTime: "—", activity: "Request pending", initials: "BS", tone: "blue", meta: "Visitor · VST-BS" },
-    { name: "Siti Rahma", status: "VERIFIED", connection: "F. Hidayat", relationship: "Mother · Approved", nextDate: "20 Aug", nextTime: "13:00–13:20 WIB · Room 02", activity: "Upcoming visit", initials: "SR", tone: "orange", meta: "Visitor · VST-SR" },
-    { name: "Rafi Pranoto", status: "VERIFIED", connection: "B. Aditya", relationship: "Brother · Approved", nextDate: "22 Aug", nextTime: "09:40–10:00 WIB · Room 03", activity: "Upcoming visit", initials: "RP", tone: "blue", meta: "Visitor · VST-RP" },
-  ];
-  const otherRows: PeopleRecord[] = tab === "Prisoners" ? [{ name: "A. Rahman", status: "ACTIVE", connection: "6 approved visitors", relationship: "Family and legal contacts", nextDate: "Today", nextTime: "10:00 WIB · Room 03", activity: "Upcoming visit", initials: "AR", tone: "blue", meta: "Prisoner · CCF-AR" }, { name: "R. Santoso", status: "ACTIVE", connection: "4 approved visitors", relationship: "Family contacts", nextDate: "Today", nextTime: "10:20 WIB · Room 01", activity: "Upcoming visit", initials: "RS", tone: "blue", meta: "Prisoner · CCF-RS" }, { name: "F. Pratama", status: "RESTRICTED", connection: "2 approved visitors", relationship: "Review required", nextDate: "No upcoming visit", nextTime: "—", activity: "Needs review", initials: "FP", tone: "purple", meta: "Prisoner · CCF-FP" }] : tab === "Verifications" ? [{ name: "Nurul Hidayah", status: "PENDING", connection: "Passport · expires 2027", relationship: "Identity evidence", nextDate: "Submitted today", nextTime: "SLA · 8 min", activity: "Review queue", initials: "NH", tone: "purple", meta: "Applicant · VST-NH" }, { name: "Fajar Mahendra", status: "NEEDS INFO", connection: "Address evidence", relationship: "Additional proof requested", nextDate: "Submitted today", nextTime: "SLA · 22 min", activity: "Needs information", initials: "FM", tone: "orange", meta: "Applicant · VST-FM" }, { name: "Dewi Anggraini", status: "EXPIRING", connection: "Identity refresh", relationship: "Passport renewal", nextDate: "Due this week", nextTime: "SLA · 1 hour", activity: "Review queue", initials: "DA", tone: "blue", meta: "Applicant · VST-DA" }] : [{ name: "Alya Pratama", status: "UNDER REVIEW", connection: "F. Pratama", relationship: "Sister · Family card attached", nextDate: "Submitted today", nextTime: "Review · 14 min", activity: "Relationship request", initials: "AP", tone: "orange", meta: "Request · REL-AP" }, { name: "Dimas Wirawan", status: "ESCALATED", connection: "B. Aditya", relationship: "Counsel · Supervisor review", nextDate: "Submitted today", nextTime: "Review · 28 min", activity: "Escalated request", initials: "DW", tone: "purple", meta: "Request · REL-DW" }, { name: "Sarah Amelia", status: "APPROVED", connection: "A. Rahman", relationship: "Wife · Approved relationship", nextDate: "Approved 02 Aug", nextTime: "Next visit · Today", activity: "Active connection", initials: "SA", tone: "orange", meta: "Request · REL-SA" }];
-  const rows = tab === "Visitors" ? visitorRows : otherRows;
-  const filtered = rows.filter((row) => row.name.toLowerCase().includes(search.toLowerCase()) || row.meta.toLowerCase().includes(search.toLowerCase()) || `${row.connection} ${row.relationship}`.toLowerCase().includes(search.toLowerCase())).filter((row) => statusFilter === "All statuses" || row.status === statusFilter).filter((row) => visitFilter === "All visits" || (visitFilter === "Upcoming" ? row.nextDate !== "No upcoming visit" : row.nextDate === "No upcoming visit"));
-  const selected = rows.find((row) => row.name === selectedName) || rows[0];
-  const tabs = [["Visitors", "45"], ["Prisoners", "31"], ["Verifications", "6"], ["Relationships", "4"]];
-  const statusTone = (status: string) => ["VERIFIED", "ACTIVE", "APPROVED"].includes(status) ? "green" : ["RESTRICTED", "ESCALATED"].includes(status) ? "red" : status === "UNDER REVIEW" ? "purple" : "orange";
-  // The directory rows use button semantics for keyboard selection; aria-pressed is the equivalent state exposed by the control.
-  // eslint-disable-next-line jsx-a11y/role-supports-aria-props
-  return <div className="sv6-people-page"><PageHeader eyebrow="Management · People" title="People" description="Manage visitors, prisoners, verification, and approved connections behind SecureVisit visitation." actions={<><Button onClick={() => onNotify("People export queued with facility scope applied.")}>Export scoped list</Button><Button variant="primary" onClick={() => onNotify("Controlled record creation flow opened.")}>+ Add record</Button></>} /><div className="sv6-people-summary"><span><b>45</b> Visitors</span><i /><span><b>31</b> Prisoners</span><i /><span className="needs-review"><b>6</b> Awaiting verification</span><i /><span className="needs-review"><b>4</b> Relationship requests</span></div><div className="sv3-entity-tabs sv6-entity-tabs">{tabs.map(([item, count]) => <button className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>{item} <em>{count}</em></button>)}</div><div className="sv3-people-layout sv6-people-layout"><section className="sv3-people-directory sv6-people-directory"><div className="sv3-directory-head sv6-directory-head"><div><span className="sv3-eyebrow">{tab}</span><h2>{tab === "Visitors" ? "Visitor directory" : `${tab} workspace`}</h2><p>{tab === "Visitors" ? `${rows.length} visible profiles · 45 total records` : `${rows.length} records in this review surface`}</p></div><div className="sv6-directory-controls"><label className="sv3-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name, visitor ID, or connection" /></label><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{Array.from(new Set(rows.map((row) => row.status))).map((status) => <option key={status}>{status}</option>)}</select><select aria-label="Filter by visit" value={visitFilter} onChange={(event) => setVisitFilter(event.target.value)}><option>All visits</option><option>Upcoming</option><option>No upcoming visit</option></select></div></div>{search || statusFilter !== "All statuses" || visitFilter !== "All visits" ? <div className="sv6-active-filters"><span>Filters active</span><button onClick={() => { setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>Clear all ×</button></div> : null}<div className="sv3-people-table-head sv6-people-table-head"><span>Person</span><span>Status</span><span>Connection</span><span>Next visit</span><span>Activity</span><span /></div>{filtered.length ? filtered.map((row) => <button className={`sv3-person-row sv6-person-row ${selected?.name === row.name ? "selected" : ""}`} aria-selected={selected?.name === row.name} key={`${tab}-${row.name}`} onClick={() => setSelectedName(row.name)}><span className="sv3-table-person"><Avatar initials={row.initials} tone={row.tone} /><span><strong>{row.name}</strong><small>{row.meta}</small></span></span><Status tone={statusTone(row.status)}>{row.status}</Status><span className="sv6-connection-cell"><strong>{row.connection}</strong><small>{row.relationship}</small></span><span className="sv6-visit-cell"><strong>{row.nextDate}</strong><small>{row.nextTime}</small></span><span className="sv6-activity-cell">{row.activity}</span><b>›</b></button>) : <div className="sv6-people-empty"><strong>No {tab.toLowerCase()} found</strong><p>Try a different name, visitor ID, or connection.</p><Button onClick={() => { setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>Clear search</Button></div>}<div className="sv6-directory-footer"><span>Showing {filtered.length ? "1" : "0"}–{filtered.length} of {rows.length} visible records</span><span>Demo facility · live scope</span></div></section><aside className="sv3-profile-teaser sv6-profile-teaser">{selected ? <><span className="sv3-eyebrow">Selected profile</span><div className="sv6-profile-hero"><Avatar initials={selected.initials} tone={selected.tone} /><div><h2>{selected.name}</h2><p>{selected.meta}</p><Status tone={statusTone(selected.status)}>{selected.status === "VERIFIED" ? "VERIFIED VISITOR" : selected.status}</Status></div></div><div className="sv6-profile-motif"><span /><i /><span /></div><div className="sv6-profile-sections"><div><dt>Connection</dt><dd><strong>{selected.connection}</strong><span>{selected.relationship}</span></dd></div><div><dt>Next visit</dt><dd><strong>{selected.nextDate}</strong><span>{selected.nextTime}</span></dd></div><div><dt>Visit Credits</dt><dd><strong>2 available</strong><span>1 reserved</span></dd></div><div><dt>Incidents</dt><dd><strong>No open incidents</strong><span>Nothing requires attention</span></dd></div></div><Button variant="primary" onClick={() => onNotify(`${selected.name} full profile opened.`)}>Open full profile →</Button><button className="sv6-profile-link" onClick={() => onNotify(`${selected.name} activity opened.`)}>View activity →</button></> : <EmptyState title="No profile selected" body="Select a record to inspect its operational context." />}</aside></div><div className="sv6-people-review"><div><span className="sv3-eyebrow">Needs review</span><h2>People work that needs a decision</h2></div><div className="sv6-review-item"><strong>6 verification requests</strong><span>Oldest request · 22 min</span><button onClick={() => { setTab("Verifications"); setStatusFilter("PENDING"); }}>Review verification →</button></div><div className="sv6-review-item"><strong>4 relationship requests</strong><span>Alya Pratama · evidence attached</span><button onClick={() => { setTab("Relationships"); setStatusFilter("UNDER REVIEW"); }}>Review relationships →</button></div></div></div>;
-}
 
+  const rows = tab === "Relationships" ? relationshipRows : visitorRows;
+  const filtered = rows
+    .filter((row) => `${row.name} ${row.meta} ${row.connection} ${row.relationship}`.toLowerCase().includes(search.toLowerCase()))
+    .filter((row) => statusFilter === "All statuses" || row.status === statusFilter)
+    .filter((row) => visitFilter === "All visits" || (visitFilter === "Upcoming" ? row.nextDate !== "No upcoming visit" : row.nextDate === "No upcoming visit"));
+  const selected = rows.find((row) => row.id === selectedId) || rows[0];
+  const tabs: [string, number][] = [["Visitors", counts.visitors], ["Prisoners", counts.prisoners], ["Verifications", counts.awaitingVerification], ["Relationships", counts.relationshipRequests]];
+  const statusTone = (status: string) => ["VERIFIED", "ACTIVE"].includes(status) ? "green" : ["RESTRICTED", "SUSPENDED"].includes(status) ? "red" : status === "UNDER REVIEW" ? "purple" : "orange";
+
+  return <div className="sv6-people-page">
+    <PageHeader eyebrow="Management · People" title="People" description="Facility-scoped visitor records and current visitation context." />
+    <div className="sv6-people-summary"><span><b>{counts.visitors}</b> Visitors</span><i /><span><b>{counts.prisoners}</b> Prisoners</span><i /><span className="needs-review"><b>{counts.awaitingVerification}</b> Awaiting verification</span><i /><span className="needs-review"><b>{counts.relationshipRequests}</b> Relationship requests</span></div>
+    <div className="sv3-entity-tabs sv6-entity-tabs">{tabs.map(([item, count]) => <button className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>{item} <em>{count}</em></button>)}</div>
+    <div className="sv3-people-layout sv6-people-layout">
+      <section className="sv3-people-directory sv6-people-directory">
+        <div className="sv3-directory-head sv6-directory-head"><div><span className="sv3-eyebrow">{tab}</span><h2>{tab === "Visitors" ? "Visitor directory" : "Relationship requests"}</h2><p>{tab === "Visitors" ? `${rows.length} facility-linked profiles` : `${rows.length} pending relationship records`}</p></div><div className="sv6-directory-controls"><label className="sv3-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name, visitor ID, or connection" /></label><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{Array.from(new Set(rows.map((row) => row.status))).map((status) => <option key={status}>{status}</option>)}</select><select aria-label="Filter by visit" value={visitFilter} onChange={(event) => setVisitFilter(event.target.value)}><option>All visits</option><option>Upcoming</option><option>No upcoming visit</option></select></div></div>
+        {search || statusFilter !== "All statuses" || visitFilter !== "All visits" ? <div className="sv6-active-filters"><span>Filters active</span><button onClick={() => { setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>Clear all ×</button></div> : null}
+        <div className="sv3-people-table-head sv6-people-table-head"><span>Person</span><span>Status</span><span>Connection</span><span>Next visit</span><span>Activity</span><span /></div>
+        {loading ? <div className="sv6-people-empty"><strong>Loading facility records</strong><p>Retrieving the current authorized directory.</p></div> : loadError ? <div className="sv6-people-empty"><strong>Directory unavailable</strong><p>{loadError}</p><Button onClick={() => window.location.reload()}>Try again</Button></div> : filtered.length ? filtered.map((row) => <button className={`sv3-person-row sv6-person-row ${selected?.id === row.id ? "selected" : ""}`} aria-pressed={selected?.id === row.id} key={row.id} onClick={() => setSelectedId(row.id)}><span className="sv3-table-person"><Avatar initials={row.initials} tone={row.tone} /><span><strong>{row.name}</strong><small>{row.meta}</small></span></span><Status tone={statusTone(row.status)}>{row.status}</Status><span className="sv6-connection-cell"><strong>{row.connection}</strong><small>{row.relationship}</small></span><span className="sv6-visit-cell"><strong>{row.nextDate}</strong><small>{row.nextTime}</small></span><span className="sv6-activity-cell">{row.activity}</span><b>›</b></button>) : <div className="sv6-people-empty"><strong>{tab === "Relationships" ? "No pending relationship requests" : `No ${tab.toLowerCase()} found`}</strong><p>{tab === "Relationships" ? "New requests will appear here when submitted for this facility." : "Try a different name, visitor ID, or connection."}</p>{search || statusFilter !== "All statuses" || visitFilter !== "All visits" ? <Button onClick={() => { setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>Clear filters</Button> : null}</div>}
+        <div className="sv6-directory-footer"><span>{loading ? "Loading records…" : `Showing ${filtered.length} of ${rows.length} loaded records`}</span><span>{truncated ? "First 250 records · directory display cap reached" : "Facility-scoped records"}</span></div>
+      </section>
+      <aside className="sv3-profile-teaser sv6-profile-teaser">{selected ? <><span className="sv3-eyebrow">Selected profile</span><div className="sv6-profile-hero"><Avatar initials={selected.initials} tone={selected.tone} /><div><h2>{selected.name}</h2><p>{selected.meta}</p><Status tone={statusTone(selected.status)}>{selected.status === "VERIFIED" ? "VERIFIED VISITOR" : selected.status}</Status></div></div><div className="sv6-profile-motif"><span /><i /><span /></div><div className="sv6-profile-sections"><div><dt>Connection</dt><dd><strong>{selected.connection}</strong><span>{selected.relationship}</span></dd></div><div><dt>Next visit</dt><dd><strong>{selected.nextDate}</strong><span>{selected.nextTime}</span></dd></div></div></> : <EmptyState title={loading ? "Loading profile" : "No profile selected"} body={loadError || "Select a facility record to inspect its current operational context."} />}</aside>
+    </div>
+  </div>;
+}
 function VisitationPage() {
   const [tab, setTab] = useState("Visit Policies");
   const tabs = ["Visit Policies", "Appointment Types", "Availability Rules", "Operating Hours", "Closures"];
