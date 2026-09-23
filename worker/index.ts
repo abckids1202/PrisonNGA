@@ -92,6 +92,9 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
 }
 
 async function reconcilePaymentEvents(env: Env): Promise<void> {
+  await env.DB.prepare(`UPDATE payment_provider_events
+    SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim.'
+    WHERE status = 'PROCESSING' AND created_at < datetime('now', '-5 minutes')`).run();
   const rows = await env.DB.prepare("SELECT id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
   for (const row of rows.results) {
     const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
