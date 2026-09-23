@@ -1,6 +1,7 @@
 import { getD1 } from "@/db/runtime";
 import { getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { authenticateKiosk } from "@/lib/server/kiosk-credentials";
+import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { assertVisitorJoinAllowed, toSessionPayload, type SessionRecord } from "@/lib/server/video/session";
 import { createLiveKitProvider, getVideoConfig } from "@/lib/server/video/provider";
 
@@ -44,6 +45,7 @@ export async function POST(request: Request, context: RouteContext) {
     const kiosk = await authenticateKiosk(d1, request);
     if (!kiosk) throw new SecurityError("KIOSK_AUTHENTICATION_REQUIRED", 401);
     const { visitId } = await context.params;
+    await enforceRateLimit(d1, { key: `kiosk-live-token:${kiosk.facilityId}:${kiosk.resourceId}:${visitId}`, limit: 12, windowSeconds: 60 * 10 });
     const session = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, p.display_name AS prisoner_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
         p.status AS prisoner_status, p.visitation_status, f.current_state AS facility_state,
         vs.status, vs.provider, vs.provider_room_name, vs.authorized_start_at, vs.authorized_end_at, vs.actual_started_at, vs.actual_ended_at, vs.termination_reason, vs.recording_policy, vs.recording_status, vs.version
