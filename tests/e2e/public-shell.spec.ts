@@ -16,6 +16,23 @@ test("visitor workspace is a separate authenticated boundary", async ({ page }) 
   await expect(page.getByText("Action center", { exact: true })).toHaveCount(0);
 });
 
+test("development visitor OTP creates a real browser session", async ({ page }) => {
+  const email = `e2e-${Date.now()}@example.test`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { data: { email } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
+  expect(challenge.challengeId).toBeTruthy();
+  expect(challenge.devCode).toMatch(/^\d{6}$/);
+
+  const verify = await page.request.post("/api/auth/visitor/verify", { data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Browser Visitor" } });
+  expect(verify.status()).toBe(200);
+  await expect(verify.json()).resolves.toMatchObject({ authenticated: true, visitor: { displayName: "Browser Visitor" } });
+
+  await page.goto("/visitor");
+  await expect(page.getByText("Hello, Browser Visitor")).toBeVisible();
+  await expect(page.getByText("Your visitor account", { exact: true })).toBeVisible();
+});
+
 test("browser requests to protected APIs are rejected without a session", async ({ request }) => {
   const response = await request.get("/api/auth/me");
 

@@ -16,6 +16,6 @@ export default defineConfig({
     url: "http://localhost:4173/",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { SECUREVISIT_ENVIRONMENT: "development" },
+    env: { SECUREVISIT_ENVIRONMENT: "development", VISITOR_AUTH_DELIVERY: "console" },
   },
 });

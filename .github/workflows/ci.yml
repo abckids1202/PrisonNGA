@@ -38,6 +38,12 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
+      - name: Prepare local D1 for browser tests
+        run: npm run db:migrate:local
+
+      - name: Seed local D1 for browser tests
+        run: npm run db:seed:local
+
       - name: Browser smoke tests
         run: npm run test:e2e
 
