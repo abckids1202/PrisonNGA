@@ -68,6 +68,8 @@ Operational checks: run `npm run db:migrations:list` against the target D1 datab
 
 Visitor scheduling is policy-backed: `/api/visitor/availability` returns facility-scoped slots after relationship approval, and appointment creation revalidates facility state, operating hours, booking horizon, duration, visitor overlap, and prisoner overlap server-side.
 
+Resource recovery is facility-scoped and transactional: staff with appointment-review permission can send `reassign_appointment` to `/api/control/resources` with source/target resource IDs, expected resource and Waiting Room versions, and a reason. The command swaps the reservation, updates the Waiting Room assignment, and writes audit/outbox records together; unhealthy, unavailable, cross-type, conflicting, or stale targets are rejected.
+
 ## Backend foundation
 
 The project now includes a D1-backed security foundation with workspace identity checks, facility-scoped permissions, audit/outbox records, versioned facility-state changes, and security headers. See [SECURITY.md](SECURITY.md) for setup and limitations.

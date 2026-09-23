@@ -38,7 +38,7 @@ test("server-renders the SecureVisit operations dashboard", async () => {
 
   const html = await response.text();
   assert.match(html, /SecureVisit/);
-  assert.match(html, /Central Correctional Facility/);
+  assert.match(html, /Facility workspace/);
   assert.match(html, /Today(?:’|&apos;|&#x27;)s operational timeline/);
   assert.match(html, /Requires attention/);
   assert.match(html, /Command Center/);

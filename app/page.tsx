@@ -80,6 +80,7 @@ type AuditEvent = {
 type StaffShellIdentity = { displayName?: string; userType?: string; scope?: { facilityName?: string; jobTitle?: string } | null };
 type CommandWaitingVisit = { id: string; visitor_name?: string | null; prisoner_name?: string | null; state?: string | null; readiness?: { state?: string | null } };
 type CommandLiveSession = { id: string; appointment_id: string; status: string; visitor_name?: string | null; prisoner_name?: string | null; room_name?: string | null; kiosk_name?: string | null; participants?: Array<{ participant_role?: string; status?: string }> };
+type ResourceReassignment = { appointmentId: string; sourceResourceId: string; targetResourceId: string; expectedSourceVersion: number; expectedTargetVersion: number; expectedWaitingVersion: number; reason: string };
 type PopoverKind = "capacity" | "waiting" | "session" | "demo" | null;
 type DrawerPayload =
   | { kind: "appointment"; appointment: Appointment }
@@ -278,9 +279,26 @@ export default function ControlApp() {
     }
   }
 
-  function reassignAppointment(id: string) {
-    void id;
-    notify("Reassignment is unavailable until an authenticated resource-assignment command is connected.", "error");
+  async function reassignAppointment(input: ResourceReassignment) {
+    const response = await fetch("/api/control/resources", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({
+      resourceId: input.sourceResourceId,
+      command: "reassign_appointment",
+      appointmentId: input.appointmentId,
+      targetResourceId: input.targetResourceId,
+      expectedVersion: input.expectedSourceVersion,
+      expectedTargetVersion: input.expectedTargetVersion,
+      expectedWaitingVersion: input.expectedWaitingVersion,
+      reason: input.reason,
+    }) });
+    const body = await response.json() as { error?: string; resourceType?: "ROOM" | "DEVICE"; displayName?: string; version?: number };
+    if (!response.ok) throw new Error(body.error || "RESOURCE_REASSIGNMENT_FAILED");
+    setBackendStatus("connected");
+    setAppointments((current) => current.map((item) => item.id === input.appointmentId ? {
+      ...item,
+      room: body.resourceType === "ROOM" ? body.displayName || item.room : item.room,
+      kiosk: body.resourceType === "DEVICE" ? body.displayName || item.kiosk : item.kiosk,
+    } : item));
+    notify(`${body.displayName || "Resource"} assigned to ${input.appointmentId}.`, "success");
   }
 
   function openDrawer(payload: DrawerInput) {
@@ -879,11 +897,14 @@ function LiveSessionsPage({ onNotify }: { onNotify: (message: string, tone?: Not
 }
 
 
-type ResourceApiRow = { id: string; resource_type: "ROOM" | "DEVICE"; display_name: string; status: string; room_id?: string | null; health_state: string; last_heartbeat_at?: string | null; active_appointment_id?: string | null; has_active_kiosk_credential?: number; kiosk_credential_last_used_at?: string | null; version: number };
+type ResourceApiRow = { id: string; resource_type: "ROOM" | "DEVICE"; display_name: string; status: string; room_id?: string | null; health_state: string; last_heartbeat_at?: string | null; active_appointment_id?: string | null; waiting_version?: number | null; has_active_kiosk_credential?: number; kiosk_credential_last_used_at?: string | null; version: number };
 
-function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, tone?: Notice["tone"]) => void; onReassign: (id: string) => void }) {
+function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, tone?: Notice["tone"]) => void; onReassign: (input: ResourceReassignment) => Promise<void> }) {
   const [resources, setResources] = useState<ResourceApiRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [reassignTargetId, setReassignTargetId] = useState("");
+  const [reassignReason, setReassignReason] = useState("Resource failure requires a controlled reassignment.");
+  const [reassigning, setReassigning] = useState(false);
   const [loading, setLoading] = useState(true);
   async function refresh() {
     const response = await fetch("/api/control/resources", { headers: { accept: "application/json" }, credentials: "include" });
@@ -899,6 +920,27 @@ function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, t
   const usableRooms = rooms.filter((resource) => resource.status !== "MAINTENANCE" && resource.status !== "OFFLINE");
   const devices = resources.filter((resource) => resource.resource_type === "DEVICE");
   const tone = (resource: ResourceApiRow) => resource.health_state === "FAILED" || resource.status === "OFFLINE" ? "red" : resource.status === "MAINTENANCE" || resource.status === "RESERVED" ? "orange" : resource.status === "IN_USE" ? "green" : "blue";
+  const reassignmentTargets = selected?.active_appointment_id ? resources.filter((resource) => resource.id !== selected.id && resource.resource_type === selected.resource_type && resource.health_state === "HEALTHY" && resource.status === (selected.resource_type === "ROOM" ? "AVAILABLE" : "ONLINE") && !resource.active_appointment_id) : [];
+  const effectiveReassignTargetId = reassignmentTargets.some((resource) => resource.id === reassignTargetId) ? reassignTargetId : reassignmentTargets[0]?.id || "";
+
+  async function submitReassignment() {
+    if (!selected?.active_appointment_id || !effectiveReassignTargetId) return;
+    const target = resources.find((resource) => resource.id === effectiveReassignTargetId);
+    if (!target) return;
+    if (reassignReason.trim().length < 8) {
+      onNotify("Enter at least eight characters explaining the reassignment.", "warning");
+      return;
+    }
+    setReassigning(true);
+    try {
+      await onReassign({ appointmentId: selected.active_appointment_id, sourceResourceId: selected.id, targetResourceId: target.id, expectedSourceVersion: selected.version, expectedTargetVersion: target.version, expectedWaitingVersion: selected.waiting_version ?? 0, reason: reassignReason.trim() });
+      await refresh();
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "RESOURCE_REASSIGNMENT_FAILED";
+      const message = code === "STALE_RESOURCE" || code === "STALE_TARGET_RESOURCE" || code === "STALE_WAITING_ROOM" ? "The assignment changed while you were reviewing it. Refresh the resource board and try again." : code === "TARGET_RESOURCE_UNUSABLE" ? "That resource is no longer healthy or available." : code === "RESOURCE_REASSIGNMENT_CONFLICT" ? "The target resource became reserved. Choose another available resource." : code;
+      onNotify(message, "error");
+    } finally { setReassigning(false); }
+  }
 
   async function sendHeartbeat(resource: ResourceApiRow) {
     try {
@@ -947,7 +989,7 @@ function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, t
                   <div><dt>Current reservation</dt><dd>{selected.active_appointment_id || "None"}</dd></div>
                   <div><dt>Version</dt><dd className="sv8-mono">{selected.version}</dd></div>
                 </dl>
-                {selected.active_appointment_id && selected.status === "OFFLINE" ? <div className="sv3-resource-warning"><strong>Assignment requires attention</strong><span>{selected.active_appointment_id}</span><small>Move the visit to a healthy device before admission.</small><Button variant="primary" onClick={() => onReassign(selected.active_appointment_id || "")}>Reassign visit</Button></div> : <Button onClick={() => sendHeartbeat(selected)}>Record heartbeat</Button>}
+                {selected.active_appointment_id && (selected.status === "OFFLINE" || selected.health_state === "FAILED") ? <div className="sv3-resource-warning"><strong>Assignment requires attention</strong><span>{selected.active_appointment_id}</span><small>Move this visit to a healthy {selected.resource_type === "DEVICE" ? "kiosk" : "room"} before admission.</small>{reassignmentTargets.length ? <><label>Healthy target<select value={effectiveReassignTargetId} onChange={(event) => setReassignTargetId(event.target.value)}><option value="">Choose a target</option>{reassignmentTargets.map((resource) => <option key={resource.id} value={resource.id}>{resource.display_name} · v{resource.version}</option>)}</select></label><label>Reason<textarea value={reassignReason} onChange={(event) => setReassignReason(event.target.value)} minLength={8} /></label><Button variant="primary" onClick={() => void submitReassignment()} disabled={reassigning || !effectiveReassignTargetId}>{reassigning ? "Reassigning…" : "Reassign visit"}</Button></> : <small>No healthy unreserved target is currently available.</small>}</div> : <Button onClick={() => sendHeartbeat(selected)}>Record heartbeat</Button>}
                 {selected.resource_type === "DEVICE" ? <KioskCredentialManager key={selected.id} resourceId={selected.id} resourceName={selected.display_name} resourceVersion={selected.version} active={selected.has_active_kiosk_credential === 1} lastUsedAt={selected.kiosk_credential_last_used_at} onRefresh={refresh} onNotify={onNotify} /> : null}
               </aside>
             ) : null}
@@ -1012,7 +1054,7 @@ type DrawerResource = { id: string; display_name: string; status: string; resour
 type DrawerWaitingVisit = { id: string; visitor_name?: string | null; prisoner_name?: string | null; state?: string | null; assigned_room_name?: string | null; assigned_kiosk_name?: string | null; visitor_presence?: string | null; prisoner_presence?: string | null; staff_notes?: string | null; version?: number | null };
 type DrawerIncident = { id: string; incident_type: string; severity: string; status: string; title: string; description: string; appointment_id?: string | null; resource_id?: string | null; reporter_name?: string | null; assignee_name?: string | null; resolution?: string | null; version: number };
 
-function ContextDrawer({ payload, onClose, onOpenAppointment, onRequestApproval }: { payload: DrawerPayload; onClose: () => void; onOpenAppointment: (appointment: Appointment) => void; onRequestApproval: (appointment: Appointment) => void; onReassign: (id: string) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function ContextDrawer({ payload, onClose, onOpenAppointment, onRequestApproval }: { payload: DrawerPayload; onClose: () => void; onOpenAppointment: (appointment: Appointment) => void; onRequestApproval: (appointment: Appointment) => void; onReassign: (input: ResourceReassignment) => Promise<void>; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [remote, setRemote] = useState<{ kind: "resource"; record: DrawerResource } | { kind: "waiting"; record: DrawerWaitingVisit } | { kind: "incident"; record: DrawerIncident } | null>(null);
   const [loading, setLoading] = useState(payload.kind !== "appointment" && payload.kind !== "activity");
   const [error, setError] = useState("");

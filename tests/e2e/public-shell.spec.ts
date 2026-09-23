@@ -18,13 +18,14 @@ test("visitor workspace is a separate authenticated boundary", async ({ page }) 
 
 test("development visitor OTP creates a real browser session", async ({ page }) => {
   const email = `e2e-${Date.now()}@example.test`;
-  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": `198.51.100.${Math.floor(Math.random() * 200) + 1}` }, data: { email } });
+  const ipAddress = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": ipAddress }, data: { email } });
   expect(requestCode.status()).toBe(201);
   const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
   expect(challenge.challengeId).toBeTruthy();
   expect(challenge.devCode).toMatch(/^\d{6}$/);
 
-  const verify = await page.request.post("/api/auth/visitor/verify", { data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Browser Visitor" } });
+  const verify = await page.request.post("/api/auth/visitor/verify", { headers: { "cf-connecting-ip": ipAddress }, data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Browser Visitor" } });
   expect(verify.status()).toBe(200);
   await expect(verify.json()).resolves.toMatchObject({ authenticated: true, visitor: { displayName: "Browser Visitor" } });
 
@@ -35,14 +36,15 @@ test("development visitor OTP creates a real browser session", async ({ page }) 
 
 test("development visitor SMS OTP creates a real browser session", async ({ page }) => {
   const phone = `+62812${String(Date.now()).slice(-8)}`;
-  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": `198.51.100.${Math.floor(Math.random() * 200) + 1}` }, data: { channel: "SMS", phone } });
+  const ipAddress = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": ipAddress }, data: { channel: "SMS", phone } });
   expect(requestCode.status()).toBe(201);
   const challenge = await requestCode.json() as { challengeId?: string; channel?: string; destination?: string; devCode?: string };
   expect(challenge.channel).toBe("SMS");
   expect(challenge.destination).toMatch(/^\+62••••\d{2}$/);
   expect(challenge.devCode).toMatch(/^\d{6}$/);
 
-  const verify = await page.request.post("/api/auth/visitor/verify", { data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "SMS Browser Visitor" } });
+  const verify = await page.request.post("/api/auth/visitor/verify", { headers: { "cf-connecting-ip": ipAddress }, data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "SMS Browser Visitor" } });
   expect(verify.status()).toBe(200);
   await expect(verify.json()).resolves.toMatchObject({ authenticated: true, visitor: { displayName: "SMS Browser Visitor", phone } });
 });
