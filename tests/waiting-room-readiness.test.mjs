@@ -23,6 +23,10 @@ const readyFacts = {
   kioskHealth: "HEALTHY",
   kioskHeartbeatAt: "2026-09-22T09:59:00.000Z",
   kioskCredentialActive: true,
+  kioskCameraResult: "ready",
+  kioskMicrophoneResult: "ready",
+  kioskNetworkResult: "stable",
+  kioskDeviceCheckedAt: "2026-09-22T09:55:00.000Z",
 };
 
 test("visit is ready only when every persisted readiness fact passes", () => {
@@ -48,6 +52,16 @@ test("stale device checks, stale kiosk heartbeat, or absent kiosk credentials fa
   ]) {
     assert.equal(evaluateWaitingRoomReadiness(facts, now).readyToStart, false);
   }
+});
+
+test("missing or failed kiosk device checks block admission", () => {
+  const missing = evaluateWaitingRoomReadiness({ ...readyFacts, kioskCameraResult: null, kioskMicrophoneResult: null, kioskNetworkResult: null, kioskDeviceCheckedAt: null }, now);
+  assert.equal(missing.readyToStart, false);
+  assert.equal(missing.checks.kiosk, "pending");
+
+  const failed = evaluateWaitingRoomReadiness({ ...readyFacts, kioskMicrophoneResult: "failed" }, now);
+  assert.equal(failed.readyToStart, false);
+  assert.equal(failed.checks.kiosk, "failed");
 });
 
 test("staff-recorded presence remains independent and does not bypass other checks", () => {

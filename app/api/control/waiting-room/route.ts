@@ -18,7 +18,7 @@ export async function GET() {
         a.id, a.status AS appointment_status, a.prisoner_id, a.requested_start, a.requested_end, a.timezone, a.appointment_type, a.version AS appointment_version,
         u.display_name AS visitor_name, p.display_name AS prisoner_name, p.status AS prisoner_status, p.visitation_status, f.current_state AS facility_state,
         (SELECT vr.status FROM visitor_relationships vr WHERE vr.visitor_user_id = a.visitor_user_id AND vr.prisoner_id = a.prisoner_id AND vr.facility_id = a.facility_id LIMIT 1) AS relationship_status,
-        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.restriction_state,
+        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.restriction_state,
         COALESCE(w.assigned_room_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_room_id,
         COALESCE(w.assigned_kiosk_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_kiosk_id,
         w.staff_notes, w.version, w.last_checked_at,
@@ -67,6 +67,10 @@ export async function GET() {
         kioskHealth: row.kiosk_health_state === null ? null : String(row.kiosk_health_state),
         kioskHeartbeatAt: row.kiosk_heartbeat_at === null ? null : String(row.kiosk_heartbeat_at),
         kioskCredentialActive: Number(row.kiosk_credential_active) === 1,
+        kioskCameraResult: row.kiosk_camera_state === null ? null : String(row.kiosk_camera_state),
+        kioskMicrophoneResult: row.kiosk_microphone_state === null ? null : String(row.kiosk_microphone_state),
+        kioskNetworkResult: row.kiosk_network_state === null ? null : String(row.kiosk_network_state),
+        kioskDeviceCheckedAt: row.kiosk_device_checked_at === null ? null : String(row.kiosk_device_checked_at),
       });
       const savedState = String(row.state || "NOT_ARRIVED");
       return {
@@ -102,7 +106,7 @@ export async function POST(request: Request) {
         p.status AS prisoner_status, p.visitation_status,
         (SELECT vr.status FROM visitor_relationships vr WHERE vr.visitor_user_id = a.visitor_user_id AND vr.prisoner_id = a.prisoner_id AND vr.facility_id = a.facility_id LIMIT 1) AS relationship_status,
         vs.id AS session_id, vs.status AS session_status, vs.provider_room_name,
-        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.restriction_state,
+        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.restriction_state,
         COALESCE(w.assigned_room_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_room_id,
         COALESCE(w.assigned_kiosk_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_kiosk_id,
         (SELECT r.status FROM resources r WHERE r.id = COALESCE(w.assigned_room_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AND r.facility_id = a.facility_id) AS room_resource_status,
@@ -166,6 +170,10 @@ export async function POST(request: Request) {
           kioskHealth: current.kiosk_health_state === null ? null : String(current.kiosk_health_state),
           kioskHeartbeatAt: current.kiosk_heartbeat_at === null ? null : String(current.kiosk_heartbeat_at),
           kioskCredentialActive: Number(current.kiosk_credential_active) === 1,
+          kioskCameraResult: current.kiosk_camera_state === null ? null : String(current.kiosk_camera_state),
+          kioskMicrophoneResult: current.kiosk_microphone_state === null ? null : String(current.kiosk_microphone_state),
+          kioskNetworkResult: current.kiosk_network_state === null ? null : String(current.kiosk_network_state),
+          kioskDeviceCheckedAt: current.kiosk_device_checked_at === null ? null : String(current.kiosk_device_checked_at),
         })
       : null;
     if (command === "start_visit" && !readiness?.readyToStart) throw new SecurityError("PRECALL_CHECKS_INCOMPLETE", 409);

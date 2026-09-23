@@ -21,6 +21,10 @@ export type WaitingRoomReadinessFacts = {
   kioskHealth: string | null;
   kioskHeartbeatAt: string | null;
   kioskCredentialActive: boolean;
+  kioskCameraResult?: string | null;
+  kioskMicrophoneResult?: string | null;
+  kioskNetworkResult?: string | null;
+  kioskDeviceCheckedAt?: string | null;
 };
 
 export type WaitingRoomReadiness = {
@@ -63,6 +67,14 @@ export function evaluateWaitingRoomReadiness(
   const eligible = facts.prisonerStatus === "ACTIVE" && facts.visitationStatus === "APPROVED";
   const freshDeviceCheck = isRecent(facts.visitorDeviceCheckedAt, now, DEVICE_CHECK_MAX_AGE_MS);
   const freshKioskHeartbeat = isRecent(facts.kioskHeartbeatAt, now, KIOSK_HEARTBEAT_MAX_AGE_MS);
+  const freshKioskDeviceCheck = isRecent(facts.kioskDeviceCheckedAt ?? null, now, DEVICE_CHECK_MAX_AGE_MS);
+  const kioskDeviceCheckState: WaitingCheckState = !facts.kioskDeviceCheckedAt
+    ? "pending"
+    : !freshKioskDeviceCheck || !facts.kioskCameraResult || !facts.kioskMicrophoneResult || !facts.kioskNetworkResult
+      ? "failed"
+      : deviceResult(facts.kioskCameraResult, true) === "pass" && deviceResult(facts.kioskMicrophoneResult, true) === "pass" && ["stable", "fair"].includes(facts.kioskNetworkResult)
+        ? "pass"
+        : "failed";
   const checks: WaitingRoomReadiness["checks"] = {
     identity: facts.relationshipStatus === "APPROVED" && eligible ? "pass" : "failed",
     camera: deviceResult(facts.visitorCameraResult, freshDeviceCheck),
@@ -78,7 +90,7 @@ export function evaluateWaitingRoomReadiness(
     kiosk: !facts.kioskReserved
       ? "pending"
       : facts.kioskStatus === "ONLINE" && facts.kioskHealth === "HEALTHY" && freshKioskHeartbeat && facts.kioskCredentialActive
-        ? "pass"
+        ? kioskDeviceCheckState
         : "failed",
     restriction: facts.facilityState === "NORMAL_OPERATIONS" && eligible ? "pass" : "failed",
   };
