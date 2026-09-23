@@ -56,14 +56,28 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
   const remoteRef = useRef<HTMLDivElement>(null);
   const localRef = useRef<HTMLDivElement>(null);
   const scheduledEndReached = useRef(false);
+  const remoteParticipants = useRef(new Set<string>());
+  const remoteVideoTracks = useRef(new Map<string, Set<RemoteTrack>>());
 
   const isVisitor = role === "VISITOR";
   const title = remoteName;
   const subtitle = session ? `${session.visitorName} ↔ ${session.prisonerName} · secure video visit` : "Secure video visit";
   const remoteInitials = useMemo(() => participantInitials(title), [title]);
 
+  function isExpectedRemote(participant: Participant) {
+    const identity = participant.identity;
+    return isVisitor ? identity.startsWith("facility:") : identity.startsWith("visitor:");
+  }
+
+  function syncRemoteState() {
+    setRemoteConnected(remoteParticipants.current.size > 0);
+    setRemoteVideo(Array.from(remoteVideoTracks.current.values()).some((tracks) => tracks.size > 0));
+  }
+
   useEffect(() => {
     let active = true;
+    const participants = remoteParticipants.current;
+    const videoTracks = remoteVideoTracks.current;
     async function start() {
       if (!isVisitor && (!kioskDeviceId || !kioskCredential)) return;
       try {
@@ -113,6 +127,8 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
       active = false;
       roomRef.current?.disconnect();
       roomRef.current = null;
+      participants.clear();
+      videoTracks.clear();
     };
     // The session is intentionally initialized once per visit/role.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,10 +186,24 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
   async function connectRoom(serverUrl: string, token: string) {
     const room = new Room({ adaptiveStream: true, dynacast: true });
     roomRef.current = room;
-    room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => attachRemoteTrack(track, participant));
-    room.on(RoomEvent.TrackUnsubscribed, (track) => detachTrack(track));
-    room.on(RoomEvent.ParticipantConnected, (participant) => { setRemoteConnected(true); setRemoteName(participant.name || participant.identity.replace(/^visitor:|^facility:/, "")); });
-    room.on(RoomEvent.ParticipantDisconnected, () => { setRemoteConnected(false); setRemoteVideo(false); });
+    room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+      if (isExpectedRemote(participant)) attachRemoteTrack(track, participant);
+    });
+    room.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
+      if (isExpectedRemote(participant)) detachTrack(track, participant);
+    });
+    room.on(RoomEvent.ParticipantConnected, (participant) => {
+      if (!isExpectedRemote(participant)) return;
+      remoteParticipants.current.add(participant.identity);
+      setRemoteName(participant.name || participant.identity.replace(/^visitor:|^facility:/, ""));
+      syncRemoteState();
+    });
+    room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      if (!isExpectedRemote(participant)) return;
+      remoteParticipants.current.delete(participant.identity);
+      remoteVideoTracks.current.delete(participant.identity);
+      syncRemoteState();
+    });
     room.on(RoomEvent.ConnectionStateChanged, (state) => {
       if (state === "connected") { setStage((current) => ["ended", "left", "error"].includes(current) ? current : scheduledEndReached.current ? "confirming" : "active"); setConnectionLabel("Good"); }
       if (state === "reconnecting") { setStage((current) => ["ended", "left", "error", "confirming"].includes(current) ? current : "reconnecting"); setConnectionLabel("Reconnecting"); }
@@ -198,26 +228,39 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
       if (!localRef.current.contains(element)) localRef.current.appendChild(element);
     }
     room.remoteParticipants.forEach((participant) => {
-      setRemoteConnected(true);
+      if (!isExpectedRemote(participant)) return;
+      remoteParticipants.current.add(participant.identity);
       setRemoteName(participant.name || participant.identity.replace(/^visitor:|^facility:/, ""));
       participant.trackPublications.forEach((publication) => { if (publication.track) attachRemoteTrack(publication.track, participant); });
     });
+    syncRemoteState();
     await refreshDevices(room);
   }
 
   function attachRemoteTrack(track: RemoteTrack, participant: Participant) {
     if (!remoteRef.current) return;
-    setRemoteConnected(true);
+    if (!isExpectedRemote(participant)) return;
+    remoteParticipants.current.add(participant.identity);
     setRemoteName(participant.name || participant.identity.replace(/^visitor:|^facility:/, ""));
-    if (isVideoTrack(track)) setRemoteVideo(true);
+    if (isVideoTrack(track)) {
+      const tracks = remoteVideoTracks.current.get(participant.identity) || new Set<RemoteTrack>();
+      tracks.add(track);
+      remoteVideoTracks.current.set(participant.identity, tracks);
+    }
     const element = track.attach();
     element.classList.add("sv9-remote-media");
     if (!remoteRef.current.contains(element)) remoteRef.current.appendChild(element);
+    syncRemoteState();
   }
 
-  function detachTrack(track: RemoteTrack) {
-    if (isVideoTrack(track)) setRemoteVideo(false);
+  function detachTrack(track: RemoteTrack, participant: Participant) {
+    if (isVideoTrack(track)) {
+      const tracks = remoteVideoTracks.current.get(participant.identity);
+      tracks?.delete(track);
+      if (tracks?.size === 0) remoteVideoTracks.current.delete(participant.identity);
+    }
     track.detach().forEach((element) => element.remove());
+    syncRemoteState();
   }
 
   async function refreshDevices(room = roomRef.current) {
