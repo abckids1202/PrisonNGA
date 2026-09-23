@@ -69,6 +69,17 @@ test("authenticates an active credential for its online registered device", asyn
   } finally { database.close(); }
 });
 
+test("status authentication can verify a kiosk without touching its activity timestamp", async () => {
+  const database = new SQLiteD1();
+  try {
+    const secret = await seedCredential(database);
+    const result = await authenticateKiosk(database, kioskRequest("kiosk-02", secret), { touchLastUsed: false });
+    assert.deepEqual(result, { resourceId: "kiosk-02", facilityId: "facility-1" });
+    const row = database.sqlite.prepare("SELECT last_used_at FROM kiosk_credentials WHERE id = 'credential-1'").get();
+    assert.equal(row.last_used_at, null);
+  } finally { database.close(); }
+});
+
 test("kiosk ID alone, a wrong token, a revoked token, and an offline kiosk are rejected", async (t) => {
   await t.test("ID alone", async () => {
     const database = new SQLiteD1();

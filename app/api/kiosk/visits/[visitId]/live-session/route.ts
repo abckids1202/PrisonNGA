@@ -14,9 +14,10 @@ export async function GET(request: Request, context: RouteContext) {
     const kioskSecret = request.headers.get("x-securevisit-kiosk-token")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{3,80}$/u.test(kioskId) || !/^[A-Za-z0-9_-]{40,60}$/u.test(kioskSecret)) throw new SecurityError("KIOSK_AUTHENTICATION_REQUIRED", 401);
     const d1 = await getD1();
-    const kiosk = await authenticateKiosk(d1, request);
+    const kiosk = await authenticateKiosk(d1, request, { touchLastUsed: false });
     if (!kiosk) throw new SecurityError("KIOSK_AUTHENTICATION_REQUIRED", 401);
     const { visitId } = await context.params;
+    await enforceRateLimit(d1, { key: `kiosk-live-status:${kiosk.facilityId}:${kiosk.resourceId}:${visitId}`, limit: 30, windowSeconds: 60 });
     const session = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, p.display_name AS prisoner_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
         p.status AS prisoner_status, p.visitation_status, f.current_state AS facility_state,
         vs.status, vs.provider, vs.provider_room_name, vs.authorized_start_at, vs.authorized_end_at, vs.actual_started_at, vs.actual_ended_at, vs.termination_reason, vs.recording_policy, vs.recording_status, vs.version

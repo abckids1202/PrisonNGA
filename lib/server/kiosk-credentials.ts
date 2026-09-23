@@ -17,6 +17,7 @@ export async function hashKioskCredential(secret: string): Promise<string> {
 export async function authenticateKiosk(
   database: KioskCredentialDatabase,
   request: Request,
+  options: { touchLastUsed?: boolean } = {},
 ): Promise<AuthenticatedKiosk | null> {
   const resourceId = request.headers.get("x-securevisit-kiosk-id")?.trim() || "";
   const secret = request.headers.get("x-securevisit-kiosk-token")?.trim() || "";
@@ -34,9 +35,11 @@ export async function authenticateKiosk(
     .first<{ id: string; resource_id: string; facility_id: string }>();
 
   if (!credential) return null;
-  const touched = await database.prepare("UPDATE kiosk_credentials SET last_used_at = ? WHERE id = ? AND status = 'ACTIVE'")
-    .bind(new Date().toISOString(), credential.id)
-    .run();
-  if (!touched.meta.changes) return null;
+  if (options.touchLastUsed !== false) {
+    const touched = await database.prepare("UPDATE kiosk_credentials SET last_used_at = ? WHERE id = ? AND status = 'ACTIVE'")
+      .bind(new Date().toISOString(), credential.id)
+      .run();
+    if (!touched.meta.changes) return null;
+  }
   return { resourceId: credential.resource_id, facilityId: credential.facility_id };
 }
