@@ -44,6 +44,7 @@ INSERT INTO permissions (id, permission_key, description) VALUES
   ('perm-incident-manage', 'incident.manage', 'Create and resolve facility incidents.'),
   ('perm-notification-manage', 'notification.manage', 'Replay and operate failed notification deliveries.')
   ,('perm-visitor-directory-read', 'visitor.directory.read', 'Read facility-scoped visitor identity and relationship directory data.')
+  ,('perm-finance-read', 'finance.read', 'Read facility-scoped credit ledger and payment records.')
 ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id) VALUES
@@ -70,4 +71,6 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ,('role-scheduling-officer', 'perm-visitor-directory-read')
   ,('role-verification-officer', 'perm-visitor-directory-read')
   ,('role-supervisor', 'perm-visitor-directory-read')
+  ,('role-supervisor', 'perm-finance-read')
+  ,('role-auditor', 'perm-finance-read')
 ON CONFLICT(role_id, permission_id) DO NOTHING;
