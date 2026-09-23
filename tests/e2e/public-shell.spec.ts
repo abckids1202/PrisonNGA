@@ -33,6 +33,20 @@ test("development visitor OTP creates a real browser session", async ({ page }) 
   await expect(page.getByText("Your visitor account", { exact: true })).toBeVisible();
 });
 
+test("development visitor SMS OTP creates a real browser session", async ({ page }) => {
+  const phone = `+62812${String(Date.now()).slice(-8)}`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { data: { channel: "SMS", phone } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; channel?: string; destination?: string; devCode?: string };
+  expect(challenge.channel).toBe("SMS");
+  expect(challenge.destination).toMatch(/^\+62••••\d{2}$/);
+  expect(challenge.devCode).toMatch(/^\d{6}$/);
+
+  const verify = await page.request.post("/api/auth/visitor/verify", { data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "SMS Browser Visitor" } });
+  expect(verify.status()).toBe(200);
+  await expect(verify.json()).resolves.toMatchObject({ authenticated: true, visitor: { displayName: "SMS Browser Visitor", phone } });
+});
+
 test("browser requests to protected APIs are rejected without a session", async ({ request }) => {
   const response = await request.get("/api/auth/me");
 
