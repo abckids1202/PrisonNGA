@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getVisitorVisitViewState, type VisitorVisitViewState } from "@/lib/visitor/visit-details-state";
@@ -91,6 +91,7 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
   const [checkInSaving, setCheckInSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [now, setNow] = useState<number | null>(null);
+  const waitingRoomKey = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -160,10 +161,14 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
     setCheckInSaving(true);
     setError("");
     try {
+      const storageKey = `securevisit:waiting-room:${appointment.id}`;
+      const idempotencyKey = waitingRoomKey.current || (typeof window !== "undefined" ? window.sessionStorage.getItem(storageKey) : null) || crypto.randomUUID();
+      waitingRoomKey.current = idempotencyKey;
+      if (typeof window !== "undefined") window.sessionStorage.setItem(storageKey, idempotencyKey);
       const response = await fetch(`/api/visitor/appointments/${encodeURIComponent(appointment.id)}/waiting-room`, {
         method: "POST",
         credentials: "include",
-        headers: { accept: "application/json", "Idempotency-Key": crypto.randomUUID() },
+        headers: { accept: "application/json", "Idempotency-Key": idempotencyKey },
       });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "WAITING_ROOM_CHECK_IN_FAILED");
@@ -201,7 +206,6 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
         <article className={`sv5-panel sv5-waiting-panel sv5-waiting-${["waiting", "ready", "live"].includes(state) ? "open" : "closed"}`}><div className="sv5-waiting-illustration"><span>◷</span><i /></div><p className="sv4-kicker">Facility readiness</p><h2>{state === "ready" ? "Ready to join" : state === "live" ? "Visit in progress" : state === "waiting" ? "Waiting for staff" : "Waiting room"}</h2><p>{state === "waiting" ? "Your check-in is recorded. Stay on this page for the facility’s next update." : state === "ready" ? "The facility has marked your visit ready. Join using the secure visit button." : state === "live" ? "Your session has been started. Return to the live visit when needed." : "The waiting room and visit actions will appear here when the facility opens them."}</p><div className="sv5-waiting-time"><span>Scheduled time</span><strong>{formatTimeRange(appointment)}</strong></div>{state === "ready" && <button className="sv4-button sv4-button-primary" onClick={openLiveVisit}>Join your visit →</button>}</article>
       </section>
 
-      <section className="sv5-info-layout"><article className="sv5-panel sv5-info-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Visit information</p><h2>The details you need</h2></div><span className="sv5-info-icon">⌁</span></div><div className="sv5-detail-grid"><Detail label="Date" value={formatDate(appointment.requested_start, appointment.timezone)} /><Detail label="Time" value={formatTimeRange(appointment)} /><Detail label="Visit type" value={prettyStatus(appointment.appointment_type)} /><Detail label="Duration" value={`${duration} minutes`} /><Detail label="Facility" value={appointment.facility_name} /><Detail label="Connection" value={`${appointment.prisoner_name} · ${appointment.relationship_type || "Approved connection"}`} /></div></article><article className="sv5-panel sv5-credit-panel"><div className="sv5-credit-symbol">◇</div><p className="sv4-kicker">Visit Credit</p><h2>{credit === "CONSUMED" ? "Credit used" : credit === "RETURNED" ? "Credit returned" : credit === "RESERVED" ? "Credit reserved" : "Not reserved yet"}</h2><p>{credit === "CONSUMED" ? "The ledger records this credit as used for the completed visit." : credit === "RETURNED" ? "The ledger records this credit as returned to your balance." : credit === "RESERVED" ? "One visit credit is reserved for this appointment." : "A credit has not been reserved for this appointment."}</p><Link className="sv5-inline-link" href="/visitor?section=Credits">View my credits →</Link></article></section>
       <section className="sv5-info-layout"><article className="sv5-panel sv5-info-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Visit information</p><h2>The details you need</h2></div><span className="sv5-info-icon">⌁</span></div><div className="sv5-detail-grid"><Detail label="Date" value={formatDate(appointment.requested_start, appointment.timezone)} /><Detail label="Time" value={formatTimeRange(appointment)} /><Detail label="Visit type" value={prettyStatus(appointment.appointment_type)} /><Detail label="Duration" value={`${duration} minutes`} /><Detail label="Facility" value={appointment.facility_name} /><Detail label="Connection" value={`${appointment.prisoner_name} · ${appointment.relationship_type || "Approved connection"}`} /></div></article><article className="sv5-panel sv5-credit-panel"><div className="sv5-credit-symbol">◇</div><p className="sv4-kicker">Visit Credit</p><h2>{credit === "CONSUMED" ? "Credit used" : credit === "RETURNED" ? "Credit returned" : credit === "RESERVED" ? "Credit reserved" : "Not reserved yet"}</h2><p>{credit === "CONSUMED" ? "The ledger records this credit as used for the completed visit." : credit === "RETURNED" ? "The ledger records this credit as returned to your balance." : credit === "RESERVED" ? "One visit credit is reserved for this appointment." : "A credit has not been reserved for this appointment."}</p><Link className="sv5-inline-link" href="/visitor?section=Credits">View my credits →</Link></article></section>
       {appointment.settlement_ledger_entry_id && <section className="sv5-panel sv5-receipt-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Completion receipt</p><h2>{appointment.settlement_entry_type === "CONSUMPTION" ? "Visit credit settled" : "Visit credit returned"}</h2></div><span className="sv5-info-icon">✓</span></div><p>This receipt is generated from the saved credit ledger settlement for this visit.</p><div className="sv5-detail-grid"><Detail label="Visit ID" value={appointment.id} /><Detail label="Ledger reference" value={appointment.settlement_ledger_entry_id} /><Detail label="Outcome" value={appointment.settlement_entry_type === "CONSUMPTION" ? "Consumed" : "Returned"} /><Detail label="Recorded status" value={prettyStatus(appointment.status)} /></div><Link className="sv5-inline-link" href="/visitor?section=Credits">View credit activity →</Link></section>}
 
