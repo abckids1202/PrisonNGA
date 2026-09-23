@@ -75,6 +75,32 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
   }
 
   useEffect(() => {
+    if (isVisitor || !kioskDeviceId || !kioskCredential) return;
+    let active = true;
+    const sendHeartbeat = async () => {
+      try {
+        const response = await fetch("/api/kiosk/heartbeat", {
+          method: "POST",
+          headers: { accept: "application/json", "x-securevisit-kiosk-id": kioskDeviceId, "x-securevisit-kiosk-token": kioskCredential },
+          cache: "no-store",
+        });
+        if (active && (response.status === 401 || response.status === 403)) {
+          setKioskCredential("");
+          setError("This facility device session has expired. Authenticate the kiosk again.");
+        }
+      } catch {
+        // A temporary heartbeat failure is reflected by the server-side freshness window.
+      }
+    };
+    void sendHeartbeat();
+    const timer = window.setInterval(() => void sendHeartbeat(), 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [isVisitor, kioskDeviceId, kioskCredential]);
+
+  useEffect(() => {
     let active = true;
     const participants = remoteParticipants.current;
     const videoTracks = remoteVideoTracks.current;
