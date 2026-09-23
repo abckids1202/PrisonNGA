@@ -156,9 +156,11 @@ async function processOutbox(env: Env): Promise<void> {
           VALUES (?, ?, ?, 'IN_APP', ?, 'PROCESSING', ?)`)
           .bind(inAppAttemptId, row.id, `${row.id}:in-app`, attemptNumber, attemptStartedAt),
       ]);
-      const visitorUserId = typeof payload.visitorUserId === "string"
-        ? payload.visitorUserId
-        : await resolveOutboxVisitorRecipient(env.DB, row);
+      const visitorUserId = await resolveOutboxVisitorRecipient(env.DB, row);
+      const declaredVisitorUserId = typeof payload.visitorUserId === "string" ? payload.visitorUserId : null;
+      if (declaredVisitorUserId && declaredVisitorUserId !== visitorUserId) {
+        throw new Error("OUTBOX_RECIPIENT_MISMATCH");
+      }
       if (visitorUserId) {
         const copy = notificationCopy(row.event_type);
         const notificationPayload = { aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload };

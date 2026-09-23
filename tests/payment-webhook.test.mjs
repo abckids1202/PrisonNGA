@@ -72,3 +72,9 @@ test("payment reconciliation recovers stale processing claims", async () => {
   assert.match(source, /status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim\.'/);
   assert.match(source, /status = 'PROCESSING' AND created_at < datetime\('now', '-5 minutes'\)/);
 });
+
+test("notification delivery resolves recipients from facility-scoped aggregates", async () => {
+  const source = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  assert.match(source, /resolveOutboxVisitorRecipient\(env\.DB, row\)/);
+  assert.match(source, /OUTBOX_RECIPIENT_MISMATCH/);
+});

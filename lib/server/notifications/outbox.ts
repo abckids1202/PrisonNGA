@@ -43,5 +43,19 @@ export async function resolveOutboxVisitorRecipient(
     return verification?.visitor_user_id || null;
   }
 
+  if (row.aggregate_type === "evidence_document") {
+    const evidence = await db.prepare(
+      "SELECT ed.visitor_user_id FROM evidence_documents ed WHERE ed.id = ? AND ed.facility_id = ?",
+    ).bind(row.aggregate_id, row.facility_id).first<{ visitor_user_id: string }>();
+    return evidence?.visitor_user_id || null;
+  }
+
+  if (row.aggregate_type === "payment_intent") {
+    const payment = await db.prepare(
+      "SELECT user_id AS visitor_user_id FROM payment_intents WHERE id = ? AND facility_id = ?",
+    ).bind(row.aggregate_id, row.facility_id).first<{ visitor_user_id: string }>();
+    return payment?.visitor_user_id || null;
+  }
+
   return null;
 }
