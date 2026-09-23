@@ -73,7 +73,10 @@ test("visitor can revoke the current browser session and loses protected access"
   const current = sessionsBody.sessions?.find((session) => session.current);
   expect(current?.id).toBeTruthy();
 
-  const revoke = await page.request.post("/api/auth/sessions", { data: { sessionId: current?.id } });
+  const revoke = await page.request.post("/api/auth/sessions", {
+    data: { sessionId: current?.id },
+    headers: { origin: "http://localhost:4173" },
+  });
   expect(revoke.status()).toBe(200);
   const protectedResponse = await page.request.get("/api/auth/me");
   expect(protectedResponse.status()).toBe(401);

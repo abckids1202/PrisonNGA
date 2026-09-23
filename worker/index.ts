@@ -9,6 +9,7 @@ import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbo
 import { purgeExpiredAuthArtifacts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
+import { isSameOriginMutation } from "../lib/server/csrf";
 
 interface Env {
   ASSETS: Fetcher;
@@ -318,6 +319,12 @@ const worker = {
           return result.response();
         },
       }, allowedWidths);
+    }
+
+    if (!isSameOriginMutation(request)) {
+      const response = Response.json({ error: "CSRF_ORIGIN_INVALID" }, { status: 403, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+      response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+      return response;
     }
 
     const response = await handler.fetch(request, env, ctx);
