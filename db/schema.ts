@@ -510,10 +510,13 @@ export const paymentProviderEvents = sqliteTable("payment_provider_events", {
   eventKey: text("event_key").notNull(),
   eventType: text("event_type").notNull(),
   payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
-  status: text("status", { enum: ["RECEIVED", "PROCESSED", "FAILED", "IGNORED"] }).notNull().default("RECEIVED"),
+  status: text("status", { enum: ["RECEIVED", "PROCESSING", "PROCESSED", "FAILED", "DEAD_LETTER", "IGNORED"] }).notNull().default("RECEIVED"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  availableAt: text("available_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  lastError: text("last_error"),
   processedAt: text("processed_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ eventKeyIdx: uniqueIndex("payment_provider_events_key_idx").on(table.provider, table.eventKey), createdIdx: index("payment_provider_events_created_idx").on(table.createdAt) }));
+}, (table) => ({ eventKeyIdx: uniqueIndex("payment_provider_events_key_idx").on(table.provider, table.eventKey), createdIdx: index("payment_provider_events_created_idx").on(table.createdAt), retryIdx: index("payment_provider_events_retry_idx").on(table.status, table.availableAt, table.createdAt) }));
 
 export const notifications = sqliteTable("notifications", {
   id: text("id").primaryKey(),

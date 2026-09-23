@@ -49,7 +49,7 @@ export function financeReconciliationStatement(d1: D1Database, facilityId: strin
         'Provider event is still RECEIVED and requires retry or investigation.'
       FROM payment_provider_events ppe INNER JOIN payment_intents pi
         ON pi.id = json_extract(ppe.payload, '$.paymentIntentId')
-      WHERE pi.facility_id = ? AND ppe.status = 'RECEIVED'
+      WHERE pi.facility_id = ? AND ppe.status IN ('RECEIVED', 'PROCESSING', 'FAILED', 'DEAD_LETTER')
     )
     ORDER BY issue_type, payment_intent_id LIMIT 100`).bind(facilityId, facilityId, facilityId);
 }

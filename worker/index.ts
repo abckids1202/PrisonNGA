@@ -7,6 +7,7 @@ import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
 import { purgeExpiredAuthArtifacts } from "../lib/server/auth/cleanup";
+import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 
 interface Env {
   ASSETS: Fetcher;
@@ -29,6 +30,37 @@ interface ExecutionContext {
 
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 type ExpiredSession = { id: string; appointment_id: string; facility_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
+type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
+
+async function reconcilePaymentEvents(env: Env): Promise<void> {
+  const rows = await env.DB.prepare("SELECT id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
+  for (const row of rows.results) {
+    const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
+    if (!claim.meta.changes) continue;
+    try {
+      const payload = JSON.parse(row.payload) as { eventType?: unknown; paymentIntentId?: unknown; providerReference?: unknown; status?: unknown };
+      if (typeof payload.eventType !== "string") throw new Error("PAYMENT_EVENT_INVALID_SNAPSHOT");
+      await processPaymentProviderEvent(env.DB, {
+        provider: row.provider,
+        eventKey: row.event_key,
+        payload: {
+          eventId: row.event_key,
+          eventType: payload.eventType,
+          paymentIntentId: typeof payload.paymentIntentId === "string" ? payload.paymentIntentId : undefined,
+          providerReference: typeof payload.providerReference === "string" ? payload.providerReference : undefined,
+          status: typeof payload.status === "string" ? payload.status : undefined,
+        },
+      });
+    } catch (error) {
+      const attempt = row.attempt_count + 1;
+      const delaySeconds = Math.min(3600, 30 * (2 ** Math.max(0, attempt - 1)));
+      const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+      const message = error instanceof Error ? error.message.slice(0, 500) : "PAYMENT_EVENT_RECONCILIATION_FAILED";
+      await env.DB.prepare("UPDATE payment_provider_events SET status = CASE WHEN attempt_count >= 8 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
+      console.error(JSON.stringify({ event: "PAYMENT_EVENT_RECONCILIATION_FAILED", eventId: row.id, provider: row.provider, attempt, error: message }));
+    }
+  }
+}
 
 async function processOutbox(env: Env): Promise<void> {
   await env.DB.prepare("UPDATE outbox_events SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim.' WHERE status = 'PROCESSING' AND created_at < datetime('now', '-5 minutes')").run();
@@ -169,7 +201,7 @@ function notificationCopy(eventType: string): { title: string; body: string } {
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), purgeExpiredAuthArtifacts(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), purgeExpiredAuthArtifacts(env.DB), reconcileExpiredSessions(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);

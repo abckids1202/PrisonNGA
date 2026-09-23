@@ -46,7 +46,7 @@ test("payment webhook HMAC verification accepts only the signed raw body", async
 });
 
 test("refund webhooks remain retryable until reserved credits can be released", async () => {
-  const source = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
+  const source = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
   assert.match(source, /const refund = await refundPurchasedCredits/);
   assert.match(source, /PAYMENT_REFUND_PENDING/);
   assert.match(source, /if \(\"pending\" in refund && refund\.pending\) throw/);

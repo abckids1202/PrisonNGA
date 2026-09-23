@@ -22,7 +22,7 @@ export async function GET() {
       ledger: ledger.results || [],
       payments: payments.results || [],
       providerConfigured: Boolean(provider),
-      reconciliation: { available: true, workerConfigured: false, issueCount: reconciliationIssues.length, issues: reconciliationIssues, reason: "READ_ONLY_INTEGRITY_CHECKS_ONLY" },
+      reconciliation: { available: true, workerConfigured: true, issueCount: reconciliationIssues.length, issues: reconciliationIssues, reason: "SCHEDULED_RECONCILIATION_WORKER" },
     }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
