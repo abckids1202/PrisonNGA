@@ -80,7 +80,7 @@ export async function POST(request: Request) {
         event: { id: eventId, eventType, source: "LIVEKIT_WEBHOOK", participantRole, metadata: eventMetadata },
       }));
       if (finalized[1]?.meta.changes && finalized[2]?.meta.changes && finalized[4]?.meta.changes) {
-        return securityResponse({ accepted: true, event: event.event, sessionId: session.id, status: "COMPLETED", correlationId }, 200, context.requestId);
+        return securityResponse({ accepted: true, event: event.event, sessionId: session.id, sessionStatus: finalSessionStatus, appointmentStatus: finalAppointmentStatus, creditOutcome: terminating ? "RELEASE" : "CONSUME", correlationId }, 200, context.requestId);
       }
       const latest = await d1.prepare(`SELECT vs.status, a.status AS appointment_status
         FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
