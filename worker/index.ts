@@ -123,6 +123,15 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
 
 async function processOutbox(env: Env): Promise<void> {
   await env.DB.prepare("UPDATE outbox_events SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim.' WHERE status = 'PROCESSING' AND created_at < datetime('now', '-5 minutes')").run();
+  await env.DB.prepare(`UPDATE notification_delivery_attempts
+    SET status = 'FAILED', error_message = 'Recovered stale outbox claim.', finished_at = CURRENT_TIMESTAMP
+    WHERE status = 'PROCESSING'
+      AND EXISTS (
+        SELECT 1 FROM outbox_events
+        WHERE outbox_events.id = notification_delivery_attempts.outbox_event_id
+          AND outbox_events.status = 'FAILED'
+          AND outbox_events.last_error = 'Recovered stale processing claim.'
+      )`).run();
   const result = await env.DB.prepare("SELECT id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, attempt_count FROM outbox_events WHERE status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<OutboxRow>();
   for (const row of result.results) {
     const now = new Date().toISOString();
