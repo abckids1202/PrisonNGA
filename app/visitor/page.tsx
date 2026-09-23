@@ -483,7 +483,7 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
   async function cancelVisit(appointment: VisitorAppointmentRecord) {
     if (!window.confirm("Cancel this visit request? The facility will see that it was cancelled.")) return;
     try {
-      const response = await fetch("/api/visitor/appointments", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ appointmentId: appointment.id, action: "cancel", expectedVersion: appointment.version }) });
+    const response = await fetch("/api/visitor/appointments", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ appointmentId: appointment.id, action: "cancel", expectedVersion: appointment.version }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "This visit could not be cancelled.");
       await refreshAppointments();
