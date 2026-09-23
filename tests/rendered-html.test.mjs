@@ -194,6 +194,12 @@ test("protects staff provisioning workflow", async () => {
   assert.equal((await create.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
+test("protects the facility access review report", async () => {
+  const response = await renderApi("/api/control/access-review");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
 test("protects retention and legal hold controls", async () => {
   const retention = await renderApi("/api/control/retention");
   assert.equal(retention.status, 401);
