@@ -103,7 +103,7 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
       reservationInsertStatement(d1, { facilityId: input.facilityId, appointmentId: input.appointmentId, resourceType: "ROOM", availableStatus: "AVAILABLE", startsAt, endsAt, now: input.now, correlationId: input.correlationId }),
       reservationInsertStatement(d1, { facilityId: input.facilityId, appointmentId: input.appointmentId, resourceType: "DEVICE", availableStatus: "ONLINE", startsAt, endsAt, now: input.now, correlationId: input.correlationId }),
     );
-  } else if ((input.command === "reject" || input.command === "cancel") && input.creditAccountId) {
+  } else if ((input.command === "reject" || input.command === "cancel" || input.command === "no_show") && input.creditAccountId) {
     statements.push(
       d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
         SELECT ?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?
@@ -119,11 +119,18 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
     );
   }
 
-  if (input.command === "reject" || input.command === "cancel") {
+  if (input.command === "reject" || input.command === "cancel" || input.command === "no_show") {
     statements.push(d1.prepare(`UPDATE resource_reservations SET status = 'RELEASED'
       WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')
         AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)`)
       .bind(input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.correlationId));
+  }
+
+  if (input.command === "no_show") {
+    statements.push(d1.prepare(`UPDATE waiting_room_sessions SET state = 'NO_SHOW', version = version + 1, last_checked_at = ?, updated_at = ?
+      WHERE appointment_id = ? AND facility_id = ? AND state NOT IN ('LIVE', 'COMPLETED', 'CANCELLED', 'NO_SHOW')
+        AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)`)
+      .bind(input.now, input.now, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.correlationId));
   }
 
   statements.push(

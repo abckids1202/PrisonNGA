@@ -8,6 +8,7 @@ import { deliverNotification, getNotificationDelivery } from "../lib/server/noti
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
 import { purgeExpiredAuthArtifacts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
+import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 
 interface Env {
   ASSETS: Fetcher;
@@ -31,6 +32,48 @@ interface ExecutionContext {
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 type ExpiredSession = { id: string; appointment_id: string; facility_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
+
+async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
+  const rows = await env.DB.prepare(`SELECT a.id, a.facility_id, a.visitor_user_id, a.status, a.version, a.requested_end,
+      ca.id AS credit_account_id
+    FROM appointments a
+    LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
+    LEFT JOIN visit_sessions vs ON vs.appointment_id = a.id AND vs.facility_id = a.facility_id
+      AND vs.status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING', 'ENDING')
+    LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
+    WHERE a.status IN ('APPROVED', 'WAITING')
+      AND a.requested_end <= CURRENT_TIMESTAMP
+      AND vs.id IS NULL
+      AND COALESCE(w.visitor_presence, 'absent') <> 'present'
+      AND COALESCE(w.prisoner_presence, 'waiting') <> 'present'
+    ORDER BY a.requested_end ASC LIMIT 25`).all<{ id: string; facility_id: string; visitor_user_id: string; status: string; version: number; requested_end: string; credit_account_id: string | null }>();
+
+  for (const row of rows.results) {
+    const now = new Date().toISOString();
+    const correlationId = crypto.randomUUID();
+    try {
+      const results = await env.DB.batch(appointmentDecisionStatements(env.DB, {
+        appointmentId: row.id,
+        facilityId: row.facility_id,
+        visitorUserId: row.visitor_user_id,
+        fromStatus: row.status,
+        toStatus: "NO_SHOW",
+        expectedVersion: row.version,
+        actorUserId: "system:scheduler",
+        actorRole: "SYSTEM",
+        command: "no_show",
+        reason: `Visit window ended at ${row.requested_end} without participant arrival.`,
+        requestId: correlationId,
+        correlationId,
+        now,
+        creditAccountId: row.credit_account_id || undefined,
+      }));
+      if (!results[0]?.meta.changes) continue;
+    } catch (error) {
+      console.error(JSON.stringify({ event: "WAITING_ROOM_NO_SHOW_RECONCILIATION_FAILED", appointmentId: row.id, facilityId: row.facility_id, error: error instanceof Error ? error.message : "UNKNOWN" }));
+    }
+  }
+}
 
 async function reconcilePaymentEvents(env: Env): Promise<void> {
   const rows = await env.DB.prepare("SELECT id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
@@ -203,7 +246,7 @@ function notificationCopy(eventType: string): { title: string; body: string } {
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), purgeExpiredAuthArtifacts(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), purgeExpiredAuthArtifacts(env.DB), reconcileExpiredSessions(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);

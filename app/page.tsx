@@ -10,7 +10,7 @@ import StaffObserverClient from "./features/live-session/StaffObserverClient";
 type Mode = "operations" | "management";
 type RuntimeEnvironment = "development" | "staging" | "production" | "unknown";
 type AppointmentStatus = "Requires action" | "Ready" | "Live" | "Blocked" | "Completed" | "Approved";
-type WaitingState = "NOT_ARRIVED" | "VISITOR_WAITING" | "PRISONER_WAITING" | "BOTH_PRESENT" | "TECHNICAL_ISSUE" | "STAFF_REVIEW" | "READY_TO_START" | "LATE" | "LIVE";
+type WaitingState = "NOT_ARRIVED" | "VISITOR_WAITING" | "PRISONER_WAITING" | "BOTH_PRESENT" | "TECHNICAL_ISSUE" | "STAFF_REVIEW" | "READY_TO_START" | "LATE" | "LIVE" | "COMPLETED" | "NO_SHOW";
 type CheckState = "pass" | "warning" | "failed" | "pending";
 type ReadinessCheck = { key: string; label: string; detail: string; state: CheckState };
 type WaitingRecord = Appointment & {
