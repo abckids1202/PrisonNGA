@@ -44,6 +44,7 @@ export async function getStaffSessionIdentity(): Promise<WorkspaceIdentity | nul
     .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "STAFF"), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, new Date().toISOString())))
     .limit(1);
   if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
+  await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
   return { externalId: sessionUser.externalId, email: sessionUser.email, displayName: sessionUser.displayName };
 }
 
@@ -71,6 +72,7 @@ export async function getVisitorSessionIdentity(): Promise<VisitorAuthorizationC
     .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "VISITOR"), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, new Date().toISOString())))
     .limit(1);
   if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
+  await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
   return { userId: sessionUser.id, email: sessionUser.email, displayName: sessionUser.displayName };
 }
 

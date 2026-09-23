@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function loadWorker() {
@@ -265,6 +266,12 @@ test("protects visitor session management", async () => {
   const response = await renderApi("/api/auth/sessions");
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+});
+
+test("authenticated sessions refresh last-seen timestamps only while active", async () => {
+  const source = await readFile(new URL("../lib/server/security.ts", import.meta.url), "utf8");
+  assert.match(source, /lastSeenAt: new Date\(\)\.toISOString\(\)/);
+  assert.match(source, /eq\(authSessions\.tokenHash, tokenHash\), isNull\(authSessions\.revokedAt\)/);
 });
 
 test("exposes a fail-closed staff federation configuration", async () => {
