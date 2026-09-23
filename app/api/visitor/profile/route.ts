@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { visitorProfiles } from "../../../../db/schema";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { parseVisitorProfileInput } from "../../../../lib/server/visitor-profile";
 
 export async function GET() {
   const context = await getRequestContext();
@@ -20,12 +21,12 @@ export async function PUT(request: Request) {
   try {
     const visitor = await requireVisitorIdentity();
     const body = await request.json() as { legalName?: unknown; preferredName?: unknown; phone?: unknown };
-    const legalName = typeof body.legalName === "string" ? body.legalName.trim().slice(0, 160) : "";
-    const preferredName = typeof body.preferredName === "string" ? body.preferredName.trim().slice(0, 120) : null;
-    const phone = typeof body.phone === "string" ? body.phone.trim().slice(0, 40) : null;
-    if (legalName.length < 2) throw new SecurityError("LEGAL_NAME_REQUIRED", 400);
+    const { legalName, preferredName, phone } = parseVisitorProfileInput(body);
     const db = await getDb();
-    await db.insert(visitorProfiles).values({ userId: visitor.userId, legalName, preferredName, phone, profileStatus: "INCOMPLETE", version: 1 }).onConflictDoUpdate({ target: visitorProfiles.userId, set: { legalName, preferredName, phone, updatedAt: new Date().toISOString(), version: 1 } });
+    const [current] = await db.select({ profileStatus: visitorProfiles.profileStatus, phone: visitorProfiles.phone, phoneVerifiedAt: visitorProfiles.phoneVerifiedAt }).from(visitorProfiles).where(eq(visitorProfiles.userId, visitor.userId)).limit(1);
+    if (current?.profileStatus === "SUSPENDED") throw new SecurityError("PROFILE_SUSPENDED", 403);
+    const now = new Date().toISOString();
+    await db.insert(visitorProfiles).values({ userId: visitor.userId, legalName, preferredName, phone, phoneVerifiedAt: null, profileStatus: "ACTIVE", version: 1 }).onConflictDoUpdate({ target: visitorProfiles.userId, set: { legalName, preferredName, phone, phoneVerifiedAt: current?.phone === phone ? current.phoneVerifiedAt : null, profileStatus: "ACTIVE", updatedAt: now, version: sql`${visitorProfiles.version} + 1` } });
     const [profile] = await db.select().from(visitorProfiles).where(eq(visitorProfiles.userId, visitor.userId)).limit(1);
     return securityResponse({ profile }, 200, context.requestId);
   } catch (error) {
