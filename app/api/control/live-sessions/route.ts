@@ -25,10 +25,21 @@ export async function GET() {
         (vs.status IN ('ENDED', 'TERMINATED', 'FAILED', 'CANCELLED') AND julianday(vs.actual_ended_at) >= julianday('now', '-24 hours'))
       ) ORDER BY CASE WHEN vs.status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING', 'ENDING') THEN 0 ELSE 1 END,
         COALESCE(vs.actual_started_at, vs.authorized_start_at) DESC LIMIT 40`).bind(authorization.facilityId).all();
-    const sessions = rows.results || [];
+    const sessions = (rows.results || []) as Array<Record<string, unknown>>;
+    const sessionIds = sessions.map((session) => String(session.id));
+    const participantsBySession = new Map<string, unknown[]>();
+    if (sessionIds.length) {
+      const participants = await d1.prepare(`SELECT session_id, identity, participant_role, participant_sid, status, first_seen_at, last_seen_at, disconnected_at
+        FROM visit_session_participants WHERE facility_id = ? AND session_id IN (${sessionIds.map(() => "?").join(",")}) ORDER BY last_seen_at DESC`).bind(authorization.facilityId, ...sessionIds).all();
+      for (const participant of participants.results || []) {
+        const sessionId = String(participant.session_id);
+        participantsBySession.set(sessionId, [...(participantsBySession.get(sessionId) || []), participant]);
+      }
+    }
+    const withParticipants: Array<Record<string, unknown> & { participants: unknown[] }> = sessions.map((session) => ({ ...session, participants: participantsBySession.get(String(session.id)) || [] }));
     return securityResponse({
-      sessions: sessions.filter((session) => typeof session.status === "string" && ["CONNECTING", "ACTIVE", "RECONNECTING", "ENDING"].includes(session.status)),
-      recentlyEnded: sessions.filter((session) => typeof session.status === "string" && ["ENDED", "TERMINATED", "FAILED", "CANCELLED"].includes(session.status)),
+      sessions: withParticipants.filter((session) => typeof session.status === "string" && ["CONNECTING", "ACTIVE", "RECONNECTING", "ENDING"].includes(session.status)),
+      recentlyEnded: withParticipants.filter((session) => typeof session.status === "string" && ["ENDED", "TERMINATED", "FAILED", "CANCELLED"].includes(session.status)),
       facilityId: authorization.facilityId,
       generatedAt: new Date().toISOString(),
     }, 200, context.requestId);

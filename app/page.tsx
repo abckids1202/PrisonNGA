@@ -652,6 +652,7 @@ type LiveSessionRow = {
   appointment_type: string;
   room_name: string | null;
   kiosk_name: string | null;
+  participants: Array<{ identity: string; participant_role: string; status: string; last_seen_at: string; disconnected_at: string | null }>;
 };
 
 function LiveSessionsPage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
@@ -744,7 +745,7 @@ function LiveSessionsPage({ onNotify }: { onNotify: (message: string, tone?: Not
       <h2>{session.visitor_name} <span>↔</span> {session.prisoner_name}</h2>
       <p>{session.room_name || "Room not assigned"} · {session.kiosk_name || "Device not assigned"}</p>
       <div className="sv10-card-time"><strong>{displayTime(session.actual_started_at || session.authorized_start_at)}</strong><small>{active ? "started" : "session start"}</small></div>
-      <div className="sv10-card-health"><span>Recording <b>{session.recording_policy === "OFF" ? "Off" : session.recording_status}</b></span><span>Provider <b>{session.provider}</b></span></div>
+      <div className="sv10-card-health"><span>Recording <b>{session.recording_policy === "OFF" ? "Off" : session.recording_status}</b></span><span>Provider <b>{session.provider}</b></span><span>Participants <b>{session.participants?.filter((participant) => participant.status === "CONNECTED").length || 0} connected</b></span></div>
       <span className="sv10-open">Open persisted session record <b>→</b></span>
     </button>;
   }
