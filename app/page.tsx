@@ -362,16 +362,16 @@ function CommandCenterPage({ appointments, facilityState, simulationPaused, simu
   const [propagating, setPropagating] = useState(false);
   const [scenario, setScenario] = useState("Normal day");
   const live = lockdown ? 0 : appointments.filter((appointment) => appointment.status === "Live").length;
-  const waiting = lockdown ? 0 : appointments.filter((appointment) => appointment.status === "Ready").length + 2;
+  const waiting = lockdown ? 0 : appointments.filter((appointment) => appointment.status === "Ready").length;
   const attention = appointments.filter((appointment) => appointment.status === "Requires action" || appointment.status === "Blocked").length + (lockdown ? 1 : 0);
-  const affected = appointments.find((appointment) => appointment.id === "SV-260813-031") || appointments[0];
   const nextDecision = appointments.find((appointment) => appointment.status === "Requires action") || appointments.find((appointment) => appointment.status === "Ready") || appointments[2];
-  const timeline = [
-    { time: "09:00", status: "COMPLETED", tone: "green", line: "done", title: "Sarah Amelia ↔ A. Rahman", meta: "Room 02 · Family visit · credit settled", action: "View details" },
-    { time: "10:00", status: lockdown ? "BLOCKED" : "LIVE · 11:43 REMAINING", tone: lockdown ? "red" : "orange", line: lockdown ? "blocked" : "live", title: "Sarah Amelia ↔ A. Rahman", meta: lockdown ? "Cancelled by facility lockdown · credit released" : "Room 03 · Kiosk 04 · connection stable", appointment: affected, action: lockdown ? "Review" : "Monitor" },
-    { time: "10:20", status: lockdown ? "BLOCKED" : "READY", tone: lockdown ? "red" : "blue", line: lockdown ? "blocked" : "ready", title: "Daniel Wijaya ↔ R. Santoso", meta: lockdown ? "Cancelled by facility lockdown · unit notified" : "Room 01 · Identity and device checks complete", appointment: appointments[1], action: lockdown ? "Review" : "Admit" },
-    { time: "10:40", status: "BLOCKED", tone: "red", line: "blocked", title: "Alya Pratama ↔ F. Pratama", meta: lockdown ? "Cancelled by facility lockdown · review suspended" : "Room 04 · Relationship evidence needs review", appointment: nextDecision, action: "Resolve" },
-  ];
+  const timeline = appointments.slice(0, 4).map((appointment, index) => {
+    const status = lockdown ? "BLOCKED" : appointment.status === "Live" ? "LIVE" : appointment.status === "Completed" ? "COMPLETED" : appointment.status === "Blocked" || appointment.status === "Requires action" ? "BLOCKED" : appointment.status === "Ready" ? "READY" : "APPROVED";
+    const tone = status === "COMPLETED" ? "green" : status === "LIVE" ? "orange" : status === "BLOCKED" ? "red" : "blue";
+    const line = status === "COMPLETED" ? "done" : status === "LIVE" ? "live" : status === "BLOCKED" ? "blocked" : "ready";
+    const meta = lockdown ? "Cancelled by facility lockdown · resource state updated" : `${appointment.room} · ${appointment.type} visit${appointment.issue ? ` · ${appointment.issue}` : ""}`;
+    return { time: appointment.time.split("–")[0], status, tone, line, title: `${appointment.visitor} ↔ ${appointment.prisoner}`, meta, appointment, action: status === "LIVE" ? "Monitor" : status === "COMPLETED" ? "View details" : status === "BLOCKED" ? "Resolve" : index === 0 ? "Review" : "Open" };
+  });
 
   function confirmLockdown() {
     setLockdownDialog(false);
@@ -1265,12 +1265,12 @@ function ComplianceTab({ tab, onNotify }: { tab: string; onNotify: (message: str
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    const loadingTimer = window.setTimeout(() => setLoading(true), 0);
     const requests: Promise<void>[] = [];
     if (tab === "Security Events") requests.push(fetch("/api/control/security-events", { cache: "no-store" }).then(async (response) => { if (!response.ok) throw new Error("SECURITY_EVENTS_UNAVAILABLE"); const body = await response.json() as { events?: ComplianceSecurityEvent[] }; if (active) setSecurityEvents(body.events || []); }));
     if (tab === "Reports") requests.push(Promise.all([fetch("/api/audit/events?limit=100", { cache: "no-store" }), fetch("/api/control/finance", { cache: "no-store" })]).then(async ([auditResponse, financeResponse]) => { if (!auditResponse.ok || !financeResponse.ok) throw new Error("REPORT_DATA_UNAVAILABLE"); const auditBody = await auditResponse.json() as { events?: unknown[] }; const financeBody = await financeResponse.json() as { summary?: typeof financeSummary }; if (active) { setAuditCount(auditBody.events?.length || 0); setFinanceSummary(financeBody.summary || null); } }));
     Promise.all(requests).catch(() => undefined).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    return () => { active = false; window.clearTimeout(loadingTimer); };
   }, [tab]);
   if (tab === "Recording Access") return <div className="sv3-settings-surface"><Status tone="blue">RECORDING DISABLED</Status><h2>No recording access workflow is active</h2><p>Recording is disabled by the pilot policy. There are no recordings to review, and this workspace does not create fictional access requests.</p></div>;
   if (tab === "Reports") return <div className="sv3-report-grid">{[["Daily operations", auditCount === null ? "Loading" : `${auditCount} audit events loaded`, "Facility-scoped audit activity", auditCount === null ? "LOADING" : "READY"], ["Credit reconciliation", financeSummary ? `${financeSummary.credits_purchased || 0} purchased · ${financeSummary.credits_consumed || 0} consumed` : "Financial records unavailable", "Persisted D1 ledger summary", financeSummary ? "READY" : "UNAVAILABLE"], ["Access review", "Recording policy is OFF", "No recording access records exist", "NOT APPLICABLE"]].map((report) => <div className="sv3-report-card" key={report[0]}><span className="sv3-report-icon">▤</span><strong>{report[0]}</strong><small>{report[1]} · {report[2]}</small><Status tone={report[3] === "READY" ? "green" : report[3] === "NOT APPLICABLE" ? "blue" : "orange"}>{report[3]}</Status><b>{report[3] === "READY" ? "Open report →" : "View status →"}</b></div>)}</div>;
