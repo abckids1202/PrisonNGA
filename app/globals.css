@@ -689,3 +689,18 @@ button, input, select, textarea { font-family: inherit; }
 @media (max-width: 600px) { .sv6-prisoner-toolbar { align-items: stretch; flex-direction: column; gap: 10px; }.sv6-prisoner-row { align-items: start; grid-template-columns: 34px minmax(0, 1fr) auto; }.sv6-prisoner-avatar { height: 32px; width: 32px; }.sv6-prisoner-status { grid-column: 2; }.sv6-prisoner-edit { grid-column: 3; grid-row: 1; } }
 .sv5-sync-warning { background: #fff3df; border: 1px solid #f1d5a5; border-radius: 12px; color: #6e4a12; font-size: 13px; line-height: 1.55; margin: -8px 0 0; padding: 12px 16px; }
 .sv5-history-empty { color: var(--sv5-muted); font-size: 13px; grid-column: 1 / -1; margin: 0; padding: 8px 0 12px; }
+.sv10-observer-backdrop { align-items: center; background: rgba(7,24,39,.48); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 40; }
+.sv10-observer-panel { background: #fff; border-radius: 14px; box-shadow: 0 24px 70px rgba(7,24,39,.28); display: flex; flex-direction: column; max-height: min(760px, calc(100vh - 48px)); max-width: 980px; overflow: hidden; width: min(980px, 100%); }
+.sv10-observer-panel > header { align-items: flex-start; border-bottom: 1px solid #e7eeeb; display: flex; justify-content: space-between; padding: 22px 24px; }
+.sv10-observer-panel > header h2 { color: #173346; font-size: 22px; letter-spacing: -.04em; margin: 6px 0 4px; }
+.sv10-observer-panel > header p { color: #829196; font-size: 10px; margin: 0; }
+.sv10-observer-panel > header button { background: transparent; border: 0; color: #718189; cursor: pointer; font-size: 25px; }
+.sv10-observer-status { align-items: center; border-bottom: 1px solid #edf1ef; color: #72838a; display: flex; font-size: 11px; justify-content: space-between; padding: 13px 24px; }
+.sv10-observer-status span { align-items: center; display: inline-flex; gap: 7px; }
+.sv10-observer-status i { background: #cfaa48; border-radius: 50%; height: 7px; width: 7px; }
+.sv10-observer-status .good { color: #2f7a54; }.sv10-observer-status .good i { background: #2f7a54; }.sv10-observer-status .bad { color: #bd514c; }.sv10-observer-status .bad i { background: #bd514c; }
+.sv10-observer-media { align-items: center; background: #102d3e; color: #c9d7d8; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; min-height: 390px; overflow: hidden; padding: 18px; }
+.sv10-observer-media p { font-size: 13px; }
+.sv9-observer-media { border-radius: 9px; max-height: 520px; max-width: 100%; object-fit: contain; }
+.sv10-observer-panel > footer { align-items: center; border-top: 1px solid #e7eeeb; color: #7b8b90; display: flex; font-size: 10px; gap: 12px; justify-content: space-between; padding: 14px 24px; }
+@media (max-width: 740px) { .sv10-observer-backdrop { padding: 0; }.sv10-observer-panel { border-radius: 0; max-height: 100vh; min-height: 100vh; }.sv10-observer-media { min-height: 300px; }.sv10-observer-panel > footer { align-items: stretch; flex-direction: column; }.sv10-observer-panel > footer .sv4-button { width: 100%; } }
