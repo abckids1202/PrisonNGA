@@ -1,11 +1,8 @@
 import { getD1 } from "../../../../db/runtime";
-import { appendAuditAndOutbox } from "../../../../lib/server/events";
-import { releaseVisitCredit } from "../../../../lib/server/credits";
-import { releaseVisitResources } from "../../../../lib/server/resources";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { claimIdempotency, hashIdempotencyPayload, releaseIdempotencyClaim } from "../../../../lib/server/idempotency";
 import { validateVisitWindow } from "../../../../lib/server/visit-policy";
-import { createVisitorAppointmentStatements, rescheduleVisitorAppointmentStatements } from "../../../../lib/server/visitor-appointments";
+import { cancelVisitorAppointmentStatements, createVisitorAppointmentStatements, rescheduleVisitorAppointmentStatements } from "../../../../lib/server/visitor-appointments";
 
 const activeStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"];
 
@@ -125,16 +122,18 @@ export async function PATCH(request: Request) {
     const correlationId = crypto.randomUUID();
     if (action === "cancel") {
       if (!["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(String(appointment.status))) throw new SecurityError("APPOINTMENT_NOT_CANCELLABLE", 409);
-      const updated = await d1.prepare("UPDATE appointments SET status = 'CANCELLED_BY_VISITOR', version = version + 1, updated_at = ? WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING')").bind(now, appointmentId, visitor.userId, Number(appointment.version)).run();
-      if (!updated.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
-      if (appointment.credit_account_id && ["APPROVED", "WAITING"].includes(String(appointment.status))) {
-        await releaseVisitCredit(d1, { accountId: String(appointment.credit_account_id), appointmentId, actorUserId: visitor.userId, reason: "Visitor cancelled the appointment." });
-        await releaseVisitResources(d1, appointmentId, String(appointment.facility_id));
-      }
-      await d1.batch([
-        d1.prepare("INSERT INTO appointment_status_events (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at) VALUES (?, ?, ?, 'CANCELLED_BY_VISITOR', ?, 'VISITOR_CANCELLED', 'Visitor cancelled the appointment.', ?, ?)").bind(crypto.randomUUID(), appointmentId, appointment.status, visitor.userId, correlationId, now),
-      ]);
-      await appendAuditAndOutbox({ actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: String(appointment.facility_id), actionType: "APPOINTMENT_CANCELLED_BY_VISITOR", entityType: "appointment", entityId: appointmentId, reason: "Visitor cancelled the appointment.", oldValues: { status: appointment.status }, newValues: { status: "CANCELLED_BY_VISITOR" }, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_CANCELLED_BY_VISITOR", payload: { appointmentId, visitorUserId: visitor.userId } });
+      const cancelled = await d1.batch(cancelVisitorAppointmentStatements(d1, {
+        appointmentId,
+        facilityId: String(appointment.facility_id),
+        visitorUserId: visitor.userId,
+        previousStatus: String(appointment.status),
+        expectedVersion: Number(appointment.version),
+        creditAccountId: appointment.credit_account_id ? String(appointment.credit_account_id) : null,
+        now,
+        correlationId,
+        requestId: context.requestId,
+      }));
+      if (!cancelled[0]?.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
       return securityResponse({ appointmentId, status: "CANCELLED_BY_VISITOR", version: Number(appointment.version) + 1, correlationId }, 200, context.requestId);
     }
     if (!["SUBMITTED", "UNDER_REVIEW"].includes(String(appointment.status))) throw new SecurityError("APPOINTMENT_NOT_RESCHEDULABLE", 409);

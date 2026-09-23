@@ -1,4 +1,5 @@
 import { auditAndOutboxStatements } from "./events";
+import { releaseVisitCreditStatements } from "./credits";
 
 const activeAppointmentStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"] as const;
 
@@ -182,4 +183,69 @@ export function rescheduleVisitorAppointmentStatements(d1: D1Database, input: Re
         AND ${transitionGuard.sql}`)
       .bind(200, JSON.stringify(input.responseBody), input.now, input.idempotency.claimId, input.idempotency.scope, input.idempotency.key, ...transitionGuard.values),
   ];
+}
+
+export type CancelVisitorAppointmentInput = {
+  appointmentId: string;
+  facilityId: string;
+  visitorUserId: string;
+  previousStatus: string;
+  expectedVersion: number;
+  creditAccountId: string | null;
+  now: string;
+  correlationId: string;
+  requestId: string;
+};
+
+export function cancelVisitorAppointmentStatements(d1: D1Database, input: CancelVisitorAppointmentInput): D1PreparedStatement[] {
+  const transitionGuard = {
+    sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND status = 'CANCELLED_BY_VISITOR' AND version = ? AND last_transition_id = ?)",
+    values: [input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion + 1, input.correlationId],
+  };
+  const requiresSettlement = ["APPROVED", "WAITING"].includes(input.previousStatus);
+  const statements: D1PreparedStatement[] = [
+    d1.prepare(`UPDATE appointments SET status = 'CANCELLED_BY_VISITOR', version = version + 1, updated_at = ?, last_transition_id = ?
+      WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND version = ? AND status = ?
+        AND (? = 0 OR (EXISTS (SELECT 1 FROM credit_ledger_entries r WHERE r.appointment_id = ? AND r.credit_account_id = ? AND r.entry_type = 'RESERVATION'
+          AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries t WHERE t.appointment_id = ? AND t.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION')))
+          AND (SELECT COUNT(*) FROM resource_reservations rr WHERE rr.appointment_id = ? AND rr.facility_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')) >= 2))`)
+      .bind(input.now, input.correlationId, input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion, input.previousStatus,
+        requiresSettlement ? 1 : 0, input.appointmentId, input.creditAccountId || "", input.appointmentId, input.appointmentId, input.facilityId),
+  ];
+
+  if (requiresSettlement) {
+    statements.push(...releaseVisitCreditStatements(d1, {
+      accountId: input.creditAccountId || "",
+      appointmentId: input.appointmentId,
+      actorUserId: input.visitorUserId,
+      reason: "Visitor cancelled the appointment.",
+      now: input.now,
+      guard: transitionGuard,
+    }));
+    statements.push(d1.prepare("UPDATE resource_reservations SET status = 'RELEASED' WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')").bind(input.appointmentId, input.facilityId));
+  }
+
+  statements.push(
+    d1.prepare(`INSERT INTO appointment_status_events
+      (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at)
+      SELECT ?, ?, ?, 'CANCELLED_BY_VISITOR', ?, 'VISITOR_CANCELLED', 'Visitor cancelled the appointment.', ?, ?
+      WHERE ${transitionGuard.sql}`)
+      .bind(crypto.randomUUID(), input.appointmentId, input.previousStatus, input.visitorUserId, input.correlationId, input.now, ...transitionGuard.values),
+    ...auditAndOutboxStatements(d1, {
+      actorUserId: input.visitorUserId,
+      actorRole: "VISITOR",
+      facilityId: input.facilityId,
+      actionType: "APPOINTMENT_CANCELLED_BY_VISITOR",
+      entityType: "appointment",
+      entityId: input.appointmentId,
+      reason: "Visitor cancelled the appointment.",
+      oldValues: { status: input.previousStatus },
+      newValues: { status: "CANCELLED_BY_VISITOR", creditReleased: requiresSettlement },
+      requestId: input.requestId,
+      correlationId: input.correlationId,
+      eventType: "APPOINTMENT_CANCELLED_BY_VISITOR",
+      payload: { appointmentId: input.appointmentId, visitorUserId: input.visitorUserId },
+    }, transitionGuard),
+  );
+  return statements;
 }

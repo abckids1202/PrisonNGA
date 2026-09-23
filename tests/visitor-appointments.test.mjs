@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { createVisitorAppointmentStatements, rescheduleVisitorAppointmentStatements } from "../lib/server/visitor-appointments.ts";
+import { cancelVisitorAppointmentStatements, createVisitorAppointmentStatements, rescheduleVisitorAppointmentStatements } from "../lib/server/visitor-appointments.ts";
 
 class Statement {
   constructor(db, sql) { this.db = db; this.sql = sql; }
@@ -22,7 +22,9 @@ class D1 {
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT, status TEXT, visitation_status TEXT);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, current_state TEXT, timezone TEXT);
       CREATE TABLE visit_policies (facility_id TEXT PRIMARY KEY, version INTEGER);
-      CREATE TABLE credit_accounts (user_id TEXT, facility_id TEXT, available_credits INTEGER);
+      CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, user_id TEXT, facility_id TEXT, available_credits INTEGER, reserved_credits INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at TEXT);
+      CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, idempotency_key TEXT UNIQUE, reason TEXT, created_by TEXT, created_at TEXT);
+      CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT, appointment_id TEXT, resource_type TEXT, resource_id TEXT, status TEXT, starts_at TEXT, ends_at TEXT);
       CREATE TABLE appointment_status_events (id TEXT PRIMARY KEY, appointment_id TEXT, from_status TEXT, to_status TEXT, actor_user_id TEXT, reason_code TEXT, reason_text TEXT, correlation_id TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
@@ -33,8 +35,8 @@ class D1 {
       INSERT INTO visitor_relationships VALUES ('r1', 'f1', 'v1', 'p1', 'APPROVED');
       INSERT INTO visitor_relationships VALUES ('r2', 'f1', 'v1', 'p2', 'APPROVED');
       INSERT INTO visitor_relationships VALUES ('r3', 'f1', 'v2', 'p1', 'APPROVED');
-      INSERT INTO credit_accounts VALUES ('v1', 'f1', 2);
-      INSERT INTO credit_accounts VALUES ('v2', 'f1', 2);
+      INSERT INTO credit_accounts VALUES ('ca1', 'v1', 'f1', 2, 0, 1, 'created');
+      INSERT INTO credit_accounts VALUES ('ca2', 'v2', 'f1', 2, 0, 1, 'created');
     `);
   }
   prepare(sql) { return new Statement(this, sql); }
@@ -193,5 +195,50 @@ test("visitor reschedule rolls back its time update if audit writing fails", asy
     assert.equal(db.sqlite.prepare("SELECT version FROM appointments WHERE id = 'visit-1'").get().version, 2);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointment_status_events").get().n, 0);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM outbox_events").get().n, 0);
+  } finally { db.close(); }
+});
+
+function cancelInput(previousStatus = "APPROVED", version = 2) {
+  return {
+    appointmentId: "visit-1", facilityId: "f1", visitorUserId: "v1", previousStatus,
+    expectedVersion: version, creditAccountId: "ca1", now: "2026-09-22T03:00:00.000Z",
+    correlationId: "cor-cancel", requestId: "req-cancel",
+  };
+}
+
+function seedApprovedCancellation(db) {
+  seedPendingAppointment(db, "APPROVED");
+  db.sqlite.prepare("UPDATE credit_accounts SET available_credits = 1, reserved_credits = 1 WHERE id = 'ca1'").run();
+  db.sqlite.prepare("INSERT INTO credit_ledger_entries VALUES ('reservation-1', 'ca1', 'visit-1', 'RESERVATION', -1, 'visit-1:reservation', 'reserved', 'staff-1', 'created')").run();
+  db.sqlite.prepare("INSERT INTO resource_reservations VALUES ('room-1', 'f1', 'visit-1', 'ROOM', 'room-1', 'RESERVED', 'start', 'end')").run();
+  db.sqlite.prepare("INSERT INTO resource_reservations VALUES ('device-1', 'f1', 'visit-1', 'DEVICE', 'device-1', 'RESERVED', 'start', 'end')").run();
+}
+
+test("visitor cancellation releases credit and resources with history, audit, and outbox atomically", async () => {
+  const db = new D1();
+  try {
+    seedApprovedCancellation(db);
+    const result = await db.batch(cancelVisitorAppointmentStatements(db, cancelInput()));
+    assert.equal(result[0].meta.changes, 1);
+    assert.equal(db.sqlite.prepare("SELECT status, version FROM appointments WHERE id = 'visit-1'").get().status, "CANCELLED_BY_VISITOR");
+    assert.equal(db.sqlite.prepare("SELECT available_credits, reserved_credits FROM credit_accounts WHERE id = 'ca1'").get().available_credits, 2);
+    assert.equal(db.sqlite.prepare("SELECT status FROM resource_reservations WHERE appointment_id = 'visit-1'").get().status, "RELEASED");
+    assert.equal(db.sqlite.prepare("SELECT entry_type FROM credit_ledger_entries WHERE appointment_id = 'visit-1' AND entry_type = 'RESERVATION_RELEASE'").get().entry_type, "RESERVATION_RELEASE");
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointment_status_events WHERE to_status = 'CANCELLED_BY_VISITOR'").get().n, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action_type = 'APPOINTMENT_CANCELLED_BY_VISITOR'").get().n, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM outbox_events WHERE event_type = 'APPOINTMENT_CANCELLED_BY_VISITOR'").get().n, 1);
+  } finally { db.close(); }
+});
+
+test("visitor cancellation rolls back the appointment and settlement when audit fails", async () => {
+  const db = new D1();
+  try {
+    seedApprovedCancellation(db);
+    db.sqlite.exec("CREATE TRIGGER reject_cancel_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END;");
+    await assert.rejects(db.batch(cancelVisitorAppointmentStatements(db, cancelInput())), /audit unavailable/);
+    assert.equal(db.sqlite.prepare("SELECT status, version FROM appointments WHERE id = 'visit-1'").get().status, "APPROVED");
+    assert.equal(db.sqlite.prepare("SELECT available_credits, reserved_credits FROM credit_accounts WHERE id = 'ca1'").get().reserved_credits, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM credit_ledger_entries WHERE appointment_id = 'visit-1'").get().n, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointment_status_events WHERE to_status = 'CANCELLED_BY_VISITOR'").get().n, 0);
   } finally { db.close(); }
 });
