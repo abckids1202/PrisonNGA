@@ -8,7 +8,7 @@ import { consumeStepUpNonce, hashStepUpNonce, hashStepUpPayload, verifyStepUpAss
 export type WorkspaceIdentity = { externalId: string; email: string; displayName: string };
 export type RequestContext = { requestId: string; ipAddress: string | null; userAgent: string | null };
 export type AuthorizationContext = { userId: string; facilityId: string; roles: string[]; permissions: string[]; displayName: string };
-export type VisitorAuthorizationContext = { userId: string; email: string; displayName: string };
+export type VisitorAuthorizationContext = { userId: string; email: string | null; phone: string | null; displayName: string };
 
 const identityHeaders = {
   id: "oai-authenticated-user-id",
@@ -45,7 +45,7 @@ export async function getStaffSessionIdentity(): Promise<WorkspaceIdentity | nul
     .limit(1);
   if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
   await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
-  return { externalId: sessionUser.externalId, email: sessionUser.email, displayName: sessionUser.displayName };
+  return { externalId: sessionUser.externalId, email: sessionUser.email || "", displayName: sessionUser.displayName };
 }
 
 export async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {
@@ -66,14 +66,14 @@ export async function getVisitorSessionIdentity(): Promise<VisitorAuthorizationC
   const salt = await getSecuritySalt();
   const tokenHash = await hashIdentifier(sessionToken, salt);
   const db = await getDb();
-  const [sessionUser] = await db.select({ id: users.id, email: users.email, displayName: users.displayName, userType: users.userType, status: users.status })
+  const [sessionUser] = await db.select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, phone: users.phone, displayName: users.displayName, userType: users.userType, status: users.status })
     .from(authSessions)
     .innerJoin(users, eq(authSessions.userId, users.id))
     .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "VISITOR"), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, new Date().toISOString())))
     .limit(1);
   if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
   await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
-  return { userId: sessionUser.id, email: sessionUser.email, displayName: sessionUser.displayName };
+  return { userId: sessionUser.id, email: sessionUser.emailVerifiedAt ? sessionUser.email : null, phone: sessionUser.phone, displayName: sessionUser.displayName };
 }
 
 export async function getRequestContext(): Promise<RequestContext> {

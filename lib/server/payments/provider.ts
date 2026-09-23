@@ -12,7 +12,7 @@ export function serializePaymentWebhookSnapshot(payload: Pick<PaymentWebhook, "e
 }
 
 export interface PaymentProvider {
-  createCheckout(input: { paymentIntentId: string; email: string; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout>;
+  createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout>;
 }
 
 export async function getPaymentProvider(): Promise<PaymentProvider | null> {
@@ -30,7 +30,8 @@ export async function getPaymentProvider(): Promise<PaymentProvider | null> {
 class WebhookCheckoutProvider implements PaymentProvider {
   constructor(private readonly url: string, private readonly secret: string) {}
 
-  async createCheckout(input: { paymentIntentId: string; email: string; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout> {
+  async createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout> {
+    if (!input.email && !input.phone) throw new Error("PAYMENT_CONTACT_REQUIRED");
     const payload = JSON.stringify(input);
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(this.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)));

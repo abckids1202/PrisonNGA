@@ -78,11 +78,13 @@ async function processOutbox(env: Env): Promise<void> {
         const copy = notificationCopy(row.event_type);
         const notificationPayload = { aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload };
         if (await getNotificationDelivery() === "webhook") {
-          const visitor = await env.DB.prepare("SELECT email FROM users WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'").bind(visitorUserId).first<{ email: string }>();
+          const visitor = await env.DB.prepare("SELECT email, phone FROM users WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'").bind(visitorUserId).first<{ email: string | null; phone: string | null }>();
           if (!visitor) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
-          await deliverNotification({ notificationId: row.id, email: visitor.email, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
+          const channel = visitor.email ? "EMAIL" : visitor.phone ? "SMS" : null;
+          if (!channel) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
+          await deliverNotification({ notificationId: row.id, email: visitor.email, phone: visitor.phone, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
           await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
-            VALUES (?, ?, ?, 'EMAIL', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:email`, row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:email`, now).run();
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:${channel.toLowerCase()}`, row.facility_id, visitorUserId, channel, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:${channel.toLowerCase()}`, now).run();
         }
         await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
           VALUES (?, ?, ?, 'IN_APP', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:in-app`, row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:in-app`, now).run();

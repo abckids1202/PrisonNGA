@@ -10,7 +10,7 @@ export async function GET() {
     if (!identity) {
       const visitor = await getVisitorSessionIdentity();
       if (!visitor) return securityErrorResponse(new SecurityError("AUTHENTICATION_REQUIRED", 401), context.requestId);
-      return securityResponse({ authenticated: true, provisioned: true, identity: { id: visitor.userId, email: visitor.email, displayName: visitor.displayName, userType: "VISITOR" }, scope: null }, 200, context.requestId);
+      return securityResponse({ authenticated: true, provisioned: true, identity: { id: visitor.userId, email: visitor.email, phone: visitor.phone, displayName: visitor.displayName, userType: "VISITOR" }, scope: null }, 200, context.requestId);
     }
     const db = await getDb();
     const [user] = await db.select({ id: users.id, status: users.status, displayName: users.displayName, userType: users.userType }).from(users).where(eq(users.externalId, identity.externalId)).limit(1);

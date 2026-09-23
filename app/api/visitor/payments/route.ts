@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     }
     let checkout;
     try {
-      checkout = await provider.createCheckout({ paymentIntentId, email: visitor.email, creditQuantity, amountMinor, currency: "IDR" });
+      checkout = await provider.createCheckout({ paymentIntentId, email: visitor.email, phone: visitor.phone, creditQuantity, amountMinor, currency: "IDR" });
     } catch (error) {
       await d1.prepare("UPDATE payment_intents SET status = 'FAILED', updated_at = ?, version = version + 1 WHERE id = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED')").bind(new Date().toISOString(), paymentIntentId).run();
       throw error;

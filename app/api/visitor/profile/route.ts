@@ -10,7 +10,7 @@ export async function GET() {
     const visitor = await requireVisitorIdentity();
     const db = await getDb();
     const [profile] = await db.select().from(visitorProfiles).where(eq(visitorProfiles.userId, visitor.userId)).limit(1);
-    return securityResponse({ profile: profile || { userId: visitor.userId, legalName: visitor.displayName, preferredName: null, phone: null, phoneVerifiedAt: null, profileStatus: "INCOMPLETE" } }, 200, context.requestId);
+    return securityResponse({ profile: profile || { userId: visitor.userId, legalName: visitor.displayName, preferredName: null, phone: visitor.phone, phoneVerifiedAt: visitor.phone ? new Date().toISOString() : null, profileStatus: "INCOMPLETE" } }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }

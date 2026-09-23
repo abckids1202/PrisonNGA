@@ -10,10 +10,12 @@ export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   externalId: text("external_id").notNull(),
   email: text("email").notNull(),
+  phone: text("phone"),
   displayName: text("display_name").notNull(),
   userType: text("user_type", { enum: ["VISITOR", "STAFF", "SYSTEM"] }).notNull().default("STAFF"),
   status: text("status", { enum: ["ACTIVE", "SUSPENDED", "DISABLED"] }).notNull().default("ACTIVE"),
   emailVerifiedAt: text("email_verified_at"),
+  phoneVerifiedAt: text("phone_verified_at"),
   failedLoginCount: integer("failed_login_count").notNull().default(0),
   lockedUntil: text("locked_until"),
   lastLoginAt: text("last_login_at"),
@@ -22,6 +24,7 @@ export const users = sqliteTable("users", {
 }, (table) => ({
   externalIdIdx: uniqueIndex("users_external_id_idx").on(table.externalId),
   emailIdx: uniqueIndex("users_email_idx").on(table.email),
+  phoneIdx: uniqueIndex("users_phone_idx").on(table.phone),
 }));
 
 export const facilities = sqliteTable("facilities", {
