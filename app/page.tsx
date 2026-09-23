@@ -89,14 +89,6 @@ const managementNav = [
   ["Administration", "⚙"],
 ] as const;
 
-const initialAppointments: Appointment[] = [
-  { id: "SV-260813-031", visitor: "Sarah Amelia", visitorInitials: "SA", prisoner: "A. Rahman", time: "10:00–10:20", date: "Today", room: "Room 03", kiosk: "Kiosk 04", type: "Family", status: "Live" },
-  { id: "SV-260813-032", visitor: "Daniel Wijaya", visitorInitials: "DW", prisoner: "R. Santoso", time: "10:20–10:40", date: "Today", room: "Room 01", kiosk: "Kiosk 02", type: "Family", status: "Ready" },
-  { id: "SV-260813-033", visitor: "Alya Pratama", visitorInitials: "AP", prisoner: "F. Pratama", time: "10:40–11:00", date: "Today", room: "Room 04", kiosk: "Kiosk 06", type: "Family", status: "Requires action", issue: "Relationship evidence needs review" },
-  { id: "SV-260813-034", visitor: "Dimas Wirawan", visitorInitials: "DW", prisoner: "B. Aditya", time: "11:20–11:40", date: "Today", room: "Room 02", kiosk: "Kiosk 03", type: "Legal", status: "Blocked", issue: "Visitor device test failed" },
-  { id: "SV-260814-018", visitor: "Nurul Hidayah", visitorInitials: "NH", prisoner: "F. Hidayat", time: "09:00–09:20", date: "Tomorrow", room: "Room 02", kiosk: "Kiosk 03", type: "Family", status: "Approved" },
-];
-
 const activities = [
   ["09:54", "Kiosk 06 assigned to SV-260813-033", "Resource desk"],
   ["09:51", "A. Rahman confirmed for the 10:00 visit", "Unit 4"],
@@ -156,10 +148,10 @@ export default function ControlApp() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("operations");
   const [page, setPage] = useState("Command Center");
-  const [appointments, setAppointments] = useState<Appointment[]>(initialAppointments);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [facilityState, setFacilityState] = useState("NORMAL_OPERATIONS");
   const [facilityVersion, setFacilityVersion] = useState(1);
-  const [backendStatus, setBackendStatus] = useState<"connected" | "demo">("demo");
+  const [backendStatus, setBackendStatus] = useState<"connected" | "unavailable">("unavailable");
   const [simulationPaused, setSimulationPaused] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState("INC-260813-019");
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -220,22 +212,19 @@ export default function ControlApp() {
 
   async function changeFacilityState(nextState: string) {
     const previousState = facilityState;
-    const nextVersion = facilityVersion + 1;
-    setFacilityState(nextState);
-    setFacilityVersion(nextVersion);
     try {
       const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: nextState === "LOCKDOWN" ? "Demo supervisor declared a controlled facility lockdown." : "Demo supervisor restored normal operations." }) });
       if (response.ok) {
         const body = await response.json() as { facility?: { version?: number } };
-        setFacilityVersion(body.facility?.version || nextVersion);
+        setFacilityState(nextState);
+        setFacilityVersion(body.facility?.version || facilityVersion + 1);
         setBackendStatus("connected");
         notify(nextState === "LOCKDOWN" ? "Facility lockdown declared and audit event created." : "Facility returned to normal operations.", nextState === "LOCKDOWN" ? "warning" : "success");
       } else {
-        notify("Demo state changed locally; authenticated staff API is not connected in this preview.", "info");
+        notify("The facility state was not changed because the protected staff API rejected the request.", "error");
       }
     } catch {
-      setFacilityState(nextState);
-      notify(`Demo state changed to ${nextState === "LOCKDOWN" ? "lockdown" : "normal operations"}.`, "info");
+      notify("The facility state was not changed because the protected staff API is unavailable.", "error");
     }
     if (previousState === nextState) notify("No facility state change was needed.");
   }
@@ -262,9 +251,8 @@ export default function ControlApp() {
   }
 
   function reassignAppointment(id: string) {
-    setAppointments((current) => current.map((appointment) => appointment.id === id ? { ...appointment, kiosk: "Kiosk 06", status: "Ready", issue: undefined } : appointment));
-    setSelectedDrawer(null);
-    notify("Device reassigned. Kiosk 06 is now reserved.", "success");
+    void id;
+    notify("Reassignment is unavailable until an authenticated resource-assignment command is connected.", "error");
   }
 
   function openDrawer(payload: DrawerInput) {
@@ -328,7 +316,7 @@ export default function ControlApp() {
       <div className="sv3-mode-switch" role="tablist" aria-label="Staff workspace"><button className={mode === "operations" ? "active" : ""} onClick={() => navigate("Command Center", "operations")}>Operations</button><button className={mode === "management" ? "active" : ""} onClick={() => navigate("People", "management")}>Management</button></div>
       <SectionLabel>{mode === "operations" ? "Live operations" : "Records & policy"}</SectionLabel>
       <nav className="sv3-nav" aria-label={`${mode} navigation`}>{currentNav.map(([label, icon]) => <button key={label} className={page === label ? "active" : ""} onClick={() => navigate(label)}><span>{icon}</span><b>{label}</b>{label === "Appointments" && appointments.filter((appointment) => appointment.status !== "Completed").length > 0 ? <em>{appointments.filter((appointment) => appointment.status !== "Completed").length}</em> : label === "Waiting Room" && appointments.filter((appointment) => appointment.status === "Ready").length > 0 ? <em>{appointments.filter((appointment) => appointment.status === "Ready").length}</em> : null}</button>)}</nav>
-      <div className="sv3-sidebar-foot"><div className="sv3-connection"><span className={backendStatus === "connected" ? "online" : "demo"} />{backendStatus === "connected" ? "Protected API connected" : "Demo data · API ready"}</div><button className="sv3-user"><Avatar initials="MS" tone="orange" /><span><strong>Maya Santoso</strong><small>Demo Role · Supervisor</small></span><span>···</span></button></div>
+      <div className="sv3-sidebar-foot"><div className="sv3-connection"><span className={backendStatus === "connected" ? "online" : "demo"} />{backendStatus === "connected" ? "Protected API connected" : "Protected API unavailable"}</div><button className="sv3-user"><Avatar initials="MS" tone="orange" /><span><strong>Maya Santoso</strong><small>Demo Role · Supervisor</small></span><span>···</span></button></div>
     </aside>
     <main className="sv3-main">
       <div className="sv3-topbar"><div className="sv3-breadcrumb"><span>SecureVisit Control</span><i>/</i><strong>{mode === "operations" ? "Operations" : "Management"}</strong><i>/</i><strong>{page}</strong></div><div className="sv3-top-actions"><button type="button" className="sv3-demo-badge" onClick={() => setPopover(popover === "demo" ? null : "demo")}><i />DEMO ENVIRONMENT</button><span className="sv3-clock">13 Aug 2026 · 09:42 WIB</span><button className="sv3-icon-button" aria-label="Open command palette" onClick={() => setCommandOpen(true)}>⌕</button><button className="sv3-visitor-link" aria-label="Open Visitor Portal" onClick={() => router.push("/visitor")}><span>↗</span> Visitor Portal</button><button className="sv3-icon-button" aria-label="Notifications" onClick={() => notify("No new security notifications.")}>◔</button></div></div>
