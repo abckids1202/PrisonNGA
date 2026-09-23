@@ -5,6 +5,7 @@ import { validateEnvironment } from "../lib/server/config";
 import { finalizeLiveSessionStatements, getExpiredSessionDisposition } from "../lib/server/live-session-finalization";
 import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
+import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
 
 interface Env {
   ASSETS: Fetcher;
@@ -37,7 +38,9 @@ async function processOutbox(env: Env): Promise<void> {
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
       const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
       if (!claim.meta.changes) continue;
-      const visitorUserId = typeof payload.visitorUserId === "string" ? payload.visitorUserId : null;
+      const visitorUserId = typeof payload.visitorUserId === "string"
+        ? payload.visitorUserId
+        : await resolveOutboxVisitorRecipient(env.DB, row);
       if (visitorUserId) {
         const copy = notificationCopy(row.event_type);
         const notificationPayload = { aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload };
