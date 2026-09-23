@@ -5,6 +5,13 @@ import { getRequestContext, securityErrorResponse, securityResponse, SecurityErr
 import { getVideoConfig } from "@/lib/server/video/provider";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
+function roleForParticipant(identity: string | undefined): "VISITOR" | "FACILITY" | "STAFF_OBSERVER" | null {
+  if (identity?.startsWith("visitor:")) return "VISITOR";
+  if (identity?.startsWith("facility:")) return "FACILITY";
+  if (identity?.startsWith("observer:")) return "STAFF_OBSERVER";
+  return null;
+}
+
 export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
@@ -26,8 +33,9 @@ export async function POST(request: Request) {
     const eventId = typeof event.id === "string" ? event.id.trim() : "";
     if (!eventId) throw new SecurityError("LIVEKIT_WEBHOOK_EVENT_ID_REQUIRED", 400);
     const eventType = `PROVIDER_${String(event.event || "UNKNOWN").toUpperCase()}`;
-    const participantRole = event.participant?.identity?.startsWith("visitor:") ? "VISITOR" : event.participant?.identity?.startsWith("facility:") ? "FACILITY" : null;
-    const eventMetadata = { roomName, participantIdentity: event.participant?.identity || null };
+    const participantIdentity = event.participant?.identity || null;
+    const participantRole = roleForParticipant(participantIdentity || undefined);
+    const eventMetadata = { roomName, participantIdentity, participantSid: event.participant?.sid || null };
     const priorEvent = await d1.prepare("SELECT session_id, event_type FROM visit_session_events WHERE id = ?").bind(eventId).first<{ session_id: string; event_type: string }>();
     if (priorEvent) {
       if (priorEvent.session_id !== session.id || priorEvent.event_type !== eventType) throw new SecurityError("LIVEKIT_EVENT_ID_REUSED", 409);
