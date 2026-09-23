@@ -63,6 +63,18 @@ type PeopleRecord = {
 };
 
 type Notice = { id: number; message: string; tone?: "success" | "warning" | "error" | "info" };
+type AuditEvent = {
+  id: string;
+  actionType: string;
+  entityType: string;
+  entityId: string | null;
+  reason: string | null;
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
+  actorRole: string | null;
+  correlationId: string;
+  createdAt: string;
+};
 type PopoverKind = "capacity" | "waiting" | "session" | "demo" | null;
 type DrawerPayload =
   | { kind: "appointment"; appointment: Appointment }
@@ -350,6 +362,27 @@ function CommandCenterPage({ appointments, facilityState, backendStatus, simulat
   const [lockdownDialog, setLockdownDialog] = useState(false);
   const [propagating, setPropagating] = useState(false);
   const [scenario, setScenario] = useState("Normal day");
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditError, setAuditError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const loadAuditEvents = async () => {
+      try {
+        const response = await fetch("/api/audit/events?limit=6", { cache: "no-store", headers: { accept: "application/json" } });
+        if (!response.ok) throw new Error("AUDIT_UNAVAILABLE");
+        const body = await response.json() as { events?: AuditEvent[] };
+        if (active) { setAuditEvents(Array.isArray(body.events) ? body.events : []); setAuditError(false); }
+      } catch {
+        if (active) { setAuditEvents([]); setAuditError(true); }
+      } finally {
+        if (active) setAuditLoading(false);
+      }
+    };
+    void loadAuditEvents();
+    const timer = window.setInterval(loadAuditEvents, 30000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
   const live = lockdown ? 0 : appointments.filter((appointment) => appointment.status === "Live").length;
   const waiting = lockdown ? 0 : appointments.filter((appointment) => appointment.status === "Ready").length;
   const blocked = appointments.filter((appointment) => appointment.status === "Blocked");
@@ -386,13 +419,25 @@ function CommandCenterPage({ appointments, facilityState, backendStatus, simulat
     <div className="sv3-command-metrics sv6-command-metrics"><Metric label="Live sessions" value={String(live)} detail={lockdown ? "Sessions ended by response" : "1 needs monitoring"} tone="orange" onClick={() => onOpenPopover("session")} /><Metric label="Waiting room" value={String(waiting)} detail={lockdown ? "Waiting room closed" : "2 ready to admit"} tone="blue" onClick={() => onOpenPopover("waiting")} /><Metric label="Requires attention" value={String(attention)} detail={lockdown ? "1 response event" : "2 SLA exceptions"} tone="red" onClick={() => document.querySelector(".sv3-attention-surface")?.scrollIntoView({ behavior: "smooth", block: "center" })} /><Metric label="Rooms in use" value={lockdown ? "6 / 6" : "4 / 6"} detail={lockdown ? "All rooms released" : "67% capacity"} tone="green" onClick={() => onOpenPopover("capacity")} />{popover === "session" ? <SessionPopover onOpen={() => onOpenDrawer({ kind: "activity", event: "Sarah Amelia ↔ A. Rahman", source: "Live session", relatedId: "SV-260813-031" })} /> : popover === "waiting" ? <WaitingPopover onOpen={() => onOpenDrawer({ kind: "waiting", visitor: "Sarah Amelia" })} /> : popover === "capacity" ? <CapacityPopover onOpen={() => onNavigate("Resources")} /> : null}</div>
     <div className="sv3-simulation-bar sv6-simulation-bar"><div className="sv6-simulation-status"><span><i className={simulationPaused ? "paused" : ""} />Demo simulation</span><strong>{simulationPaused ? "Paused" : "Running"}</strong></div><label className="sv6-simulation-field">Scenario<select value={scenario} onChange={(event) => handleScenario(event.target.value)}><option>Normal day</option><option>Busy morning</option><option>Device failure</option><option>Visitor no-show</option><option>Facility lockdown</option><option>Technical failure</option><option>Security incident</option></select></label><span className="sv6-simulation-speed">Speed <b>1×</b></span><div className="sv6-simulation-actions"><button onClick={onPause}>{simulationPaused ? "Resume" : "Pause"}</button><button onClick={onAdvance}>Advance event</button><button onClick={() => onNotify("Scenario library is available in the demo environment.")}>Scenarios</button><button onClick={() => lockdown ? onFacilityStateChange("NORMAL_OPERATIONS") : setLockdownDialog(true)} className="danger-link">{lockdown ? "Restore facility" : "Test lockdown"}</button></div><small>Event {String(3 + simulationTick).padStart(2, "0")} · {simulationTick ? "Local event propagated" : "Normal day scenario"}</small></div>
     <div className="sv6-operations-label"><div><span className="sv3-eyebrow">Decision surface</span><strong>Act on the next operational moment</strong></div><span>4 records · sorted by time and urgency</span></div>
-    <div className="sv3-command-layout"><section className="sv3-surface sv3-timeline-surface sv6-timeline-surface"><div className="sv3-surface-head"><div><span className="sv3-eyebrow" aria-label="Today&apos;s operational timeline">Operational timeline</span><h2>Persisted visits</h2></div><button className="sv3-link-button" onClick={() => onNavigate("Appointments")}>Open appointments →</button></div><div className="sv3-timeline">{timeline.length ? timeline.map((item) => <div className={`sv3-timeline-row sv3-timeline-row-interactive ${item.status === "BLOCKED" ? "timeline-blocked" : ""}`} key={item.time} role="button" tabIndex={0} onClick={() => item.appointment && onOpenAppointment(item.appointment)} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && item.appointment) { event.preventDefault(); onOpenAppointment(item.appointment); } }}><time>{item.time}</time><span className={`sv3-timeline-line ${item.line}`} /><div className="sv6-timeline-content"><div className="sv6-timeline-topline"><button type="button" className="sv3-timeline-status" onClick={(event) => { event.stopPropagation(); if (item.appointment) onOpenDrawer({ kind: item.status.includes("LIVE") ? "activity" : "appointment", ...(item.status.includes("LIVE") ? { event: `${item.appointment.visitor} ↔ ${item.appointment.prisoner}`, source: "Live session", relatedId: item.appointment.id } : { appointment: item.appointment }) }); }}><Status tone={item.tone}>{item.status}</Status></button><button type="button" className="sv6-row-action" onClick={(event) => { event.stopPropagation(); if (item.appointment) onOpenAppointment(item.appointment); }}>{item.action} <span>→</span></button></div><strong>{item.title.split(" ↔ ")[0]} {item.title.includes("↔") ? `↔ ${item.title.split(" ↔ ")[1]}` : ""}</strong><small>{item.meta}</small></div></div>) : <EmptyState title="No persisted visits loaded" body={backendStatus === "connected" ? "The facility has no appointments in this operational window." : "Connect an authenticated staff API to load the facility schedule."} action="Open appointments" />}</div></section><aside className="sv3-attention-rail"><div className="sv3-surface sv3-attention-surface sv6-attention-surface" id="action-center"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Priority queue</span><h2>Requires attention</h2></div><span className="sv3-count-badge">{attention}</span></div>{nextDecision ? <button className="sv3-action-row" onClick={() => onOpenAppointment(nextDecision)}><span className="sv3-action-icon amber">!</span><span><strong>Visit requires review</strong><small>{nextDecision.id} · staff decision pending</small></span><b>›</b><em>Review queue</em></button> : null}{blocked[0] ? <button className="sv3-action-row" onClick={() => onOpenAppointment(blocked[0])}><span className="sv3-action-icon red">×</span><span><strong>Visit is blocked</strong><small>{blocked[0].id} · {blocked[0].issue || "Operational blocker"}</small></span><b>›</b><em>Resolve</em></button> : null}{!attention ? <EmptyState title="No attention items" body={backendStatus === "connected" ? "No persisted visits currently require staff action." : "Attention items will appear after the protected API connects."} /> : null}</div><div className="sv3-surface sv3-feed-surface sv6-feed-surface"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Activity</span><h2>Operational history</h2></div></div><EmptyState title="Activity feed unavailable" body="Activity events will appear here when the audit feed is connected." /></div></aside></div>
+    <div className="sv3-command-layout"><section className="sv3-surface sv3-timeline-surface sv6-timeline-surface"><div className="sv3-surface-head"><div><span className="sv3-eyebrow" aria-label="Today&apos;s operational timeline">Operational timeline</span><h2>Persisted visits</h2></div><button className="sv3-link-button" onClick={() => onNavigate("Appointments")}>Open appointments →</button></div><div className="sv3-timeline">{timeline.length ? timeline.map((item) => <div className={`sv3-timeline-row sv3-timeline-row-interactive ${item.status === "BLOCKED" ? "timeline-blocked" : ""}`} key={item.time} role="button" tabIndex={0} onClick={() => item.appointment && onOpenAppointment(item.appointment)} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && item.appointment) { event.preventDefault(); onOpenAppointment(item.appointment); } }}><time>{item.time}</time><span className={`sv3-timeline-line ${item.line}`} /><div className="sv6-timeline-content"><div className="sv6-timeline-topline"><button type="button" className="sv3-timeline-status" onClick={(event) => { event.stopPropagation(); if (item.appointment) onOpenDrawer({ kind: item.status.includes("LIVE") ? "activity" : "appointment", ...(item.status.includes("LIVE") ? { event: `${item.appointment.visitor} ↔ ${item.appointment.prisoner}`, source: "Live session", relatedId: item.appointment.id } : { appointment: item.appointment }) }); }}><Status tone={item.tone}>{item.status}</Status></button><button type="button" className="sv6-row-action" onClick={(event) => { event.stopPropagation(); if (item.appointment) onOpenAppointment(item.appointment); }}>{item.action} <span>→</span></button></div><strong>{item.title.split(" ↔ ")[0]} {item.title.includes("↔") ? `↔ ${item.title.split(" ↔ ")[1]}` : ""}</strong><small>{item.meta}</small></div></div>) : <EmptyState title="No persisted visits loaded" body={backendStatus === "connected" ? "The facility has no appointments in this operational window." : "Connect an authenticated staff API to load the facility schedule."} action="Open appointments" />}</div></section><aside className="sv3-attention-rail"><div className="sv3-surface sv3-attention-surface sv6-attention-surface" id="action-center"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Priority queue</span><h2>Requires attention</h2></div><span className="sv3-count-badge">{attention}</span></div>{nextDecision ? <button className="sv3-action-row" onClick={() => onOpenAppointment(nextDecision)}><span className="sv3-action-icon amber">!</span><span><strong>Visit requires review</strong><small>{nextDecision.id} · staff decision pending</small></span><b>›</b><em>Review queue</em></button> : null}{blocked[0] ? <button className="sv3-action-row" onClick={() => onOpenAppointment(blocked[0])}><span className="sv3-action-icon red">×</span><span><strong>Visit is blocked</strong><small>{blocked[0].id} · {blocked[0].issue || "Operational blocker"}</small></span><b>›</b><em>Resolve</em></button> : null}{!attention ? <EmptyState title="No attention items" body={backendStatus === "connected" ? "No persisted visits currently require staff action." : "Attention items will appear after the protected API connects."} /> : null}</div><div className="sv3-surface sv3-feed-surface sv6-feed-surface"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Activity</span><h2>Operational history</h2></div></div>{auditLoading ? <EmptyState title="Loading operational history" body="Fetching the latest facility audit events." /> : auditError ? <EmptyState title="Activity feed unavailable" body="The protected audit feed could not be reached. Try again after staff access is restored." /> : auditEvents.length ? auditEvents.map((event) => <button type="button" className="sv3-feed-row sv3-feed-row-interactive" key={event.id} onClick={() => onOpenDrawer({ kind: "activity", event: formatAuditEvent(event), source: `${event.entityType} · ${event.actionType}`, relatedId: event.entityId || event.correlationId })}><time>{formatAuditTime(event.createdAt)}</time><span><strong>{formatAuditEvent(event)}</strong><small>{event.entityType}{event.entityId ? ` · ${event.entityId}` : ""} · {event.actorRole || "System"}</small></span><b>›</b></button>) : <EmptyState title="No activity recorded" body="New decisions, session events, and operational changes will appear here." />}</div></aside></div>
     {lockdownDialog ? <AlertDialog title="Declare facility lockdown" description="This action affects every scheduled visit and releases reserved resources across Central Correctional Facility." stats={["23 upcoming visits affected", "6 visitors currently waiting", "18 visit credits released", "4 rooms and 5 kiosks released"]} onCancel={() => setLockdownDialog(false)} onConfirm={confirmLockdown} /> : null}
   </>;
 }
 
 function backendStatusLabel(lockdown: boolean, backendStatus: "connected" | "unavailable") {
   return lockdown ? "Response in progress" : backendStatus === "connected" ? "Protected API reporting" : "Protected API unavailable";
+}
+
+function formatAuditEvent(event: AuditEvent) {
+  const action = event.actionType.replaceAll("_", " ").toLowerCase();
+  const entity = event.entityType.replaceAll("_", " ").toLowerCase();
+  return `${action.charAt(0).toUpperCase()}${action.slice(1)} ${entity}`;
+}
+
+function formatAuditTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-ID", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
 }
 
 function AppointmentsPage({ appointments, onSelect, onNotify }: { appointments: Appointment[]; onSelect: (appointment: Appointment) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
