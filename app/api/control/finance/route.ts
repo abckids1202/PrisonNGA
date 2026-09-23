@@ -1,5 +1,5 @@
 import { getD1 } from "../../../../db/runtime";
-import { financeLedgerStatement, financePaymentsStatement, financeSummaryStatement } from "../../../../lib/server/finance-directory";
+import { financeLedgerStatement, financePaymentsStatement, financeReconciliationStatement, financeSummaryStatement } from "../../../../lib/server/finance-directory";
 import { getPaymentProvider } from "../../../../lib/server/payments/provider";
 import { getRequestContext, requirePermission, securityErrorResponse, securityResponse } from "../../../../lib/server/security";
 
@@ -8,19 +8,21 @@ export async function GET() {
   try {
     const authorization = await requirePermission("finance.read");
     const d1 = await getD1();
-    const [summary, ledger, payments, provider] = await Promise.all([
+    const [summary, ledger, payments, reconciliation, provider] = await Promise.all([
       financeSummaryStatement(d1, authorization.facilityId).first(),
       financeLedgerStatement(d1, authorization.facilityId).all(),
       financePaymentsStatement(d1, authorization.facilityId).all(),
+      financeReconciliationStatement(d1, authorization.facilityId).all(),
       getPaymentProvider(),
     ]);
+    const reconciliationIssues = reconciliation.results || [];
     return securityResponse({
       facilityId: authorization.facilityId,
       summary: summary || {},
       ledger: ledger.results || [],
       payments: payments.results || [],
       providerConfigured: Boolean(provider),
-      reconciliation: { available: false, reason: "RECONCILIATION_WORKER_NOT_CONFIGURED" },
+      reconciliation: { available: true, workerConfigured: false, issueCount: reconciliationIssues.length, issues: reconciliationIssues, reason: "READ_ONLY_INTEGRITY_CHECKS_ONLY" },
     }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

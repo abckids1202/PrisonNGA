@@ -1201,7 +1201,7 @@ function VisitationPage() {
 }
 
 type FinanceRecord = { id: string; appointment_id?: string | null; entry_type?: string; amount?: number; created_at: string; visitor_name?: string; credit_quantity?: number; amount_minor?: number; currency?: string; status?: string };
-type FinancePayload = { summary: { credits_purchased?: number; credits_consumed?: number; credits_reserved?: number; refund_cases?: number; pending_payments?: number; settled_amount_minor?: number; last_ledger_activity?: string | null }; ledger: FinanceRecord[]; payments: FinanceRecord[]; providerConfigured: boolean; reconciliation: { available: boolean; reason?: string } };
+type FinancePayload = { summary: { credits_purchased?: number; credits_consumed?: number; credits_reserved?: number; refund_cases?: number; pending_payments?: number; settled_amount_minor?: number; last_ledger_activity?: string | null }; ledger: FinanceRecord[]; payments: FinanceRecord[]; providerConfigured: boolean; reconciliation: { available: boolean; workerConfigured?: boolean; issueCount?: number; issues?: Array<{ issue_type: string; payment_intent_id: string | null; provider_event_id: string | null; detail: string }>; reason?: string } };
 
 function FinancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [tab, setTab] = useState("Overview");
@@ -1226,7 +1226,7 @@ function FinancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["
   const payments = tab === "Refunds" ? (data?.payments || []).filter((payment) => ["REFUNDED", "DISPUTED"].includes(String(payment.status))) : data?.payments || [];
   const noData = loading ? "Loading persisted financial records…" : error || "No records have been persisted for this facility.";
   return <>
-    <PageHeader eyebrow="Management · Financial controls" title="Finance" description="Facility-scoped credits, payment intents, and the append-only ledger." actions={<Button variant="primary" disabled={!data?.reconciliation.available} onClick={() => onNotify("Reconciliation is not configured for this environment.", "warning")}>Run reconciliation</Button>} />
+    <PageHeader eyebrow="Management · Financial controls" title="Finance" description="Facility-scoped credits, payment intents, and the append-only ledger." actions={<Button variant="primary" disabled={!data?.reconciliation.available} onClick={() => onNotify(data?.reconciliation.issueCount ? `${data.reconciliation.issueCount} reconciliation issue${data.reconciliation.issueCount === 1 ? "" : "s"} found. Provider actions still require review.` : "Read-only reconciliation checks completed with no issues.", data?.reconciliation.issueCount ? "warning" : "success")}>Run checks</Button>} />
     <div className="sv3-finance-tabs">{["Overview", "Ledger", "Payments", "Refunds", "Reconciliation"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>
     {!loading && error ? <div className="sv3-settings-surface"><strong>Financial records unavailable</strong><p>{error}</p></div> : null}
     {tab === "Overview" ? <div className="sv3-finance-overview">
