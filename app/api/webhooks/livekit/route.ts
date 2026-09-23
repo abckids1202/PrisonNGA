@@ -24,10 +24,11 @@ export async function POST(request: Request) {
     const roomName = event.room?.name;
     if (!roomName) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
     const session = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.status, vs.version, vs.actual_started_at, vs.termination_reason,
-      a.status AS appointment_status, a.version AS appointment_version, ca.id AS credit_account_id
+      a.status AS appointment_status, a.version AS appointment_version, a.visitor_user_id, ca.id AS credit_account_id,
+      (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1) AS kiosk_resource_id
       FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id
       LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
-      WHERE vs.provider_room_name = ?`).bind(roomName).first<{ id: string; appointment_id: string; facility_id: string; status: string; version: number; actual_started_at: string | null; termination_reason: string | null; appointment_status: string; appointment_version: number; credit_account_id: string | null }>();
+      WHERE vs.provider_room_name = ?`).bind(roomName).first<{ id: string; appointment_id: string; facility_id: string; status: string; version: number; actual_started_at: string | null; termination_reason: string | null; appointment_status: string; appointment_version: number; visitor_user_id: string; credit_account_id: string | null; kiosk_resource_id: string | null }>();
     if (!session) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
     const now = new Date().toISOString();
     const eventId = typeof event.id === "string" ? event.id.trim() : "";
@@ -35,6 +36,17 @@ export async function POST(request: Request) {
     const eventType = `PROVIDER_${String(event.event || "UNKNOWN").toUpperCase()}`;
     const participantIdentity = event.participant?.identity || null;
     const participantRole = roleForParticipant(participantIdentity || undefined);
+    const expectedParticipant = participantRole === "VISITOR"
+      ? `visitor:${session.visitor_user_id}`
+      : participantRole === "FACILITY" && session.kiosk_resource_id
+        ? `facility:${session.kiosk_resource_id}`
+        : null;
+    if (expectedParticipant && participantIdentity !== expectedParticipant) {
+      return securityResponse({ accepted: true, ignored: true, reason: "PARTICIPANT_NOT_ASSIGNED_TO_VISIT", sessionId: session.id }, 200, context.requestId);
+    }
+    if ((participantRole === "VISITOR" || participantRole === "FACILITY") && !expectedParticipant) {
+      return securityResponse({ accepted: true, ignored: true, reason: "PARTICIPANT_ASSIGNMENT_UNAVAILABLE", sessionId: session.id }, 200, context.requestId);
+    }
     const eventMetadata = { roomName, participantIdentity, participantSid: event.participant?.sid || null };
     const priorEvent = await d1.prepare("SELECT session_id, event_type FROM visit_session_events WHERE id = ?").bind(eventId).first<{ session_id: string; event_type: string }>();
     if (priorEvent) {
