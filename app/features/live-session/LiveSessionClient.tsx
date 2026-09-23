@@ -101,6 +101,30 @@ export default function LiveSessionClient({ visitId, role, kioskId }: LiveSessio
   }, [isVisitor, kioskDeviceId, kioskCredential]);
 
   useEffect(() => {
+    if (isVisitor || !kioskDeviceId || !kioskCredential) return;
+    let active = true;
+    const presence = ["ended", "left", "error"].includes(stage) ? "absent" : "present";
+    const reportPresence = async () => {
+      try {
+        await fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/presence`, {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json", "x-securevisit-kiosk-id": kioskDeviceId, "x-securevisit-kiosk-token": kioskCredential },
+          body: JSON.stringify({ presence }),
+          cache: "no-store",
+        });
+      } catch {
+        // The server-side readiness state remains unchanged until a report succeeds.
+      }
+    };
+    void reportPresence();
+    const timer = presence === "present" ? window.setInterval(() => { if (active) void reportPresence(); }, 15_000) : null;
+    return () => {
+      active = false;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [isVisitor, kioskDeviceId, kioskCredential, visitId, stage]);
+
+  useEffect(() => {
     let active = true;
     const participants = remoteParticipants.current;
     const videoTracks = remoteVideoTracks.current;
