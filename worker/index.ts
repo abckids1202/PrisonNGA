@@ -130,6 +130,20 @@ async function processOutbox(env: Env): Promise<void> {
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
       const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
       if (!claim.meta.changes) continue;
+      const attemptNumber = row.attempt_count + 1;
+      const attemptStartedAt = new Date().toISOString();
+      const externalAttemptId = `${row.id}:external:${attemptNumber}`;
+      const inAppAttemptId = `${row.id}:in-app:${attemptNumber}`;
+      await env.DB.batch([
+        env.DB.prepare(`INSERT OR IGNORE INTO notification_delivery_attempts
+          (id, outbox_event_id, notification_id, channel, attempt_number, status, started_at)
+          VALUES (?, ?, ?, 'EXTERNAL', ?, 'PROCESSING', ?)`)
+          .bind(externalAttemptId, row.id, row.id, attemptNumber, attemptStartedAt),
+        env.DB.prepare(`INSERT OR IGNORE INTO notification_delivery_attempts
+          (id, outbox_event_id, notification_id, channel, attempt_number, status, started_at)
+          VALUES (?, ?, ?, 'IN_APP', ?, 'PROCESSING', ?)`)
+          .bind(inAppAttemptId, row.id, `${row.id}:in-app`, attemptNumber, attemptStartedAt),
+      ]);
       const visitorUserId = typeof payload.visitorUserId === "string"
         ? payload.visitorUserId
         : await resolveOutboxVisitorRecipient(env.DB, row);
@@ -144,9 +158,13 @@ async function processOutbox(env: Env): Promise<void> {
           await deliverNotification({ notificationId: row.id, email: visitor.email, phone: visitor.phone, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
           await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:${channel.toLowerCase()}`, row.facility_id, visitorUserId, channel, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:${channel.toLowerCase()}`, now).run();
+          await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'DELIVERED', finished_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, externalAttemptId).run();
         }
         await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
           VALUES (?, ?, ?, 'IN_APP', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:in-app`, row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:in-app`, now).run();
+        await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'DELIVERED', finished_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, inAppAttemptId).run();
+      } else {
+        await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'SKIPPED', error_message = 'No visitor recipient associated with event.', finished_at = ? WHERE outbox_event_id = ? AND attempt_number = ? AND status = 'PROCESSING'").bind(now, row.id, attemptNumber).run();
       }
       await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSED', processed_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, row.id).run();
     } catch (error) {
@@ -154,6 +172,7 @@ async function processOutbox(env: Env): Promise<void> {
       const attempt = row.attempt_count + 1;
       const delaySeconds = Math.min(3600, 30 * (2 ** Math.max(0, attempt - 1)));
       const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+      await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'FAILED', error_message = ?, finished_at = ? WHERE outbox_event_id = ? AND attempt_number = ? AND status = 'PROCESSING'").bind(message, now, row.id, attempt).run();
       await env.DB.prepare("UPDATE outbox_events SET status = CASE WHEN attempt_count >= 5 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
     }
   }
