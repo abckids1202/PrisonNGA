@@ -42,7 +42,8 @@ test("server-renders the SecureVisit operations dashboard", async () => {
   assert.match(html, /Today(?:’|&apos;|&#x27;)s operational timeline/);
   assert.match(html, /Requires attention/);
   assert.match(html, /Command Center/);
-  assert.match(html, /DEMO ENVIRONMENT/);
+  assert.match(html, /CHECKING ENVIRONMENT/);
+  assert.doesNotMatch(html, /DEMO ENVIRONMENT/);
   assert.doesNotMatch(html, /Your site is taking shape/);
 });
 

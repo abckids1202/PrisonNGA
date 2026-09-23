@@ -5,7 +5,7 @@ test("control workspace renders its operational shell", async ({ page }) => {
 
   await expect(page.getByText("SecureVisit Control").first()).toBeVisible();
   await expect(page.getByText("Command Center", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("DEMO ENVIRONMENT", { exact: true })).toBeVisible();
+  await expect(page.getByText("DEVELOPMENT ENVIRONMENT", { exact: true })).toBeVisible();
 });
 
 test("visitor workspace is a separate authenticated boundary", async ({ page }) => {
