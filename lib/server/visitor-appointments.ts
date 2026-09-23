@@ -195,6 +195,8 @@ export type CancelVisitorAppointmentInput = {
   now: string;
   correlationId: string;
   requestId: string;
+  idempotency: { claimId: string; scope: string; key: string };
+  responseBody: { appointmentId: string; status: "CANCELLED_BY_VISITOR"; version: number; correlationId: string };
 };
 
 export function cancelVisitorAppointmentStatements(d1: D1Database, input: CancelVisitorAppointmentInput): D1PreparedStatement[] {
@@ -246,6 +248,11 @@ export function cancelVisitorAppointmentStatements(d1: D1Database, input: Cancel
       eventType: "APPOINTMENT_CANCELLED_BY_VISITOR",
       payload: { appointmentId: input.appointmentId, visitorUserId: input.visitorUserId },
     }, transitionGuard),
+    d1.prepare(`UPDATE idempotency_records
+      SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ?
+      WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'
+        AND ${transitionGuard.sql}`)
+      .bind(200, JSON.stringify(input.responseBody), input.now, input.idempotency.claimId, input.idempotency.scope, input.idempotency.key, ...transitionGuard.values),
   );
   return statements;
 }

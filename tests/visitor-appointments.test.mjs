@@ -203,11 +203,14 @@ function cancelInput(previousStatus = "APPROVED", version = 2) {
     appointmentId: "visit-1", facilityId: "f1", visitorUserId: "v1", previousStatus,
     expectedVersion: version, creditAccountId: "ca1", now: "2026-09-22T03:00:00.000Z",
     correlationId: "cor-cancel", requestId: "req-cancel",
+    idempotency: { claimId: "claim-cancel", scope: "visitor:v1:appointment:cancel:visit-1", key: "key-cancel" },
+    responseBody: { appointmentId: "visit-1", status: "CANCELLED_BY_VISITOR", version: version + 1, correlationId: "cor-cancel" },
   };
 }
 
 function seedApprovedCancellation(db) {
   seedPendingAppointment(db, "APPROVED");
+  db.sqlite.prepare("INSERT INTO idempotency_records (id, scope, idempotency_key, request_hash, status, created_at) VALUES ('claim-cancel', 'visitor:v1:appointment:cancel:visit-1', 'key-cancel', 'hash', 'PROCESSING', 'created')").run();
   db.sqlite.prepare("UPDATE credit_accounts SET available_credits = 1, reserved_credits = 1 WHERE id = 'ca1'").run();
   db.sqlite.prepare("INSERT INTO credit_ledger_entries VALUES ('reservation-1', 'ca1', 'visit-1', 'RESERVATION', -1, 'visit-1:reservation', 'reserved', 'staff-1', 'created')").run();
   db.sqlite.prepare("INSERT INTO resource_reservations VALUES ('room-1', 'f1', 'visit-1', 'ROOM', 'room-1', 'RESERVED', 'start', 'end')").run();
@@ -227,6 +230,7 @@ test("visitor cancellation releases credit and resources with history, audit, an
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointment_status_events WHERE to_status = 'CANCELLED_BY_VISITOR'").get().n, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action_type = 'APPOINTMENT_CANCELLED_BY_VISITOR'").get().n, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM outbox_events WHERE event_type = 'APPOINTMENT_CANCELLED_BY_VISITOR'").get().n, 1);
+    assert.equal(db.sqlite.prepare("SELECT status, response_status FROM idempotency_records WHERE id = 'claim-cancel'").get().status, "COMPLETED");
   } finally { db.close(); }
 });
 

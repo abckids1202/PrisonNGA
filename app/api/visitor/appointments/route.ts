@@ -122,6 +122,14 @@ export async function PATCH(request: Request) {
     const correlationId = crypto.randomUUID();
     if (action === "cancel") {
       if (!["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(String(appointment.status))) throw new SecurityError("APPOINTMENT_NOT_CANCELLABLE", 409);
+      const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+      if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+      const idempotencyScope = `visitor:${visitor.userId}:appointment:cancel:${appointmentId}`;
+      const requestHash = await hashIdempotencyPayload({ appointmentId, action, expectedVersion: Number(appointment.version) });
+      const claim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+      if ("replay" in claim) return securityResponse(claim.replay.body, claim.replay.status, context.requestId);
+      activeClaim = { d1, scope: idempotencyScope, key: idempotencyKey, claimId: claim.claimId };
+      const responseBody = { appointmentId, status: "CANCELLED_BY_VISITOR" as const, version: Number(appointment.version) + 1, correlationId };
       const cancelled = await d1.batch(cancelVisitorAppointmentStatements(d1, {
         appointmentId,
         facilityId: String(appointment.facility_id),
@@ -132,9 +140,12 @@ export async function PATCH(request: Request) {
         now,
         correlationId,
         requestId: context.requestId,
+        idempotency: activeClaim,
+        responseBody,
       }));
       if (!cancelled[0]?.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
-      return securityResponse({ appointmentId, status: "CANCELLED_BY_VISITOR", version: Number(appointment.version) + 1, correlationId }, 200, context.requestId);
+      activeClaim = null;
+      return securityResponse(responseBody, 200, context.requestId);
     }
     if (!["SUBMITTED", "UNDER_REVIEW"].includes(String(appointment.status))) throw new SecurityError("APPOINTMENT_NOT_RESCHEDULABLE", 409);
     const requestedStart = typeof body.requestedStart === "string" ? body.requestedStart : "";
