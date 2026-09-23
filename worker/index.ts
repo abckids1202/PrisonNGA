@@ -6,6 +6,7 @@ import { finalizeLiveSessionStatements, getExpiredSessionDisposition } from "../
 import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
+import { purgeExpiredAuthArtifacts } from "../lib/server/auth/cleanup";
 
 interface Env {
   ASSETS: Fetcher;
@@ -168,7 +169,7 @@ function notificationCopy(eventType: string): { title: string; body: string } {
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([processOutbox(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), purgeExpiredAuthArtifacts(env.DB), reconcileExpiredSessions(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
