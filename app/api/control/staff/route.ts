@@ -66,7 +66,7 @@ export async function PATCH(request: Request) {
     const auditGuard = { sql: "EXISTS (SELECT 1 FROM users WHERE id = ? AND version = ? AND status = ?)", values: [userId, current.version + 1, status] };
     const results = await d1.batch([
       d1.prepare("UPDATE users SET status = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?").bind(status, now, userId, current.version),
-      d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND ? <> 'ACTIVE'").bind(now, userId, status),
+      d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND ? <> 'ACTIVE' AND EXISTS (SELECT 1 FROM users WHERE id = ? AND version = ? AND status = ?)").bind(now, userId, status, userId, current.version + 1, status),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: `STAFF_${status}`, entityType: "staff_user", entityId: userId, reason, oldValues: { status: current.status }, newValues: { status, sessionsRevoked: status === "ACTIVE" ? 0 : "all active sessions" }, requestId: context.requestId, correlationId, eventType: `STAFF_${status}`, payload: { userId, status } }, auditGuard),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("STALE_STAFF_RECORD", 409);
