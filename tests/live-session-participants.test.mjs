@@ -10,3 +10,7 @@ test("LiveKit webhook persists participant lifecycle state idempotently", async 
   assert.match(source, /participant_connection_aborted/);
 });
 
+test("LiveKit status promotion requires an in-progress appointment", async () => {
+  const source = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
+  assert.match(source, /EXISTS \(SELECT 1 FROM appointments WHERE id = \? AND facility_id = \? AND status = 'IN_PROGRESS'\)/);
+});
