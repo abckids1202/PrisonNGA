@@ -1,5 +1,5 @@
 import { getD1 } from "../../../../db/runtime";
-import { appendAuditAndOutbox } from "../../../../lib/server/events";
+import { appendAuditAndOutbox, auditAndOutboxStatements } from "../../../../lib/server/events";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const statuses = ["ACTIVE", "SUSPENDED", "DISABLED"] as const;
@@ -62,9 +62,14 @@ export async function PATCH(request: Request) {
     if (status === "DISABLED") await requireStepUp({ purpose: "staff_disable", userId: authorization.userId, targetId: userId, payload: { status, expectedVersion: body.expectedVersion ?? current.version, reason } });
     if (current.status === status) return securityResponse({ userId, status, version: current.version, idempotent: true }, 200, context.requestId);
     const now = new Date().toISOString();
-    const updated = await d1.prepare("UPDATE users SET status = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?").bind(status, now, userId, current.version).run();
-    if (!updated.meta.changes) throw new SecurityError("STALE_STAFF_RECORD", 409);
-    await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: `STAFF_${status}`, entityType: "staff_user", entityId: userId, reason, oldValues: { status: current.status }, newValues: { status }, requestId: context.requestId, correlationId: crypto.randomUUID(), eventType: `STAFF_${status}`, payload: { userId, status } });
-    return securityResponse({ userId, status, version: current.version + 1 }, 200, context.requestId);
+    const correlationId = crypto.randomUUID();
+    const auditGuard = { sql: "EXISTS (SELECT 1 FROM users WHERE id = ? AND version = ? AND status = ?)", values: [userId, current.version + 1, status] };
+    const results = await d1.batch([
+      d1.prepare("UPDATE users SET status = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?").bind(status, now, userId, current.version),
+      d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND ? <> 'ACTIVE'").bind(now, userId, status),
+      ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: `STAFF_${status}`, entityType: "staff_user", entityId: userId, reason, oldValues: { status: current.status }, newValues: { status, sessionsRevoked: status === "ACTIVE" ? 0 : "all active sessions" }, requestId: context.requestId, correlationId, eventType: `STAFF_${status}`, payload: { userId, status } }, auditGuard),
+    ]);
+    if (!results[0]?.meta.changes) throw new SecurityError("STALE_STAFF_RECORD", 409);
+    return securityResponse({ userId, status, version: current.version + 1, sessionsRevoked: status === "ACTIVE" ? 0 : results[1]?.meta.changes || 0, correlationId }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
