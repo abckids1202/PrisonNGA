@@ -1,5 +1,5 @@
 import { getD1 } from "../../../../../db/runtime";
-import { appendAuditAndOutbox } from "../../../../../lib/server/events";
+import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 
 export async function GET() {
@@ -25,8 +25,13 @@ export async function POST(request: Request) {
     if (!event) throw new SecurityError("OUTBOX_EVENT_NOT_FOUND", 404);
     if (event.status !== "DEAD_LETTER" && event.status !== "FAILED") throw new SecurityError("OUTBOX_EVENT_NOT_REPLAYABLE", 409);
     const now = new Date().toISOString();
-    await d1.prepare("UPDATE outbox_events SET status = 'PENDING', attempt_count = 0, available_at = ?, last_error = NULL, processed_at = NULL WHERE id = ? AND facility_id = ? AND status IN ('FAILED', 'DEAD_LETTER')").bind(now, outboxEventId, authorization.facilityId).run();
-    await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "OUTBOX_EVENT_REPLAYED", entityType: "outbox_event", entityId: outboxEventId, reason, oldValues: { status: event.status, attemptCount: event.attempt_count }, newValues: { status: "PENDING", attemptCount: 0 }, requestId: context.requestId, correlationId: crypto.randomUUID(), eventType: "OUTBOX_EVENT_REPLAYED", payload: { replayedEventId: outboxEventId, eventType: event.event_type } });
+    const correlationId = crypto.randomUUID();
+    const guard = { sql: "id = ? AND facility_id = ? AND status IN ('FAILED', 'DEAD_LETTER')", values: [outboxEventId, authorization.facilityId] };
+    const results = await d1.batch([
+      d1.prepare("UPDATE outbox_events SET status = 'PENDING', attempt_count = 0, available_at = ?, last_error = NULL, processed_at = NULL WHERE id = ? AND facility_id = ? AND status IN ('FAILED', 'DEAD_LETTER')").bind(now, outboxEventId, authorization.facilityId),
+      ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "OUTBOX_EVENT_REPLAYED", entityType: "outbox_event", entityId: outboxEventId, reason, oldValues: { status: event.status, attemptCount: event.attempt_count }, newValues: { status: "PENDING", attemptCount: 0 }, requestId: context.requestId, correlationId, eventType: "OUTBOX_EVENT_REPLAYED", payload: { replayedEventId: outboxEventId, eventType: event.event_type } }, guard),
+    ]);
+    if (!results[0]?.meta?.changes) throw new SecurityError("OUTBOX_EVENT_REPLAY_RACE", 409);
     return securityResponse({ outboxEventId, status: "PENDING" }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
