@@ -66,7 +66,7 @@ test("server-renders the visitor Live Session entry point", async () => {
 });
 
 test("server-renders a kiosk credential prompt without putting device secrets in the URL", async () => {
-  const response = await renderPath("/kiosk/visits/SV-260814-018/live?kiosk=kiosk-02");
+  const response = await renderPath("/kiosk/visits/SV-260814-018/live");
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Connect this kiosk/);

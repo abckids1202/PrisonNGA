@@ -1,7 +1,6 @@
 import LiveSessionClient from "@/app/features/live-session/LiveSessionClient";
 
-export default async function KioskLivePage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ kiosk?: string }> }) {
+export default async function KioskLivePage({ params }: { params: Promise<{ visitId: string }> }) {
   const { visitId } = await params;
-  const { kiosk } = await searchParams;
-  return <LiveSessionClient visitId={visitId} role="FACILITY" kioskId={kiosk} />;
+  return <LiveSessionClient visitId={visitId} role="FACILITY" />;
 }
