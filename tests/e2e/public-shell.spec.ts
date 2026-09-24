@@ -99,7 +99,7 @@ test("visitor profile and relationship evidence survive a browser refresh", asyn
   const verify = await page.request.post("/api/auth/visitor/verify", { headers: { "cf-connecting-ip": ipAddress }, data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Journey Visitor" } });
   expect(verify.status()).toBe(200);
 
-  const profile = await page.request.put("/api/visitor/profile", { headers: { origin: testOrigin }, data: { legalName: "Journey Visitor", preferredName: "Journey", phone: "+6281234567890" } });
+  const profile = await page.request.put("/api/visitor/profile", { headers: { origin: testOrigin, "Idempotency-Key": `profile-browser-${Date.now()}` }, data: { legalName: "Journey Visitor", preferredName: "Journey", phone: "+6281234567890" } });
   expect(profile.status()).toBe(200);
   const prisoners = await page.request.get("/api/visitor/prisoners?facilityId=facility-central-001");
   expect(prisoners.status()).toBe(200);

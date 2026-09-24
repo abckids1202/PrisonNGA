@@ -788,7 +788,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
       const response = await fetch("/api/visitor/profile", {
         method: "PUT",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visitor-profile-${crypto.randomUUID()}` },
         body: JSON.stringify({ legalName, preferredName, phone }),
       });
       const body = await response.json() as { profile?: VisitorProfile; error?: string };

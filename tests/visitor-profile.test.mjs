@@ -12,6 +12,18 @@ test("visitor profile and notification writes use scoped rate limits", async () 
   assert.match(notificationsRoute, /enforceRateLimit/);
 });
 
+test("visitor profile updates are replay-safe and emit privacy-safe workflow events", async () => {
+  const profileRoute = await readFile(new URL("../app/api/visitor/profile/route.ts", import.meta.url), "utf8");
+  assert.match(profileRoute, /Idempotency-Key/);
+  assert.match(profileRoute, /claimIdempotency\(d1/);
+  assert.match(profileRoute, /completeIdempotencyStatement\(d1/);
+  assert.match(profileRoute, /releaseIdempotencyClaim/);
+  assert.match(profileRoute, /auditAndOutboxStatements/);
+  assert.match(profileRoute, /VISITOR_PROFILE_UPDATED/);
+  assert.match(profileRoute, /\[REDACTED\]/);
+  assert.doesNotMatch(profileRoute, /payload: \{[^}]*phone[,}]/s);
+});
+
 test("visitor profile input is normalized for an active profile", () => {
   assert.deepEqual(parseVisitorProfileInput({ legalName: "  Siti Rahma  ", preferredName: " Siti ", phone: "+628123456789" }), {
     legalName: "Siti Rahma",
