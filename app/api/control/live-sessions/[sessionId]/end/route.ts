@@ -3,19 +3,37 @@ import { finalizeLiveSessionStatements, requestLiveSessionEndStatements } from "
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { getStaffSession } from "@/lib/server/video/session";
 import { createLiveKitProvider } from "@/lib/server/video/provider";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "@/lib/server/idempotency";
 
 type RouteContext = { params: Promise<{ sessionId: string }> };
 type EndMode = "normal" | "terminate";
 
 export async function POST(request: Request, context: RouteContext) {
   const requestContext = await getRequestContext();
+  let databaseRef: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("session.monitor");
     const { sessionId } = await context.params;
     const body = await request.json() as { reason?: unknown; expectedVersion?: unknown; mode?: unknown };
     if (body.mode !== undefined && body.mode !== "normal" && body.mode !== "terminate") throw new SecurityError("INVALID_SESSION_END_MODE", 400);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     const session = await getStaffSession(sessionId, authorization.facilityId);
-    const d1 = await getD1();
+    const database = await getD1();
+    databaseRef = database;
+    const d1 = database;
+    const scope = `live-session-end:${authorization.facilityId}:${sessionId}`;
+    const requestHash = await hashIdempotencyPayload({ reason: body.reason ?? null, expectedVersion: body.expectedVersion ?? null, mode: body.mode ?? null });
+    const claimed: IdempotencyClaim = await claimIdempotency(database, { scope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, requestContext.requestId);
+    idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
+    const finish = async (responseBody: unknown, status = 200) => {
+      const completed = await database.batch([completeIdempotencyStatement(database, { ...idempotency!, status, body: responseBody })]);
+      if (!completed[0]?.meta.changes) throw new SecurityError("SESSION_END_IDEMPOTENCY_CONFLICT", 409);
+      idempotency = null;
+      return securityResponse(responseBody, status, requestContext.requestId);
+    };
     const appointment = await d1.prepare(`SELECT a.status, a.version, ca.id AS credit_account_id
       FROM appointments a LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
       WHERE a.id = ? AND a.facility_id = ?`).bind(session.appointment_id, authorization.facilityId)
@@ -23,7 +41,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
 
     if (["ENDED", "TERMINATED", "CANCELLED"].includes(session.status)) {
-      if (session.status === "CANCELLED") return securityResponse({ sessionId, status: session.status, idempotent: true }, 200, requestContext.requestId);
+      if (session.status === "CANCELLED") return finish({ sessionId, status: session.status, idempotent: true });
       const expectedStatus = session.status === "ENDED" ? "COMPLETED" : "TECHNICAL_FAILURE";
       const expectedEntry = session.status === "ENDED" ? "CONSUMPTION" : "RESERVATION_RELEASE";
       const settled = appointment.credit_account_id && appointment.status === expectedStatus
@@ -31,7 +49,7 @@ export async function POST(request: Request, context: RouteContext) {
           .bind(session.appointment_id, appointment.credit_account_id, expectedEntry).first()
         : null;
       if (!settled) throw new SecurityError("SESSION_SETTLEMENT_REQUIRES_RECONCILIATION", 503);
-      return securityResponse({ sessionId, status: session.status, idempotent: true }, 200, requestContext.requestId);
+      return finish({ sessionId, status: session.status, idempotent: true });
     }
 
     if (body.expectedVersion !== undefined && body.expectedVersion !== session.version) throw new SecurityError("STALE_SESSION_STATE", 409);
@@ -88,7 +106,7 @@ export async function POST(request: Request, context: RouteContext) {
       const expectedEntry = mode === "terminate" ? "RESERVATION_RELEASE" : "CONSUMPTION";
       const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = ?")
         .bind(session.appointment_id, appointment.credit_account_id, expectedEntry).first();
-      if (settled) return securityResponse({ sessionId, status: latest.status, idempotent: true }, 200, requestContext.requestId);
+      if (settled) return finish({ sessionId, status: latest.status, idempotent: true });
       throw new SecurityError("SESSION_SETTLEMENT_REQUIRES_RECONCILIATION", 503);
     }
     if (latest.status !== "ENDING") throw new SecurityError("STALE_SESSION_STATE", 409);
@@ -127,12 +145,15 @@ export async function POST(request: Request, context: RouteContext) {
         const expectedEntry = mode === "terminate" ? "RESERVATION_RELEASE" : "CONSUMPTION";
         const settled = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = ?")
           .bind(session.appointment_id, appointment.credit_account_id, expectedEntry).first();
-        if (settled) return securityResponse({ sessionId, status: raced.status, idempotent: true }, 200, requestContext.requestId);
+        if (settled) return finish({ sessionId, status: raced.status, idempotent: true });
       }
       throw new SecurityError("STALE_SESSION_STATE", 409);
     }
-    return securityResponse({ sessionId, status: finalSessionStatus, appointmentStatus: finalAppointmentStatus, endedAt: new Date().toISOString(), correlationId }, 200, requestContext.requestId);
+    return finish({ sessionId, status: finalSessionStatus, appointmentStatus: finalAppointmentStatus, endedAt: new Date().toISOString(), correlationId });
   } catch (error) {
+    if (databaseRef && idempotency) {
+      try { await releaseIdempotencyClaim(databaseRef, idempotency); } catch { /* Preserve the original live-session error. */ }
+    }
     return securityErrorResponse(error, requestContext.requestId);
   }
 }

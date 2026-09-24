@@ -864,7 +864,7 @@ function LiveSessionsPage({ onNotify }: { onNotify: (message: string, tone?: Not
     try {
       const response = await fetch(`/api/control/live-sessions/${session.id}/end`, {
         method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `live-session-end-${crypto.randomUUID()}` },
         body: JSON.stringify({ reason: "Staff ended the authorized visit from Live Sessions." }),
       });
       const body = await response.json() as { error?: string };
