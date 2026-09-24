@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("visitor verification keeps account and session creation in one guarded batch", async () => {
@@ -38,10 +39,18 @@ test("visitor authentication atomically audits login and caps failed-code increm
 
 test("session revocation commits the auth mutation and audit event as one D1 batch", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/auth/sessions/route.ts", import.meta.url), "utf8");
-  assert.match(source, /const d1 = await getD1\(\)/);
+  assert.match(source, /d1 = await getD1\(\)/);
   assert.match(source, /await d1\.batch\(\[/);
   assert.match(source, /UPDATE auth_sessions SET revoked_at/);
   assert.match(source, /INSERT INTO security_events/);
   assert.match(source, /WHERE EXISTS \(SELECT 1 FROM auth_sessions/);
   assert.match(source, /SESSION_NOT_FOUND/);
+});
+
+test("session revocation requires idempotency and stores a replay response", async () => {
+  const source = await readFile(new URL("../app/api/auth/sessions/route.ts", import.meta.url), "utf8");
+  assert.match(source, /Idempotency-Key/);
+  assert.match(source, /claimIdempotency\(d1/);
+  assert.match(source, /completeIdempotencyStatement\(d1/);
+  assert.match(source, /releaseIdempotencyClaim/);
 });

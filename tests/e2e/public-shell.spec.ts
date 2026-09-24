@@ -172,7 +172,7 @@ test("visitor can revoke the current browser session and loses protected access"
 
   const revoke = await page.request.post("/api/auth/sessions", {
     data: { sessionId: current?.id },
-    headers: { origin: testOrigin },
+    headers: { origin: testOrigin, "Idempotency-Key": `session-revoke-browser-${Date.now()}` },
   });
   expect(revoke.status()).toBe(200);
   const protectedResponse = await page.request.get("/api/auth/me");

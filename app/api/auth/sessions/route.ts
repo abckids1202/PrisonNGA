@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getDb } from "../../../../db";
 import { getD1 } from "../../../../db/runtime";
 import { authSessions, users } from "../../../../db/schema";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { getRequestContext, getSecuritySalt, getVisitorSessionIdentity, getWorkspaceIdentity, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 async function currentUser() {
@@ -33,25 +34,46 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const account = await currentUser();
     const body = await request.json() as { sessionId?: unknown; revokeAll?: unknown };
-    const d1 = await getD1();
+    const normalized = body.revokeAll === true ? { revokeAll: true } : { revokeAll: false, sessionId: typeof body.sessionId === "string" ? body.sessionId.trim() : "" };
+    if (!normalized.revokeAll && !normalized.sessionId) throw new SecurityError("SESSION_ID_REQUIRED", 400);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    d1 = await getD1();
+    const scope = `auth-session-revoke:${account.id}`;
+    const requestHash = await hashIdempotencyPayload(normalized);
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const now = new Date().toISOString();
-    if (body.revokeAll === true) {
-      await d1.batch([
+    const responseBody = { ok: true, revokedAt: now };
+    if (normalized.revokeAll) {
+      const results = await d1.batch([
         d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL").bind(now, account.id),
         d1.prepare("INSERT INTO security_events (id, user_id, event_type, severity, request_id, metadata, created_at) VALUES (?, ?, 'SESSION_REVOKED', 'WARNING', ?, ?, ?)").bind(crypto.randomUUID(), account.id, context.requestId, JSON.stringify({ revokeAll: true }), now),
+        completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody }),
       ]);
+      if (!results[results.length - 1]?.meta.changes) throw new SecurityError("SESSION_REVOCATION_CONFLICT", 409);
     } else {
-      if (typeof body.sessionId !== "string" || !body.sessionId.trim()) throw new SecurityError("SESSION_ID_REQUIRED", 400);
       const results = await d1.batch([
-        d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL").bind(now, body.sessionId.trim(), account.id),
+        d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL").bind(now, normalized.sessionId, account.id),
         d1.prepare("INSERT INTO security_events (id, user_id, event_type, severity, request_id, metadata, created_at) SELECT ?, ?, 'SESSION_REVOKED', 'WARNING', ?, ?, ? WHERE EXISTS (SELECT 1 FROM auth_sessions WHERE id = ? AND user_id = ? AND revoked_at = ?)")
-          .bind(crypto.randomUUID(), account.id, context.requestId, JSON.stringify({ revokeAll: false, sessionId: body.sessionId.trim() }), now, body.sessionId.trim(), account.id, now),
+          .bind(crypto.randomUUID(), account.id, context.requestId, JSON.stringify({ revokeAll: false, sessionId: normalized.sessionId }), now, normalized.sessionId, account.id, now),
+        completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM auth_sessions WHERE id = ? AND user_id = ? AND revoked_at = ?)", values: [normalized.sessionId, account.id, now] } }),
       ]);
       if (!results[1]?.meta.changes) throw new SecurityError("SESSION_NOT_FOUND", 404);
+      if (!results[results.length - 1]?.meta.changes) throw new SecurityError("SESSION_REVOCATION_CONFLICT", 409);
     }
-    return securityResponse({ ok: true, revokedAt: now }, 200, context.requestId);
-  } catch (error) { return securityErrorResponse(error, context.requestId); }
+    idempotency = null;
+    return securityResponse(responseBody, 200, context.requestId);
+  } catch (error) {
+    if (d1 && idempotency) {
+      try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original session error. */ }
+    }
+    return securityErrorResponse(error, context.requestId);
+  }
 }

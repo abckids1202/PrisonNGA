@@ -815,7 +815,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
     setSessionsBusy(true);
     setSessionsError("");
     try {
-      const response = await fetch("/api/auth/sessions", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(revokeAll ? { revokeAll: true } : { sessionId }) });
+      const response = await fetch("/api/auth/sessions", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `session-revoke-${crypto.randomUUID()}` }, body: JSON.stringify(revokeAll ? { revokeAll: true } : { sessionId }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not revoke the session.");
       if (revokeAll) { await onSignOut(); return; }
