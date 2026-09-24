@@ -36,6 +36,7 @@ The current repository already includes:
 - Workspace identity headers are now accepted only in explicit development mode; staging and production require persisted staff sessions from OIDC or SAML.
 - OIDC staff callbacks now require a configured `acr` and/or `amr` MFA claim; staging/production configuration fails closed when the claim requirement is missing.
 - SAML staff callbacks now request and validate the configured `AuthnContextClassRef` from the signed assertion; staging/production configuration fails closed when it is missing.
+- Failed OIDC and SAML callbacks now emit privacy-safe warning events with the provider, safe error category, request ID and hashed request context only; assertions, codes, tokens and identity payloads are never logged.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Automated server tests and browser smoke tests. Current validation baseline is 227 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.

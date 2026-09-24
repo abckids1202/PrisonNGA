@@ -4,6 +4,25 @@ import { applySecurityHeaders, getRequestContext, getRuntimeValue, getSecuritySa
 
 async function staffCookie(token: string): Promise<string> { return `securevisit_staff_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${(await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development" ? "; Secure" : ""}`; }
 
+async function recordFederationFailure(context: Awaited<ReturnType<typeof getRequestContext>>, error: unknown): Promise<void> {
+  try {
+    const d1 = await getD1();
+    const salt = await getSecuritySalt();
+    const now = new Date().toISOString();
+    const errorCode = error instanceof SecurityError ? error.code : "FEDERATION_CALLBACK_FAILED";
+    await d1.prepare("INSERT INTO security_events (id, event_type, severity, request_id, ip_hash, user_agent_hash, metadata, created_at) VALUES (?, 'STAFF_OIDC_LOGIN_FAILED', 'WARNING', ?, ?, ?, ?, ?)").bind(
+      crypto.randomUUID(),
+      context.requestId,
+      context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null,
+      context.userAgent ? await hashIdentifier(context.userAgent, salt) : null,
+      JSON.stringify({ provider: "OIDC", errorCode }),
+      now,
+    ).run();
+  } catch {
+    // Authentication failure logging must never replace the safe auth response.
+  }
+}
+
 export async function GET(request: Request) {
   const context = await getRequestContext();
   try {
@@ -47,5 +66,8 @@ export async function GET(request: Request) {
     response.headers.set("Set-Cookie", await staffCookie(token));
     applySecurityHeaders(response, context.requestId);
     return response;
-  } catch (error) { return securityErrorResponse(error, context.requestId); }
+  } catch (error) {
+    await recordFederationFailure(context, error);
+    return securityErrorResponse(error, context.requestId);
+  }
 }
