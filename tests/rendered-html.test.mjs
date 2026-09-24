@@ -221,6 +221,13 @@ test("protects audit exports", async () => {
   assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
+test("audit exports persist a verifiable manifest", async () => {
+  const source = await readFile(new URL("../app/api/control/audit/export/route.ts", import.meta.url), "utf8");
+  assert.match(source, /audit_export_manifests/);
+  assert.match(source, /x-audit-export-id/);
+  assert.match(source, /x-audit-export-sha256/);
+});
+
 test("protects facility-scoped reports", async () => {
   const response = await renderApi("/api/control/reports");
   assert.equal(response.status, 401);

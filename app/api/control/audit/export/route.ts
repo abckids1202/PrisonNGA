@@ -32,8 +32,11 @@ export async function GET(request: Request) {
     const csv = `${lines.join("\n")}\n`;
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(csv));
     const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const exportId = crypto.randomUUID();
+    await d1.prepare("INSERT INTO audit_export_manifests (id, facility_id, requested_by, sha256, row_count, from_at, to_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(exportId, authorization.facilityId, authorization.userId, sha256, rows.results.length, from, to, new Date().toISOString()).run();
     await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Auditor", facilityId: authorization.facilityId, actionType: "AUDIT_EXPORT_CREATED", entityType: "audit_export", entityId: sha256, reason: `Exported ${rows.results.length} audit events.`, newValues: { rowCount: rows.results.length, sha256, from, to }, requestId: context.requestId, correlationId: crypto.randomUUID(), eventType: "AUDIT_EXPORT_CREATED", payload: { rowCount: rows.results.length, sha256 } });
-    const response = new Response(csv, { status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="securevisit-audit-${new Date().toISOString().slice(0, 10)}.csv"`, "x-audit-export-sha256": sha256 } });
+    const response = new Response(csv, { status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="securevisit-audit-${new Date().toISOString().slice(0, 10)}.csv"`, "x-audit-export-id": exportId, "x-audit-export-sha256": sha256 } });
     applySecurityHeaders(response, context.requestId);
     return response;
   } catch (error) { return securityErrorResponse(error, context.requestId); }

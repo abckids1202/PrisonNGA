@@ -40,6 +40,7 @@ The current repository already includes:
 - The readiness endpoint now applies the same central fail-closed environment validator used by deployment configuration, including MFA, step-up, pricing, provider, storage and delivery requirements; it reports only missing configuration names and never secret values.
 - Staff finance now has a supervisor-only, step-up-protected refund request boundary with idempotency, persisted request state, provider-neutral signed initiation, audit/outbox evidence, retryable provider failure, and webhook-driven completion.
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
+- Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Automated server tests and browser smoke tests. Current validation baseline is 227 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.

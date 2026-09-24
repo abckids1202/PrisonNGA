@@ -220,6 +220,17 @@ export const auditEvents = sqliteTable("audit_events", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ facilityIdx: index("audit_events_facility_idx").on(table.facilityId), createdIdx: index("audit_events_created_idx").on(table.createdAt) }));
 
+export const auditExportManifests = sqliteTable("audit_export_manifests", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  requestedBy: text("requested_by").notNull().references(() => users.id),
+  sha256: text("sha256").notNull(),
+  rowCount: integer("row_count").notNull(),
+  fromAt: text("from_at"),
+  toAt: text("to_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ hashIdx: uniqueIndex("audit_export_manifests_sha256_idx").on(table.facilityId, table.sha256), createdIdx: index("audit_export_manifests_created_idx").on(table.facilityId, table.createdAt) }));
+
 export const outboxEvents = sqliteTable("outbox_events", {
   id: text("id").primaryKey(),
   eventType: text("event_type").notNull(),
