@@ -43,6 +43,9 @@ test("outbound visitor, payment, and notification webhooks bind signatures to a 
       assert.match(timestamp || "", /^\d{10}$/);
       assert.equal(headers.get("x-securevisit-signature"), `sha256=${await expectedSignature(call.url.includes("payments") ? "payment-secret" : call.url.includes("notify") ? "notification-secret" : "visitor-secret", timestamp, payload)}`);
     }
+    assert.equal(new Headers(calls[0].init.headers).get("idempotency-key"), "visitor-auth:challenge-1");
+    assert.equal(new Headers(calls[1].init.headers).get("idempotency-key"), "payment-1");
+    assert.equal(new Headers(calls[2].init.headers).get("idempotency-key"), "notification-1:email");
   } finally {
     globalThis.fetch = originalFetch;
     for (const key of Object.keys(process.env)) {

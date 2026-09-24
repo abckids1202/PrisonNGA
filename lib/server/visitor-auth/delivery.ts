@@ -12,7 +12,7 @@ export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": `visitor-auth:${input.challengeId}`, "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
     if (!response.ok) throw new Error(`VISITOR_AUTH_DELIVERY_FAILED_${response.status}`);
   } finally {
     clearTimeout(timeout);
