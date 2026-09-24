@@ -33,6 +33,7 @@ The current repository already includes:
 - LiveKit readiness and provider configuration now reject malformed URLs, non-HTTPS/WSS schemes, and credential-bearing URLs before a browser connection or provider client can be created.
 - Staff evidence retrieval now verifies the stored object’s SHA-256 against the immutable evidence record before serving it, preventing a size-matching replacement or corruption from being presented as the submitted document.
 - Staff LiveKit observer tokens now require both a joinable session and an `IN_PROGRESS` appointment, matching the visitor and kiosk lifecycle boundary.
+- Live-session join/token issuance fails closed unless the persisted session explicitly remains `OFF` / `NOT_RECORDED`; legacy or malformed recording-enabled rows cannot join.
 - Facility isolation checks, permission checks, step-up foundations, rate limits, security events, request/correlation identifiers, CSP and camera/microphone permissions policy.
 - Idempotent state-changing boundaries for appointment decisions, verification review, visitor profile, session revocation, notification read state, policy updates, live-session ending, waiting-room commands, outbox replay and visitor payment checkout audit events.
 - Privacy-safe `VISITOR_LOGIN_CHALLENGE_FAILED` security events with hashed request context and no OTP/destination logging.

@@ -54,6 +54,7 @@ export async function getStaffSession(sessionId: string, facilityId: string): Pr
 }
 
 export function assertJoinable(record: SessionRecord): void {
+  assertRecordingDisabled(record);
   if (!["CONNECTING", "ACTIVE", "RECONNECTING"].includes(record.status)) {
     if (["ENDED", "TERMINATED", "CANCELLED"].includes(record.status)) throw new SecurityError("SESSION_ENDED", 409);
     throw new SecurityError("SESSION_NOT_READY", 409);
@@ -62,6 +63,17 @@ export function assertJoinable(record: SessionRecord): void {
   const end = Date.parse(record.authorized_end_at);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new SecurityError("SESSION_INVALID_WINDOW", 409);
   if (Date.now() > end + 60_000) throw new SecurityError("SESSION_EXPIRED", 409);
+}
+
+/**
+ * Recording is intentionally unavailable for the institutional pilot. Treat
+ * any legacy, malformed, or future-enabled row as non-joinable until a
+ * separately approved recording workflow exists.
+ */
+export function assertRecordingDisabled(record: Pick<SessionRecord, "recording_policy" | "recording_status">): void {
+  if (record.recording_policy !== "OFF" || record.recording_status !== "NOT_RECORDED") {
+    throw new SecurityError("RECORDING_POLICY_NOT_ALLOWED", 409);
+  }
 }
 
 /**

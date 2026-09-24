@@ -40,6 +40,12 @@ test("eligible visitor can join an active session", () => {
   assert.doesNotThrow(() => assertVisitorJoinAllowed(session));
 });
 
+test("live-session tokens fail closed if a session is not explicitly recording-disabled", () => {
+  for (const change of [{ recording_policy: "ON" }, { recording_status: "RECORDING" }]) {
+    assert.throws(() => assertVisitorJoinAllowed({ ...session, ...change }), (error) => error.code === "RECORDING_POLICY_NOT_ALLOWED");
+  }
+});
+
 test("visitor join is denied when prisoner eligibility has changed", () => {
   for (const change of [{ prisoner_status: "RELEASED" }, { visitation_status: "SUSPENDED" }, { visitation_status: "RESTRICTED" }]) {
     assert.throws(() => assertVisitorJoinAllowed({ ...session, ...change }), (error) => error.code === "PRISONER_NOT_AVAILABLE");
