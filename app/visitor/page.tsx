@@ -13,6 +13,7 @@ type VisitorPrisonerRecord = { id: string; facility_id: string; facility_name: s
 type VisitorCreditAccount = { facility_id: string; available_credits: number; reserved_credits: number; facility_name: string };
 type VisitorCreditLedgerEntry = { id: string; entry_type: string; amount: number; reason: string; created_at: string };
 type VisitorPaymentIntent = { id: string; facility_id: string; status: string; credit_quantity: number; amount_minor: number; currency: string; checkout_url: string | null; created_at: string };
+type VisitorSession = { id: string; createdAt: string; expiresAt: string; lastSeenAt: string; deviceLabel: string; current: boolean };
 type VisitorFacility = { id: string; name: string; timezone: string; current_state: string };
 type VisitorProfile = { userId?: string; legalName: string; preferredName: string | null; phone: string | null; phoneVerifiedAt: string | null; profileStatus: string };
 type VisitorNotification = { id: string; channel: string; template: string; title: string; body: string; payload: string | Record<string, unknown> | null; status: string; created_at: string; read_at: string | null };
@@ -741,6 +742,10 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [sessions, setSessions] = useState<VisitorSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsBusy, setSessionsBusy] = useState(false);
+  const [sessionsError, setSessionsError] = useState("");
   const [error, setError] = useState("");
   const [signOutError, setSignOutError] = useState("");
 
@@ -760,6 +765,20 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [initialName]);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/sessions", { credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
+      const body = await response.json() as { sessions?: VisitorSession[]; error?: string };
+      if (!response.ok) throw new Error(body.error || "Could not load active sessions.");
+      setSessions(body.sessions || []);
+      setSessionsError("");
+    } catch (reason) {
+      setSessionsError(reason instanceof Error ? reason.message : "Could not load active sessions.");
+    } finally { setSessionsLoading(false); }
+  }, []);
+
+  useEffect(() => { const timer = window.setTimeout(() => { void loadSessions(); }, 0); return () => window.clearTimeout(timer); }, [loadSessions]);
 
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -792,6 +811,21 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
     finally { setSigningOut(false); }
   }
 
+  async function revokeSession(sessionId?: string, revokeAll = false) {
+    setSessionsBusy(true);
+    setSessionsError("");
+    try {
+      const response = await fetch("/api/auth/sessions", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(revokeAll ? { revokeAll: true } : { sessionId }) });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "Could not revoke the session.");
+      if (revokeAll) { await onSignOut(); return; }
+      await loadSessions();
+      onAction("The selected browser session was revoked.", "success");
+    } catch (reason) {
+      setSessionsError(reason instanceof Error ? reason.message : "Could not revoke the session.");
+    } finally { setSessionsBusy(false); }
+  }
+
   const name = profile?.preferredName || profile?.legalName || initialName;
   return <div className="sv4-page sv4-inner-page">
     <div className="sv4-account-hero"><VisitorAvatar initials={name.split(/\\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()} color="coral" /><div><p className="sv4-kicker">Your account</p><h1>{name}</h1><p>Your visitor profile and contact details</p></div><VisitorStatus tone={profile?.phoneVerifiedAt ? "green" : "orange"}>{profile?.phoneVerifiedAt ? "PHONE VERIFIED" : phone ? "PHONE UNVERIFIED" : "SETUP IN PROGRESS"}</VisitorStatus></div>
@@ -805,7 +839,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
         <button className="sv4-button sv4-button-primary" disabled={loading || saving}>{saving ? "Saving…" : loading ? "Loading profile…" : "Save changes"}</button>
       </form>
     </section>
-    <section className="sv4-account-security"><div><p className="sv4-kicker">Security</p><h2>Secure session</h2><p>Signing out revokes this visitor session on SecureVisit.</p></div><button className="sv4-signout" onClick={() => void signOut()} disabled={signingOut}>{signingOut ? "Signing out…" : "Sign out"}</button>{signOutError && <p className="sv4-request-error" role="alert">{signOutError}</p>}</section>
+    <section className="sv4-account-security"><div><p className="sv4-kicker">Security</p><h2>Active sessions</h2><p>Review browsers signed in to your visitor account and revoke anything you do not recognize.</p></div><button className="sv4-signout" onClick={() => void signOut()} disabled={signingOut || sessionsBusy}>{signingOut ? "Signing out…" : "Sign out"}</button>{sessionsError && <p className="sv4-request-error" role="alert">{sessionsError}</p>}<div className="sv4-session-list">{sessionsLoading ? <p className="sv4-session-muted">Loading active sessions…</p> : sessions.length ? sessions.map((session) => <div className="sv4-session-row" key={session.id}><span><strong>{session.deviceLabel}{session.current ? " · This device" : ""}</strong><small>Last active {new Date(session.lastSeenAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })} · Expires {new Date(session.expiresAt).toLocaleDateString("id-ID")}</small></span>{session.current ? <VisitorStatus tone="green">CURRENT</VisitorStatus> : <button type="button" disabled={sessionsBusy} onClick={() => void revokeSession(session.id)}>Revoke</button>}</div>) : <p className="sv4-session-muted">No active sessions were found.</p>}</div><button type="button" className="sv4-session-revoke-all" disabled={sessionsBusy || sessionsLoading || !sessions.length} onClick={() => void revokeSession(undefined, true)}>Sign out all sessions</button>{signOutError && <p className="sv4-request-error" role="alert">{signOutError}</p>}</section>
   </div>;
 }
 

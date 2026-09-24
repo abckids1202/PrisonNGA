@@ -141,6 +141,9 @@ test("visitor profile and relationship evidence survive a browser refresh", asyn
   await expect(page.getByRole("heading", { name: "A. Rahman" })).toBeVisible();
   await expect(page.locator("p").filter({ hasText: "Family member · Central Correctional Facility" }).first()).toBeVisible();
   await expect(page.getByText(evidenceStored ? "Supporting document received" : "Supporting document still needed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Open account", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Active sessions" })).toBeVisible();
+  await expect(page.getByText("This device", { exact: false }).first()).toBeVisible();
 });
 
 test("browser requests to protected APIs are rejected without a session", async ({ request }) => {

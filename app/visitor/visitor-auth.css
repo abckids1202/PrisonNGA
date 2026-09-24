@@ -34,6 +34,15 @@
 .sv4-payment-list strong { color: #17333f; font-size: 14px; }
 .sv4-payment-list small { color: #718187; font-size: 12px; }
 .sv4-payment-list button { background: transparent; border: 0; color: #b85e30; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; }
+.sv4-session-list { border-top: 1px solid #e9eeeb; display: grid; flex-basis: 100%; margin-top: 18px; width: 100%; }
+.sv4-session-row { align-items: center; border-bottom: 1px solid #e9eeeb; display: flex; gap: 12px; justify-content: space-between; padding: 13px 0; }
+.sv4-session-row > span { display: grid; gap: 4px; min-width: 0; }
+.sv4-session-row strong { color: #17333f; font-size: 13px; }
+.sv4-session-row small, .sv4-session-muted { color: #718187; font-size: 12px; }
+.sv4-session-row button, .sv4-session-revoke-all { background: transparent; border: 0; color: #b85e30; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.sv4-session-row button:disabled, .sv4-session-revoke-all:disabled { cursor: wait; opacity: .55; }
+.sv4-session-muted { margin: 14px 0; }
+.sv4-session-revoke-all { margin-top: 14px; }
 .sv4-connection-request h2 { color: #17333f; font-size: 22px; margin: 5px 0; }
 .sv4-connection-request > div:first-child p:last-child { color: #687b80; margin: 0; }
 .sv4-connection-request > label { color: #29444d; display: grid; font-size: 14px; font-weight: 700; gap: 8px; }
