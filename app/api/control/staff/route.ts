@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const userId = crypto.randomUUID();
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
-    const responseBody = { userId, email, displayName, status: "ACTIVE", role: role.name };
+    const responseBody = { userId, email, displayName, status: "ACTIVE", role: role.name, correlationId };
     const auditGuard = { sql: "EXISTS (SELECT 1 FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE')", values: [userId] };
     const results = await d1.batch([
       d1.prepare("INSERT INTO users (id, external_id, email, display_name, user_type, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'STAFF', 'ACTIVE', 1, ?, ?)").bind(userId, `pending:staff:${userId}`, email, displayName, now, now),
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: auditGuard }),
     ]);
     if (!results[0]?.meta.changes || !results[3]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("STAFF_PROVISIONING_FAILED", 409);
-    return securityResponse({ ...responseBody, correlationId }, 201, context.requestId);
+    return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
     if (d1 && idempotency) {
       try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original provisioning error. */ }
