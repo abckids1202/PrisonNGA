@@ -8,8 +8,20 @@ type DeterministicSpinProps = { result: PersistedSpinResult; disabled?: boolean;
 export default function DeterministicSpin({ result, disabled = false, onComplete, onHaptic, onAudio }: DeterministicSpinProps) {
   const [spinning, setSpinning] = useState(false);
   const [started, setStarted] = useState(false);
+  const [startedResultId, setStartedResultId] = useState<string | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const completedResult = useRef<string | null>(null);
+  const completionTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (completionTimer.current !== null) window.clearTimeout(completionTimer.current);
+    completionTimer.current = null;
+    completedResult.current = null;
+    return () => {
+      if (completionTimer.current !== null) window.clearTimeout(completionTimer.current);
+      completionTimer.current = null;
+    };
+  }, [result.resultId]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -20,21 +32,26 @@ export default function DeterministicSpin({ result, disabled = false, onComplete
   }, []);
 
   function start() {
-    if (disabled || spinning || completedResult.current === result.resultId) return;
+    const isSpinning = spinning && startedResultId === result.resultId;
+    if (disabled || isSpinning || completedResult.current === result.resultId) return;
     setStarted(true);
+    setStartedResultId(result.resultId);
     setSpinning(true);
     onHaptic?.();
     onAudio?.();
     const duration = reducedMotion ? 0 : SPIN_DURATION_MS;
-    window.setTimeout(() => {
+    completionTimer.current = window.setTimeout(() => {
+      completionTimer.current = null;
       completedResult.current = result.resultId;
       setSpinning(false);
       onComplete?.();
     }, duration);
   }
 
-  return <button type="button" className={`sv-spin-trigger ${spinning ? "is-spinning" : ""}`} disabled={disabled || spinning} onClick={start} aria-busy={spinning}>
-    <span className="sv-spin-wheel" style={{ transform: started ? spinTransform(result, reducedMotion) : "rotate(0deg)", transition: spinning ? `transform ${SPIN_DURATION_MS}ms ${SPIN_EASING}` : "none" }} aria-hidden="true" />
-    <span>{spinning ? "Working…" : "Start"}</span>
+  const isSpinning = spinning && startedResultId === result.resultId;
+  const hasStarted = started && startedResultId === result.resultId;
+  return <button type="button" className={`sv-spin-trigger ${isSpinning ? "is-spinning" : ""}`} disabled={disabled || isSpinning} onClick={start} aria-busy={isSpinning}>
+    <span className="sv-spin-wheel" style={{ transform: hasStarted ? spinTransform(result, reducedMotion) : "rotate(0deg)", transition: isSpinning ? `transform ${SPIN_DURATION_MS}ms ${SPIN_EASING}` : "none" }} aria-hidden="true" />
+    <span>{isSpinning ? "Working…" : "Start"}</span>
   </button>;
 }
