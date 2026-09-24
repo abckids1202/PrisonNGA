@@ -11,7 +11,16 @@ export async function GET() {
         (SELECT COUNT(*) FROM evidence_documents ed WHERE ed.verification_case_id = vc.id AND ed.facility_id = vc.facility_id AND ed.status = 'AVAILABLE') AS evidence_count
       FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id INNER JOIN facilities f ON f.id = vr.facility_id LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id
       WHERE vr.visitor_user_id = ? ORDER BY vr.created_at DESC`).bind(visitor.userId).all();
-    return securityResponse({ relationships: result.results }, 200, context.requestId);
+    const relationships = await Promise.all(result.results.map(async (relationship) => {
+      const history = await d1.prepare(`SELECT entity_type, action_type, reason, created_at
+        FROM audit_events
+        WHERE facility_id = ?
+          AND ((entity_type = 'visitor_relationship' AND entity_id = ?)
+            OR (entity_type = 'verification_case' AND entity_id = ?))
+        ORDER BY created_at ASC`).bind(relationship.facility_id, relationship.id, relationship.verification_case_id || "").all<{ entity_type: string; action_type: string; reason: string | null; created_at: string }>();
+      return { ...relationship, decision_history: history.results };
+    }));
+    return securityResponse({ relationships }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }

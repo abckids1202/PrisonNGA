@@ -109,6 +109,10 @@ test("visitor profile and relationship evidence survive a browser refresh", asyn
   const evidenceStored = evidence.status() === 201;
   if (evidenceStored) expect(evidenceBody.error).toBeUndefined();
   else expect(evidenceBody.error).toBe("EVIDENCE_STORAGE_NOT_CONFIGURED");
+  const relationships = await page.request.get("/api/visitor/relationships");
+  expect(relationships.status()).toBe(200);
+  const relationshipList = await relationships.json() as { relationships?: Array<{ id: string; decision_history?: Array<{ action_type: string }> }> };
+  expect(relationshipList.relationships?.some((record) => Array.isArray(record.decision_history) && record.decision_history.length > 0)).toBe(true);
 
   await page.goto("/visitor");
   await page.getByRole("button", { name: "Connections", exact: true }).click();
