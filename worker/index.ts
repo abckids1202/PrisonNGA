@@ -146,9 +146,12 @@ async function processOutbox(env: Env): Promise<void> {
   for (const row of result.results) {
     const now = new Date().toISOString();
     try {
-      const payload = JSON.parse(row.payload) as Record<string, unknown>;
-    const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
+      // Claim before parsing or doing any external work. Otherwise a malformed
+      // payload remains PENDING forever because the failure handler only
+      // updates rows that have already entered PROCESSING.
+      const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
       if (!claim.meta.changes) continue;
+      const payload = JSON.parse(row.payload) as Record<string, unknown>;
       const attemptNumber = row.attempt_count + 1;
       const attemptStartedAt = new Date().toISOString();
       const externalAttemptId = `${row.id}:external:${attemptNumber}`;

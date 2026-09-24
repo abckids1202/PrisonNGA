@@ -73,6 +73,7 @@ The current repository already includes:
 - Successful payment settlement webhooks now require provider reference, amount, and currency before any credit ledger entry can be created; missing settlement fields fail closed and remain retryable.
 - Availability date/time parsing now rejects impossible calendar dates and malformed local times instead of allowing JavaScript date normalization to move a request onto another day.
 - Outbox processing now persists claim start time and stale-claim recovery uses claim age rather than event creation age, preventing long-queued events from being reclaimed while an active delivery is still running.
+- Outbox workers claim rows before parsing payloads, so malformed events enter bounded retry/dead-letter handling instead of remaining permanently `PENDING`.
 - Payment creation and refund requests are audited, but a real provider adapter, customer-facing checkout return handling, provider status polling, provider dispute workflow and reconciliation dashboard still need completion.
 - Notification records and outbox processing exist, but real email/SMS delivery adapters, templates, delivery receipts, retry operations and dead-letter replay need staging proof.
 - Visitor session controls still need production delivery, recovery, suspicious-login handling and device-management validation beyond the development OTP path.
