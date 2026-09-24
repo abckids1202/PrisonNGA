@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 
 type DeviceStep = "intro" | "permissions" | "camera" | "microphone" | "connection" | "summary" | "permission_error" | "unsupported";
 type CheckStatus = "checking" | "ready" | "warning" | "failed";
@@ -303,7 +304,7 @@ export default function DeviceCheckPage() {
   const overallReady = cameraStatus !== "failed" && microphoneStatus !== "failed" && Boolean(network);
 
   if (appointmentLoading) return <main className="sv11-auth-shell"><section className="sv11-auth-card"><h1>Checking your visit</h1><p>We’re confirming this appointment before opening device preparation.</p></section></main>;
-  if (!appointment || appointmentError) return <main className="sv11-auth-shell"><section className="sv11-auth-card"><h1>Device check unavailable</h1><p role="alert">{appointmentError || "This visit is not available in your account."}</p><a className="sv4-button sv4-button-primary" href="/visitor?section=Visits">Back to My Visits</a></section></main>;
+  if (!appointment || appointmentError) return <main className="sv11-auth-shell"><section className="sv11-auth-card"><h1>Device check unavailable</h1><p role="alert">{appointmentError || "This visit is not available in your account."}</p><Link className="sv4-button sv4-button-primary" href="/visitor/visits">Back to My Visits</Link></section></main>;
 
   return <div className="sv3-visitor-app sv4-visitor-app dc-app">
     <DeviceCheckHeader onBack={returnToVisit} prisonerName={appointment.prisoner_name} />

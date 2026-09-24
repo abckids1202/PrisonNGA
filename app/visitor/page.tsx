@@ -4,7 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import Link from "next/link";
 import "./visitor-auth.css";
 
-type Tab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
+export type VisitorTab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
+type Tab = VisitorTab;
 type NoticeTone = "success" | "info";
 type VisitorAppointmentRecord = { id: string; facility_id: string; prisoner_id: string; status: string; requested_start: string; requested_end: string; timezone: string; version: number; prisoner_name: string; appointment_type: string; created_at?: string; updated_at?: string };
 type VisitorRelationshipRecord = { id: string; facility_id: string; prisoner_id: string; status: string; prisoner_name: string; relationship_type: string; facility_name?: string; verification_case_id?: string | null; verification_status?: string; evidence_count?: number; decision_history?: Array<{ entity_type: string; action_type: string; reason: string | null; created_at: string }>; created_at?: string; updated_at?: string };
@@ -53,12 +54,12 @@ function VisitorAvatar({ initials, color = "sage" }: { initials: string; color?:
   return <span className={`sv4-avatar sv4-avatar-${color}`}>{initials}</span>;
 }
 
-export default function VisitorPage() {
+export default function VisitorPage({ initialTab = "Home" }: { initialTab?: VisitorTab }) {
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "signed_out">("loading");
   const [visitorName, setVisitorName] = useState("Sarah");
   const [dataError, setDataError] = useState<string | null>(null);
   const [visitorData, setVisitorData] = useState<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true, refreshAppointments: async () => undefined });
-  const [tab, setTab] = useState<Tab>("Home");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const syncVisitorCredits = useCallback((credits: VisitorCreditAccount[]) => setVisitorData((current) => ({ ...current, credits })), []);
