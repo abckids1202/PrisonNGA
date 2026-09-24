@@ -8,6 +8,10 @@ test("visitor profile and notification writes use scoped rate limits", async () 
   const notificationsRoute = await readFile(new URL("../app/api/visitor/notifications/route.ts", import.meta.url), "utf8");
   assert.match(profileRoute, /visitor-profile-update:\$\{visitor\.userId\}/);
   assert.match(notificationsRoute, /visitor-notification-update:\$\{visitor\.userId\}/);
+  assert.match(notificationsRoute, /Idempotency-Key/);
+  assert.match(notificationsRoute, /claimIdempotency\(database/);
+  assert.match(notificationsRoute, /completeIdempotencyStatement\(database/);
+  assert.match(notificationsRoute, /auditAndOutboxStatements/);
   assert.match(profileRoute, /enforceRateLimit/);
   assert.match(notificationsRoute, /enforceRateLimit/);
 });

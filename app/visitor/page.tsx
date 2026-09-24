@@ -872,7 +872,7 @@ function VisitorNotifications({ onAction, onUnreadChange }: { onAction: (message
     if (!ids.length || busy) return;
     setBusy(true);
     try {
-      const response = await fetch("/api/visitor/notifications", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ notificationIds: ids }) });
+      const response = await fetch("/api/visitor/notifications", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visitor-notifications-${crypto.randomUUID()}` }, body: JSON.stringify({ notificationIds: ids }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not update your inbox.");
       const next = notifications.map((item) => ids.includes(item.id) ? { ...item, status: "READ" } : item);
