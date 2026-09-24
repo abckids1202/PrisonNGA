@@ -111,3 +111,16 @@
 .sv11-auth-methods { background: #f4f7f5; border: 1px solid #dfe7e3; border-radius: 10px; display: grid; gap: 4px; grid-template-columns: 1fr 1fr; padding: 4px; }
 .sv11-auth-methods button { background: transparent; border: 0; border-radius: 7px; color: #718187; cursor: pointer; font: inherit; font-weight: 700; min-height: 38px; }
 .sv11-auth-methods button.active { background: #fff; box-shadow: 0 2px 7px rgba(26,53,59,.08); color: #17333f; }
+.sv4-receipt-page { align-items: center; background: #f4f6f5; display: flex; justify-content: center; min-height: 100vh; padding: 32px 20px; }
+.sv4-receipt-card { background: #fff; border: 1px solid #dce5e1; border-radius: 24px; box-shadow: 0 20px 60px rgba(14, 42, 55, .1); max-width: 640px; padding: 40px; width: 100%; }
+.sv4-receipt-top { align-items: flex-start; display: flex; justify-content: space-between; }
+.sv4-receipt-top h1 { color: #0b2635; font-size: clamp(30px, 6vw, 48px); letter-spacing: -.04em; margin: 8px 0 0; }
+.sv4-receipt-check { align-items: center; background: #dff4e9; border-radius: 50%; color: #18714b; display: flex; font-size: 28px; height: 54px; justify-content: center; width: 54px; }
+.sv4-receipt-lead { color: #526b75; font-size: 17px; line-height: 1.6; margin: 24px 0 30px; }
+.sv4-receipt-details { border-top: 1px solid #e3ebe7; margin: 0; }
+.sv4-receipt-details div { align-items: baseline; border-bottom: 1px solid #e3ebe7; display: flex; gap: 20px; justify-content: space-between; padding: 16px 0; }
+.sv4-receipt-details dt { color: #71858b; font-size: 13px; }
+.sv4-receipt-details dd { color: #0b2635; font-size: 14px; font-weight: 700; margin: 0; text-align: right; }
+.sv4-receipt-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.sv4-receipt-actions a { align-items: center; border: 1px solid #d6e1dd; border-radius: 12px; color: #0b2635; display: inline-flex; font-weight: 700; padding: 12px 18px; text-decoration: none; }
+@media print { .sv4-receipt-page { background: #fff; padding: 0; } .sv4-receipt-card { border: 0; box-shadow: none; max-width: 100%; } .sv4-receipt-actions { display: none; } }
