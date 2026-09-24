@@ -10,5 +10,6 @@ test("appointment decisions are replay-safe across approval and recovery branche
   assert.match(source, /appointmentDecisionStatements/);
   assert.match(source, /IDEMPOTENCY_RETRY_REQUIRED/);
   assert.match(source, /getAssignedResources/);
+  const clientSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(clientSource, /appointment-decision-\$\{id\}-\$\{command\}/);
 });
-

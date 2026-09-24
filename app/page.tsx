@@ -275,7 +275,7 @@ export default function ControlApp() {
     try {
       const appointment = appointments.find((item) => item.id === id);
       if (!appointment || !Number.isSafeInteger(appointment.version)) throw new Error("APPOINTMENT_VERSION_UNAVAILABLE");
-      const response = await fetch("/api/control/appointments", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ appointmentId: id, command, expectedVersion: appointment.version, reason: `Staff selected ${command.replaceAll("_", " ")} from the appointment review workflow.` }) });
+      const response = await fetch("/api/control/appointments", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `appointment-decision-${id}-${command}-${appointment.version}-${crypto.randomUUID()}` }, credentials: "include", body: JSON.stringify({ appointmentId: id, command, expectedVersion: appointment.version, reason: `Staff selected ${command.replaceAll("_", " ")} from the appointment review workflow.` }) });
       const body = await response.json() as { status?: string; error?: string; version?: number; idempotent?: boolean; allocation?: { roomName?: string; deviceName?: string } | null };
       if (!response.ok) throw new Error(body.error || "APPOINTMENT_DECISION_FAILED");
       setBackendStatus("connected");
