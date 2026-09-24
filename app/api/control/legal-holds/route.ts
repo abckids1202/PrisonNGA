@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   let d1: D1Database | null = null;
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
-    const authorization = await requirePermission("audit.read");
+    const authorization = await requirePermission("legal_hold.manage");
     const body = await request.json() as { action?: unknown; entityType?: unknown; entityId?: unknown; reason?: unknown; holdId?: unknown };
     const action = body.action === "RELEASE" ? "RELEASE" : body.action === "CREATE" ? "CREATE" : "";
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
