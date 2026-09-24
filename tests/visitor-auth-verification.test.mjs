@@ -19,6 +19,13 @@ test("visitor authentication supports both email and SMS challenge channels", as
   assert.match(deliverySource, /channel: "EMAIL" \| "SMS"/);
 });
 
+test("visitor authentication enforces the advertised persisted OTP resend cooldown", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/auth/visitor/request/route.ts", import.meta.url), "utf8");
+  assert.match(source, /created_at > datetime\('now', '-60 seconds'\)/);
+  assert.match(source, /purpose = 'VISITOR_SIGN_IN'/);
+  assert.match(source, /AUTH_RETRY_TOO_SOON/);
+});
+
 test("visitor authentication atomically audits login and caps failed-code increments", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/auth/visitor/verify/route.ts", import.meta.url), "utf8");
   assert.match(source, /attempt_count = attempt_count \+ 1 WHERE id = \? AND consumed_at IS NULL/);

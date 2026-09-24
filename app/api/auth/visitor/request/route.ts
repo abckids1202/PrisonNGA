@@ -43,6 +43,11 @@ export async function POST(request: Request) {
     const destinationHash = await hashIdentifier(`${channel.toLowerCase()}:${destination}`, salt);
     await enforceRateLimit(d1, { key: `visitor-auth:${channel.toLowerCase()}:${destinationHash}`, limit: 5, windowSeconds: 15 * 60 });
     await enforceRateLimit(d1, { key: `visitor-auth:ip:${context.ipAddress || "unknown"}`, limit: 30, windowSeconds: 15 * 60 });
+    const cooldown = await d1.prepare(`SELECT id FROM auth_challenges
+      WHERE destination_hash = ? AND purpose = 'VISITOR_SIGN_IN'
+        AND created_at > datetime('now', '-60 seconds')
+      LIMIT 1`).bind(destinationHash).first<{ id: string }>();
+    if (cooldown) throw new SecurityError("AUTH_RETRY_TOO_SOON", 429);
     const recent = await d1.prepare("SELECT COUNT(*) AS count FROM auth_challenges WHERE destination_hash = ? AND created_at > datetime('now', '-15 minutes')").bind(destinationHash).first<{ count: number }>();
     if (Number(recent?.count || 0) >= 5) throw new SecurityError("AUTH_RATE_LIMITED", 429);
     const code = generateCode();
