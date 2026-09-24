@@ -24,7 +24,7 @@ class D1 {
       CREATE TABLE visit_sessions (id TEXT, appointment_id TEXT, facility_id TEXT, status TEXT, authorized_start_at TEXT, authorized_end_at TEXT, actual_started_at TEXT, actual_ended_at TEXT, recording_policy TEXT, recording_status TEXT);
       CREATE TABLE visitor_device_check_attempts (id TEXT PRIMARY KEY, facility_id TEXT, appointment_id TEXT, visitor_user_id TEXT, idempotency_key TEXT UNIQUE, camera_result TEXT, microphone_result TEXT, network_result TEXT, latency_ms INTEGER, correlation_id TEXT, created_at TEXT);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, appointment_id TEXT, entry_type TEXT, amount INTEGER DEFAULT 0, reason TEXT DEFAULT '', created_at TEXT);
-      CREATE TABLE appointment_status_events (id TEXT PRIMARY KEY, appointment_id TEXT, from_status TEXT, to_status TEXT, created_at TEXT);
+      CREATE TABLE appointment_status_events (id TEXT PRIMARY KEY, appointment_id TEXT, from_status TEXT, to_status TEXT, reason_text TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       INSERT INTO facilities VALUES ('f1', 'Central Facility', 'NORMAL_OPERATIONS');
       INSERT INTO users VALUES ('visitor-1'), ('visitor-2');
@@ -33,7 +33,7 @@ class D1 {
       INSERT INTO appointments VALUES ('a2', 'f1', 'visitor-2', 'p1', 'APPROVED', '2026-09-23T02:00:00.000Z', '2026-09-23T02:20:00.000Z', 'Asia/Jakarta', 'FAMILY', 1, '2026-09-20T00:00:00.000Z', '2026-09-20T00:00:00.000Z');
       INSERT INTO visitor_relationships VALUES ('r1', 'f1', 'visitor-1', 'p1', 'Sister');
       INSERT INTO visitor_relationships VALUES ('r2', 'f1', 'visitor-2', 'p1', 'Brother');
-      INSERT INTO appointment_status_events VALUES ('e1', 'a1', 'SUBMITTED', 'APPROVED', '2026-09-21T00:00:00.000Z');
+      INSERT INTO appointment_status_events VALUES ('e1', 'a1', 'SUBMITTED', 'APPROVED', 'Eligibility approved.', '2026-09-21T00:00:00.000Z');
     `);
   }
   prepare(sql) { return new Statement(this, sql); }
@@ -54,7 +54,9 @@ test("visitor detail query returns saved visit data and never crosses account ow
     assert.equal(owned.relationship_type, "Sister");
     assert.equal(owned.status, "APPROVED");
     assert.equal(owned.visit_credit_status, "NOT_RESERVED");
-    assert.equal((await visitorAppointmentHistoryStatement(db, { appointmentId: "a1", visitorUserId: "visitor-1" }).all()).results.length, 1);
+    const history = (await visitorAppointmentHistoryStatement(db, { appointmentId: "a1", visitorUserId: "visitor-1" }).all()).results;
+    assert.equal(history.length, 1);
+    assert.equal(history[0].reason_text, "Eligibility approved.");
     assert.equal(await visitorAppointmentDetailStatement(db, { appointmentId: "a1", visitorUserId: "visitor-2" }).first(), null);
     assert.equal((await visitorAppointmentHistoryStatement(db, { appointmentId: "a1", visitorUserId: "visitor-2" }).all()).results.length, 0);
   } finally { db.close(); }

@@ -53,7 +53,7 @@ export function visitorAppointmentHistoryStatement(
   d1: D1Database,
   input: VisitorAppointmentDetailInput,
 ): D1PreparedStatement {
-  return d1.prepare(`SELECT e.from_status, e.to_status, e.created_at
+  return d1.prepare(`SELECT e.from_status, e.to_status, e.reason_text, e.created_at
     FROM appointment_status_events e
     INNER JOIN appointments a ON a.id = e.appointment_id
     WHERE a.id = ? AND a.visitor_user_id = ?

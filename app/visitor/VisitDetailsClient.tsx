@@ -51,7 +51,7 @@ type AppointmentDetail = {
   settlement_created_at: string | null;
 };
 
-type StatusEvent = { from_status: string | null; to_status: string; created_at: string };
+type StatusEvent = { from_status: string | null; to_status: string; reason_text: string | null; created_at: string };
 type VisitApiResponse = { appointment?: AppointmentDetail; statusHistory?: StatusEvent[]; error?: string };
 function formatDate(value: string, timezone: string, options: Intl.DateTimeFormatOptions = { dateStyle: "full" }) {
   const date = new Date(value);
@@ -68,11 +68,11 @@ function prettyStatus(value: string) {
   return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function stateContent(state: VisitorVisitViewState, appointment: AppointmentDetail) {
+function stateContent(state: VisitorVisitViewState, appointment: AppointmentDetail, reviewReason?: string | null) {
   const name = appointment.prisoner_name;
   const facility = appointment.facility_name;
   const content: Record<VisitorVisitViewState, { eyebrow: string; title: string; copy: string; action: string | null; tone: "orange" | "blue" | "green" | "muted" }> = {
-    review: { eyebrow: "VISIT REQUEST", title: "Your request is with the facility", copy: `We’ll update you when the facility team has reviewed your request to visit ${name}.`, action: null, tone: "blue" },
+    review: { eyebrow: reviewReason ? "ACTION NEEDED" : "VISIT REQUEST", title: reviewReason ? "The facility needs a little more information" : "Your request is with the facility", copy: reviewReason || `We’ll update you when the facility team has reviewed your request to visit ${name}.`, action: null, tone: "blue" },
     approved: { eyebrow: "YOUR UPCOMING VISIT", title: "Your visit is approved", copy: `You’re approved to visit ${name} at ${facility}. Check your device before the visit.`, action: "Check this device", tone: "orange" },
     waiting: { eyebrow: "WAITING ROOM", title: "The facility is preparing your visit", copy: `Stay nearby. We’ll let you know when ${facility} is ready for you.`, action: null, tone: "green" },
     ready: { eyebrow: "YOUR VISIT IS READY", title: "The facility is ready for you", copy: `Your secure visit with ${name} can begin when you join.`, action: "Join your visit", tone: "orange" },
@@ -142,7 +142,8 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
   const state = useMemo(() => appointment ? getVisitorVisitViewState(appointment) : null, [appointment]);
   const startsIn = appointment && now !== null ? Date.parse(appointment.requested_start) - now : 0;
   const countdown = startsIn > 0 && startsIn < 48 * 60 * 60 * 1000 && state === "approved";
-  const presentation = appointment && state ? stateContent(state, appointment) : null;
+  const latestInfoRequest = [...history].reverse().find((event) => event.to_status === "UNDER_REVIEW" && event.reason_text)?.reason_text || null;
+  const presentation = appointment && state ? stateContent(state, appointment, latestInfoRequest) : null;
   const duration = appointment ? Math.max(0, Math.round((Date.parse(appointment.requested_end) - Date.parse(appointment.requested_start)) / 60000)) : 0;
   const initials = appointment?.prisoner_name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "—";
   const decisionComplete = Boolean(appointment && !["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status));
