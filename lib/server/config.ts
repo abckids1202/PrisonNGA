@@ -66,16 +66,18 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (value(env, "NOTIFICATION_DELIVERY") !== "webhook") missing.push("NOTIFICATION_DELIVERY=webhook");
   if (!/^https:\/\//i.test(value(env, "NOTIFICATION_WEBHOOK_URL"))) missing.push("NOTIFICATION_WEBHOOK_URL");
   if (!value(env, "NOTIFICATION_WEBHOOK_SECRET")) missing.push("NOTIFICATION_WEBHOOK_SECRET");
-  const staffProvider = value(env, "STAFF_AUTH_PROVIDER");
-  if (staffProvider !== "oidc" && staffProvider !== "saml") missing.push("STAFF_AUTH_PROVIDER");
-  if (staffProvider === "oidc") {
+  const staffProvider = value(env, "STAFF_AUTH_PROVIDER").toLowerCase();
+  const staffProviders = staffProvider === "both" ? ["oidc", "saml"] : [staffProvider];
+  if (!staffProvider) missing.push("STAFF_AUTH_PROVIDER");
+  else if (!staffProviders.every((provider) => provider === "oidc" || provider === "saml")) missing.push("STAFF_AUTH_PROVIDER=oidc, saml, or both");
+  if (staffProviders.includes("oidc")) {
     if (!/^https:\/\//i.test(value(env, "STAFF_OIDC_ISSUER"))) missing.push("STAFF_OIDC_ISSUER");
     if (!value(env, "STAFF_OIDC_CLIENT_ID")) missing.push("STAFF_OIDC_CLIENT_ID");
     if (!value(env, "STAFF_OIDC_CLIENT_SECRET")) missing.push("STAFF_OIDC_CLIENT_SECRET");
     if (!/^https:\/\//i.test(value(env, "STAFF_OIDC_REDIRECT_URI"))) missing.push("STAFF_OIDC_REDIRECT_URI");
     if (!value(env, "STAFF_OIDC_MFA_ACR") && !value(env, "STAFF_OIDC_MFA_AMR")) missing.push("STAFF_OIDC_MFA_ACR or STAFF_OIDC_MFA_AMR");
   }
-  if (staffProvider === "saml") {
+  if (staffProviders.includes("saml")) {
     if (!value(env, "STAFF_SAML_ENTITY_ID")) missing.push("STAFF_SAML_ENTITY_ID");
     if (!/^https:\/\//i.test(value(env, "STAFF_SAML_METADATA_URL"))) missing.push("STAFF_SAML_METADATA_URL");
     if (!/^https:\/\//i.test(value(env, "STAFF_SAML_ENTRY_POINT"))) missing.push("STAFF_SAML_ENTRY_POINT");

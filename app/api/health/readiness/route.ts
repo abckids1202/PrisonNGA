@@ -62,10 +62,16 @@ export async function GET() {
     const visitorAuth = visitorAuthDelivery === "webhook" && webhookConfigured(visitorAuthWebhookUrl, visitorAuthWebhookSecret);
     const evidenceScanning = evidenceScanProvider === "webhook" && webhookConfigured(evidenceScanWebhookUrl, evidenceScanWebhookSecret);
     const paymentWebhook = Boolean(paymentProvider) && Boolean(paymentWebhookSecret);
-    const staffIdentity = staffAuthProvider === "oidc"
-      ? isHttps(staffOidcIssuer) && Boolean(staffOidcClientId) && Boolean(staffOidcClientSecret) && isHttps(staffOidcRedirectUri)
+    const oidcReady = isHttps(staffOidcIssuer) && Boolean(staffOidcClientId) && Boolean(staffOidcClientSecret) && isHttps(staffOidcRedirectUri)
+      && Boolean((await getRuntimeValue("STAFF_OIDC_MFA_ACR")) || (await getRuntimeValue("STAFF_OIDC_MFA_AMR")));
+    const samlReady = Boolean(staffSamlEntityId) && isHttps(staffSamlMetadataUrl) && isHttps(staffSamlEntryPoint) && Boolean(staffSamlIdpCert) && isHttps(staffSamlCallbackUri)
+      && Boolean(await getRuntimeValue("STAFF_SAML_MFA_ACR"));
+    const staffIdentity = staffAuthProvider === "both"
+      ? oidcReady && samlReady
+      : staffAuthProvider === "oidc"
+      ? oidcReady
       : staffAuthProvider === "saml"
-        ? Boolean(staffSamlEntityId) && isHttps(staffSamlMetadataUrl) && isHttps(staffSamlEntryPoint) && Boolean(staffSamlIdpCert) && isHttps(staffSamlCallbackUri)
+        ? samlReady
         : false;
     const providerConfiguration = {
       payment: Boolean(paymentProvider),

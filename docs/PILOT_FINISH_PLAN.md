@@ -7,7 +7,7 @@ This document is the execution baseline for taking SecureVisit from a persisted 
 The repository currently provides a substantial platform foundation:
 
 - Cloudflare Worker, D1 migrations, facility-scoped authorization, visitor email/SMS OTP development flow, staff federation structure, visitor relationships, appointment and waiting-room APIs, LiveKit session/token foundations, append-only credit ledger, payment webhook processing, notification outbox, retention/legal-hold workflows, audit exports, incidents, browser smoke tests, and recording-disabled enforcement.
-- The latest automated baseline is 259 server tests and 11 browser tests. This proves regression coverage, not provider readiness or a complete multi-party pilot.
+- The latest automated baseline is 260 server tests and 11 browser tests. This proves regression coverage, not provider readiness or a complete multi-party pilot.
 
 The product remains a staging candidate rather than a production institutional system. The main gap is external proof and a few workflow joins: real provider adapters, full refresh-safe journey coverage, kiosk/device reality, and operational recovery.
 
@@ -229,4 +229,3 @@ SecureVisit is ready for a controlled pilot only when:
 - recordings remain disabled and the policy is technically enforced;
 - fresh migrations, typecheck, lint, server tests, browser tests, dependency audit, security review, backup/restore, and provider sandbox acceptance all pass;
 - institutional privacy, correctional-policy, retention, and operational approvals are recorded.
-
