@@ -312,6 +312,11 @@ function notificationCopy(eventType: string): { title: string; body: string } {
   if (eventType === "VERIFICATION_APPROVED") return { title: "Connection approved", body: "You can now request a visit with this connection." };
   if (eventType === "VERIFICATION_REJECTED") return { title: "Verification needs attention", body: "Your relationship verification needs an update before you can request a visit." };
   if (eventType === "APPOINTMENT_SUBMITTED") return { title: "Visit request received", body: "The facility team has your request and will review it shortly." };
+  if (eventType === "PAYMENT_CHECKOUT_CREATED") return { title: "Checkout is ready", body: "Complete your payment with the secure payment service. Credits are added after confirmation." };
+  if (eventType === "PAYMENT_CHECKOUT_FAILED") return { title: "Checkout could not start", body: "Your payment was not charged. You can try starting checkout again from Visit Credits." };
+  if (eventType === "PAYMENT_STATUS_UPDATED") return { title: "Payment status updated", body: "Your Visit Credit payment status changed. Open Visit Credits to see the confirmed balance or next step." };
+  if (eventType === "SESSION_TERMINATED" || eventType === "VISIT_TERMINATED") return { title: "Visit ended", body: "Your visit ended and the final credit outcome is available in Visit Details." };
+  if (eventType === "VISIT_COMPLETED") return { title: "Visit completed", body: "Your visit is complete. Open Visit Details to review the outcome and credit receipt." };
   return { title: "SecureVisit update", body: "There is a new update in your SecureVisit account." };
 }
 
