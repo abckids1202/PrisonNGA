@@ -24,6 +24,7 @@ The current repository already includes:
 
 - Facility-scoped D1 schema and migrations for users, staff roles, prisoners, visitors, relationships, verification, policies, appointments, resources, kiosks, waiting room, live sessions, incidents, notifications, payment intents, payment events, credit ledger, audit, retention and legal holds.
 - Visitor email/SMS development OTP flows, visitor sessions, profile and relationship submission, evidence metadata, appointment and device-check APIs, credit display and payment-intent creation.
+- Persisted OTP delivery-attempt records with sent/failed status, provider label, sanitized failure code and scheduled cleanup; OTP values and destinations are not copied into the delivery-attempt table.
 - Staff appointment decisions, verification decisions, waiting-room commands, live-session termination, facility policy mutation, staff provisioning, kiosk credentials, resource health, retention and legal-hold operations.
 - Provider-neutral payment checkout boundary, signed payment webhook ingestion, duplicate-event protection, delayed-event retry and credit settlement/refund invariants.
 - Authenticated visitor payment receipts that only expose a settled payment with a matching `PURCHASE` ledger entry.

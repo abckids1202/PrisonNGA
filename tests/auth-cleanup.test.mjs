@@ -22,14 +22,17 @@ test("expired authentication artifacts are purged while recent state remains", a
   const d1 = new D1();
   d1.database.exec(`
     CREATE TABLE auth_challenges (id TEXT PRIMARY KEY, expires_at TEXT, consumed_at TEXT);
+    CREATE TABLE auth_challenge_delivery_attempts (id TEXT PRIMARY KEY, challenge_id TEXT);
     CREATE TABLE auth_federation_states (id TEXT PRIMARY KEY, expires_at TEXT, consumed_at TEXT);
     CREATE TABLE saml_request_cache (request_id TEXT PRIMARY KEY, created_at TEXT);
     INSERT INTO auth_challenges VALUES ('expired', '2000-01-01T00:00:00.000Z', NULL), ('recent', '2999-01-01T00:00:00.000Z', NULL);
+    INSERT INTO auth_challenge_delivery_attempts VALUES ('attempt-expired', 'expired'), ('attempt-recent', 'recent');
     INSERT INTO auth_federation_states VALUES ('expired', '2000-01-01T00:00:00.000Z', NULL), ('recent', '2999-01-01T00:00:00.000Z', NULL);
     INSERT INTO saml_request_cache VALUES ('expired', '2000-01-01T00:00:00.000Z'), ('recent', '2999-01-01T00:00:00.000Z');
   `);
   await purgeExpiredAuthArtifacts(d1);
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_challenges").get().count, 1);
+  assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_challenge_delivery_attempts").get().count, 1);
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_federation_states").get().count, 1);
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM saml_request_cache").get().count, 1);
 });

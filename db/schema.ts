@@ -131,6 +131,19 @@ export const authChallenges = sqliteTable("auth_challenges", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ destinationIdx: index("auth_challenges_destination_idx").on(table.destinationHash, table.createdAt), expiresIdx: index("auth_challenges_expires_idx").on(table.expiresAt) }));
 
+export const authChallengeDeliveryAttempts = sqliteTable("auth_challenge_delivery_attempts", {
+  id: text("id").primaryKey(),
+  challengeId: text("challenge_id").notNull().references(() => authChallenges.id),
+  channel: text("channel", { enum: ["EMAIL", "SMS"] }).notNull(),
+  provider: text("provider").notNull(),
+  status: text("status", { enum: ["PENDING", "SENT", "FAILED"] }).notNull().default("PENDING"),
+  attemptCount: integer("attempt_count").notNull().default(1),
+  errorCode: text("error_code"),
+  startedAt: text("started_at").notNull(),
+  completedAt: text("completed_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ challengeIdx: index("auth_challenge_delivery_challenge_idx").on(table.challengeId, table.createdAt), statusIdx: index("auth_challenge_delivery_status_idx").on(table.status, table.createdAt) }));
+
 export const idempotencyRecords = sqliteTable("idempotency_records", {
   id: text("id").primaryKey(),
   scope: text("scope").notNull(),

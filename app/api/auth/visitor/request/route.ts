@@ -61,17 +61,24 @@ export async function POST(request: Request) {
     const responseBody: Record<string, unknown> = { challengeId, channel, destination: channel === "EMAIL" ? maskEmail(email) : maskPhone(phone), expiresAt, retryAfterSeconds: 60 };
     const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
     const delivery = (await getRuntimeValue("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
+    const deliveryAttemptId = crypto.randomUUID();
+    const startedAt = new Date().toISOString();
+    await d1.prepare("INSERT INTO auth_challenge_delivery_attempts (id, challenge_id, channel, provider, status, attempt_count, started_at) VALUES (?, ?, ?, ?, 'PENDING', 1, ?)").bind(deliveryAttemptId, challengeId, channel, delivery || "unconfigured", startedAt).run();
     if (delivery === "console" && environment === "development") {
       responseBody.devCode = code;
+      await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
     } else if (delivery === "webhook") {
       try {
         await deliverVisitorChallenge({ channel: channel as "EMAIL" | "SMS", challengeId, destination, code, expiresAt });
       } catch {
-        await d1.prepare("DELETE FROM auth_challenges WHERE id = ? AND consumed_at IS NULL").bind(challengeId).run();
+        await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'FAILED', error_code = 'AUTH_DELIVERY_UNAVAILABLE', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
+        await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
         throw new SecurityError("AUTH_DELIVERY_UNAVAILABLE", 503);
       }
+      await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
     } else {
-      await d1.prepare("DELETE FROM auth_challenges WHERE id = ? AND consumed_at IS NULL").bind(challengeId).run();
+      await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'FAILED', error_code = 'AUTH_DELIVERY_NOT_CONFIGURED', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
+      await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
       throw new SecurityError("AUTH_DELIVERY_NOT_CONFIGURED", 503);
     }
     return securityResponse(responseBody, 201, context.requestId);
