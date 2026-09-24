@@ -8,6 +8,7 @@ import {
 
 class IdempotencyDatabase {
   records = new Map();
+  guardedVersion = 1;
 
   prepare(sql) {
     return new IdempotencyStatement(this, sql);
@@ -53,6 +54,7 @@ class IdempotencyStatement {
       const [responseStatus, responseBody, completedAt, id, scope, key] = this.values;
       const record = this.database.records.get(`${scope}:${key}`);
       if (!record || record.id !== id || record.status !== "PROCESSING") return { meta: { changes: 0 } };
+      if (this.sql.includes("EXISTS (SELECT 1 FROM facilities") && this.values.at(-1) !== this.database.guardedVersion) return { meta: { changes: 0 } };
       Object.assign(record, { status: "COMPLETED", response_status: responseStatus, response_body: responseBody, completed_at: completedAt });
       return { meta: { changes: 1 } };
     }
@@ -85,6 +87,21 @@ test("idempotency replays the exact stored response after completion", async () 
   await database.batch([completeIdempotencyStatement(database, { ...request, claimId: claim.claimId, status: 201, body })]);
 
   assert.deepEqual(await claimIdempotency(database, request), { replay: { status: 201, body } });
+});
+
+test("guarded idempotency completion refuses a stale domain version", async () => {
+  const database = new IdempotencyDatabase();
+  const claim = await claimIdempotency(database, request);
+  assert.ok("claimId" in claim);
+  const result = await database.batch([completeIdempotencyStatement(database, {
+    ...request,
+    claimId: claim.claimId,
+    status: 200,
+    body: { changed: true },
+    guard: { sql: "EXISTS (SELECT 1 FROM facilities WHERE id = ? AND version = ?)", values: ["facility-1", 2] },
+  })]);
+  assert.equal(result[0].meta.changes, 0);
+  assert.equal(database.records.get(`${request.scope}:${request.key}`).status, "PROCESSING");
 });
 
 test("idempotency rejects key reuse with a different request hash", async () => {
