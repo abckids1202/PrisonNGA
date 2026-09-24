@@ -28,8 +28,14 @@ export async function POST(request: Request) {
     const salt = await getSecuritySalt();
     const codeHash = await hashIdentifier(`visitor-sign-in:${code}`, salt);
     if (codeHash !== challenge.code_hash) {
-      const attempt = await d1.prepare("UPDATE auth_challenges SET attempt_count = attempt_count + 1 WHERE id = ? AND consumed_at IS NULL AND expires_at > ? AND attempt_count < max_attempts").bind(challengeId, new Date().toISOString()).run();
-      if (!attempt.meta.changes) throw new SecurityError("AUTH_CODE_LOCKED", 429);
+      const now = new Date().toISOString();
+      const ipHash = context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null;
+      const userAgentHash = context.userAgent ? await hashIdentifier(context.userAgent, salt) : null;
+      const attempts = await d1.batch([
+        d1.prepare("UPDATE auth_challenges SET attempt_count = attempt_count + 1 WHERE id = ? AND consumed_at IS NULL AND expires_at > ? AND attempt_count < max_attempts").bind(challengeId, now),
+        d1.prepare("INSERT INTO security_events (id, event_type, severity, request_id, ip_hash, user_agent_hash, metadata, created_at) VALUES (?, 'VISITOR_LOGIN_CHALLENGE_FAILED', 'WARNING', ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel, challengeId, attemptCount: challenge.attempt_count + 1 }), now),
+      ]);
+      if (!attempts[0]?.meta.changes) throw new SecurityError("AUTH_CODE_LOCKED", 429);
       throw new SecurityError("INVALID_AUTH_CODE", 400);
     }
     const token = crypto.randomUUID() + crypto.randomUUID();
