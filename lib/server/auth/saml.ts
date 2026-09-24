@@ -4,6 +4,20 @@ import { getRuntimeValue, SecurityError } from "../security";
 export type SamlProfile = Profile & { email?: string; mail?: string; displayName?: string; name?: string };
 export const SAML_REQUEST_CACHE_TTL_MS = 10 * 60 * 1000;
 
+export function hasRequiredSamlMfa(profile: SamlProfile, requiredAuthnContext: string): boolean {
+  const assertion = profile.getAssertion?.() as { Assertion?: Array<{ AuthnStatement?: Array<{ AuthnContext?: Array<{ AuthnContextClassRef?: Array<{ _: string }> }> }> }> } | undefined;
+  const contexts = assertion?.Assertion?.flatMap((item) => item.AuthnStatement || [])
+    .flatMap((item) => item.AuthnContext || [])
+    .flatMap((item) => item.AuthnContextClassRef || [])
+    .map((item) => item._)
+    .filter(Boolean) || [];
+  return contexts.includes(requiredAuthnContext);
+}
+
+export async function getSamlMfaRequirement(): Promise<string | null> {
+  return (await getRuntimeValue("STAFF_SAML_MFA_ACR"))?.trim() || null;
+}
+
 type SamlRequestCacheRow = { issue_instant: string; created_at: string; state_hash: string };
 
 /** Node-SAML's default request cache is process-local; callbacks may reach another Worker isolate. */
@@ -53,7 +67,7 @@ export async function getSamlConfig(): Promise<{ entityId: string; metadataUrl: 
   return { entityId, metadataUrl, entryPoint, idpCert, callbackUri };
 }
 
-export function createSamlClientOptions(config: Awaited<ReturnType<typeof getSamlConfig>>, database: D1Database, stateHash: string): SamlConfig {
+export function createSamlClientOptions(config: Awaited<ReturnType<typeof getSamlConfig>>, database: D1Database, stateHash: string, requestedAuthnContext: string | null = null): SamlConfig {
   return {
     callbackUrl: config.callbackUri,
     entryPoint: config.entryPoint,
@@ -66,7 +80,8 @@ export function createSamlClientOptions(config: Awaited<ReturnType<typeof getSam
     requestIdExpirationPeriodMs: SAML_REQUEST_CACHE_TTL_MS,
     cacheProvider: new D1SamlCacheProvider(database, stateHash),
     acceptedClockSkewMs: 2 * 60 * 1000,
-    disableRequestedAuthnContext: true,
+    authnContext: requestedAuthnContext ? [requestedAuthnContext] : undefined,
+    disableRequestedAuthnContext: !requestedAuthnContext,
   };
 }
 
@@ -75,7 +90,7 @@ export async function createSamlClient(config: Awaited<ReturnType<typeof getSaml
   if (!metadata.ok) throw new SecurityError("STAFF_SAML_METADATA_UNAVAILABLE", 503);
   const metadataXml = await metadata.text();
   if (!metadataXml.includes("EntityDescriptor") || !metadataXml.includes(config.entityId)) throw new SecurityError("STAFF_SAML_METADATA_INVALID", 503);
-  return new SAML(createSamlClientOptions(config, database, stateHash));
+  return new SAML(createSamlClientOptions(config, database, stateHash, await getSamlMfaRequirement()));
 }
 
 export async function samlAuthorize(client: SAML, relayState: string): Promise<string> {

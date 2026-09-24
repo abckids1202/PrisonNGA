@@ -1,5 +1,5 @@
 import { getD1 } from "../../../../../../db/runtime";
-import { createSamlClient, getSamlConfig, validateSamlResponse } from "../../../../../../lib/server/auth/saml";
+import { createSamlClient, getSamlConfig, getSamlMfaRequirement, hasRequiredSamlMfa, validateSamlResponse } from "../../../../../../lib/server/auth/saml";
 import { hashFederationState } from "../../../../../../lib/server/auth/oidc";
 import { applySecurityHeaders, getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
 
@@ -19,9 +19,13 @@ export async function POST(request: Request) {
     const pending = await d1.prepare("SELECT id, expires_at, consumed_at, redirect_uri FROM auth_federation_states WHERE state_hash = ? AND provider = 'saml'").bind(stateHash).first<{ id: string; expires_at: string; consumed_at: string | null; redirect_uri: string }>();
     if (!pending || pending.consumed_at || Date.parse(pending.expires_at) <= Date.now() || pending.redirect_uri !== config.callbackUri) throw new SecurityError("STAFF_SAML_STATE_INVALID", 401);
     const profile = await validateSamlResponse(client, samlResponse, relayState);
+    const requiredMfaContext = await getSamlMfaRequirement();
+    const mfaSatisfied = requiredMfaContext
+      ? hasRequiredSamlMfa(profile, requiredMfaContext)
+      : (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) === "development";
     const email = String(profile.email || profile.mail || profile["urn:oid:0.9.2342.19200300.100.1.3"] || "").trim().toLowerCase();
     const nameId = String(profile.nameID || "").trim();
-    if (!email || !nameId || !profile.issuer) throw new SecurityError("STAFF_SAML_CLAIMS_INVALID", 401);
+    if (!email || !nameId || !profile.issuer || !mfaSatisfied) throw new SecurityError("STAFF_SAML_CLAIMS_INVALID", 401);
     const consumed = await d1.prepare("UPDATE auth_federation_states SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND expires_at > ?").bind(new Date().toISOString(), pending.id, new Date().toISOString()).run();
     if (!consumed.meta.changes) throw new SecurityError("STAFF_SAML_STATE_REPLAYED", 401);
     const externalId = `saml:${profile.issuer}:${nameId}`;
