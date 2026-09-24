@@ -169,7 +169,6 @@ export default function ControlApp() {
   const [backendStatus, setBackendStatus] = useState<"connected" | "unavailable">("unavailable");
   const [runtimeEnvironment, setRuntimeEnvironment] = useState<RuntimeEnvironment>("unknown");
   const [simulationPaused, setSimulationPaused] = useState(false);
-  const [selectedIncident, setSelectedIncident] = useState("INC-260813-019");
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [selectedDrawer, setSelectedDrawer] = useState<DrawerPayload | null>(null);
   const [approvalAppointment, setApprovalAppointment] = useState<Appointment | null>(null);
@@ -355,7 +354,7 @@ export default function ControlApp() {
     if (page === "Waiting Room") return <WaitingRoomPage facilityState={facilityState} onNotify={notify} />;
     if (page === "Live Sessions") return <LiveSessionsPage onNotify={notify} />;
     if (page === "Resources") return <ResourcesPage onNotify={notify} onReassign={reassignAppointment} />;
-    if (page === "Incidents") return <IncidentsPage selected={selectedIncident} onSelect={setSelectedIncident} onNotify={notify} />;
+    if (page === "Incidents") return <IncidentsPage onNotify={notify} />;
     return <CommandCenterPage appointments={appointments} facilityName={facilityName} facilityTimezone={facilityTimezone} now={now} facilityState={facilityState} backendStatus={backendStatus} demoMode={runtimeEnvironment === "development"} simulationPaused={simulationPaused} simulationTick={simulationTick} onFacilityStateChange={changeFacilityState} onPause={() => setSimulationPaused((current) => !current)} onAdvance={() => { setSimulationTick((current) => current + 1); notify("Development simulation advanced locally; no facility record changed.", "info"); }} onNavigate={navigate} onOpenDrawer={openDrawer} onOpenAppointment={setSelectedAppointment} onOpenPopover={(kind) => setPopover((current) => current === kind ? null : kind)} onNotify={notify} popover={popover} />;
   }
 
@@ -1032,7 +1031,7 @@ function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, t
 
 type IncidentApiRow = { id: string; incident_type: string; severity: string; status: string; title: string; description: string; appointment_id?: string | null; resource_id?: string | null; reporter_name?: string; assignee_name?: string | null; assigned_user_id?: string | null; resolution?: string | null; version: number; created_at: string };
 
-function IncidentsPage({ onNotify }: { selected: string; onSelect: (id: string) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function IncidentsPage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [incidents, setIncidents] = useState<IncidentApiRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
