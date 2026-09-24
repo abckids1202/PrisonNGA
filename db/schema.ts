@@ -354,7 +354,7 @@ export const evidenceDocuments = sqliteTable("evidence_documents", {
   contentType: text("content_type").notNull(),
   byteSize: integer("byte_size").notNull(),
   sha256: text("sha256").notNull(),
-  status: text("status", { enum: ["PENDING_UPLOAD", "AVAILABLE", "QUARANTINED", "DELETED"] }).notNull().default("AVAILABLE"),
+  status: text("status", { enum: ["PENDING_UPLOAD", "AVAILABLE", "PENDING_DELETION", "QUARANTINED", "DELETED"] }).notNull().default("AVAILABLE"),
   retentionUntil: text("retention_until").notNull(),
   legalHold: integer("legal_hold", { mode: "boolean" }).notNull().default(false),
   createdBy: text("created_by").notNull(),

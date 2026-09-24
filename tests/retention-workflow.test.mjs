@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { expiredEvidenceRetentionStatements } from "../lib/server/retention-workflow.ts";
+import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow.ts";
 
 class D1 {
   sqlite = new DatabaseSync(":memory:");
@@ -80,4 +80,13 @@ test("retention replay is idempotent", async () => {
   assert.equal(replay[0].meta.changes, 0);
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 1);
+});
+
+test("retention deletion uses a recoverable database claim around object deletion", async () => {
+  const d1 = new D1();
+  const claimed = await d1.batch([claimExpiredEvidenceRetentionStatement(d1, { id: "evidence-1", facilityId: "facility-1", now: "2026-09-24T00:00:00.000Z" })]);
+  assert.equal(claimed[0].meta.changes, 1);
+  assert.equal(d1.sqlite.prepare("SELECT status FROM evidence_documents WHERE id = 'evidence-1'").get().status, "PENDING_DELETION");
+  await d1.batch([restoreClaimedEvidenceRetentionStatement(d1, { id: "evidence-1", facilityId: "facility-1", now: "2026-09-24T00:01:00.000Z" })]);
+  assert.equal(d1.sqlite.prepare("SELECT status FROM evidence_documents WHERE id = 'evidence-1'").get().status, "AVAILABLE");
 });

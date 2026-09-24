@@ -10,7 +10,7 @@ import { purgeExpiredAuthArtifacts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { isSameOriginMutation } from "../lib/server/csrf";
-import { expiredEvidenceRetentionStatements } from "../lib/server/retention-workflow";
+import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
 import { operationalLog } from "../lib/server/observability";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
@@ -212,12 +212,17 @@ async function processOutbox(env: Env): Promise<void> {
 
 async function purgeExpiredEvidence(env: Env): Promise<void> {
   if (!env.EVIDENCE_BUCKET) return;
-  const rows = await env.DB.prepare("SELECT id, facility_id, storage_key, retention_until FROM evidence_documents WHERE status = 'AVAILABLE' AND legal_hold = 0 AND retention_until <= CURRENT_TIMESTAMP LIMIT 50").all<{ id: string; facility_id: string; storage_key: string; retention_until: string }>();
+  await env.DB.prepare("UPDATE evidence_documents SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE status = 'PENDING_DELETION' AND legal_hold = 1").run();
+  const rows = await env.DB.prepare("SELECT id, facility_id, storage_key, retention_until, status FROM evidence_documents WHERE legal_hold = 0 AND ((status = 'AVAILABLE' AND retention_until <= CURRENT_TIMESTAMP) OR status = 'PENDING_DELETION') LIMIT 50").all<{ id: string; facility_id: string; storage_key: string; retention_until: string; status: string }>();
   for (const row of rows.results) {
     const correlationId = crypto.randomUUID();
+    const now = new Date().toISOString();
     try {
+      if (row.status === "AVAILABLE") {
+        const claimed = await env.DB.batch([claimExpiredEvidenceRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now })]);
+        if (!claimed[0]?.meta.changes) continue;
+      }
       await env.EVIDENCE_BUCKET.delete(row.storage_key);
-      const now = new Date().toISOString();
       await env.DB.batch(expiredEvidenceRetentionStatements(env.DB, {
         id: row.id,
         facilityId: row.facility_id,
@@ -226,8 +231,10 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
         requestId: correlationId,
         correlationId,
         now,
+        claimed: true,
       }));
     } catch (error) {
+      try { await env.DB.batch([restoreClaimedEvidenceRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now: new Date().toISOString() })]); } catch { /* Keep the original retention error; the next worker run can recover the claim. */ }
       operationalLog("error", { event: "EVIDENCE_RETENTION_DELETE_FAILED", evidenceId: row.id, facilityId: row.facility_id, requestId: correlationId, correlationId, error });
     }
   }
