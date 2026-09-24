@@ -55,6 +55,16 @@ test("retention deletion records an audit and outbox event atomically", async ()
   assert.equal(d1.sqlite.prepare("SELECT event_type FROM outbox_events WHERE aggregate_id = 'evidence-1'").get().event_type, "EVIDENCE_RETENTION_DELETED");
 });
 
+test("retention policy changes use an optimistic transactional audit boundary", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/control/retention/route.ts", import.meta.url), "utf8");
+  assert.match(source, /await d1\.batch\(\[/);
+  assert.match(source, /version = version \+ 1/);
+  assert.match(source, /AND version = \?/);
+  assert.match(source, /RETENTION_POLICY_CONFLICT/);
+  assert.match(source, /auditAndOutboxStatements/);
+  assert.doesNotMatch(source, /appendAuditAndOutbox/);
+});
+
 test("retention deletion is facility-scoped and respects legal holds", async () => {
   const d1 = new D1();
   const result = await d1.batch(expiredEvidenceRetentionStatements(d1, input({ id: "evidence-hold" })));
