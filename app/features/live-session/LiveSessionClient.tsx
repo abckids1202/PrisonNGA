@@ -76,6 +76,22 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
 
   useEffect(() => {
     if (isVisitor || !kioskDeviceId || !kioskCredential) return;
+    const clearPresence = () => {
+      void fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/presence`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json", "x-securevisit-kiosk-id": kioskDeviceId, "x-securevisit-kiosk-token": kioskCredential },
+        body: JSON.stringify({ presence: "absent" }),
+        cache: "no-store",
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+    const onPageHide = () => clearPresence();
+    window.addEventListener("pagehide", onPageHide);
+    return () => { window.removeEventListener("pagehide", onPageHide); clearPresence(); };
+  }, [isVisitor, kioskDeviceId, kioskCredential, visitId]);
+
+  useEffect(() => {
+    if (isVisitor || !kioskDeviceId || !kioskCredential) return;
     let active = true;
     const sendHeartbeat = async () => {
       try {

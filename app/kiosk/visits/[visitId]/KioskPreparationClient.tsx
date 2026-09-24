@@ -40,10 +40,21 @@ export default function KioskPreparationClient({ visitId }: { visitId: string })
     const headers = { accept: "application/json", "x-securevisit-kiosk-id": deviceId, "x-securevisit-kiosk-token": credential };
     const heartbeat = () => fetch("/api/kiosk/heartbeat", { method: "POST", headers, cache: "no-store" }).catch(() => undefined);
     const presence = () => fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/presence`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ presence: "present" }), cache: "no-store" }).catch(() => undefined);
+    const clearPresence = () => {
+      void fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/presence`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ presence: "absent" }),
+        cache: "no-store",
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+    const onPageHide = () => clearPresence();
+    window.addEventListener("pagehide", onPageHide);
     void heartbeat();
     void presence();
     const timer = window.setInterval(() => { if (active) { void heartbeat(); void presence(); } }, 15_000);
-    return () => { active = false; window.clearInterval(timer); };
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("pagehide", onPageHide); clearPresence(); };
   }, [deviceId, credential, visitId]);
 
   useEffect(() => {
