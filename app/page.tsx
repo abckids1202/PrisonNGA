@@ -254,7 +254,7 @@ export default function ControlApp() {
   async function changeFacilityState(nextState: string, reason?: string) {
     const previousState = facilityState;
     try {
-      const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: reason || (nextState === "LOCKDOWN" ? "Staff supervisor declared a controlled facility lockdown." : "Staff supervisor restored normal operations.") }) });
+      const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-state:${nextState}:${facilityVersion}:${crypto.randomUUID()}` }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: reason || (nextState === "LOCKDOWN" ? "Staff supervisor declared a controlled facility lockdown." : "Staff supervisor restored normal operations.") }) });
       if (response.ok) {
         const body = await response.json() as { facility?: { version?: number } };
         setFacilityState(nextState);
