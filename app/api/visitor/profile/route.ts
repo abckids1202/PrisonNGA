@@ -1,8 +1,10 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../db";
+import { getD1 } from "../../../../db/runtime";
 import { visitorProfiles } from "../../../../db/schema";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { parseVisitorProfileInput } from "../../../../lib/server/visitor-profile";
+import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 
 export async function GET() {
   const context = await getRequestContext();
@@ -22,6 +24,8 @@ export async function PUT(request: Request) {
     const visitor = await requireVisitorIdentity();
     const body = await request.json() as { legalName?: unknown; preferredName?: unknown; phone?: unknown };
     const { legalName, preferredName, phone } = parseVisitorProfileInput(body);
+    const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `visitor-profile-update:${visitor.userId}`, limit: 20, windowSeconds: 60 * 60 });
     const db = await getDb();
     const [current] = await db.select({ profileStatus: visitorProfiles.profileStatus, phone: visitorProfiles.phone, phoneVerifiedAt: visitorProfiles.phoneVerifiedAt }).from(visitorProfiles).where(eq(visitorProfiles.userId, visitor.userId)).limit(1);
     if (current?.profileStatus === "SUSPENDED") throw new SecurityError("PROFILE_SUSPENDED", 403);

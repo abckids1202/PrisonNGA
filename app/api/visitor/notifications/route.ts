@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 
 export async function GET() {
   const context = await getRequestContext();
@@ -22,6 +23,7 @@ export async function PATCH(request: Request) {
     if (!ids.length) throw new SecurityError("NOTIFICATION_IDS_REQUIRED", 400);
     const now = new Date().toISOString();
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `visitor-notification-update:${visitor.userId}`, limit: 60, windowSeconds: 60 });
     await d1.batch(ids.map((id) => d1.prepare("UPDATE notifications SET status = 'READ', read_at = ? WHERE id = ? AND user_id = ? AND status != 'READ'").bind(now, id, visitor.userId)));
     return securityResponse({ ok: true, markedRead: ids.length }, 200, context.requestId);
   } catch (error) {
