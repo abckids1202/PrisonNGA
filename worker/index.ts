@@ -222,6 +222,11 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
         const claimed = await env.DB.batch([claimExpiredEvidenceRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now })]);
         if (!claimed[0]?.meta.changes) continue;
       }
+      const latest = await env.DB.prepare("SELECT status, legal_hold FROM evidence_documents WHERE id = ? AND facility_id = ?").bind(row.id, row.facility_id).first<{ status: string; legal_hold: number }>();
+      if (!latest || latest.status !== "PENDING_DELETION" || latest.legal_hold) {
+        if (latest?.status === "PENDING_DELETION") await env.DB.batch([restoreClaimedEvidenceRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now })]);
+        continue;
+      }
       await env.EVIDENCE_BUCKET.delete(row.storage_key);
       await env.DB.batch(expiredEvidenceRetentionStatements(env.DB, {
         id: row.id,

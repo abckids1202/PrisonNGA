@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const payload = { targetType, targetId, reason, durationMinutes };
     d1 = await getD1();
     const target = targetType === "evidence_document"
-      ? await d1.prepare("SELECT id FROM evidence_documents WHERE id = ? AND facility_id = ? AND status <> 'DELETED'").bind(targetId, authorization.facilityId).first()
+      ? await d1.prepare("SELECT id FROM evidence_documents WHERE id = ? AND facility_id = ? AND status = 'AVAILABLE'").bind(targetId, authorization.facilityId).first()
       : targetType === "visit_session"
         ? await d1.prepare("SELECT id FROM visit_sessions WHERE id = ? AND facility_id = ?").bind(targetId, authorization.facilityId).first()
         : await d1.prepare("SELECT id FROM appointments WHERE id = ? AND facility_id = ?").bind(targetId, authorization.facilityId).first();

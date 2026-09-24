@@ -46,6 +46,6 @@ export function claimExpiredEvidenceRetentionStatement(d1: D1Database, input: Pi
 export function restoreClaimedEvidenceRetentionStatement(d1: D1Database, input: Pick<ExpiredEvidenceRetentionInput, "id" | "facilityId" | "now">): D1PreparedStatement {
   return d1.prepare(`UPDATE evidence_documents
     SET status = 'AVAILABLE', updated_at = ?
-    WHERE id = ? AND facility_id = ? AND status = 'PENDING_DELETION' AND legal_hold = 0`)
+    WHERE id = ? AND facility_id = ? AND status = 'PENDING_DELETION'`)
     .bind(input.now, input.id, input.facilityId);
 }

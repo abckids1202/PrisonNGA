@@ -90,3 +90,8 @@ test("retention deletion uses a recoverable database claim around object deletio
   await d1.batch([restoreClaimedEvidenceRetentionStatement(d1, { id: "evidence-1", facilityId: "facility-1", now: "2026-09-24T00:01:00.000Z" })]);
   assert.equal(d1.sqlite.prepare("SELECT status FROM evidence_documents WHERE id = 'evidence-1'").get().status, "AVAILABLE");
 });
+
+test("break-glass evidence access excludes pending-deletion records", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/control/access/break-glass/route.ts", import.meta.url), "utf8");
+  assert.match(source, /FROM evidence_documents WHERE id = \? AND facility_id = \? AND status = 'AVAILABLE'/);
+});
