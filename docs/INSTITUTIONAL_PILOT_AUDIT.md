@@ -45,7 +45,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 252 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 253 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -80,7 +80,7 @@ The current repository already includes:
 - Administration now exposes the protected deployment-readiness API, including database, schema, provider, storage, visitor-auth, staff-identity and notification checks without returning secret values.
 - Audit export manifests can now be retrieved through an authorized, facility-scoped verification endpoint. Break-glass requests and supervisor decisions are now persisted with time-bound grants, step-up checks, optimistic concurrency, audit events, and outbox events; staging access-review and policy validation remain release gates.
 - Data retention and deletion need scheduled-job evidence, exception handling, legal-hold behavior and restore/rollback procedures.
-- The dramatic spin is a product interaction plan, not a completed business feature. The server must decide and persist the result before animation; the animation must never decide the outcome.
+- The dramatic spin is a product interaction plan, not a completed business feature. The server must decide and persist the result before animation; the animation must never decide the outcome. The deterministic component also honors reduced-motion for both its completion timer and CSS transition.
 
 ## Canonical working workflow
 

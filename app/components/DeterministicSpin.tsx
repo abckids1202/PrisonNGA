@@ -51,7 +51,7 @@ export default function DeterministicSpin({ result, disabled = false, onComplete
   const isSpinning = spinning && startedResultId === result.resultId;
   const hasStarted = started && startedResultId === result.resultId;
   return <button type="button" className={`sv-spin-trigger ${isSpinning ? "is-spinning" : ""}`} disabled={disabled || isSpinning} onClick={start} aria-busy={isSpinning}>
-    <span className="sv-spin-wheel" style={{ transform: hasStarted ? spinTransform(result, reducedMotion) : "rotate(0deg)", transition: isSpinning ? `transform ${SPIN_DURATION_MS}ms ${SPIN_EASING}` : "none" }} aria-hidden="true" />
+    <span className="sv-spin-wheel" style={{ transform: hasStarted ? spinTransform(result, reducedMotion) : "rotate(0deg)", transition: isSpinning && !reducedMotion ? `transform ${SPIN_DURATION_MS}ms ${SPIN_EASING}` : "none" }} aria-hidden="true" />
     <span>{isSpinning ? "Working…" : "Start"}</span>
   </button>;
 }
