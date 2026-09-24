@@ -11,6 +11,7 @@ import { processPaymentProviderEvent } from "../lib/server/payments/process-even
 import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { expiredEvidenceRetentionStatements } from "../lib/server/retention-workflow";
+import { operationalLog } from "../lib/server/observability";
 
 interface Env {
   ASSETS: Fetcher;
@@ -88,7 +89,7 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
       }));
       if (!results[0]?.meta.changes) continue;
     } catch (error) {
-      console.error(JSON.stringify({ event: "WAITING_ROOM_NO_SHOW_RECONCILIATION_FAILED", appointmentId: row.id, facilityId: row.facility_id, error: error instanceof Error ? error.message : "UNKNOWN" }));
+      operationalLog("error", { event: "WAITING_ROOM_NO_SHOW_RECONCILIATION_FAILED", appointmentId: row.id, facilityId: row.facility_id, correlationId, error });
     }
   }
 }
@@ -121,7 +122,7 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
       const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
       const message = error instanceof Error ? error.message.slice(0, 500) : "PAYMENT_EVENT_RECONCILIATION_FAILED";
       await env.DB.prepare("UPDATE payment_provider_events SET status = CASE WHEN attempt_count >= 8 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
-      console.error(JSON.stringify({ event: "PAYMENT_EVENT_RECONCILIATION_FAILED", eventId: row.id, provider: row.provider, attempt, error: message }));
+      operationalLog("error", { event: "PAYMENT_EVENT_RECONCILIATION_FAILED", eventId: row.id, provider: row.provider, attempt, correlationId: row.event_key, error: message });
     }
   }
 }
@@ -205,10 +206,10 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
   if (!env.EVIDENCE_BUCKET) return;
   const rows = await env.DB.prepare("SELECT id, facility_id, storage_key, retention_until FROM evidence_documents WHERE status = 'AVAILABLE' AND legal_hold = 0 AND retention_until <= CURRENT_TIMESTAMP LIMIT 50").all<{ id: string; facility_id: string; storage_key: string; retention_until: string }>();
   for (const row of rows.results) {
+    const correlationId = crypto.randomUUID();
     try {
       await env.EVIDENCE_BUCKET.delete(row.storage_key);
       const now = new Date().toISOString();
-      const correlationId = crypto.randomUUID();
       await env.DB.batch(expiredEvidenceRetentionStatements(env.DB, {
         id: row.id,
         facilityId: row.facility_id,
@@ -219,7 +220,7 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
         now,
       }));
     } catch (error) {
-      console.error(JSON.stringify({ event: "EVIDENCE_RETENTION_DELETE_FAILED", evidenceId: row.id, facilityId: row.facility_id, requestId: crypto.randomUUID(), error: error instanceof Error ? error.message : "UNKNOWN" }));
+      operationalLog("error", { event: "EVIDENCE_RETENTION_DELETE_FAILED", evidenceId: row.id, facilityId: row.facility_id, requestId: correlationId, correlationId, error });
     }
   }
 }
@@ -243,7 +244,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
   try {
     provider = await createLiveKitProvider();
   } catch (error) {
-    console.error(JSON.stringify({ event: "EXPIRED_SESSION_PROVIDER_UNAVAILABLE", error: error instanceof Error ? error.message : "UNKNOWN" }));
+    operationalLog("error", { event: "EXPIRED_SESSION_PROVIDER_UNAVAILABLE", actorId: "system:scheduler", error });
     return;
   }
 
@@ -252,11 +253,11 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
     try {
       await provider.endRoom(session.provider_room_name);
     } catch (error) {
-      console.error(JSON.stringify({ event: "EXPIRED_SESSION_ROOM_CLOSE_FAILED", sessionId: session.id, facilityId: session.facility_id, error: error instanceof Error ? error.message : "UNKNOWN" }));
+      operationalLog("error", { event: "EXPIRED_SESSION_ROOM_CLOSE_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", error });
       continue;
     }
     if (!session.credit_account_id) {
-      console.error(JSON.stringify({ event: "EXPIRED_SESSION_CREDIT_ACCOUNT_MISSING", sessionId: session.id, appointmentId: session.appointment_id, facilityId: session.facility_id }));
+      operationalLog("error", { event: "EXPIRED_SESSION_CREDIT_ACCOUNT_MISSING", sessionId: session.id, appointmentId: session.appointment_id, facilityId: session.facility_id, actorId: "system:scheduler" });
       continue;
     }
 
@@ -292,11 +293,11 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
         const latest = await env.DB.prepare("SELECT status FROM visit_sessions WHERE id = ? AND facility_id = ?")
           .bind(session.id, session.facility_id).first<{ status: string }>();
         if (latest && !["ENDED", "TERMINATED", "CANCELLED"].includes(latest.status)) {
-          console.error(JSON.stringify({ event: "EXPIRED_SESSION_FINALIZATION_CONFLICT", sessionId: session.id, facilityId: session.facility_id }));
+          operationalLog("error", { event: "EXPIRED_SESSION_FINALIZATION_CONFLICT", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", correlationId });
         }
       }
     } catch (error) {
-      console.error(JSON.stringify({ event: "EXPIRED_SESSION_FINALIZATION_FAILED", sessionId: session.id, facilityId: session.facility_id, error: error instanceof Error ? error.message : "UNKNOWN" }));
+      operationalLog("error", { event: "EXPIRED_SESSION_FINALIZATION_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", correlationId, error });
     }
   }
 }
@@ -325,7 +326,7 @@ const worker = {
 
     const environmentCheck = validateEnvironment(env);
     if (environmentCheck.environment === "invalid" || (!environmentCheck.ok && environmentCheck.environment !== "development")) {
-      console.error(JSON.stringify({ event: "ENVIRONMENT_VALIDATION_FAILED", missing: environmentCheck.missing, requestId: request.headers.get("x-request-id") || crypto.randomUUID() }));
+      operationalLog("error", { event: "ENVIRONMENT_VALIDATION_FAILED", requestId: request.headers.get("x-request-id") || crypto.randomUUID(), missing: environmentCheck.missing });
       return Response.json({ error: "SERVICE_NOT_READY" }, { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
     }
 

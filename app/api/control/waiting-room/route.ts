@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { createLiveKitProvider, createProviderRoomName } from "../../../../lib/server/video/provider";
+import { operationalLog } from "../../../../lib/server/observability";
 import { canTransitionWaitingRoom } from "../../../../lib/server/workflow";
 import { evaluateWaitingRoomReadiness } from "../../../../lib/server/waiting-room-readiness";
 
@@ -241,7 +242,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (roomCleanup) {
       try { await roomCleanup.provider.endRoom(roomCleanup.name); }
-      catch { console.error(JSON.stringify({ event: "livekit_orphan_room_cleanup_failed", requestId: context.requestId })); }
+      catch (error) { operationalLog("error", { event: "LIVEKIT_ORPHAN_ROOM_CLEANUP_FAILED", requestId: context.requestId, error }); }
     }
     return securityErrorResponse(error, context.requestId);
   }
