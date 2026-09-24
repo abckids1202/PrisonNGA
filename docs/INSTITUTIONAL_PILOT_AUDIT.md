@@ -32,6 +32,7 @@ The current repository already includes:
 - Facility isolation checks, permission checks, step-up foundations, rate limits, security events, request/correlation identifiers, CSP and camera/microphone permissions policy.
 - Idempotent state-changing boundaries for appointment decisions, verification review, visitor profile, session revocation, notification read state, policy updates, live-session ending, waiting-room commands, outbox replay and visitor payment checkout audit events.
 - Privacy-safe `VISITOR_LOGIN_CHALLENGE_FAILED` security events with hashed request context and no OTP/destination logging.
+- Visitor phone verification state is sourced from the authoritative user session record; profile reads and writes no longer invent verification timestamps or erase verified SMS state.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Automated server tests and browser smoke tests. Current validation baseline is 223 server tests and 11 browser tests passing.
 

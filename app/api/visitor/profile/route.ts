@@ -14,7 +14,7 @@ export async function GET() {
     const visitor = await requireVisitorIdentity();
     const db = await getDb();
     const [profile] = await db.select().from(visitorProfiles).where(eq(visitorProfiles.userId, visitor.userId)).limit(1);
-    return securityResponse({ profile: profile || { userId: visitor.userId, legalName: visitor.displayName, preferredName: null, phone: visitor.phone, phoneVerifiedAt: visitor.phone ? new Date().toISOString() : null, profileStatus: "INCOMPLETE" } }, 200, context.requestId);
+    return securityResponse({ profile: profile || { userId: visitor.userId, legalName: visitor.displayName, preferredName: null, phone: visitor.phone, phoneVerifiedAt: visitor.phoneVerifiedAt, profileStatus: "INCOMPLETE" } }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }
@@ -51,7 +51,7 @@ export async function PUT(request: Request) {
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const now = new Date().toISOString();
-    const phoneVerifiedAt = current?.phone === phone ? current.phone_verified_at : null;
+    const phoneVerifiedAt = current?.phone === phone ? current.phone_verified_at : (!current && visitor.phone === phone ? visitor.phoneVerifiedAt : null);
     const nextVersion = current ? current.version + 1 : 1;
     const correlationId = crypto.randomUUID();
     const responseBody = {
