@@ -39,9 +39,10 @@ export async function claimIdempotency(d1: D1Database, input: { scope: string; k
   throw new SecurityError("IDEMPOTENCY_IN_PROGRESS", 409);
 }
 
-export function completeIdempotencyStatement(d1: D1Database, input: { claimId: string; scope: string; key: string; status: number; body: unknown }): D1PreparedStatement {
-  return d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'")
-    .bind(input.status, JSON.stringify(input.body), new Date().toISOString(), input.claimId, input.scope, input.key);
+export function completeIdempotencyStatement(d1: D1Database, input: { claimId: string; scope: string; key: string; status: number; body: unknown; guard?: { sql: string; values: unknown[] } }): D1PreparedStatement {
+  const guard = input.guard ? ` AND ${input.guard.sql}` : "";
+  return d1.prepare(`UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'${guard}`)
+    .bind(input.status, JSON.stringify(input.body), new Date().toISOString(), input.claimId, input.scope, input.key, ...(input.guard?.values || []));
 }
 
 export async function releaseIdempotencyClaim(d1: D1Database, input: { claimId: string; scope: string; key: string }): Promise<void> {

@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { createIncidentStatements, transitionIncidentStatements } from "../../../../lib/server/incident-workflow";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim } from "../../../../lib/server/idempotency";
 import { assertReason, getRequestContext, getSecuritySalt, hashIdentifier, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const commands = ["acknowledge", "assign", "add_note", "resolve", "close"] as const;
@@ -19,11 +20,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
+  let database: D1Database | null = null;
+  let transitionClaim: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("incident.manage");
     const body = await request.json() as { incidentId?: unknown; command?: unknown; title?: unknown; description?: unknown; incidentType?: unknown; severity?: unknown; appointmentId?: unknown; sessionId?: unknown; resourceId?: unknown; assignedUserId?: unknown; resolution?: unknown; expectedVersion?: unknown; reason?: unknown };
     const command = body.command as typeof commands[number] | undefined;
     const d1 = await getD1();
+    database = d1;
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
     if (!body.incidentId) {
@@ -55,18 +59,25 @@ export async function POST(request: Request) {
     const incident = await d1.prepare("SELECT id, status, version, assigned_user_id FROM incidents WHERE id = ? AND facility_id = ?").bind(String(body.incidentId).trim(), authorization.facilityId).first<{ id: string; status: string; version: number; assigned_user_id: string | null }>();
     if (!incident) throw new SecurityError("INCIDENT_NOT_FOUND", 404);
     if (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 1) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
-    if (Number(body.expectedVersion) !== incident.version) throw new SecurityError("STALE_INCIDENT", 409);
     const reason = assertReason(body.reason);
-    if (command === "close") await requireStepUp({ purpose: "incident_close", userId: authorization.userId, targetId: incident.id, payload: { incidentId: incident.id, command, expectedVersion: incident.version, reason, resolution: body.resolution ?? null } });
     const nextStatus = command === "acknowledge" ? "ACKNOWLEDGED" : command === "resolve" ? "RESOLVED" : command === "close" ? "CLOSED" : incident.status;
-    if (command === "close" && incident.status !== "RESOLVED") throw new SecurityError("INCIDENT_MUST_BE_RESOLVED", 409);
-    if (command === "acknowledge" && incident.status !== "OPEN") throw new SecurityError("INCIDENT_NOT_ACKNOWLEDGEABLE", 409);
-    if (command === "resolve" && !["OPEN", "ACKNOWLEDGED"].includes(incident.status)) throw new SecurityError("INCIDENT_NOT_RESOLVABLE", 409);
-    if (command === "assign" && incident.status === "CLOSED") throw new SecurityError("INCIDENT_CLOSED", 409);
     const nextAssignee = command === "assign" ? (typeof body.assignedUserId === "string" && body.assignedUserId.trim() ? body.assignedUserId.trim() : null) : incident.assigned_user_id;
     if (command === "assign" && !nextAssignee) throw new SecurityError("ASSIGNEE_REQUIRED", 400);
     const resolution = command === "resolve" ? (typeof body.resolution === "string" && body.resolution.trim().length >= 8 ? body.resolution.trim().slice(0, 2000) : "") : null;
     if (command === "resolve" && !resolution) throw new SecurityError("INCIDENT_RESOLUTION_REQUIRED", 400);
+    const idempotencyKey = request.headers.get("idempotency-key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    const idempotencyScope = `incident-transition:${authorization.facilityId}:${authorization.userId}:${incident.id}`;
+    const requestHash = await hashIdempotencyPayload({ incidentId: incident.id, command, expectedVersion: Number(body.expectedVersion), assignedUserId: nextAssignee, resolution, details: command === "resolve" ? resolution : reason });
+    const claim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+    if ("replay" in claim) return securityResponse(claim.replay.body, claim.replay.status, context.requestId);
+    transitionClaim = { claimId: claim.claimId, scope: idempotencyScope, key: idempotencyKey };
+    if (Number(body.expectedVersion) !== incident.version) throw new SecurityError("STALE_INCIDENT", 409);
+    if (command === "close") await requireStepUp({ purpose: "incident_close", userId: authorization.userId, targetId: incident.id, payload: { incidentId: incident.id, command, expectedVersion: incident.version, reason, resolution: body.resolution ?? null } });
+    if (command === "close" && incident.status !== "RESOLVED") throw new SecurityError("INCIDENT_MUST_BE_RESOLVED", 409);
+    if (command === "acknowledge" && incident.status !== "OPEN") throw new SecurityError("INCIDENT_NOT_ACKNOWLEDGEABLE", 409);
+    if (command === "resolve" && !["OPEN", "ACKNOWLEDGED"].includes(incident.status)) throw new SecurityError("INCIDENT_NOT_RESOLVABLE", 409);
+    if (command === "assign" && incident.status === "CLOSED") throw new SecurityError("INCIDENT_CLOSED", 409);
     if (command === "assign" && nextAssignee) {
       const assignee = await d1.prepare("SELECT 1 AS active FROM users u INNER JOIN staff_profiles sp ON sp.user_id = u.id WHERE u.id = ? AND sp.facility_id = ? AND u.user_type = 'STAFF' AND u.status = 'ACTIVE'").bind(nextAssignee, authorization.facilityId).first();
       if (!assignee) throw new SecurityError("INCIDENT_ASSIGNEE_NOT_FOUND", 404);
@@ -74,8 +85,16 @@ export async function POST(request: Request) {
     const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: `INCIDENT_${command.toUpperCase()}`, entityType: "incident", entityId: incident.id, reason: command === "resolve" ? resolution : reason, oldValues: { status: incident.status, assignedUserId: incident.assigned_user_id, version: incident.version }, newValues: { status: nextStatus, assignedUserId: nextAssignee, resolution, version: incident.version + 1 }, requestId: context.requestId, correlationId, eventType: `INCIDENT_${command.toUpperCase()}`, payload: { incidentId: incident.id, command } };
     const details: string = command === "resolve" ? (resolution || "") : reason;
     if (!details) throw new SecurityError("INCIDENT_DETAILS_REQUIRED", 400);
-    const results = await d1.batch(transitionIncidentStatements(d1, { incidentId: incident.id, facilityId: authorization.facilityId, expectedVersion: incident.version, nextStatus, nextAssignee, resolution, actorUserId: authorization.userId, command, details, now, correlationId }, event));
+    const responseBody = { incidentId: incident.id, status: nextStatus, assignedUserId: nextAssignee, version: incident.version + 1, correlationId };
+    const results = await d1.batch([
+      ...transitionIncidentStatements(d1, { incidentId: incident.id, facilityId: authorization.facilityId, expectedVersion: incident.version, nextStatus, nextAssignee, resolution, actorUserId: authorization.userId, command, details, now, correlationId }, event),
+      completeIdempotencyStatement(d1, { ...transitionClaim, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM incidents WHERE id = ? AND facility_id = ? AND version = ?)", values: [incident.id, authorization.facilityId, incident.version + 1] } }),
+    ]);
     if (!results[0]?.meta.changes) throw new SecurityError("STALE_INCIDENT", 409);
-    return securityResponse({ incidentId: incident.id, status: nextStatus, assignedUserId: nextAssignee, version: incident.version + 1, correlationId }, 200, context.requestId);
-  } catch (error) { return securityErrorResponse(error, context.requestId); }
+    transitionClaim = null;
+    return securityResponse(responseBody, 200, context.requestId);
+  } catch (error) {
+    if (database && transitionClaim) await releaseIdempotencyClaim(database, transitionClaim).catch(() => undefined);
+    return securityErrorResponse(error, context.requestId);
+  }
 }

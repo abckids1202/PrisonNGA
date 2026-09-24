@@ -1048,7 +1048,7 @@ function IncidentsPage({ onNotify }: { onNotify: (message: string, tone?: Notice
   async function command(action: "acknowledge" | "resolve" | "close" | "add_note", reason: string) {
     if (!selected) return;
     try {
-      const response = await fetch("/api/control/incidents", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ incidentId: selected.id, command: action, expectedVersion: selected.version, reason, resolution: action === "resolve" ? reason : undefined }) });
+      const response = await fetch("/api/control/incidents", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `incident:${selected.id}:${action}:${selected.version}` }, credentials: "include", body: JSON.stringify({ incidentId: selected.id, command: action, expectedVersion: selected.version, reason, resolution: action === "resolve" ? reason : undefined }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Incident action was rejected.");
       await refresh();
