@@ -363,7 +363,7 @@ export default function ControlApp() {
     if (page === "People") return <PeoplePage onNotify={notify} />;
     if (page === "Visitation") return <VisitationPage />;
     if (page === "Finance") return <FinancePage onNotify={notify} />;
-    if (page === "Compliance") return <CompliancePage onNotify={notify} />;
+    if (page === "Compliance") return <CompliancePageInteractive onNotify={notify} />;
     if (page === "Facility") return <FacilityPage facilityState={facilityState} onNotify={notify} />;
     return <RealAdministrationPage onNotify={notify} />;
   }
@@ -1443,7 +1443,54 @@ function ControlCheck({ label, detail, warning = false }: { label: string; detai
   return <div className={`sv3-control-check ${warning ? "warning" : ""}`}><span>{warning ? "!" : "✓"}</span><div><strong>{label}</strong><small>{detail}</small></div><b>{warning ? "Review" : "Passed"}</b></div>;
 }
 
-function CompliancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function CompliancePageInteractive({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const [tab, setTab] = useState("Audit");
+  const [events, setEvents] = useState<Array<{ createdAt: string; actionType: string; actorRole?: string | null; entityId?: string | null; reason?: string | null; correlationId: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/audit/events?limit=50", { cache: "no-store", credentials: "include", headers: { accept: "application/json" } })
+      .then(async (response) => {
+        const body = await response.json() as { events?: typeof events; error?: string };
+        if (!response.ok) throw new Error(body.error || "AUDIT_RECORDS_UNAVAILABLE");
+        if (active) setEvents(body.events || []);
+      })
+      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "AUDIT_RECORDS_UNAVAILABLE"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  async function exportAudit() {
+    setExporting(true);
+    try {
+      const response = await fetch("/api/control/audit/export?limit=5000", { cache: "no-store", credentials: "include" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error || "AUDIT_EXPORT_UNAVAILABLE");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `securevisit-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      onNotify("The facility-scoped audit export was downloaded.", "success");
+    } catch (reason) {
+      onNotify(reason instanceof Error ? reason.message : "The audit export could not be created.", "warning");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return <><PageHeader eyebrow="Management · Compliance" title="Compliance" description="Investigate the record of what changed, who accessed sensitive material, and which reports are ready." actions={<Button variant="primary" disabled={!events.length || exporting} onClick={() => void exportAudit()}>{exporting ? "Preparing export…" : "Export scoped audit CSV"}</Button>} /><div className="sv3-compliance-tabs">{["Audit", "Recording Access", "Reports", "Security Events"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>{tab === "Audit" ? <section className="sv3-audit-layout"><div className="sv3-audit-stream"><div className="sv3-audit-head"><div><span className="sv3-eyebrow">Chronological investigation trail</span><h2>Facility audit</h2></div><span className="sv3-toolbar-meta">{events.length} persisted events</span></div>{loading ? <EmptyState title="Loading audit records" body="Reading the facility-scoped append-only audit stream." /> : error ? <EmptyState title="Audit records unavailable" body={error} /> : events.length ? events.map((event) => <button className="sv3-audit-event" key={event.correlationId} onClick={() => onNotify(`${event.correlationId} is a persisted audit correlation.`)}><time>{new Date(event.createdAt).toLocaleTimeString("en-ID", { timeZone: "Asia/Jakarta" })}</time><span className="sv3-audit-dot" /><div><strong>{event.actionType}</strong><small>{event.actorRole || "System"} · {event.entityId || "Facility"}</small><p>{event.reason || "Recorded action"}</p><em>Correlation {event.correlationId}</em></div><b>›</b></button>) : <EmptyState title="No audit events recorded" body="No persisted events exist in the current facility scope." />}</div><aside className="sv3-audit-side"><div className="sv3-surface"><span className="sv3-eyebrow">Export controls</span><h2>Auditable by design</h2><p>Exports require facility scope, the audit export permission, and step-up authentication.</p><Button variant="primary" disabled={!events.length || exporting} onClick={() => void exportAudit()}>{exporting ? "Preparing…" : "Download CSV"}</Button></div></aside></section> : <ComplianceTab tab={tab} onNotify={onNotify} />}</>;
+}
+
+export function CompliancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [tab, setTab] = useState("Audit");
   type AuditRow = [string, string, string, string, string, string];
   const [events, setEvents] = useState<AuditRow[]>([]);
