@@ -55,6 +55,19 @@ test("payment settlement rejects an amount or currency mismatch before writing c
   assert.equal(second.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
 });
 
+test("payment settlement requires provider reference, amount, and currency", async () => {
+  const missingReference = new D1();
+  await assert.rejects(processPaymentProviderEvent(missingReference, { provider: "webhook", eventKey: "event-1", payload: { ...event, providerReference: undefined } }), /PAYMENT_SETTLEMENT_FIELDS_REQUIRED/);
+  const missingAmount = new D1();
+  await assert.rejects(processPaymentProviderEvent(missingAmount, { provider: "webhook", eventKey: "event-1", payload: { ...event, amountMinor: undefined } }), /PAYMENT_SETTLEMENT_FIELDS_REQUIRED/);
+  const missingCurrency = new D1();
+  await assert.rejects(processPaymentProviderEvent(missingCurrency, { provider: "webhook", eventKey: "event-1", payload: { ...event, currency: undefined } }), /PAYMENT_SETTLEMENT_FIELDS_REQUIRED/);
+  for (const database of [missingReference, missingAmount, missingCurrency]) {
+    assert.equal(database.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+    assert.equal(database.sqlite.prepare("SELECT status FROM payment_intents WHERE id = 'payment-1'").get().status, "CHECKOUT_CREATED");
+  }
+});
+
 test("payment success commits provider status, credit purchase, event, audit, and outbox together", async () => {
   const d1 = new D1();
   await processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-1", payload: event });

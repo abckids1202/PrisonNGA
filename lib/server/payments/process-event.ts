@@ -41,7 +41,11 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
   if (payload.currency && payload.currency.toUpperCase() !== intent.currency.toUpperCase()) {
     throw new SecurityError("PAYMENT_CURRENCY_MISMATCH", 409);
   }
-  if (successfulEvents.has(payload.eventType) || payload.status === "SUCCEEDED") {
+  const isSuccessfulEvent = successfulEvents.has(payload.eventType) || payload.status === "SUCCEEDED";
+  if (isSuccessfulEvent && (!payload.providerReference || payload.amountMinor === undefined || !payload.currency)) {
+    throw new SecurityError("PAYMENT_SETTLEMENT_FIELDS_REQUIRED", 409);
+  }
+  if (isSuccessfulEvent) {
     if (intent.status === "REFUNDED" || intent.status === "DISPUTED") {
       await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
       return { status: "IGNORED", paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_TERMINAL" };
