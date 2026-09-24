@@ -20,7 +20,7 @@ export async function GET() {
         a.id, a.status AS appointment_status, a.prisoner_id, a.requested_start, a.requested_end, a.timezone, a.appointment_type, a.version AS appointment_version,
         u.display_name AS visitor_name, p.display_name AS prisoner_name, p.status AS prisoner_status, p.visitation_status, f.current_state AS facility_state,
         (SELECT vr.status FROM visitor_relationships vr WHERE vr.visitor_user_id = a.visitor_user_id AND vr.prisoner_id = a.prisoner_id AND vr.facility_id = a.facility_id LIMIT 1) AS relationship_status,
-        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.restriction_state,
+        w.state, w.visitor_presence, w.visitor_presence_at, w.prisoner_presence, w.prisoner_presence_at, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.restriction_state,
         COALESCE(w.assigned_room_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_room_id,
         COALESCE(w.assigned_kiosk_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_kiosk_id,
         w.staff_notes, w.version, w.last_checked_at,
@@ -51,7 +51,9 @@ export async function GET() {
       const row = raw as Record<string, string | number | null>;
       const readiness = evaluateWaitingRoomReadiness({
         visitorPresence: row.visitor_presence === null ? null : String(row.visitor_presence),
+        visitorPresenceAt: row.visitor_presence_at === null ? null : String(row.visitor_presence_at),
         prisonerPresence: row.prisoner_presence === null ? null : String(row.prisoner_presence),
+        prisonerPresenceAt: row.prisoner_presence_at === null ? null : String(row.prisoner_presence_at),
         relationshipStatus: row.relationship_status === null ? null : String(row.relationship_status),
         prisonerStatus: row.prisoner_status === null ? null : String(row.prisoner_status),
         visitationStatus: row.visitation_status === null ? null : String(row.visitation_status),
@@ -112,7 +114,7 @@ export async function POST(request: Request) {
         p.status AS prisoner_status, p.visitation_status,
         (SELECT vr.status FROM visitor_relationships vr WHERE vr.visitor_user_id = a.visitor_user_id AND vr.prisoner_id = a.prisoner_id AND vr.facility_id = a.facility_id LIMIT 1) AS relationship_status,
         vs.id AS session_id, vs.status AS session_status, vs.provider_room_name,
-        w.state, w.visitor_presence, w.prisoner_presence, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.restriction_state,
+        w.state, w.visitor_presence, w.visitor_presence_at, w.prisoner_presence, w.prisoner_presence_at, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.restriction_state,
         COALESCE(w.assigned_room_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_room_id,
         COALESCE(w.assigned_kiosk_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_kiosk_id,
         (SELECT r.status FROM resources r WHERE r.id = COALESCE(w.assigned_room_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AND r.facility_id = a.facility_id) AS room_resource_status,
@@ -170,8 +172,10 @@ export async function POST(request: Request) {
     const nextPrisonerPresence = command === "confirm_prisoner_presence" ? "present" : String(current.prisoner_presence || "waiting");
     const readiness = command === "run_preflight" || command === "retry_device" || command === "start_visit"
       ? evaluateWaitingRoomReadiness({
-          visitorPresence: nextVisitorPresence,
-          prisonerPresence: nextPrisonerPresence,
+        visitorPresence: nextVisitorPresence,
+        visitorPresenceAt: current.visitor_presence_at === null ? null : String(current.visitor_presence_at),
+        prisonerPresence: nextPrisonerPresence,
+        prisonerPresenceAt: current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at),
           relationshipStatus: current.relationship_status === null ? null : String(current.relationship_status),
           prisonerStatus: String(current.prisoner_status || ""),
           visitationStatus: String(current.visitation_status || ""),
@@ -234,10 +238,10 @@ export async function POST(request: Request) {
       d1.prepare(`UPDATE appointments SET status = ?, version = version + 1, updated_at = ?
         WHERE id = ? AND facility_id = ? AND version = ? ${eligibilityGuard}`)
         .bind(nextAppointmentStatus, now, body.appointmentId, authorization.facilityId, Number(current.appointment_version || 1)),
-      d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, prisoner_presence, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0
-        ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = excluded.visitor_presence, prisoner_presence = excluded.prisoner_presence, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, room_state = excluded.room_state, kiosk_state = excluded.kiosk_state, restriction_state = excluded.restriction_state, assigned_room_id = COALESCE(excluded.assigned_room_id, waiting_room_sessions.assigned_room_id), assigned_kiosk_id = COALESCE(excluded.assigned_kiosk_id, waiting_room_sessions.assigned_kiosk_id), staff_notes = COALESCE(excluded.staff_notes, waiting_room_sessions.staff_notes), version = excluded.version, last_checked_at = excluded.last_checked_at, updated_at = excluded.updated_at`)
-        .bind(body.appointmentId, authorization.facilityId, nextState, visitorPresence, prisonerPresence, identityState, cameraState, microphoneState, networkState, roomState, kioskState, restrictionState, String(current.assigned_room_id || "") || null, String(current.assigned_kiosk_id || "") || null, body.staffNotes?.trim().slice(0, 500) || null, nextVersion, now, now, now),
+      d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0
+        ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = excluded.visitor_presence, visitor_presence_at = excluded.visitor_presence_at, prisoner_presence = excluded.prisoner_presence, prisoner_presence_at = excluded.prisoner_presence_at, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, room_state = excluded.room_state, kiosk_state = excluded.kiosk_state, restriction_state = excluded.restriction_state, assigned_room_id = COALESCE(excluded.assigned_room_id, waiting_room_sessions.assigned_room_id), assigned_kiosk_id = COALESCE(excluded.assigned_kiosk_id, waiting_room_sessions.assigned_kiosk_id), staff_notes = COALESCE(excluded.staff_notes, waiting_room_sessions.staff_notes), version = excluded.version, last_checked_at = excluded.last_checked_at, updated_at = excluded.updated_at`)
+        .bind(body.appointmentId, authorization.facilityId, nextState, visitorPresence, command === "admit_visitor" ? now : current.visitor_presence_at || null, prisonerPresence, command === "confirm_prisoner_presence" ? now : current.prisoner_presence_at || null, identityState, cameraState, microphoneState, networkState, roomState, kioskState, restrictionState, String(current.assigned_room_id || "") || null, String(current.assigned_kiosk_id || "") || null, body.staffNotes?.trim().slice(0, 500) || null, nextVersion, now, now, now),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, `WAITING_ROOM_${command.toUpperCase()}`, "waiting_room", body.appointmentId, reason, JSON.stringify({ state: current.state || "NOT_ARRIVED", version: currentVersion }), JSON.stringify({ state: nextState, version: nextVersion, checks: readiness?.checks || undefined }), correlationId, context.requestId, now),

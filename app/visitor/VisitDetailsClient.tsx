@@ -139,6 +139,30 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
     return () => window.clearInterval(timer);
   }, []);
 
+  const presenceAppointmentId = appointment?.id;
+  const presenceAppointmentStatus = appointment?.status;
+  const presenceState = appointment?.visitor_presence;
+  useEffect(() => {
+    if (!presenceAppointmentId || !["WAITING", "IN_PROGRESS"].includes(presenceAppointmentStatus || "") || presenceState !== "present") return;
+    let active = true;
+    const sendPresence = async () => {
+      if (!active || document.visibilityState !== "visible") return;
+      try {
+        await fetch(`/api/visitor/appointments/${encodeURIComponent(presenceAppointmentId)}/waiting-room/presence`, {
+          method: "POST",
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+      } catch {
+        // The next visit-detail refresh will surface a stale or unavailable waiting-room state.
+      }
+    };
+    void sendPresence();
+    const timer = window.setInterval(() => void sendPresence(), 15_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [presenceAppointmentId, presenceAppointmentStatus, presenceState]);
+
   const state = useMemo(() => appointment ? getVisitorVisitViewState(appointment) : null, [appointment]);
   const startsIn = appointment && now !== null ? Date.parse(appointment.requested_start) - now : 0;
   const countdown = startsIn > 0 && startsIn < 48 * 60 * 60 * 1000 && state === "approved";

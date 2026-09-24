@@ -3,7 +3,9 @@ export type WaitingRoomReadinessState = "NOT_ARRIVED" | "VISITOR_WAITING" | "PRI
 
 export type WaitingRoomReadinessFacts = {
   visitorPresence: string | null;
+  visitorPresenceAt?: string | null;
   prisonerPresence: string | null;
+  prisonerPresenceAt?: string | null;
   relationshipStatus: string | null;
   prisonerStatus: string | null;
   visitationStatus: string | null;
@@ -62,8 +64,8 @@ export function evaluateWaitingRoomReadiness(
   facts: WaitingRoomReadinessFacts,
   now = Date.now(),
 ): WaitingRoomReadiness {
-  const visitorPresent = facts.visitorPresence === "present";
-  const prisonerPresent = facts.prisonerPresence === "present";
+  const visitorPresent = facts.visitorPresence === "present" && isRecent(facts.visitorPresenceAt ?? null, now, KIOSK_HEARTBEAT_MAX_AGE_MS);
+  const prisonerPresent = facts.prisonerPresence === "present" && isRecent(facts.prisonerPresenceAt ?? null, now, KIOSK_HEARTBEAT_MAX_AGE_MS);
   const eligible = facts.prisonerStatus === "ACTIVE" && facts.visitationStatus === "APPROVED";
   const freshDeviceCheck = isRecent(facts.visitorDeviceCheckedAt, now, DEVICE_CHECK_MAX_AGE_MS);
   const freshKioskHeartbeat = isRecent(facts.kioskHeartbeatAt, now, KIOSK_HEARTBEAT_MAX_AGE_MS);

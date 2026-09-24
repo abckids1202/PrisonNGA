@@ -15,7 +15,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     if (!kiosk) throw new SecurityError("KIOSK_AUTHENTICATION_REQUIRED", 401);
     await enforceRateLimit(d1, { key: `kiosk-presence:${kiosk.facilityId}:${kiosk.resourceId}`, limit: 120, windowSeconds: 60 });
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.status AS appointment_status, a.version AS appointment_version,
-        f.current_state AS facility_state, wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.prisoner_presence
+        f.current_state AS facility_state, wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.visitor_presence_at, wr.prisoner_presence, wr.prisoner_presence_at
       FROM appointments a
       INNER JOIN facilities f ON f.id = a.facility_id
       LEFT JOIN waiting_room_sessions wr ON wr.appointment_id = a.id AND wr.facility_id = a.facility_id
@@ -41,10 +41,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     const nextVersion = currentVersion + 1;
     const correlationId = crypto.randomUUID();
     const result = await d1.batch([
-      d1.prepare(`UPDATE waiting_room_sessions SET state = ?, prisoner_presence = ?, version = ?, last_checked_at = ?, updated_at = ?
+      d1.prepare(`UPDATE waiting_room_sessions SET state = ?, prisoner_presence = ?, prisoner_presence_at = ?, version = ?, last_checked_at = ?, updated_at = ?
         WHERE appointment_id = ? AND facility_id = ? AND version = ?
           AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ? AND a.version = ? AND a.status IN ('APPROVED', 'WAITING', 'IN_PROGRESS'))`)
-        .bind(nextState, body.presence, nextVersion, now, now, visitId, kiosk.facilityId, currentVersion, visitId, kiosk.facilityId, Number(current.appointment_version || 1)),
+        .bind(nextState, body.presence, now, nextVersion, now, now, visitId, kiosk.facilityId, currentVersion, visitId, kiosk.facilityId, Number(current.appointment_version || 1)),
       d1.prepare(`UPDATE appointments SET status = CASE WHEN ? = 'present' AND status = 'APPROVED' THEN 'WAITING' ELSE status END, version = version + 1, updated_at = ?
         WHERE id = ? AND facility_id = ? AND version = ? AND status IN ('APPROVED', 'WAITING', 'IN_PROGRESS')
           AND EXISTS (SELECT 1 FROM waiting_room_sessions wr WHERE wr.appointment_id = ? AND wr.facility_id = ? AND wr.version = ?)`)

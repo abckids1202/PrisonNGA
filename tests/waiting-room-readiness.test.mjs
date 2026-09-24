@@ -5,7 +5,9 @@ import { evaluateWaitingRoomReadiness } from "../lib/server/waiting-room-readine
 const now = Date.parse("2026-09-22T10:00:00.000Z");
 const readyFacts = {
   visitorPresence: "present",
+  visitorPresenceAt: "2026-09-22T09:59:00.000Z",
   prisonerPresence: "present",
+  prisonerPresenceAt: "2026-09-22T09:59:00.000Z",
   relationshipStatus: "APPROVED",
   prisonerStatus: "ACTIVE",
   visitationStatus: "APPROVED",
@@ -52,6 +54,11 @@ test("stale device checks, stale kiosk heartbeat, or absent kiosk credentials fa
   ]) {
     assert.equal(evaluateWaitingRoomReadiness(facts, now).readyToStart, false);
   }
+});
+
+test("stale visitor or prisoner presence cannot make a visit ready", () => {
+  assert.equal(evaluateWaitingRoomReadiness({ ...readyFacts, visitorPresenceAt: "2026-09-22T09:56:59.999Z" }, now).readyToStart, false);
+  assert.equal(evaluateWaitingRoomReadiness({ ...readyFacts, prisonerPresenceAt: "2026-09-22T09:56:59.999Z" }, now).readyToStart, false);
 });
 
 test("missing or failed kiosk device checks block admission", () => {

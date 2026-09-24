@@ -21,7 +21,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     const now = new Date().toISOString();
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.status AS appointment_status, a.version AS appointment_version,
         f.current_state AS facility_state, p.status AS prisoner_status, p.visitation_status,
-        wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.prisoner_presence,
+        wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.visitor_presence_at, wr.prisoner_presence, wr.prisoner_presence_at,
         dc.id AS device_check_id, dc.camera_result, dc.microphone_result, dc.network_result, dc.created_at AS device_checked_at
       FROM appointments a
       INNER JOIN facilities f ON f.id = a.facility_id
@@ -53,12 +53,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
       d1.prepare(`UPDATE appointments SET status = 'WAITING', version = version + 1, updated_at = ?
         WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('APPROVED', 'WAITING')`)
         .bind(now, appointmentId, visitor.userId, Number(current.appointment_version || 1)),
-      d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, prisoner_presence, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
-        SELECT ?, ?, ?, 'present', ?, 'pass', ?, ?, ?, 'pass', 'pending', 'pass', NULL, NULL, NULL, ?, ?, ?, ?
+      d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
+        SELECT ?, ?, ?, 'present', ?, ?, ?, 'pass', ?, ?, ?, 'pass', 'pending', 'pass', NULL, NULL, NULL, ?, ?, ?, ?
         WHERE changes() > 0
-        ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = 'present', prisoner_presence = excluded.prisoner_presence, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, last_checked_at = excluded.last_checked_at, version = excluded.version, updated_at = excluded.updated_at
+        ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = 'present', visitor_presence_at = excluded.visitor_presence_at, prisoner_presence = excluded.prisoner_presence, prisoner_presence_at = excluded.prisoner_presence_at, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, last_checked_at = excluded.last_checked_at, version = excluded.version, updated_at = excluded.updated_at
         WHERE waiting_room_sessions.version = ?`)
-        .bind(appointmentId, current.facility_id, nextState, String(current.prisoner_presence || "waiting"), String(current.camera_result) === "ready" ? "pass" : "warning", String(current.microphone_result) === "ready" ? "pass" : "warning", String(current.network_result) === "stable" ? "pass" : "warning", nextVersion, now, now, now, waitingVersion),
+        .bind(appointmentId, current.facility_id, nextState, now, String(current.prisoner_presence || "waiting"), current.prisoner_presence === "present" ? (current.prisoner_presence_at || now) : null, String(current.camera_result) === "ready" ? "pass" : "warning", String(current.microphone_result) === "ready" ? "pass" : "warning", String(current.network_result) === "stable" || String(current.network_result) === "fair" ? "pass" : "warning", nextVersion, now, now, now, waitingVersion),
       d1.prepare(`INSERT INTO visitor_waiting_room_checkins (id, appointment_id, facility_id, visitor_user_id, idempotency_key, state, version, correlation_id, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(checkInId, appointmentId, current.facility_id, visitor.userId, existingKey, nextState, nextVersion, correlationId, now),

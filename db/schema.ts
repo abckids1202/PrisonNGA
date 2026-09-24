@@ -441,6 +441,8 @@ export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   state: text("state").notNull().default("NOT_ARRIVED"),
   visitorPresence: text("visitor_presence").notNull().default("absent"),
   prisonerPresence: text("prisoner_presence").notNull().default("waiting"),
+  visitorPresenceAt: text("visitor_presence_at"),
+  prisonerPresenceAt: text("prisoner_presence_at"),
   identityState: text("identity_state").notNull().default("pending"),
   cameraState: text("camera_state").notNull().default("pending"),
   microphoneState: text("microphone_state").notNull().default("pending"),
