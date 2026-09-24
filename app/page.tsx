@@ -696,9 +696,16 @@ function hydrateWaitingRecord(base: WaitingRecord | null, row?: WaitingRoomApiRo
   ]);
   const checks = base.checks.map((check) => {
     const state = states.get(check.key) || "pending";
-    const detail = state === "pass" ? "Confirmed by the latest persisted readiness data"
-      : state === "failed" ? "A persisted readiness check is failing"
-        : state === "warning" ? "Requires staff review before this visit can start"
+    const recordedAt = row.last_checked_at ? ` · checked ${new Date(row.last_checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
+    const result = check.key === "camera" ? row.visitor_camera_result : check.key === "microphone" ? row.visitor_microphone_result : check.key === "network" ? row.visitor_network_result : null;
+    const resultLabel = result ? result.replaceAll("_", " ").toLowerCase() : null;
+    const detail = state === "pass"
+      ? check.key === "network" && row.visitor_latency_ms != null ? `Stable · ${row.visitor_latency_ms} ms${recordedAt}`
+        : resultLabel ? `${resultLabel}${recordedAt}`
+          : `Confirmed by the latest persisted readiness data${recordedAt}`
+      : state === "failed"
+        ? resultLabel ? `${resultLabel}${recordedAt}` : `A persisted readiness check is failing${recordedAt}`
+        : state === "warning" ? `Requires staff review before this visit can start${recordedAt}`
           : "No current passing check is recorded";
     return { ...check, state, detail };
   });
