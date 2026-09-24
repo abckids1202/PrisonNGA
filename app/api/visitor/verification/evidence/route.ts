@@ -1,9 +1,7 @@
 import { getD1, getEvidenceBucket } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
-
-const allowedTypes = new Set(["image/jpeg", "image/png", "application/pdf"]);
-const maxBytes = 10 * 1024 * 1024;
+import { validateEvidenceUpload } from "../../../../../lib/server/evidence-validation";
 
 function safeFilename(value: string): string {
   const cleaned = value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
@@ -31,11 +29,12 @@ export async function POST(request: Request) {
     const verificationCaseId = String(form.get("verificationCaseId") || "").trim();
     const file = form.get("file");
     if (!verificationCaseId || !(file instanceof File)) throw new SecurityError("EVIDENCE_FILE_REQUIRED", 400);
-    if (!allowedTypes.has(file.type) || file.size < 1 || file.size > maxBytes) throw new SecurityError("EVIDENCE_FILE_NOT_ALLOWED", 400);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    try { validateEvidenceUpload({ contentType: file.type, bytes }); }
+    catch (error) { throw new SecurityError(error instanceof Error ? error.message : "EVIDENCE_FILE_NOT_ALLOWED", 400); }
     const d1 = await getD1();
     const ownedCase = await d1.prepare(`SELECT vc.id, vc.facility_id FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id WHERE vc.id = ? AND vr.visitor_user_id = ?`).bind(verificationCaseId, visitor.userId).first<{ id: string; facility_id: string }>();
     if (!ownedCase) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
-    const bytes = new Uint8Array(await file.arrayBuffer());
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const existingEvidence = await d1.prepare(`SELECT id, retention_until FROM evidence_documents WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE' ORDER BY created_at DESC LIMIT 1`)
