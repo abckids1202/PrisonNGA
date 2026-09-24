@@ -44,10 +44,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     const correlationId = crypto.randomUUID();
     const checkId = crypto.randomUUID();
     const nextVersion = Number(current.waiting_version || 0) + 1;
+    const kioskState = body.cameraResult === "ready" && body.microphoneResult === "ready" && ["stable", "fair"].includes(String(body.networkResult)) ? "pass" : "failed";
     const statements = [
-      d1.prepare(`UPDATE waiting_room_sessions SET kiosk_camera_state = ?, kiosk_microphone_state = ?, kiosk_network_state = ?, kiosk_device_checked_at = ?, kiosk_state = 'pass', version = ?, last_checked_at = ?, updated_at = ?
+      d1.prepare(`UPDATE waiting_room_sessions SET kiosk_camera_state = ?, kiosk_microphone_state = ?, kiosk_network_state = ?, kiosk_device_checked_at = ?, kiosk_state = ?, version = ?, last_checked_at = ?, updated_at = ?
         WHERE appointment_id = ? AND facility_id = ? AND version = ? AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ? AND a.version = ? AND a.status IN ('APPROVED', 'WAITING', 'IN_PROGRESS'))`)
-        .bind(body.cameraResult, body.microphoneResult, body.networkResult, now, nextVersion, now, now, visitId, kiosk.facilityId, Number(current.waiting_version || 0), visitId, kiosk.facilityId, Number(current.appointment_version || 1)),
+        .bind(body.cameraResult, body.microphoneResult, body.networkResult, now, kioskState, nextVersion, now, now, visitId, kiosk.facilityId, Number(current.waiting_version || 0), visitId, kiosk.facilityId, Number(current.appointment_version || 1)),
       d1.prepare(`INSERT INTO kiosk_device_check_attempts (id, facility_id, appointment_id, resource_id, idempotency_key, camera_result, microphone_result, network_result, latency_ms, correlation_id, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(checkId, kiosk.facilityId, visitId, kiosk.resourceId, storedKey, body.cameraResult, body.microphoneResult, body.networkResult, latencyMs, correlationId, now),
