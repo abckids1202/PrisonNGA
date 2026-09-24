@@ -12,6 +12,7 @@ import { appointmentDecisionStatements } from "../lib/server/appointment-decisio
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { expiredEvidenceRetentionStatements } from "../lib/server/retention-workflow";
 import { operationalLog } from "../lib/server/observability";
+import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 
 interface Env {
   ASSETS: Fetcher;
@@ -322,7 +323,7 @@ function notificationCopy(eventType: string): { title: string; body: string } {
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), purgeExpiredAuthArtifacts(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), purgeExpiredAuthArtifacts(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
