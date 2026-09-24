@@ -18,3 +18,12 @@ test("visitor authentication supports both email and SMS challenge channels", as
   assert.match(requestSource, /\+\[1-9\]\\d\{7,14\}/);
   assert.match(deliverySource, /channel: "EMAIL" \| "SMS"/);
 });
+
+test("visitor authentication atomically audits login and caps failed-code increments", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/auth/visitor/verify/route.ts", import.meta.url), "utf8");
+  assert.match(source, /attempt_count = attempt_count \+ 1 WHERE id = \? AND consumed_at IS NULL/);
+  assert.match(source, /attempt_count < max_attempts/);
+  assert.match(source, /INSERT INTO security_events/);
+  assert.match(source, /'VISITOR_LOGIN'/);
+  assert.match(source, /if \(!results\[3\]\?\.meta\.changes\)/);
+});

@@ -3,7 +3,7 @@ import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, se
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 
 async function sessionCookie(token: string): Promise<string> {
-  const secure = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) === "production";
+  const secure = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development";
   return `securevisit_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${secure ? "; Secure" : ""}`;
 }
 
@@ -28,7 +28,8 @@ export async function POST(request: Request) {
     const salt = await getSecuritySalt();
     const codeHash = await hashIdentifier(`visitor-sign-in:${code}`, salt);
     if (codeHash !== challenge.code_hash) {
-      await d1.prepare("UPDATE auth_challenges SET attempt_count = attempt_count + 1 WHERE id = ?").bind(challengeId).run();
+      const attempt = await d1.prepare("UPDATE auth_challenges SET attempt_count = attempt_count + 1 WHERE id = ? AND consumed_at IS NULL AND expires_at > ? AND attempt_count < max_attempts").bind(challengeId, new Date().toISOString()).run();
+      if (!attempt.meta.changes) throw new SecurityError("AUTH_CODE_LOCKED", 429);
       throw new SecurityError("INVALID_AUTH_CODE", 400);
     }
     const token = crypto.randomUUID() + crypto.randomUUID();
@@ -54,9 +55,14 @@ export async function POST(request: Request) {
         SELECT ?, id, ?, ?, ?, ?, ? FROM users
         WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'`)
         .bind(sessionId, tokenHash, sessionExpiresAt, now, userAgentHash, ipHash, challenge.destination),
+      d1.prepare(`INSERT INTO security_events (id, user_id, event_type, severity, request_id, ip_hash, user_agent_hash, metadata, created_at)
+        SELECT ?, id, 'VISITOR_LOGIN', 'INFO', ?, ?, ?, ?, ? FROM users
+        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'`)
+        .bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel }), now, challenge.destination),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("AUTH_CODE_ALREADY_USED", 409);
     if (!results[2]?.meta.changes) throw new SecurityError("VISITOR_SESSION_NOT_CREATED", 500);
+    if (!results[3]?.meta.changes) throw new SecurityError("VISITOR_LOGIN_AUDIT_NOT_CREATED", 500);
     const user = await d1.prepare(`SELECT id, email, phone, display_name FROM users WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'`).bind(challenge.destination).first<{ id: string; email: string | null; phone: string | null; display_name: string }>();
     if (!user) throw new SecurityError("VISITOR_ACCOUNT_NOT_CREATED", 500);
     const response = securityResponse({ authenticated: true, visitor: { id: user.id, email: challenge.channel === "EMAIL" ? user.email : null, phone: user.phone, displayName: user.display_name }, expiresAt: sessionExpiresAt }, 200, context.requestId);

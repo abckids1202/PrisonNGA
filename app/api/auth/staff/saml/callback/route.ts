@@ -3,7 +3,7 @@ import { createSamlClient, getSamlConfig, validateSamlResponse } from "../../../
 import { hashFederationState } from "../../../../../../lib/server/auth/oidc";
 import { applySecurityHeaders, getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
 
-async function staffCookie(token: string): Promise<string> { return `securevisit_staff_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${(await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) === "production" ? "; Secure" : ""}`; }
+async function staffCookie(token: string): Promise<string> { return `securevisit_staff_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${(await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development" ? "; Secure" : ""}`; }
 
 export async function POST(request: Request) {
   const context = await getRequestContext();

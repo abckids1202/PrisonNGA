@@ -35,8 +35,9 @@ export async function POST() {
       await db.insert(securityEvents).values({ id: crypto.randomUUID(), userId: user.id, eventType: "LOGOUT_REQUESTED", severity: "INFO", requestId: context.requestId, ipHash: context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null, userAgentHash: context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, metadata: { provider: "workspace-auth" } });
     }
     const response = securityResponse({ ok: true, signOutPath: identity && !staffSessionToken ? "/signout-with-chatgpt?return_to=/" : null }, 200, context.requestId);
-    if (sessionToken) response.headers.set("Set-Cookie", `securevisit_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${(await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) === "production" ? "; Secure" : ""}`);
-    if (staffSessionToken) response.headers.append("Set-Cookie", `securevisit_staff_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${(await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) === "production" ? "; Secure" : ""}`);
+    const secureCookie = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development" ? "; Secure" : "";
+    if (sessionToken) response.headers.set("Set-Cookie", `securevisit_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureCookie}`);
+    if (staffSessionToken) response.headers.append("Set-Cookie", `securevisit_staff_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureCookie}`);
     return response;
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
