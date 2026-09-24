@@ -18,3 +18,9 @@ test("live kiosk clears prisoner presence when leaving the live session", () => 
   assert.match(live, /body: JSON\.stringify\(\{ presence: "absent" \}\)/);
   assert.match(live, /keepalive: true/);
 });
+
+test("terminal kiosk view exposes an explicit reset to the credential boundary", () => {
+  assert.match(live, /Return kiosk to ready state/);
+  assert.match(live, /router\.push\(`\/kiosk\/visits\/\$\{encodeURIComponent\(visitId\)\}`\)/);
+  assert.match(live, /previous visit credentials and media session will be cleared/);
+});
