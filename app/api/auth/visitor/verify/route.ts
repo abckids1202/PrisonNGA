@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     if (!challenge || challenge.consumed_at || Date.parse(challenge.expires_at) <= Date.now()) throw new SecurityError("AUTH_CODE_EXPIRED", 400);
     if (challenge.attempt_count >= challenge.max_attempts) throw new SecurityError("AUTH_CODE_LOCKED", 429);
     const contactColumn = challenge.channel === "EMAIL" ? "email" : "phone";
-    const existingAccount = await d1.prepare(`SELECT user_type, status FROM users WHERE ${contactColumn} = ?`).bind(challenge.destination).first<{ user_type: string; status: string }>();
+    const existingAccount = await d1.prepare(`SELECT id, user_type, status FROM users WHERE ${contactColumn} = ?`).bind(challenge.destination).first<{ id: string; user_type: string; status: string }>();
     if (existingAccount && existingAccount.user_type !== "VISITOR") throw new SecurityError("VISITOR_ACCOUNT_CONFLICT", 409);
     if (existingAccount && existingAccount.status !== "ACTIVE") throw new SecurityError("VISITOR_ACCOUNT_DISABLED", 403);
     const salt = await getSecuritySalt();
@@ -48,6 +48,10 @@ export async function POST(request: Request) {
     const sessionExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString();
     const userAgentHash = context.userAgent ? await hashIdentifier(context.userAgent, salt) : null;
     const ipHash = context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null;
+    const knownDevice = existingAccount?.id && userAgentHash
+      ? await d1.prepare(`SELECT 1 AS known FROM auth_sessions WHERE user_id = ? AND user_agent_hash = ? AND created_at >= datetime('now', '-30 days') LIMIT 1`).bind(existingAccount.id, userAgentHash).first()
+      : null;
+    const suspiciousLogin = Boolean(existingAccount?.id && userAgentHash && !knownDevice);
     const results = await d1.batch([
       d1.prepare(`UPDATE auth_challenges SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND attempt_count < max_attempts AND expires_at > ? AND NOT EXISTS (SELECT 1 FROM users WHERE ${contactColumn} = ? AND user_type <> 'VISITOR')`)
         .bind(now, challengeId, now, challenge.destination),
@@ -65,6 +69,10 @@ export async function POST(request: Request) {
         SELECT ?, id, 'VISITOR_LOGIN', 'INFO', ?, ?, ?, ?, ? FROM users
         WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'`)
         .bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel }), now, challenge.destination),
+      d1.prepare(`INSERT INTO security_events (id, user_id, event_type, severity, request_id, ip_hash, user_agent_hash, metadata, created_at)
+        SELECT ?, id, 'VISITOR_SUSPICIOUS_LOGIN', 'WARNING', ?, ?, ?, ?, ? FROM users
+        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE' AND ? = 1`)
+        .bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel, reason: "NEW_DEVICE" }), now, challenge.destination, suspiciousLogin ? 1 : 0),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("AUTH_CODE_ALREADY_USED", 409);
     if (!results[2]?.meta.changes) throw new SecurityError("VISITOR_SESSION_NOT_CREATED", 500);

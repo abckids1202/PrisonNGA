@@ -1,5 +1,4 @@
 import { getD1, getEvidenceBucket } from "../../../../../../db/runtime";
-import { auditAndOutboxStatements } from "../../../../../../lib/server/events";
 import { applySecurityHeaders, getRequestContext, requireActiveBreakGlass, requirePermission, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
 
 type RouteContext = { params: Promise<{ documentId: string }> };
@@ -37,20 +36,23 @@ export async function GET(_request: Request, context: RouteContext) {
     if (!object?.body || object.size !== evidence.byte_size) throw new SecurityError("EVIDENCE_NOT_AVAILABLE", 404);
 
     const correlationId = crypto.randomUUID();
-    await d1.batch(auditAndOutboxStatements(d1, {
-      actorUserId: authorization.userId,
-      actorRole: breakGlassRequestId ? "Break-glass reviewer" : authorization.roles[0] || "Verification Officer",
-      facilityId: authorization.facilityId,
-      actionType: breakGlassRequestId ? "BREAK_GLASS_EVIDENCE_ACCESSED" : "VERIFICATION_EVIDENCE_ACCESSED",
-      entityType: "evidence_document",
-      entityId: evidence.id,
-      reason: breakGlassRequestId ? `Evidence accessed under approved break-glass request ${breakGlassRequestId}.` : "Authorized verification reviewer accessed submitted evidence.",
-      newValues: breakGlassRequestId ? { breakGlassRequestId } : null,
-      requestId: requestContext.requestId,
-      correlationId,
-      eventType: breakGlassRequestId ? "BREAK_GLASS_EVIDENCE_ACCESSED" : "VERIFICATION_EVIDENCE_ACCESSED",
-      payload: { evidenceId: evidence.id, breakGlassRequestId },
-    }));
+    await d1.prepare(`INSERT INTO audit_events
+      (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
+      VALUES (?, ?, ?, ?, ?, 'evidence_document', ?, ?, NULL, ?, ?, ?, ?)`)
+      .bind(
+        crypto.randomUUID(),
+        authorization.userId,
+        breakGlassRequestId ? "Break-glass reviewer" : authorization.roles[0] || "Verification Officer",
+        authorization.facilityId,
+        breakGlassRequestId ? "BREAK_GLASS_EVIDENCE_ACCESSED" : "VERIFICATION_EVIDENCE_ACCESSED",
+        evidence.id,
+        breakGlassRequestId ? `Evidence accessed under approved break-glass request ${breakGlassRequestId}.` : "Authorized verification reviewer accessed submitted evidence.",
+        breakGlassRequestId ? JSON.stringify({ breakGlassRequestId }) : null,
+        correlationId,
+        requestContext.requestId,
+        new Date().toISOString(),
+      )
+      .run();
 
     const filename = evidence.original_filename.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120) || "evidence";
     const headers = new Headers({

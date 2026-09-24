@@ -39,6 +39,15 @@ test("visitor authentication atomically audits login and caps failed-code increm
   assert.match(source, /if \(!results\[3\]\?\.meta\.changes\)/);
 });
 
+test("visitor verification records a privacy-safe new-device security event", async () => {
+  const source = await readFile(new URL("../app/api/auth/visitor/verify/route.ts", import.meta.url), "utf8");
+  assert.match(source, /knownDevice/);
+  assert.match(source, /created_at >= datetime\('now', '-30 days'\)/);
+  assert.match(source, /VISITOR_SUSPICIOUS_LOGIN/);
+  assert.match(source, /reason: "NEW_DEVICE"/);
+  assert.doesNotMatch(source, /challenge\.destination.*VISITOR_SUSPICIOUS_LOGIN/);
+});
+
 test("session revocation commits the auth mutation and audit event as one D1 batch", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/auth/sessions/route.ts", import.meta.url), "utf8");
   assert.match(source, /d1 = await getD1\(\)/);
