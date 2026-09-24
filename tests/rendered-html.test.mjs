@@ -306,5 +306,8 @@ test("exposes a non-sensitive readiness endpoint", async () => {
   assert.ok(["ready", "not_ready"].includes(body.status));
   assert.equal(typeof body.checks.database, "boolean");
   assert.equal(typeof body.checks.schema, "boolean");
+  for (const key of ["payment", "paymentWebhook", "livekit", "evidenceStorage", "evidenceScanning", "visitorAuth", "staffIdentity", "notifications"]) {
+    assert.equal(typeof body.checks.providerConfiguration[key], "boolean");
+  }
   assert.doesNotMatch(JSON.stringify(body), /LIVEKIT_API_SECRET|PAYMENT_WEBHOOK_SECRET|HASH_SALT/);
 });
