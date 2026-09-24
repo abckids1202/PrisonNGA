@@ -58,11 +58,7 @@ export default function VisitorPage() {
   const [visitorName, setVisitorName] = useState("Sarah");
   const [dataError, setDataError] = useState<string | null>(null);
   const [visitorData, setVisitorData] = useState<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true, refreshAppointments: async () => undefined });
-  const [tab, setTab] = useState<Tab>(() => {
-    if (typeof window === "undefined") return "Home";
-    const requested = new URLSearchParams(window.location.search).get("section");
-    return requested && ["Home", "Visits", "Connections", "Credits", "Account"].includes(requested) ? requested as Tab : "Home";
-  });
+  const [tab, setTab] = useState<Tab>("Home");
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const syncVisitorCredits = useCallback((credits: VisitorCreditAccount[]) => setVisitorData((current) => ({ ...current, credits })), []);

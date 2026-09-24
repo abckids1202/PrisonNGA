@@ -87,12 +87,14 @@ test("visitor profile and relationship evidence survive a browser refresh", asyn
   if (evidenceStored) expect(evidenceBody.error).toBeUndefined();
   else expect(evidenceBody.error).toBe("EVIDENCE_STORAGE_NOT_CONFIGURED");
 
-  await page.goto("/visitor?section=Connections");
+  await page.goto("/visitor");
+  await page.getByRole("button", { name: "Connections", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "A. Rahman" })).toBeVisible();
   await expect(page.locator("p").filter({ hasText: "Family member · Central Correctional Facility" }).first()).toBeVisible();
   await expect(page.getByText(evidenceStored ? "Supporting document received" : "Supporting document still needed", { exact: true })).toBeVisible();
   await page.reload();
+  await page.getByRole("button", { name: "Connections", exact: true }).click();
   await expect(page.getByRole("heading", { name: "A. Rahman" })).toBeVisible();
   await expect(page.locator("p").filter({ hasText: "Family member · Central Correctional Facility" }).first()).toBeVisible();
   await expect(page.getByText(evidenceStored ? "Supporting document received" : "Supporting document still needed", { exact: true })).toBeVisible();
