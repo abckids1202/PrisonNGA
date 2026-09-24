@@ -18,6 +18,29 @@ test("visitor workspace is a separate authenticated boundary", async ({ page }) 
   await expect(page.getByText("Action center", { exact: true })).toHaveCount(0);
 });
 
+test("visitor can complete the development OTP flow through the sign-in form", async ({ page }) => {
+  const email = `form-${Date.now()}@example.test`;
+  await page.goto("/visitor");
+
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Your name").fill("Form Visitor");
+  const requestPromise = page.waitForResponse((response) => response.url().endsWith("/api/auth/visitor/request") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Send me a sign-in code" }).click();
+  const requestResponse = await requestPromise;
+  expect(requestResponse.status()).toBe(201);
+  const challenge = await requestResponse.json() as { challengeId?: string; devCode?: string };
+  expect(challenge.challengeId).toBeTruthy();
+  expect(challenge.devCode).toMatch(/^\d{6}$/);
+
+  await page.getByLabel("Six-digit code").fill(challenge.devCode || "");
+  const verifyPromise = page.waitForResponse((response) => response.url().endsWith("/api/auth/visitor/verify") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Continue to SecureVisit" }).click();
+  const verifyResponse = await verifyPromise;
+  expect(verifyResponse.status()).toBe(200);
+  await expect(page.getByText("Hello, Form Visitor")).toBeVisible();
+  await expect(page.getByText("Your visitor account", { exact: true })).toBeVisible();
+});
+
 test("development visitor OTP creates a real browser session", async ({ page }) => {
   const email = `e2e-${Date.now()}@example.test`;
   const ipAddress = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
