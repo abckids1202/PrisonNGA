@@ -13,3 +13,11 @@ test("evidence validation rejects spoofed MIME types and unsupported content", (
   assert.throws(() => validateEvidenceUpload({ contentType: "image/png", bytes: new TextEncoder().encode("not a png") }), /EVIDENCE_CONTENT_MISMATCH/);
   assert.throws(() => validateEvidenceUpload({ contentType: "text/html", bytes: new TextEncoder().encode("<script>alert(1)</script>") }), /EVIDENCE_FILE_NOT_ALLOWED/);
 });
+
+test("visitor evidence persistence claims duplicate content atomically", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/visitor/verification/evidence/route.ts", import.meta.url), "utf8");
+  assert.match(source, /INSERT INTO evidence_documents[\s\S]*SELECT \?, \?, \?, \?, \?, \?, \?, \?, \?, 'AVAILABLE'/);
+  assert.match(source, /WHERE NOT EXISTS \([\s\S]*verification_case_id = \? AND visitor_user_id = \? AND sha256 = \? AND status = 'AVAILABLE'/);
+  assert.match(source, /bytes\.length/);
+  assert.match(source, /EVIDENCE_UPLOAD_NOT_PERSISTED/);
+});

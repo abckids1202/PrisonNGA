@@ -49,8 +49,13 @@ export async function POST(request: Request) {
     const correlationId = crypto.randomUUID();
     try {
       const inserted = await d1.batch([
-        d1.prepare(`INSERT INTO evidence_documents (id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, retention_until, legal_hold, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, 0, ?, ?, ?)`)
-          .bind(id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, file.size, sha256, retentionUntil, visitor.userId, now.toISOString(), now.toISOString()),
+        d1.prepare(`INSERT INTO evidence_documents (id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, retention_until, legal_hold, created_by, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, 0, ?, ?, ?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM evidence_documents
+            WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE'
+          )`)
+          .bind(id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256),
         ...auditAndOutboxStatements(d1, {
           actorUserId: visitor.userId,
           actorRole: "VISITOR",
@@ -66,7 +71,14 @@ export async function POST(request: Request) {
           payload: { evidenceId: id, verificationCaseId, visitorUserId: visitor.userId },
         }, { sql: "changes() > 0", values: [] }),
       ]);
-      if (!inserted[0]?.meta.changes) throw new SecurityError("EVIDENCE_UPLOAD_NOT_PERSISTED", 409);
+      if (!inserted[0]?.meta.changes) {
+        await bucket.delete(storageKey);
+        const duplicate = await d1.prepare(`SELECT id, retention_until FROM evidence_documents
+          WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE'
+          ORDER BY created_at DESC LIMIT 1`).bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null }>();
+        if (duplicate) return securityResponse({ evidenceId: duplicate.id, status: "AVAILABLE", retentionUntil: duplicate.retention_until, idempotent: true }, 200, context.requestId);
+        throw new SecurityError("EVIDENCE_UPLOAD_NOT_PERSISTED", 409);
+      }
     } catch (error) {
       await bucket.delete(storageKey);
       throw error;
