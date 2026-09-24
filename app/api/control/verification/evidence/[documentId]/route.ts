@@ -19,11 +19,11 @@ export async function GET(_request: Request, context: RouteContext) {
       breakGlassRequestId = "pending";
     }
     const d1 = await getD1();
-    const evidence = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.storage_key, ed.original_filename, ed.content_type, ed.byte_size
+    const evidence = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.storage_key, ed.original_filename, ed.content_type, ed.byte_size, ed.sha256
       FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id
       WHERE ed.id = ? AND ed.facility_id = ? AND vc.facility_id = ? AND ed.status = 'AVAILABLE'`)
       .bind(documentId, authorization.facilityId, authorization.facilityId)
-      .first<{ id: string; verification_case_id: string; storage_key: string; original_filename: string; content_type: string; byte_size: number }>();
+      .first<{ id: string; verification_case_id: string; storage_key: string; original_filename: string; content_type: string; byte_size: number; sha256: string }>();
     if (!evidence) throw new SecurityError("EVIDENCE_NOT_FOUND", 404);
     if (breakGlassRequestId) {
       const grant = await requireActiveBreakGlass(d1, { facilityId: authorization.facilityId, userId: authorization.userId, targetType: "evidence_document", targetId: evidence.id });
@@ -34,6 +34,10 @@ export async function GET(_request: Request, context: RouteContext) {
     if (!bucket) throw new SecurityError("EVIDENCE_STORAGE_NOT_CONFIGURED", 503);
     const object = await bucket.get(evidence.storage_key);
     if (!object?.body || object.size !== evidence.byte_size) throw new SecurityError("EVIDENCE_NOT_AVAILABLE", 404);
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    if (sha256 !== evidence.sha256) throw new SecurityError("EVIDENCE_INTEGRITY_CHECK_FAILED", 409);
 
     const correlationId = crypto.randomUUID();
     await d1.prepare(`INSERT INTO audit_events
@@ -64,7 +68,7 @@ export async function GET(_request: Request, context: RouteContext) {
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, no-store, max-age=0",
     });
-    const response = new Response(object.body, { status: 200, headers });
+    const response = new Response(bytes, { status: 200, headers });
     applySecurityHeaders(response, requestContext.requestId);
     response.headers.set("Content-Type", evidence.content_type);
     response.headers.set("Content-Length", String(object.size));
