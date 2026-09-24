@@ -3,27 +3,46 @@ import { SecurityError } from "./security";
 type CreditReservation = { creditAccountId: string; appointmentId: string; created: boolean };
 type CreditSettlementGuard = { sql: string; values: unknown[] };
 
-export async function settlePaymentPurchase(
-  d1: D1Database,
-  input: { paymentIntentId: string; facilityId: string; userId: string; amount: number; reason: string; requirePayableIntent?: boolean },
-) {
+export async function ensureCreditAccount(d1: D1Database, input: { facilityId: string; userId: string }): Promise<string> {
   const now = new Date().toISOString();
   await d1.prepare("INSERT OR IGNORE INTO credit_accounts (id, facility_id, user_id, available_credits, reserved_credits, version, created_at, updated_at) VALUES (?, ?, ?, 0, 0, 1, ?, ?)")
     .bind(crypto.randomUUID(), input.facilityId, input.userId, now, now).run();
   const account = await d1.prepare("SELECT id FROM credit_accounts WHERE user_id = ? AND facility_id = ?").bind(input.userId, input.facilityId).first<{ id: string }>();
   if (!account) throw new SecurityError("CREDIT_ACCOUNT_NOT_FOUND", 500);
+  return account.id;
+}
+
+export function settlePaymentPurchaseStatements(
+  d1: D1Database,
+  input: { paymentIntentId: string; facilityId: string; userId: string; accountId: string; amount: number; reason: string; now: string; requireSucceeded?: boolean },
+): D1PreparedStatement[] {
   const purchaseKey = `payment:${input.paymentIntentId}:purchase`;
-  const payableIntentGuard = input.requirePayableIntent
-    ? `AND EXISTS (SELECT 1 FROM payment_intents pi WHERE pi.id = ? AND pi.facility_id = ? AND pi.user_id = ? AND pi.status NOT IN ('REFUNDED', 'DISPUTED'))`
-    : "";
-  const results = await d1.batch([
+  const intentStatusGuard = input.requireSucceeded ? "pi.status = 'SUCCEEDED'" : "pi.status NOT IN ('REFUNDED', 'DISPUTED')";
+  return [
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-      SELECT ?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ? WHERE 1 = 1 ${payableIntentGuard}`)
-      .bind(crypto.randomUUID(), account.id, input.amount, purchaseKey, input.reason, now,
-        ...(input.requirePayableIntent ? [input.paymentIntentId, input.facilityId, input.userId] : [])),
+      SELECT ?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ?
+      WHERE EXISTS (SELECT 1 FROM payment_intents pi WHERE pi.id = ? AND pi.facility_id = ? AND pi.user_id = ? AND ${intentStatusGuard})`)
+      .bind(crypto.randomUUID(), input.accountId, input.amount, purchaseKey, input.reason, input.now, input.paymentIntentId, input.facilityId, input.userId),
     d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(input.amount, now, account.id),
-  ]);
+      .bind(input.amount, input.now, input.accountId),
+  ];
+}
+
+export async function settlePaymentPurchase(
+  d1: D1Database,
+  input: { paymentIntentId: string; facilityId: string; userId: string; amount: number; reason: string; requirePayableIntent?: boolean },
+) {
+  const now = new Date().toISOString();
+  const accountId = await ensureCreditAccount(d1, { facilityId: input.facilityId, userId: input.userId });
+  const purchaseKey = `payment:${input.paymentIntentId}:purchase`;
+  const results = await d1.batch(input.requirePayableIntent
+    ? settlePaymentPurchaseStatements(d1, { paymentIntentId: input.paymentIntentId, facilityId: input.facilityId, userId: input.userId, accountId, amount: input.amount, reason: input.reason, now })
+    : [
+      d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at) VALUES (?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ?)`)
+        .bind(crypto.randomUUID(), accountId, input.amount, purchaseKey, input.reason, now),
+      d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+        .bind(input.amount, now, accountId),
+    ]);
   if (!results[0]?.meta.changes) {
     const existingPurchase = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ? AND entry_type = 'PURCHASE'")
       .bind(purchaseKey).first<{ id: string }>();
@@ -134,22 +153,29 @@ export async function refundPurchasedCredits(
   d1: D1Database,
   input: { paymentIntentId: string; actorUserId: string; reason: string },
 ) {
+  const refundKey = `payment:${input.paymentIntentId}:refund`;
   const existing = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ?").bind(`payment:${input.paymentIntentId}:refund`).first<{ id: string }>();
   if (existing) return { refunded: false, idempotent: true };
   const purchase = await d1.prepare(`SELECT cle.credit_account_id, cle.amount FROM credit_ledger_entries cle WHERE cle.idempotency_key = ? AND cle.entry_type = 'PURCHASE' LIMIT 1`).bind(`payment:${input.paymentIntentId}:purchase`).first<{ credit_account_id: string; amount: number }>();
   if (!purchase) return { refunded: false, pending: true };
-  const now = new Date().toISOString();
-  const refundKey = `payment:${input.paymentIntentId}:refund`;
-  const results = await d1.batch([
-    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
-      SELECT ?, ?, NULL, 'REFUND', ?, ?, ?, ?, ? WHERE EXISTS (
-        SELECT 1 FROM credit_accounts WHERE id = ? AND available_credits >= ?
-      )`).bind(crypto.randomUUID(), purchase.credit_account_id, -purchase.amount, refundKey, input.reason, input.actorUserId, now, purchase.credit_account_id, purchase.amount),
-    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(purchase.amount, now, purchase.credit_account_id),
-  ]);
+  const results = await d1.batch(refundPurchasedCreditsStatements(d1, { paymentIntentId: input.paymentIntentId, accountId: purchase.credit_account_id, amount: purchase.amount, actorUserId: input.actorUserId, reason: input.reason, now: new Date().toISOString() }));
   if (results[0]?.meta.changes) return { refunded: true };
   const raced = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ?").bind(refundKey).first();
   if (raced) return { refunded: false, idempotent: true };
   throw new SecurityError("CREDIT_REVERSAL_REQUIRES_REVIEW", 409);
+}
+
+export function refundPurchasedCreditsStatements(
+  d1: D1Database,
+  input: { paymentIntentId: string; accountId: string; amount: number; actorUserId: string; reason: string; now: string },
+): D1PreparedStatement[] {
+  const refundKey = `payment:${input.paymentIntentId}:refund`;
+  return [
+    d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
+      SELECT ?, ?, NULL, 'REFUND', ?, ?, ?, ?, ? WHERE EXISTS (
+        SELECT 1 FROM credit_accounts WHERE id = ? AND available_credits >= ?
+      )`).bind(crypto.randomUUID(), input.accountId, -input.amount, refundKey, input.reason, input.actorUserId, input.now, input.accountId, input.amount),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
+      .bind(input.amount, input.now, input.accountId),
+  ];
 }
