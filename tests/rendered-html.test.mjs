@@ -221,11 +221,35 @@ test("protects audit exports", async () => {
   assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
 });
 
+test("protects controlled break-glass access", async () => {
+  const list = await renderApi("/api/control/access/break-glass");
+  assert.equal(list.status, 401);
+  assert.equal((await list.json()).error, "AUTHENTICATION_REQUIRED");
+  const decision = await renderApi("/api/control/access/break-glass/00000000-0000-0000-0000-000000000000", "POST", JSON.stringify({ action: "APPROVE", reason: "Emergency review requires supervisor decision." }));
+  assert.equal(decision.status, 401);
+  const source = await readFile(new URL("../app/api/control/access/break-glass/route.ts", import.meta.url), "utf8");
+  assert.match(source, /access\.break_glass\.request/);
+  assert.match(source, /requireStepUp/);
+  const decisionSource = await readFile(new URL("../app/api/control/access/break-glass/[requestId]/route.ts", import.meta.url), "utf8");
+  assert.match(decisionSource, /access\.break_glass\.approve/);
+  assert.match(decisionSource, /version = version \+ 1/);
+});
+
 test("audit exports persist a verifiable manifest", async () => {
   const source = await readFile(new URL("../app/api/control/audit/export/route.ts", import.meta.url), "utf8");
   assert.match(source, /audit_export_manifests/);
   assert.match(source, /x-audit-export-id/);
   assert.match(source, /x-audit-export-sha256/);
+});
+
+test("protects audit export manifest retrieval and keeps it facility-scoped", async () => {
+  const response = await renderApi("/api/control/audit/export/00000000-0000-0000-0000-000000000000");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "AUTHENTICATION_REQUIRED");
+  const source = await readFile(new URL("../app/api/control/audit/export/[exportId]/route.ts", import.meta.url), "utf8");
+  assert.match(source, /requirePermission\("audit\.read"\)/);
+  assert.match(source, /WHERE id = \? AND facility_id = \?/);
+  assert.match(source, /MANIFEST_RECORDED/);
 });
 
 test("protects facility-scoped reports", async () => {

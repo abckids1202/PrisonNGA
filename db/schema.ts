@@ -231,6 +231,25 @@ export const auditExportManifests = sqliteTable("audit_export_manifests", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ hashIdx: uniqueIndex("audit_export_manifests_sha256_idx").on(table.facilityId, table.sha256), createdIdx: index("audit_export_manifests_created_idx").on(table.facilityId, table.createdAt) }));
 
+export const breakGlassRequests = sqliteTable("break_glass_requests", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  requestedBy: text("requested_by").notNull().references(() => users.id),
+  approvedBy: text("approved_by").references(() => users.id),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  reason: text("reason").notNull(),
+  durationMinutes: integer("duration_minutes").notNull().default(30),
+  decisionReason: text("decision_reason"),
+  status: text("status", { enum: ["PENDING", "APPROVED", "DENIED", "REVOKED", "EXPIRED"] }).notNull().default("PENDING"),
+  expiresAt: text("expires_at"),
+  approvedAt: text("approved_at"),
+  revokedAt: text("revoked_at"),
+  version: integer("version").notNull().default(1),
+  correlationId: text("correlation_id").notNull(),
+  ...timestamps,
+}, (table) => ({ facilityStatusIdx: index("break_glass_requests_facility_status_idx").on(table.facilityId, table.status, table.createdAt), targetIdx: index("break_glass_requests_target_idx").on(table.facilityId, table.targetType, table.targetId, table.status) }));
+
 export const outboxEvents = sqliteTable("outbox_events", {
   id: text("id").primaryKey(),
   eventType: text("event_type").notNull(),

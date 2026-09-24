@@ -13,6 +13,7 @@ import { isSameOriginMutation } from "../lib/server/csrf";
 import { expiredEvidenceRetentionStatements } from "../lib/server/retention-workflow";
 import { operationalLog } from "../lib/server/observability";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
+import { auditAndOutboxStatements } from "../lib/server/events";
 
 interface Env {
   ASSETS: Fetcher;
@@ -233,6 +234,40 @@ async function purgeExpiredStepUpAssertions(env: Env): Promise<void> {
   await env.DB.prepare("DELETE FROM step_up_assertions WHERE julianday(expires_at) <= julianday('now')").run();
 }
 
+async function expireBreakGlassRequests(env: Env): Promise<void> {
+  const rows = await env.DB.prepare(`SELECT id, facility_id, target_type, target_id, version
+    FROM break_glass_requests WHERE status = 'APPROVED' AND expires_at IS NOT NULL AND julianday(expires_at) <= julianday('now') LIMIT 50`)
+    .all<{ id: string; facility_id: string; target_type: string; target_id: string; version: number }>();
+  for (const row of rows.results) {
+    const now = new Date().toISOString();
+    const correlationId = crypto.randomUUID();
+    try {
+      const results = await env.DB.batch([
+        env.DB.prepare("UPDATE break_glass_requests SET status = 'EXPIRED', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'APPROVED' AND version = ?")
+          .bind(now, row.id, row.facility_id, row.version),
+        ...auditAndOutboxStatements(env.DB, {
+          actorUserId: "system:scheduler",
+          actorRole: "SYSTEM",
+          facilityId: row.facility_id,
+          actionType: "BREAK_GLASS_EXPIRED",
+          entityType: "break_glass_request",
+          entityId: row.id,
+          reason: "The approved emergency-access window elapsed.",
+          oldValues: { status: "APPROVED", version: row.version },
+          newValues: { status: "EXPIRED", version: row.version + 1, targetType: row.target_type, targetId: row.target_id },
+          requestId: correlationId,
+          correlationId,
+          eventType: "BREAK_GLASS_EXPIRED",
+          payload: { requestId: row.id, targetType: row.target_type, targetId: row.target_id },
+        }, { sql: "EXISTS (SELECT 1 FROM break_glass_requests WHERE id = ? AND status = 'EXPIRED' AND version = ?)", values: [row.id, row.version + 1] }),
+      ]);
+      if (!results[0]?.meta.changes) continue;
+    } catch (error) {
+      operationalLog("error", { event: "BREAK_GLASS_EXPIRY_FAILED", requestId: row.id, facilityId: row.facility_id, correlationId, error });
+    }
+  }
+}
+
 async function reconcileExpiredSessions(env: Env): Promise<void> {
   const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.version, vs.status, vs.actual_started_at,
       vs.termination_reason, vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
@@ -332,7 +367,7 @@ function notificationCopy(eventType: string, payload: Record<string, unknown> = 
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), purgeExpiredAuthArtifacts(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), purgeExpiredAuthArtifacts(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);

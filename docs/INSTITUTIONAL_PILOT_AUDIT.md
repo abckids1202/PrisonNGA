@@ -68,7 +68,7 @@ The current repository already includes:
 - Visitor session controls still need production delivery, recovery, suspicious-login handling and device-management validation beyond the development OTP path.
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Live-session staff observation and provider webhook behavior need a real deployment test. Recording remains intentionally disabled and must not be silently enabled.
-- Audit export, access-review reports, break-glass access, supervisor approval and immutable export verification require operational validation.
+- Audit export manifests can now be retrieved through an authorized, facility-scoped verification endpoint. Break-glass requests and supervisor decisions are now persisted with time-bound grants, step-up checks, optimistic concurrency, audit events, and outbox events; staging access-review and policy validation remain release gates.
 - Data retention and deletion need scheduled-job evidence, exception handling, legal-hold behavior and restore/rollback procedures.
 - The dramatic spin is a product interaction plan, not a completed business feature. The server must decide and persist the result before animation; the animation must never decide the outcome.
 

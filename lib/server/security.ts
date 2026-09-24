@@ -199,3 +199,20 @@ export async function requireStepUp(binding: StepUpBinding): Promise<void> {
   });
   if (!accepted) throw new SecurityError("STEP_UP_REPLAYED", 403);
 }
+
+export async function requireActiveBreakGlass(
+  d1: D1Database,
+  input: { facilityId: string; userId: string; targetType: string; targetId: string },
+): Promise<{ requestId: string; expiresAt: string; requestedBy: string }> {
+  const now = new Date().toISOString();
+  const request = await d1.prepare(`SELECT id, requested_by, expires_at
+    FROM break_glass_requests
+    WHERE facility_id = ? AND target_type = ? AND target_id = ?
+      AND status = 'APPROVED' AND expires_at > ?
+      AND (requested_by = ? OR approved_by = ?)
+    ORDER BY approved_at DESC LIMIT 1`)
+    .bind(input.facilityId, input.targetType, input.targetId, now, input.userId, input.userId)
+    .first<{ id: string; requested_by: string; expires_at: string }>();
+  if (!request?.expires_at) throw new SecurityError("BREAK_GLASS_APPROVAL_REQUIRED", 403);
+  return { requestId: request.id, expiresAt: request.expires_at, requestedBy: request.requested_by };
+}

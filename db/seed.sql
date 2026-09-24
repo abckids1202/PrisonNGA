@@ -46,6 +46,8 @@ INSERT INTO permissions (id, permission_key, description) VALUES
   ,('perm-visitor-directory-read', 'visitor.directory.read', 'Read facility-scoped visitor identity and relationship directory data.')
   ,('perm-finance-read', 'finance.read', 'Read facility-scoped credit ledger and payment records.')
   ,('perm-finance-manage', 'finance.manage', 'Request provider refunds and operate facility payment exceptions.')
+  ,('perm-break-glass-request', 'access.break_glass.request', 'Request controlled emergency access to a sensitive facility record.')
+  ,('perm-break-glass-approve', 'access.break_glass.approve', 'Approve, deny, or revoke controlled emergency access.')
 ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id) VALUES
@@ -75,4 +77,9 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ,('role-supervisor', 'perm-finance-read')
   ,('role-auditor', 'perm-finance-read')
   ,('role-supervisor', 'perm-finance-manage')
+  ,('role-scheduling-officer', 'perm-break-glass-request')
+  ,('role-verification-officer', 'perm-break-glass-request')
+  ,('role-monitoring-officer', 'perm-break-glass-request')
+  ,('role-supervisor', 'perm-break-glass-request')
+  ,('role-supervisor', 'perm-break-glass-approve')
 ON CONFLICT(role_id, permission_id) DO NOTHING;
