@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     // batch, so the guard must assert the post-transition state.
     const guard = { sql: "EXISTS (SELECT 1 FROM outbox_events WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND attempt_count = 0)", values: [outboxEventId, authorization.facilityId] };
     const results = await d1.batch([
-      d1.prepare("UPDATE outbox_events SET status = 'PENDING', attempt_count = 0, available_at = ?, last_error = NULL, processed_at = NULL WHERE id = ? AND facility_id = ? AND status IN ('FAILED', 'DEAD_LETTER')").bind(now, outboxEventId, authorization.facilityId),
+      d1.prepare("UPDATE outbox_events SET status = 'PENDING', attempt_count = 0, available_at = ?, processing_started_at = NULL, last_error = NULL, processed_at = NULL WHERE id = ? AND facility_id = ? AND status IN ('FAILED', 'DEAD_LETTER')").bind(now, outboxEventId, authorization.facilityId),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "OUTBOX_EVENT_REPLAYED", entityType: "outbox_event", entityId: outboxEventId, reason, oldValues: { status: event.status, attemptCount: event.attempt_count }, newValues: { status: "PENDING", attemptCount: 0 }, requestId: context.requestId, correlationId, eventType: "OUTBOX_EVENT_REPLAYED", payload: { replayedEventId: outboxEventId, eventType: event.event_type } }, guard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: { outboxEventId, status: "PENDING", correlationId }, guard }),
     ]);

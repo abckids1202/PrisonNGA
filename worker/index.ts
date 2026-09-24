@@ -132,7 +132,7 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
 }
 
 async function processOutbox(env: Env): Promise<void> {
-  await env.DB.prepare("UPDATE outbox_events SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim.' WHERE status = 'PROCESSING' AND created_at < datetime('now', '-5 minutes')").run();
+  await env.DB.prepare("UPDATE outbox_events SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, processing_started_at = NULL, last_error = 'Recovered stale processing claim.' WHERE status = 'PROCESSING' AND processing_started_at IS NOT NULL AND processing_started_at < datetime('now', '-5 minutes')").run();
   await env.DB.prepare(`UPDATE notification_delivery_attempts
     SET status = 'FAILED', error_message = 'Recovered stale outbox claim.', finished_at = CURRENT_TIMESTAMP
     WHERE status = 'PROCESSING'
@@ -147,7 +147,7 @@ async function processOutbox(env: Env): Promise<void> {
     const now = new Date().toISOString();
     try {
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
-      const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
+    const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
       if (!claim.meta.changes) continue;
       const attemptNumber = row.attempt_count + 1;
       const attemptStartedAt = new Date().toISOString();
@@ -194,14 +194,14 @@ async function processOutbox(env: Env): Promise<void> {
       } else {
         await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'SKIPPED', error_message = 'No visitor recipient associated with event.', finished_at = ? WHERE outbox_event_id = ? AND attempt_number = ? AND status = 'PROCESSING'").bind(now, row.id, attemptNumber).run();
       }
-      await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSED', processed_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, row.id).run();
+      await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSED', processing_started_at = NULL, processed_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, row.id).run();
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 500) : "OUTBOX_PROCESSING_FAILED";
       const attempt = row.attempt_count + 1;
       const delaySeconds = Math.min(3600, 30 * (2 ** Math.max(0, attempt - 1)));
       const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
       await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'FAILED', error_message = ?, finished_at = ? WHERE outbox_event_id = ? AND attempt_number = ? AND status = 'PROCESSING'").bind(message, now, row.id, attempt).run();
-      await env.DB.prepare("UPDATE outbox_events SET status = CASE WHEN attempt_count >= 5 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
+      await env.DB.prepare("UPDATE outbox_events SET status = CASE WHEN attempt_count >= 5 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, processing_started_at = NULL, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
       operationalLog("error", { event: attempt >= 5 ? "NOTIFICATION_OUTBOX_DEAD_LETTER" : "NOTIFICATION_OUTBOX_RETRY_SCHEDULED", outboxEventId: row.id, eventType: row.event_type, facilityId: row.facility_id, correlationId: row.correlation_id, attempt, error: message });
     }
   }

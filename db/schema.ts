@@ -261,6 +261,7 @@ export const outboxEvents = sqliteTable("outbox_events", {
   status: text("status", { enum: ["PENDING", "PROCESSING", "PROCESSED", "FAILED", "DEAD_LETTER"] }).notNull().default("PENDING"),
   attemptCount: integer("attempt_count").notNull().default(0),
   availableAt: text("available_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  processingStartedAt: text("processing_started_at"),
   processedAt: text("processed_at"),
   lastError: text("last_error"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
