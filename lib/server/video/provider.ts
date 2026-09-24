@@ -1,4 +1,4 @@
-import { AccessToken, RoomServiceClient, ServerError, type VideoGrant } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, ServerError, TrackSource, type VideoGrant } from "livekit-server-sdk";
 
 export type ParticipantRole = "VISITOR" | "FACILITY" | "STAFF_OBSERVER";
 export type VideoConfig = { provider: "livekit"; configured: boolean; url: string | null; apiKey: string | null; apiSecret: string | null };
@@ -56,6 +56,7 @@ class LiveKitVideoProvider implements VideoProvider {
       room: input.roomName,
       canSubscribe: true,
       canPublish: input.role !== "STAFF_OBSERVER",
+      canPublishSources: input.role === "STAFF_OBSERVER" ? [] : [TrackSource.CAMERA, TrackSource.MICROPHONE],
       canPublishData: input.role !== "STAFF_OBSERVER",
       roomAdmin: false,
     };
