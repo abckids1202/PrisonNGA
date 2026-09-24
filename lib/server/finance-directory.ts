@@ -50,6 +50,16 @@ export function financeReconciliationStatement(d1: D1Database, facilityId: strin
       FROM payment_provider_events ppe INNER JOIN payment_intents pi
         ON pi.id = json_extract(ppe.payload, '$.paymentIntentId')
       WHERE pi.facility_id = ? AND ppe.status IN ('RECEIVED', 'PROCESSING', 'FAILED', 'DEAD_LETTER')
+      UNION ALL
+      SELECT 'REFUND_REQUEST_PENDING', pr.payment_intent_id, pr.id,
+        'Refund request has not received a provider confirmation.'
+      FROM payment_refund_requests pr
+      WHERE pr.facility_id = ? AND pr.status = 'REQUESTED'
+      UNION ALL
+      SELECT 'REFUND_REQUEST_FAILED', pr.payment_intent_id, pr.id,
+        'Refund request failed before provider acceptance and requires a retry.'
+      FROM payment_refund_requests pr
+      WHERE pr.facility_id = ? AND pr.status = 'FAILED'
     )
-    ORDER BY issue_type, payment_intent_id LIMIT 100`).bind(facilityId, facilityId, facilityId);
+    ORDER BY issue_type, payment_intent_id LIMIT 100`).bind(facilityId, facilityId, facilityId, facilityId, facilityId);
 }

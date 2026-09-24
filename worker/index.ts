@@ -168,7 +168,7 @@ async function processOutbox(env: Env): Promise<void> {
         throw new Error("OUTBOX_RECIPIENT_MISMATCH");
       }
       if (visitorUserId) {
-        const copy = notificationCopy(row.event_type);
+        const copy = notificationCopy(row.event_type, payload);
         const notificationPayload = { aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload };
         const notificationDelivery = await getNotificationDelivery();
         if (notificationDelivery === "webhook") {
@@ -306,7 +306,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
   }
 }
 
-function notificationCopy(eventType: string): { title: string; body: string } {
+function notificationCopy(eventType: string, payload: Record<string, unknown> = {}): { title: string; body: string } {
   if (eventType === "APPOINTMENT_APPROVE") return { title: "Your visit was approved", body: "Your appointment is ready. Open Visit Details to prepare." };
   if (eventType === "APPOINTMENT_REJECT") return { title: "Your visit needs attention", body: "Your appointment request was not approved. Open Visit Details to see the reason." };
   if (eventType === "VERIFICATION_APPROVED") return { title: "Connection approved", body: "You can now request a visit with this connection." };
@@ -314,6 +314,10 @@ function notificationCopy(eventType: string): { title: string; body: string } {
   if (eventType === "APPOINTMENT_SUBMITTED") return { title: "Visit request received", body: "The facility team has your request and will review it shortly." };
   if (eventType === "PAYMENT_CHECKOUT_CREATED") return { title: "Checkout is ready", body: "Complete your payment with the secure payment service. Credits are added after confirmation." };
   if (eventType === "PAYMENT_CHECKOUT_FAILED") return { title: "Checkout could not start", body: "Your payment was not charged. You can try starting checkout again from Visit Credits." };
+  if (eventType === "PAYMENT_REFUND_FAILED") return { title: "Refund needs attention", body: "The payment service could not start your refund. The facility team can retry it from Finance." };
+  if (eventType === "PAYMENT_REFUND_REQUESTED" || eventType === "PAYMENT_REFUND_PROVIDER_ACCEPTED") return { title: "Refund requested", body: "Your refund request is being processed. We will update your Visit Credit balance when the payment service confirms it." };
+  if (eventType === "PAYMENT_STATUS_UPDATED" && payload.status === "REFUNDED") return { title: "Refund completed", body: "Your refund was confirmed and your Visit Credit balance has been updated." };
+  if (eventType === "PAYMENT_STATUS_UPDATED" && payload.status === "DISPUTED") return { title: "Payment under review", body: "Your payment is under provider review. The facility team will update you when the review is resolved." };
   if (eventType === "PAYMENT_STATUS_UPDATED") return { title: "Payment status updated", body: "Your Visit Credit payment status changed. Open Visit Credits to see the confirmed balance or next step." };
   if (eventType === "SESSION_TERMINATED" || eventType === "VISIT_TERMINATED") return { title: "Visit ended", body: "Your visit ended and the final credit outcome is available in Visit Details." };
   if (eventType === "VISIT_COMPLETED") return { title: "Visit completed", body: "Your visit is complete. Open Visit Details to review the outcome and credit receipt." };

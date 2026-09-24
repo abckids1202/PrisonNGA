@@ -21,6 +21,7 @@ test("finance reconciliation detects facility-scoped payment and provider-event 
     CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT);
     CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, idempotency_key TEXT);
     CREATE TABLE payment_provider_events (id TEXT PRIMARY KEY, payload TEXT, status TEXT);
+    CREATE TABLE payment_refund_requests (id TEXT PRIMARY KEY, payment_intent_id TEXT, facility_id TEXT, status TEXT);
     INSERT INTO payment_intents VALUES ('payment-1', 'facility-1', 'SUCCEEDED');
     INSERT INTO payment_intents VALUES ('payment-2', 'facility-2', 'SUCCEEDED');
     INSERT INTO payment_provider_events VALUES ('event-1', '{"paymentIntentId":"payment-1"}', 'RECEIVED');

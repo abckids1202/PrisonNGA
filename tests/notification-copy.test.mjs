@@ -7,6 +7,8 @@ test("outbox notification copy explains critical payment and visit outcomes", as
   assert.match(source, /PAYMENT_CHECKOUT_CREATED/);
   assert.match(source, /PAYMENT_CHECKOUT_FAILED/);
   assert.match(source, /PAYMENT_STATUS_UPDATED/);
+  assert.match(source, /PAYMENT_REFUND_REQUESTED/);
+  assert.match(source, /Refund completed/);
   assert.match(source, /VISIT_COMPLETED/);
   assert.match(source, /SESSION_TERMINATED/);
 });
