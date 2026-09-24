@@ -3,7 +3,7 @@ import { assertReason, getRequestContext, requirePermission, securityErrorRespon
 import { createLiveKitProvider, createProviderRoomName } from "../../../../lib/server/video/provider";
 import { operationalLog } from "../../../../lib/server/observability";
 import { canTransitionWaitingRoom } from "../../../../lib/server/workflow";
-import { evaluateWaitingRoomReadiness } from "../../../../lib/server/waiting-room-readiness";
+import { evaluateWaitingRoomReadiness, isRecentPresence } from "../../../../lib/server/waiting-room-readiness";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 
 const eligibleStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
@@ -168,8 +168,10 @@ export async function POST(request: Request) {
 
     const now = new Date().toISOString();
     const nextVersion = currentVersion + 1;
-    const nextVisitorPresence = command === "admit_visitor" ? "present" : String(current.visitor_presence || "absent");
-    const nextPrisonerPresence = command === "confirm_prisoner_presence" ? "present" : String(current.prisoner_presence || "waiting");
+    const currentVisitorPresent = current.visitor_presence === "present" && isRecentPresence(current.visitor_presence_at === null ? null : String(current.visitor_presence_at), Date.parse(now));
+    const currentPrisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at), Date.parse(now));
+    const nextVisitorPresence = command === "admit_visitor" ? "present" : currentVisitorPresent ? "present" : "waiting";
+    const nextPrisonerPresence = command === "confirm_prisoner_presence" ? "present" : currentPrisonerPresent ? "present" : "waiting";
     const readiness = command === "run_preflight" || command === "retry_device" || command === "start_visit"
       ? evaluateWaitingRoomReadiness({
         visitorPresence: nextVisitorPresence,

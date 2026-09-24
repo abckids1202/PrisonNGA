@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../../../../db/runtime";
 import { enforceRateLimit } from "../../../../../../../lib/server/rate-limit";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../../lib/server/security";
+import { isRecentPresence } from "../../../../../../../lib/server/waiting-room-readiness";
 
 const activeStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
 
@@ -23,7 +24,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
     if (current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (!current.waiting_version) throw new SecurityError("WAITING_ROOM_NOT_OPEN", 409);
     const now = new Date().toISOString();
-    const nextState = current.prisoner_presence === "present" ? "BOTH_PRESENT" : "VISITOR_WAITING";
+    const prisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at));
+    const nextState = prisonerPresent ? "BOTH_PRESENT" : "VISITOR_WAITING";
     const nextVersion = Number(current.waiting_version) + 1;
     const result = await d1.batch([
       d1.prepare(`UPDATE waiting_room_sessions SET state = CASE WHEN state IN ('NOT_ARRIVED', 'VISITOR_WAITING', 'PRISONER_WAITING', 'BOTH_PRESENT') THEN ? ELSE state END,
@@ -35,7 +37,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
         .bind(now, appointmentId, current.facility_id, Number(current.appointment_version)),
     ]);
     if (!result[0]?.meta.changes || !result[1]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
-    return securityResponse({ presence: "present", state: nextState, visitorPresenceAt: now, prisonerPresence: current.prisoner_presence || "waiting", prisonerPresenceAt: current.prisoner_presence_at || null, version: nextVersion }, 200, context.requestId);
+    return securityResponse({ presence: "present", state: nextState, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : "waiting", prisonerPresenceAt: prisonerPresent ? current.prisoner_presence_at || null : null, version: nextVersion }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }

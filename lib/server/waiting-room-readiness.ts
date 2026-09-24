@@ -46,6 +46,10 @@ export type WaitingRoomReadiness = {
 const DEVICE_CHECK_MAX_AGE_MS = 20 * 60_000;
 const KIOSK_HEARTBEAT_MAX_AGE_MS = 3 * 60_000;
 
+export function isRecentPresence(timestamp: string | null, now = Date.now()): boolean {
+  return isRecent(timestamp, now, KIOSK_HEARTBEAT_MAX_AGE_MS);
+}
+
 function isRecent(timestamp: string | null, now: number, maxAgeMs: number): boolean {
   if (!timestamp) return false;
   const time = Date.parse(timestamp);
@@ -64,8 +68,8 @@ export function evaluateWaitingRoomReadiness(
   facts: WaitingRoomReadinessFacts,
   now = Date.now(),
 ): WaitingRoomReadiness {
-  const visitorPresent = facts.visitorPresence === "present" && isRecent(facts.visitorPresenceAt ?? null, now, KIOSK_HEARTBEAT_MAX_AGE_MS);
-  const prisonerPresent = facts.prisonerPresence === "present" && isRecent(facts.prisonerPresenceAt ?? null, now, KIOSK_HEARTBEAT_MAX_AGE_MS);
+  const visitorPresent = facts.visitorPresence === "present" && isRecentPresence(facts.visitorPresenceAt ?? null, now);
+  const prisonerPresent = facts.prisonerPresence === "present" && isRecentPresence(facts.prisonerPresenceAt ?? null, now);
   const eligible = facts.prisonerStatus === "ACTIVE" && facts.visitationStatus === "APPROVED";
   const freshDeviceCheck = isRecent(facts.visitorDeviceCheckedAt, now, DEVICE_CHECK_MAX_AGE_MS);
   const freshKioskHeartbeat = isRecent(facts.kioskHeartbeatAt, now, KIOSK_HEARTBEAT_MAX_AGE_MS);
