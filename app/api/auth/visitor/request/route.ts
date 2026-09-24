@@ -43,19 +43,21 @@ export async function POST(request: Request) {
     const destinationHash = await hashIdentifier(`${channel.toLowerCase()}:${destination}`, salt);
     await enforceRateLimit(d1, { key: `visitor-auth:${channel.toLowerCase()}:${destinationHash}`, limit: 5, windowSeconds: 15 * 60 });
     await enforceRateLimit(d1, { key: `visitor-auth:ip:${context.ipAddress || "unknown"}`, limit: 30, windowSeconds: 15 * 60 });
-    const cooldown = await d1.prepare(`SELECT id FROM auth_challenges
-      WHERE destination_hash = ? AND purpose = 'VISITOR_SIGN_IN'
-        AND created_at > datetime('now', '-60 seconds')
-      LIMIT 1`).bind(destinationHash).first<{ id: string }>();
-    if (cooldown) throw new SecurityError("AUTH_RETRY_TOO_SOON", 429);
-    const recent = await d1.prepare("SELECT COUNT(*) AS count FROM auth_challenges WHERE destination_hash = ? AND created_at > datetime('now', '-15 minutes')").bind(destinationHash).first<{ count: number }>();
+    const recent = await d1.prepare("SELECT COUNT(*) AS count FROM auth_challenges WHERE destination_hash = ? AND purpose = 'VISITOR_SIGN_IN' AND julianday(created_at) > julianday('now', '-15 minutes')").bind(destinationHash).first<{ count: number }>();
     if (Number(recent?.count || 0) >= 5) throw new SecurityError("AUTH_RATE_LIMITED", 429);
     const code = generateCode();
     const challengeId = crypto.randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000).toISOString();
     const codeHash = await hashIdentifier(`visitor-sign-in:${code}`, salt);
-    await d1.prepare(`INSERT INTO auth_challenges (id, channel, destination, destination_hash, destination_masked, code_hash, purpose, attempt_count, max_attempts, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, 'VISITOR_SIGN_IN', 0, 5, ?, ?)`).bind(challengeId, channel, destination, destinationHash, channel === "EMAIL" ? maskEmail(email) : maskPhone(phone), codeHash, expiresAt, now.toISOString()).run();
+    const inserted = await d1.prepare(`INSERT INTO auth_challenges (id, channel, destination, destination_hash, destination_masked, code_hash, purpose, attempt_count, max_attempts, expires_at, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, 'VISITOR_SIGN_IN', 0, 5, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM auth_challenges
+        WHERE destination_hash = ? AND purpose = 'VISITOR_SIGN_IN'
+          AND julianday(created_at) > julianday('now', '-60 seconds')
+      )`).bind(challengeId, channel, destination, destinationHash, channel === "EMAIL" ? maskEmail(email) : maskPhone(phone), codeHash, expiresAt, now.toISOString(), destinationHash).run();
+    if (!inserted.meta.changes) throw new SecurityError("AUTH_RETRY_TOO_SOON", 429);
     const responseBody: Record<string, unknown> = { challengeId, channel, destination: channel === "EMAIL" ? maskEmail(email) : maskPhone(phone), expiresAt, retryAfterSeconds: 60 };
     const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
     const delivery = (await getRuntimeValue("VISITOR_AUTH_DELIVERY") || "").toLowerCase();

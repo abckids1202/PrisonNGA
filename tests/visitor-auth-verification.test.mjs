@@ -21,7 +21,8 @@ test("visitor authentication supports both email and SMS challenge channels", as
 
 test("visitor authentication enforces the advertised persisted OTP resend cooldown", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/auth/visitor/request/route.ts", import.meta.url), "utf8");
-  assert.match(source, /created_at > datetime\('now', '-60 seconds'\)/);
+  assert.match(source, /INSERT INTO auth_challenges[\s\S]*WHERE NOT EXISTS/);
+  assert.match(source, /julianday\(created_at\) > julianday\('now', '-60 seconds'\)/);
   assert.match(source, /purpose = 'VISITOR_SIGN_IN'/);
   assert.match(source, /AUTH_RETRY_TOO_SOON/);
 });
