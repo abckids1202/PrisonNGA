@@ -40,6 +40,12 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (value(env, "VIDEO_PROVIDER") !== "livekit") missing.push("VIDEO_PROVIDER=livekit");
   for (const key of ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]) if (!value(env, key)) missing.push(key);
   if (!env.EVIDENCE_BUCKET) missing.push("EVIDENCE_BUCKET");
+  const evidenceScanProvider = value(env, "EVIDENCE_SCAN_PROVIDER");
+  if (evidenceScanProvider !== "webhook") missing.push("EVIDENCE_SCAN_PROVIDER=webhook");
+  if (evidenceScanProvider === "webhook") {
+    if (!/^https:\/\//i.test(value(env, "EVIDENCE_SCAN_WEBHOOK_URL"))) missing.push("EVIDENCE_SCAN_WEBHOOK_URL");
+    if (!value(env, "EVIDENCE_SCAN_WEBHOOK_SECRET")) missing.push("EVIDENCE_SCAN_WEBHOOK_SECRET");
+  }
   if (value(env, "PAYMENT_PROVIDER") !== "webhook") missing.push("PAYMENT_PROVIDER=webhook");
   const visitCreditPrice = Number(value(env, "VISIT_CREDIT_PRICE_MINOR"));
   if (!Number.isSafeInteger(visitCreditPrice) || visitCreditPrice <= 0) missing.push("VISIT_CREDIT_PRICE_MINOR");

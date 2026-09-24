@@ -2,6 +2,7 @@ import { getD1, getEvidenceBucket } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { validateEvidenceUpload } from "../../../../../lib/server/evidence-validation";
+import { scanEvidence } from "../../../../../lib/server/evidence-scanner";
 
 function safeFilename(value: string): string {
   const cleaned = value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
@@ -45,6 +46,15 @@ export async function POST(request: Request) {
     const now = new Date();
     const retentionDays = Math.max(1, Number(await getRuntimeValue("EVIDENCE_RETENTION_DAYS") || "365") || 365);
     const retentionUntil = new Date(now.getTime() + retentionDays * 86400000).toISOString();
+    let scanVerdict: Awaited<ReturnType<typeof scanEvidence>>;
+    try {
+      scanVerdict = await scanEvidence({ bytes, contentType: file.type, sha256, byteSize: bytes.length });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "EVIDENCE_SCAN_FAILED";
+      if (code === "EVIDENCE_SCAN_NOT_CONFIGURED" || code === "EVIDENCE_SCAN_PROVIDER_UNSUPPORTED") throw new SecurityError(code, 503);
+      throw new SecurityError("EVIDENCE_SCAN_UNAVAILABLE", 503);
+    }
+    if (scanVerdict === "INFECTED") throw new SecurityError("EVIDENCE_MALWARE_DETECTED", 422);
     await bucket.put(storageKey, bytes, { httpMetadata: { contentType: file.type } });
     const correlationId = crypto.randomUUID();
     try {
