@@ -9,6 +9,8 @@ test("payment webhook snapshot keeps only settlement fields, not raw provider da
     paymentIntentId: " intent-123 ",
     providerReference: " provider-456 ",
     status: " succeeded ",
+    amountMinor: 50000,
+    currency: " idr ",
   });
 
   assert.deepEqual(JSON.parse(snapshot), {
@@ -16,14 +18,16 @@ test("payment webhook snapshot keeps only settlement fields, not raw provider da
     paymentIntentId: "intent-123",
     providerReference: "provider-456",
     status: "SUCCEEDED",
+    amountMinor: 50000,
+    currency: "IDR",
   });
   assert.equal(snapshot.includes("cardNumber"), false);
   assert.equal(snapshot.includes("payerAddress"), false);
 });
 
 test("webhook snapshots are stable for normalized retries and differ when settlement identity changes", () => {
-  const first = serializePaymentWebhookSnapshot({ eventType: "paid", paymentIntentId: "intent-123", status: "succeeded" });
-  const normalizedRetry = serializePaymentWebhookSnapshot({ eventType: " PAID ", paymentIntentId: " intent-123 ", status: " SUCCEEDED " });
+  const first = serializePaymentWebhookSnapshot({ eventType: "paid", paymentIntentId: "intent-123", status: "succeeded", amountMinor: 50000, currency: "IDR" });
+  const normalizedRetry = serializePaymentWebhookSnapshot({ eventType: " PAID ", paymentIntentId: " intent-123 ", status: " SUCCEEDED ", amountMinor: 50000, currency: " idr " });
   const otherIntent = serializePaymentWebhookSnapshot({ eventType: "PAID", paymentIntentId: "intent-456", status: "SUCCEEDED" });
 
   assert.equal(first, normalizedRetry);
@@ -72,6 +76,14 @@ test("payment webhook processing binds events to the configured provider", async
   assert.match(route, /configuredProvider/);
   assert.match(route, /PAYMENT_WEBHOOK_PROVIDER_MISMATCH/);
   assert.match(processor, /WHERE provider = \? AND \(id = \? OR provider_reference = \?\)/);
+});
+
+test("payment webhook processing verifies provider reference and settlement amount", async () => {
+  const processor = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
+  assert.match(processor, /PAYMENT_PROVIDER_REFERENCE_MISMATCH/);
+  assert.match(processor, /PAYMENT_AMOUNT_MISMATCH/);
+  assert.match(processor, /PAYMENT_CURRENCY_MISMATCH/);
+  assert.match(processor, /provider_reference, credit_quantity, amount_minor, currency/);
 });
 
 test("direct webhook delivery claims an event before settlement and releases failed claims", async () => {

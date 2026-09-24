@@ -26,11 +26,20 @@ function paymentEventTrail(d1: D1Database, input: { intentId: string; facilityId
 export async function processPaymentProviderEvent(d1: D1Database, input: { provider: string; eventKey: string; payload: PaymentWebhook }): Promise<{ status: string; paymentIntentId?: string; ignored?: string }> {
   const { provider, eventKey, payload } = input;
   const correlationId = crypto.randomUUID();
-  const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, credit_quantity, status, version FROM payment_intents WHERE provider = ? AND (id = ? OR provider_reference = ?) LIMIT 1`).bind(provider, payload.paymentIntentId || "", payload.providerReference || "").first<{ id: string; facility_id: string; user_id: string; provider: string; credit_quantity: number; status: string; version: number }>();
+  const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, provider_reference, credit_quantity, amount_minor, currency, status, version FROM payment_intents WHERE provider = ? AND (id = ? OR provider_reference = ?) LIMIT 1`).bind(provider, payload.paymentIntentId || "", payload.providerReference || "").first<{ id: string; facility_id: string; user_id: string; provider: string; provider_reference: string | null; credit_quantity: number; amount_minor: number; currency: string; status: string; version: number }>();
   const now = new Date().toISOString();
   if (!intent) {
     await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
     return { status: "IGNORED", ignored: "PAYMENT_INTENT_NOT_FOUND" };
+  }
+  if (payload.providerReference && intent.provider_reference && payload.providerReference !== intent.provider_reference) {
+    throw new SecurityError("PAYMENT_PROVIDER_REFERENCE_MISMATCH", 409);
+  }
+  if (payload.amountMinor !== undefined && payload.amountMinor !== intent.amount_minor) {
+    throw new SecurityError("PAYMENT_AMOUNT_MISMATCH", 409);
+  }
+  if (payload.currency && payload.currency.toUpperCase() !== intent.currency.toUpperCase()) {
+    throw new SecurityError("PAYMENT_CURRENCY_MISMATCH", 409);
   }
   if (successfulEvents.has(payload.eventType) || payload.status === "SUCCEEDED") {
     if (intent.status === "REFUNDED" || intent.status === "DISPUTED") {

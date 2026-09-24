@@ -103,7 +103,7 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
     const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
     if (!claim.meta.changes) continue;
     try {
-      const payload = JSON.parse(row.payload) as { eventType?: unknown; paymentIntentId?: unknown; providerReference?: unknown; status?: unknown };
+      const payload = JSON.parse(row.payload) as { eventType?: unknown; paymentIntentId?: unknown; providerReference?: unknown; status?: unknown; amountMinor?: unknown; currency?: unknown };
       if (typeof payload.eventType !== "string") throw new Error("PAYMENT_EVENT_INVALID_SNAPSHOT");
       await processPaymentProviderEvent(env.DB, {
         provider: row.provider,
@@ -114,6 +114,8 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
           paymentIntentId: typeof payload.paymentIntentId === "string" ? payload.paymentIntentId : undefined,
           providerReference: typeof payload.providerReference === "string" ? payload.providerReference : undefined,
           status: typeof payload.status === "string" ? payload.status : undefined,
+          amountMinor: typeof payload.amountMinor === "number" && Number.isSafeInteger(payload.amountMinor) ? payload.amountMinor : undefined,
+          currency: typeof payload.currency === "string" ? payload.currency : undefined,
         },
       });
     } catch (error) {

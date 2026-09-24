@@ -8,13 +8,13 @@ class D1 {
 
   constructor() {
     this.sqlite.exec(`
-      CREATE TABLE payment_intents (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, provider TEXT, credit_quantity INTEGER, status TEXT, version INTEGER, provider_reference TEXT, updated_at TEXT);
+      CREATE TABLE payment_intents (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, provider TEXT, credit_quantity INTEGER, amount_minor INTEGER, currency TEXT, status TEXT, version INTEGER, provider_reference TEXT, updated_at TEXT);
       CREATE TABLE payment_provider_events (id TEXT PRIMARY KEY, provider TEXT, event_key TEXT, status TEXT, processed_at TEXT, last_error TEXT);
       CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, available_credits INTEGER, reserved_credits INTEGER, version INTEGER, created_at TEXT, updated_at TEXT);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, idempotency_key TEXT UNIQUE, reason TEXT, created_by TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
-      INSERT INTO payment_intents VALUES ('payment-1', 'facility-1', 'visitor-1', 'webhook', 2, 'CHECKOUT_CREATED', 1, 'provider-1', 'before');
+      INSERT INTO payment_intents VALUES ('payment-1', 'facility-1', 'visitor-1', 'webhook', 2, 100000, 'IDR', 'CHECKOUT_CREATED', 1, 'provider-1', 'before');
       INSERT INTO payment_provider_events VALUES ('event-row', 'webhook', 'event-1', 'PROCESSING', NULL, NULL);
     `);
   }
@@ -36,7 +36,23 @@ class D1 {
   }
 }
 
-const event = { eventType: "PAYMENT_SUCCEEDED", eventId: "event-1", paymentIntentId: "payment-1", providerReference: "provider-1", status: "SUCCEEDED" };
+const event = { eventType: "PAYMENT_SUCCEEDED", eventId: "event-1", paymentIntentId: "payment-1", providerReference: "provider-1", status: "SUCCEEDED", amountMinor: 100000, currency: "IDR" };
+
+test("payment settlement rejects a provider reference mismatch before writing credits", async () => {
+  const d1 = new D1();
+  await assert.rejects(processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-1", payload: { ...event, providerReference: "other-provider" } }), /PAYMENT_PROVIDER_REFERENCE_MISMATCH/);
+  assert.equal(d1.sqlite.prepare("SELECT status FROM payment_intents WHERE id = 'payment-1'").get().status, "CHECKOUT_CREATED");
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+});
+
+test("payment settlement rejects an amount or currency mismatch before writing credits", async () => {
+  const d1 = new D1();
+  await assert.rejects(processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-1", payload: { ...event, amountMinor: 1 } }), /PAYMENT_AMOUNT_MISMATCH/);
+  const second = new D1();
+  await assert.rejects(processPaymentProviderEvent(second, { provider: "webhook", eventKey: "event-1", payload: { ...event, currency: "USD" } }), /PAYMENT_CURRENCY_MISMATCH/);
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+  assert.equal(second.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+});
 
 test("payment success commits provider status, credit purchase, event, audit, and outbox together", async () => {
   const d1 = new D1();

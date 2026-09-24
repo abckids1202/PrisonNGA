@@ -27,6 +27,8 @@ The adapter must validate the timestamp within a five-minute replay window, veri
 
 Configure a real provider adapter only after the institution approves the credit tariff and refund policy. Checkout requests use the payment intent ID as the idempotency key. Payment events must be signed, timestamp-bound, provider-bound, persisted before processing, and safe to replay.
 
+Settlement events must also carry the provider reference, amount in minor currency units, and ISO currency. SecureVisit compares these against the persisted payment intent before posting credits; a signed event with mismatched settlement details is rejected and remains retryable for investigation.
+
 The provider integration is not pilot-ready until sandbox tests prove:
 
 1. checkout creation;
@@ -81,4 +83,3 @@ Run this with separate visitor, staff, and kiosk identities:
 12. SecureVisit finalizes the outcome, settles or releases the credit, creates notifications, and records audit history.
 13. Refresh each participant's pages and verify the same persisted state.
 14. Repeat the payment webhook and termination requests and verify no duplicate ledger entries or transitions.
-

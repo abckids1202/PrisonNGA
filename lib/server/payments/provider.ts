@@ -1,13 +1,15 @@
 export type PaymentCheckout = { provider: string; providerReference: string; checkoutUrl: string | null };
 
-export type PaymentWebhook = { eventId: string; eventType: string; paymentIntentId?: string; providerReference?: string; status?: string };
+export type PaymentWebhook = { eventId: string; eventType: string; paymentIntentId?: string; providerReference?: string; status?: string; amountMinor?: number; currency?: string };
 
-export function serializePaymentWebhookSnapshot(payload: Pick<PaymentWebhook, "eventType" | "paymentIntentId" | "providerReference" | "status">): string {
+export function serializePaymentWebhookSnapshot(payload: Pick<PaymentWebhook, "eventType" | "paymentIntentId" | "providerReference" | "status" | "amountMinor" | "currency">): string {
   return JSON.stringify({
     eventType: payload.eventType.trim().toUpperCase(),
     paymentIntentId: payload.paymentIntentId?.trim() || null,
     providerReference: payload.providerReference?.trim() || null,
     status: payload.status?.trim().toUpperCase() || null,
+    amountMinor: payload.amountMinor ?? null,
+    currency: payload.currency?.trim().toUpperCase() || null,
   });
 }
 

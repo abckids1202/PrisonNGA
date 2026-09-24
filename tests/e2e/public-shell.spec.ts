@@ -29,7 +29,7 @@ test("visitor workspace subroutes open the requested persisted section", async (
   await page.goto("/visitor/visits");
   await expect(page.getByRole("heading", { name: "Time together, made simple." })).toBeVisible();
   await page.goto("/visitor/connections");
-  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
   await page.goto("/visitor/credits");
   await expect(page.getByRole("heading", { name: "Keep your visits going." })).toBeVisible();
 });

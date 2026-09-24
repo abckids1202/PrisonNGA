@@ -22,7 +22,8 @@ export async function POST(request: Request) {
     if (!parsedPayload || typeof parsedPayload !== "object" || Array.isArray(parsedPayload)) throw new SecurityError("PAYMENT_WEBHOOK_INVALID", 400);
     const untrustedPayload = parsedPayload as Partial<PaymentWebhook>;
     if (typeof untrustedPayload.eventType !== "string" || !untrustedPayload.eventType.trim()
-      || [untrustedPayload.eventId, untrustedPayload.paymentIntentId, untrustedPayload.providerReference, untrustedPayload.status].some((value) => value !== undefined && typeof value !== "string")) {
+      || [untrustedPayload.eventId, untrustedPayload.paymentIntentId, untrustedPayload.providerReference, untrustedPayload.status, untrustedPayload.currency].some((value) => value !== undefined && typeof value !== "string")
+      || (untrustedPayload.amountMinor !== undefined && (!Number.isSafeInteger(untrustedPayload.amountMinor) || untrustedPayload.amountMinor <= 0))) {
       throw new SecurityError("PAYMENT_WEBHOOK_INVALID", 400);
     }
     const eventType = untrustedPayload.eventType.trim().toUpperCase();
@@ -32,13 +33,15 @@ export async function POST(request: Request) {
       paymentIntentId: untrustedPayload.paymentIntentId?.trim(),
       providerReference: untrustedPayload.providerReference?.trim(),
       status: untrustedPayload.status?.trim().toUpperCase(),
+      amountMinor: untrustedPayload.amountMinor,
+      currency: untrustedPayload.currency?.trim().toUpperCase(),
     };
     const suppliedProvider = request.headers.get("x-payment-provider")?.trim().toLowerCase();
     if (suppliedProvider && suppliedProvider !== configuredProvider) throw new SecurityError("PAYMENT_WEBHOOK_PROVIDER_MISMATCH", 400);
     const provider = configuredProvider;
     const eventKey = payload.eventId || request.headers.get("x-payment-event-id")?.trim();
     if (!eventKey || eventKey.length > 256 || /[\u0000-\u001f\u007f]/.test(eventKey) || !provider) throw new SecurityError("PAYMENT_WEBHOOK_INVALID", 400);
-    if (eventType.length > 80 || (payload.paymentIntentId?.length || 0) > 128 || (payload.providerReference?.length || 0) > 256 || (payload.status?.length || 0) > 80) {
+    if (eventType.length > 80 || (payload.paymentIntentId?.length || 0) > 128 || (payload.providerReference?.length || 0) > 256 || (payload.status?.length || 0) > 80 || (payload.currency?.length || 0) > 12) {
       throw new SecurityError("PAYMENT_WEBHOOK_INVALID", 400);
     }
     const eventSnapshot = serializePaymentWebhookSnapshot({
@@ -46,6 +49,8 @@ export async function POST(request: Request) {
       paymentIntentId: payload.paymentIntentId,
       providerReference: payload.providerReference,
       status: payload.status,
+      amountMinor: payload.amountMinor,
+      currency: payload.currency,
     });
     const inserted = await d1.prepare(`INSERT OR IGNORE INTO payment_provider_events (id, provider, event_key, event_type, payload, status, attempt_count, available_at, created_at) VALUES (?, ?, ?, ?, ?, 'RECEIVED', 0, CURRENT_TIMESTAMP, ?)`).bind(crypto.randomUUID(), provider, eventKey, eventType, eventSnapshot, new Date().toISOString()).run();
     if (!inserted.meta.changes) {
