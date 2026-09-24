@@ -77,3 +77,20 @@ test("payment refund rolls back the refund ledger and intent status when audit p
   assert.equal(d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE id = 'account-1'").get().available_credits, 2);
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 0);
 });
+
+test("stale failure events are ignored after a payment has succeeded", async () => {
+  const d1 = new D1();
+  await processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-1", payload: event });
+  d1.sqlite.exec("UPDATE payment_provider_events SET event_key = 'failed-1', status = 'PROCESSING'");
+  const result = await processPaymentProviderEvent(d1, {
+    provider: "webhook",
+    eventKey: "failed-1",
+    payload: { eventType: "PAYMENT_EXPIRED", eventId: "failed-1", paymentIntentId: "payment-1", providerReference: "provider-1", status: "EXPIRED" },
+  });
+  assert.equal(result.ignored, "PAYMENT_INTENT_STATE_CHANGED");
+  assert.equal(result.status, "SUCCEEDED");
+  assert.equal(d1.sqlite.prepare("SELECT status FROM payment_intents WHERE id = 'payment-1'").get().status, "SUCCEEDED");
+  assert.equal(d1.sqlite.prepare("SELECT status FROM payment_provider_events WHERE event_key = 'failed-1'").get().status, "IGNORED");
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 1);
+});

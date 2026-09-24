@@ -40,9 +40,9 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
     const accountId = await ensureCreditAccount(d1, { facilityId: intent.facility_id, userId: intent.user_id });
     const results = await d1.batch([
       d1.prepare("UPDATE payment_intents SET provider = ?, status = 'SUCCEEDED', provider_reference = COALESCE(?, provider_reference), version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED', 'SUCCEEDED')").bind(provider, payload.providerReference || null, now, intent.id, intent.facility_id, intent.user_id),
+      ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: "SUCCEEDED", eventType: payload.eventType, correlationId }),
       ...settlePaymentPurchaseStatements(d1, { paymentIntentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, accountId, amount: intent.credit_quantity, reason: `Payment ${eventKey} settled.`, now, requireSucceeded: true }),
       d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
-      ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: "SUCCEEDED", eventType: payload.eventType, correlationId }),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("PAYMENT_INTENT_STATE_CHANGED", 409);
     return { status: "SUCCEEDED", paymentIntentId: intent.id };
@@ -62,18 +62,25 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
       }
       const results = await d1.batch([
         d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ${allowedPriorStatuses}`).bind(provider, nextStatus, now, intent.id, intent.facility_id, intent.user_id),
+        ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
         ...refundStatements,
         d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
-        ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
       ]);
-      if (!results[0]?.meta.changes) throw new SecurityError("PAYMENT_INTENT_STATE_CHANGED", 409);
+      if (!results[0]?.meta.changes) {
+        await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
+        return { status: current.status, paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_STATE_CHANGED" };
+      }
       return { status: nextStatus, paymentIntentId: intent.id };
     }
-    await d1.batch([
+    const results = await d1.batch([
       d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED')`).bind(provider, nextStatus, now, intent.id),
-      d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
       ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
+      d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
     ]);
+    if (!results[0]?.meta.changes) {
+      await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
+      return { status: intent.status, paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_STATE_CHANGED" };
+    }
     return { status: nextStatus, paymentIntentId: intent.id };
   }
   await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
