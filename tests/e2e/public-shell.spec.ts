@@ -18,6 +18,22 @@ test("visitor workspace is a separate authenticated boundary", async ({ page }) 
   await expect(page.getByText("Action center", { exact: true })).toHaveCount(0);
 });
 
+test("visitor workspace subroutes open the requested persisted section", async ({ page }) => {
+  const email = `routes-${Date.now()}@example.test`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { data: { email } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
+  const verify = await page.request.post("/api/auth/visitor/verify", { data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Route Visitor" } });
+  expect(verify.status()).toBe(200);
+
+  await page.goto("/visitor/visits");
+  await expect(page.getByRole("heading", { name: "Time together, made simple." })).toBeVisible();
+  await page.goto("/visitor/connections");
+  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await page.goto("/visitor/credits");
+  await expect(page.getByRole("heading", { name: "Keep your visits going." })).toBeVisible();
+});
+
 test("visitor can complete the development OTP flow through the sign-in form", async ({ page }) => {
   const email = `form-${Date.now()}@example.test`;
   await page.goto("/visitor");
