@@ -82,6 +82,11 @@ export function assertVisitorJoinAllowed(record: SessionRecord): void {
   if (record.prisoner_status !== "ACTIVE" || record.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
 }
 
+export function assertStaffObserverJoinAllowed(record: SessionRecord): void {
+  assertJoinable(record);
+  if (record.appointment_status !== "IN_PROGRESS") throw new SecurityError("SESSION_NOT_AVAILABLE", 409);
+}
+
 export function toSessionPayload(record: SessionRecord) {
   return {
     id: record.id,

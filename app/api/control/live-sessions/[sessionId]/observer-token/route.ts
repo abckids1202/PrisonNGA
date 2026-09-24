@@ -1,7 +1,7 @@
 import { getD1 } from "@/db/runtime";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { createLiveKitProvider, getVideoConfig } from "@/lib/server/video/provider";
-import { assertJoinable, getStaffSession, sessionTokenTtlSeconds, toSessionPayload } from "@/lib/server/video/session";
+import { assertStaffObserverJoinAllowed, getStaffSession, sessionTokenTtlSeconds, toSessionPayload } from "@/lib/server/video/session";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
 type RouteContext = { params: Promise<{ sessionId: string }> };
@@ -14,7 +14,7 @@ export async function POST(request: Request, context: RouteContext) {
     const body = await request.json() as { reason?: string };
     const reason = assertReason(body.reason);
     const session = await getStaffSession(sessionId, authorization.facilityId);
-    assertJoinable(session);
+    assertStaffObserverJoinAllowed(session);
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `staff-observer-token:${authorization.facilityId}:${authorization.userId}:${sessionId}`, limit: 12, windowSeconds: 60 * 10 });
     const config = await getVideoConfig();
