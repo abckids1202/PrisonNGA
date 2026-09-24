@@ -8,7 +8,7 @@ import { assertReason, getRequestContext, requirePermission, securityErrorRespon
 import { canTransitionAppointment } from "../../../../lib/server/workflow";
 import { validateVisitWindow } from "../../../../lib/server/visit-policy";
 
-const commands = ["approve", "reject", "request_info", "cancel"] as const;
+const commands = ["approve", "reject", "request_info", "cancel", "no_show"] as const;
 type AppointmentCommand = typeof commands[number];
 
 async function getAssignedResources(d1: D1Database, facilityId: string, appointmentId: string): Promise<Allocation | null> {
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
       CASE WHEN EXISTS (SELECT 1 FROM visitor_relationships vr WHERE vr.facility_id = a.facility_id AND vr.prisoner_id = a.prisoner_id AND vr.visitor_user_id = a.visitor_user_id AND vr.status = 'APPROVED') THEN 1 ELSE 0 END AS relationship_approved
       FROM appointments a INNER JOIN prisoners p ON p.id = a.prisoner_id INNER JOIN facilities f ON f.id = a.facility_id LEFT JOIN visit_policies vp ON vp.facility_id = f.id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id WHERE a.id = ? AND a.facility_id = ?`).bind(appointmentId, authorization.facilityId).first<{ id: string; facility_id: string; visitor_user_id: string; prisoner_id: string; status: string; version: number; requested_start: string; requested_end: string; appointment_timezone: string | null; appointment_policy_version: number | null; duration_minutes: number | null; prisoner_status: string; visitation_status: string; facility_state: string; facility_timezone: string | null; policy_version: number | null; min_duration_minutes: number | null; max_duration_minutes: number | null; min_advance_minutes: number | null; max_advance_days: number | null; daily_start_time: string | null; daily_end_time: string | null; credit_account_id: string | null; available_credits: number | null; active_credit_reservation: number; relationship_approved: number }>();
     if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
-    const nextStatus = command === "approve" ? "APPROVED" : command === "reject" ? "REJECTED" : command === "request_info" ? "UNDER_REVIEW" : "CANCELLED_BY_FACILITY";
+    const nextStatus = command === "approve" ? "APPROVED" : command === "reject" ? "REJECTED" : command === "request_info" ? "UNDER_REVIEW" : command === "no_show" ? "NO_SHOW" : "CANCELLED_BY_FACILITY";
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     const idempotencyScope = `appointment-decision:${authorization.facilityId}:${authorization.userId}:${appointmentId}`;
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope: idempotencyScope, key: idempotencyKey };
     if (current.status === nextStatus) {
-      if (command === "cancel" || command === "reject") {
+      if (command === "cancel" || command === "reject" || command === "no_show") {
         if (current.credit_account_id) await releaseVisitCredit(d1, { accountId: current.credit_account_id, appointmentId, actorUserId: authorization.userId, reason: `Appointment ${command}ed by facility.` });
         await releaseVisitResources(d1, appointmentId, authorization.facilityId);
       }
@@ -78,6 +78,7 @@ export async function POST(request: Request) {
     }
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_APPOINTMENT", 409);
     if (!canTransitionAppointment(current.status, nextStatus)) throw new SecurityError("INVALID_APPOINTMENT_TRANSITION", 409);
+    if (command === "no_show" && Date.parse(current.requested_end) > Date.now()) throw new SecurityError("NO_SHOW_TOO_EARLY", 409);
     if (command === "approve" && (current.prisoner_status !== "ACTIVE" || current.visitation_status !== "APPROVED" || !current.relationship_approved)) throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
     if (command === "approve" && current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_APPOINTMENTS", 409);
     if (command === "approve" && (!current.credit_account_id || (!current.active_credit_reservation && Number(current.available_credits || 0) < 1))) throw new SecurityError("INSUFFICIENT_VISIT_CREDITS", 409);
