@@ -655,11 +655,10 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
     return () => { active = false; };
   }, [onCreditsLoaded, refreshTick]);
 
-  async function startPurchase(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function beginPurchase(targetFacilityId: string, targetQuantity: number) {
     if (!checkoutAvailable) return setError(checkoutUnavailableReason === "VISIT_CREDIT_PRICE_NOT_CONFIGURED" ? "The facility has not configured an approved Visit Credit price." : "Secure checkout is not configured at this facility yet. Your balance has not been charged.");
-    if (!facilityId || pricePerCredit === null) return setError("Choose an available facility before continuing.");
-    const fingerprint = `${facilityId}:${quantity}`;
+    if (!targetFacilityId || pricePerCredit === null) return setError("Choose an available facility before continuing.");
+    const fingerprint = `${targetFacilityId}:${targetQuantity}`;
     if (!idempotencyRef.current || idempotencyRef.current.fingerprint !== fingerprint) idempotencyRef.current = { fingerprint, key: crypto.randomUUID() };
     setBusy(true);
     setError("");
@@ -668,7 +667,7 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
       const response = await fetch("/api/visitor/payments", {
         method: "POST", credentials: "include",
         headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyRef.current.key },
-        body: JSON.stringify({ facilityId, creditQuantity: quantity }),
+        body: JSON.stringify({ facilityId: targetFacilityId, creditQuantity: targetQuantity }),
       });
       const body = await response.json() as { paymentIntent?: { id: string; status: string; checkoutUrl?: string | null; checkout_url?: string | null }; error?: string };
       if (!response.ok || !body.paymentIntent) {
@@ -689,6 +688,23 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
       setBusy(false);
     }
   }
+
+  async function startPurchase(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await beginPurchase(facilityId, quantity);
+  }
+
+  const paymentStatus = (status: string) => {
+    switch (status) {
+      case "SUCCEEDED": return { label: "Confirmed", tone: "green" as const, detail: "Credits are available in your balance." };
+      case "CHECKOUT_CREATED": return { label: "Checkout open", tone: "orange" as const, detail: "Finish payment with the payment service." };
+      case "FAILED": return { label: "Payment failed", tone: "blue" as const, detail: "No credits were added. You can try checkout again." };
+      case "EXPIRED": return { label: "Checkout expired", tone: "blue" as const, detail: "No credits were added. Start a new checkout when ready." };
+      case "REFUNDED": return { label: "Refunded", tone: "blue" as const, detail: "The payment was reversed; credits were removed or returned for review." };
+      case "DISPUTED": return { label: "Under payment review", tone: "orange" as const, detail: "The payment provider reported a dispute. Credit access may be restricted while it is reviewed." };
+      default: return { label: status.replaceAll("_", " "), tone: "orange" as const, detail: "We are waiting for the payment provider to confirm this attempt." };
+    }
+  };
 
   const available = accounts.reduce((sum, account) => sum + Number(account.available_credits || 0), 0);
   const reserved = accounts.reduce((sum, account) => sum + Number(account.reserved_credits || 0), 0);
@@ -713,7 +729,7 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
     <div className="sv4-section-heading"><div><p className="sv4-kicker">Your balance</p><h2>Credit activity</h2></div></div>
     {ledger.length ? <div className="sv4-credit-list">{ledger.map((entry) => <div key={entry.id}><span className={`sv4-credit-dot ${entry.amount > 0 ? "green" : entry.amount < 0 ? "orange" : "blue"}`}>{entry.amount > 0 ? "+" : entry.amount < 0 ? "−" : "✓"}</span><span><strong>{entryLabel(entry)}</strong><small>{entry.reason} · {new Date(entry.created_at).toLocaleDateString("id-ID")}</small></span><b>{entry.amount > 0 ? "+" : ""}{entry.amount}</b></div>)}</div> : <div className="sv4-empty-inline">{loading ? "Loading credit activity…" : "Your confirmed credit activity will appear here."}</div>}
     <div className="sv4-section-heading"><div><p className="sv4-kicker">Payments</p><h2>Checkout history</h2></div><button className="sv4-text-link" onClick={() => setRefreshTick((value) => value + 1)} disabled={loading}>Refresh status ↻</button></div>
-    {payments.length ? <div className="sv4-payment-list">{payments.map((payment) => <div key={payment.id}><span><strong>{payment.credit_quantity} {payment.credit_quantity === 1 ? "Visit Credit" : "Visit Credits"}</strong><small>{new Date(payment.created_at).toLocaleString("id-ID")} · {currency.format(payment.amount_minor)}</small></span><VisitorStatus tone={payment.status === "SUCCEEDED" ? "green" : payment.status === "FAILED" || payment.status === "REFUNDED" ? "blue" : "orange"}>{payment.status.replaceAll("_", " ")}</VisitorStatus>{payment.status === "CHECKOUT_CREATED" && payment.checkout_url && <button type="button" onClick={() => window.location.assign(payment.checkout_url!)}>Continue checkout →</button>}</div>)}</div> : <div className="sv4-empty-inline">Your payment attempts will appear here.</div>}
+    {payments.length ? <div className="sv4-payment-list">{payments.map((payment) => { const state = paymentStatus(payment.status); return <div key={payment.id}><span><strong>{payment.credit_quantity} {payment.credit_quantity === 1 ? "Visit Credit" : "Visit Credits"}</strong><small>{new Date(payment.created_at).toLocaleString("id-ID")} · {currency.format(payment.amount_minor)}</small><em>{state.detail}</em></span><VisitorStatus tone={state.tone}>{state.label}</VisitorStatus>{payment.status === "CHECKOUT_CREATED" && payment.checkout_url && <button type="button" onClick={() => window.location.assign(payment.checkout_url!)}>Continue checkout →</button>}{["FAILED", "EXPIRED"].includes(payment.status) && checkoutAvailable && <button type="button" disabled={busy} onClick={() => void beginPurchase(payment.facility_id, payment.credit_quantity)}>{busy ? "Preparing…" : "Try again →"}</button>}</div>; })}</div> : <div className="sv4-empty-inline">Your payment attempts will appear here.</div>}
   </div>;
 }
 
