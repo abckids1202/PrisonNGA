@@ -30,7 +30,10 @@ export function visitorAppointmentDetailStatement(
         ELSE 'NOT_RESERVED'
       END AS visit_credit_status,
       (SELECT cle.id FROM credit_ledger_entries cle WHERE cle.appointment_id = a.id AND cle.entry_type IN ('CONSUMPTION', 'RESERVATION_RELEASE') ORDER BY cle.created_at DESC, cle.id DESC LIMIT 1) AS settlement_ledger_entry_id,
-      (SELECT cle.entry_type FROM credit_ledger_entries cle WHERE cle.appointment_id = a.id AND cle.entry_type IN ('CONSUMPTION', 'RESERVATION_RELEASE') ORDER BY cle.created_at DESC, cle.id DESC LIMIT 1) AS settlement_entry_type
+      (SELECT cle.entry_type FROM credit_ledger_entries cle WHERE cle.appointment_id = a.id AND cle.entry_type IN ('CONSUMPTION', 'RESERVATION_RELEASE') ORDER BY cle.created_at DESC, cle.id DESC LIMIT 1) AS settlement_entry_type,
+      (SELECT cle.amount FROM credit_ledger_entries cle WHERE cle.appointment_id = a.id AND cle.entry_type IN ('CONSUMPTION', 'RESERVATION_RELEASE') ORDER BY cle.created_at DESC, cle.id DESC LIMIT 1) AS settlement_amount,
+      (SELECT cle.reason FROM credit_ledger_entries cle WHERE cle.appointment_id = a.id AND cle.entry_type IN ('CONSUMPTION', 'RESERVATION_RELEASE') ORDER BY cle.created_at DESC, cle.id DESC LIMIT 1) AS settlement_reason,
+      (SELECT cle.created_at FROM credit_ledger_entries cle WHERE cle.appointment_id = a.id AND cle.entry_type IN ('CONSUMPTION', 'RESERVATION_RELEASE') ORDER BY cle.created_at DESC, cle.id DESC LIMIT 1) AS settlement_created_at
     FROM appointments a
     INNER JOIN facilities f ON f.id = a.facility_id
     INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id

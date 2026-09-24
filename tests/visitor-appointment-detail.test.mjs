@@ -23,7 +23,7 @@ class D1 {
       CREATE TABLE waiting_room_sessions (appointment_id TEXT, facility_id TEXT, state TEXT, visitor_presence TEXT, prisoner_presence TEXT, identity_state TEXT, camera_state TEXT, microphone_state TEXT, network_state TEXT, room_state TEXT, kiosk_state TEXT, restriction_state TEXT, last_checked_at TEXT);
       CREATE TABLE visit_sessions (id TEXT, appointment_id TEXT, facility_id TEXT, status TEXT, authorized_start_at TEXT, authorized_end_at TEXT, actual_started_at TEXT, actual_ended_at TEXT, recording_policy TEXT, recording_status TEXT);
       CREATE TABLE visitor_device_check_attempts (id TEXT PRIMARY KEY, facility_id TEXT, appointment_id TEXT, visitor_user_id TEXT, idempotency_key TEXT UNIQUE, camera_result TEXT, microphone_result TEXT, network_result TEXT, latency_ms INTEGER, correlation_id TEXT, created_at TEXT);
-      CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, appointment_id TEXT, entry_type TEXT, created_at TEXT);
+      CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, appointment_id TEXT, entry_type TEXT, amount INTEGER DEFAULT 0, reason TEXT DEFAULT '', created_at TEXT);
       CREATE TABLE appointment_status_events (id TEXT PRIMARY KEY, appointment_id TEXT, from_status TEXT, to_status TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       INSERT INTO facilities VALUES ('f1', 'Central Facility', 'NORMAL_OPERATIONS');
