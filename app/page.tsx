@@ -1476,7 +1476,7 @@ function ComplianceTab({ tab, onNotify }: { tab: string; onNotify: (message: str
     const loadingTimer = window.setTimeout(() => setLoading(true), 0);
     const requests: Promise<void>[] = [];
     if (tab === "Security Events") requests.push(fetch("/api/control/security-events", { cache: "no-store" }).then(async (response) => { if (!response.ok) throw new Error("SECURITY_EVENTS_UNAVAILABLE"); const body = await response.json() as { events?: ComplianceSecurityEvent[] }; if (active) setSecurityEvents(body.events || []); }));
-    if (tab === "Reports") requests.push(Promise.all([fetch("/api/audit/events?limit=100", { cache: "no-store" }), fetch("/api/control/finance", { cache: "no-store" })]).then(async ([auditResponse, financeResponse]) => { if (!auditResponse.ok || !financeResponse.ok) throw new Error("REPORT_DATA_UNAVAILABLE"); const auditBody = await auditResponse.json() as { events?: unknown[] }; const financeBody = await financeResponse.json() as { summary?: typeof financeSummary }; if (active) { setAuditCount(auditBody.events?.length || 0); setFinanceSummary(financeBody.summary || null); } }));
+    if (tab === "Reports") requests.push(fetch("/api/control/reports", { cache: "no-store", credentials: "include", headers: { accept: "application/json" } }).then(async (response) => { if (!response.ok) throw new Error("REPORT_DATA_UNAVAILABLE"); const body = await response.json() as { audit?: { eventCount?: number }; finance?: typeof financeSummary }; if (active) { setAuditCount(body.audit?.eventCount || 0); setFinanceSummary(body.finance || null); } }));
     Promise.all(requests).catch(() => undefined).finally(() => { if (active) setLoading(false); });
     return () => { active = false; window.clearTimeout(loadingTimer); };
   }, [tab]);
