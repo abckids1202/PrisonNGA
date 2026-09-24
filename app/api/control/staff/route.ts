@@ -68,6 +68,8 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("staff.manage");
     const body = await request.json() as { userId?: unknown; status?: unknown; expectedVersion?: unknown; reason?: unknown };
@@ -75,21 +77,43 @@ export async function PATCH(request: Request) {
     const status = typeof body.status === "string" && statuses.includes(body.status as typeof statuses[number]) ? body.status : "";
     const reason = assertReason(body.reason);
     if (!userId || !status) throw new SecurityError("INVALID_STAFF_STATUS", 400);
-    const d1 = await getD1();
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    d1 = await getD1();
+    const idempotencyScope = `staff-status:${authorization.facilityId}:${authorization.userId}:${userId}`;
+    const requestHash = await hashIdempotencyPayload({ userId, status, expectedVersion: body.expectedVersion ?? null, reason });
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope: idempotencyScope, key: idempotencyKey };
     const current = await d1.prepare("SELECT u.id, u.status, u.version FROM users u INNER JOIN staff_profiles sp ON sp.user_id = u.id WHERE u.id = ? AND u.user_type = 'STAFF' AND sp.facility_id = ?").bind(userId, authorization.facilityId).first<{ id: string; status: string; version: number }>();
     if (!current) throw new SecurityError("STAFF_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_STAFF_RECORD", 409);
     if (status === "DISABLED") await requireStepUp({ purpose: "staff_disable", userId: authorization.userId, targetId: userId, payload: { status, expectedVersion: body.expectedVersion ?? current.version, reason } });
-    if (current.status === status) return securityResponse({ userId, status, version: current.version, idempotent: true }, 200, context.requestId);
+    if (current.status === status) {
+      const responseBody = { userId, status, version: current.version, idempotent: true };
+      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
+      if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
+      idempotency = null;
+      return securityResponse(responseBody, 200, context.requestId);
+    }
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
+    const activeSessionCount = status === "ACTIVE" ? 0 : Number((await d1.prepare("SELECT COUNT(*) AS count FROM auth_sessions WHERE user_id = ? AND revoked_at IS NULL").bind(userId).first<{ count: number }>())?.count || 0);
     const auditGuard = { sql: "EXISTS (SELECT 1 FROM users WHERE id = ? AND version = ? AND status = ?)", values: [userId, current.version + 1, status] };
+    const responseBody = { userId, status, version: current.version + 1, sessionsRevoked: activeSessionCount, correlationId };
     const results = await d1.batch([
       d1.prepare("UPDATE users SET status = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?").bind(status, now, userId, current.version),
       d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND ? <> 'ACTIVE' AND EXISTS (SELECT 1 FROM users WHERE id = ? AND version = ? AND status = ?)").bind(now, userId, status, userId, current.version + 1, status),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: `STAFF_${status}`, entityType: "staff_user", entityId: userId, reason, oldValues: { status: current.status }, newValues: { status, sessionsRevoked: status === "ACTIVE" ? 0 : "all active sessions" }, requestId: context.requestId, correlationId, eventType: `STAFF_${status}`, payload: { userId, status } }, auditGuard),
+      completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: auditGuard }),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("STALE_STAFF_RECORD", 409);
-    return securityResponse({ userId, status, version: current.version + 1, sessionsRevoked: status === "ACTIVE" ? 0 : results[1]?.meta.changes || 0, correlationId }, 200, context.requestId);
-  } catch (error) { return securityErrorResponse(error, context.requestId); }
+    idempotency = null;
+    return securityResponse(responseBody, 200, context.requestId);
+  } catch (error) {
+    if (d1 && idempotency) {
+      try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original staff status error. */ }
+    }
+    return securityErrorResponse(error, context.requestId);
+  }
 }
