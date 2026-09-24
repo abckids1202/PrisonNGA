@@ -3,6 +3,7 @@ import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErr
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { validateEvidenceUpload } from "../../../../../lib/server/evidence-validation";
 import { scanEvidence } from "../../../../../lib/server/evidence-scanner";
+import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 
 function safeFilename(value: string): string {
   const cleaned = value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
     try { validateEvidenceUpload({ contentType: file.type, bytes }); }
     catch (error) { throw new SecurityError(error instanceof Error ? error.message : "EVIDENCE_FILE_NOT_ALLOWED", 400); }
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `visitor-evidence-upload:${visitor.userId}`, limit: 20, windowSeconds: 60 * 60 });
     const ownedCase = await d1.prepare(`SELECT vc.id, vc.facility_id FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id WHERE vc.id = ? AND vr.visitor_user_id = ?`).bind(verificationCaseId, visitor.userId).first<{ id: string; facility_id: string }>();
     if (!ownedCase) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
     const digest = await crypto.subtle.digest("SHA-256", bytes);

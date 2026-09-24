@@ -3,6 +3,7 @@ import { getRequestContext, requireVisitorIdentity, securityErrorResponse, secur
 import { claimIdempotency, hashIdempotencyPayload, releaseIdempotencyClaim } from "../../../../lib/server/idempotency";
 import { validateVisitWindow } from "../../../../lib/server/visit-policy";
 import { cancelVisitorAppointmentStatements, createVisitorAppointmentStatements, rescheduleVisitorAppointmentStatements } from "../../../../lib/server/visitor-appointments";
+import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 
 const activeStatuses = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING", "IN_PROGRESS"];
 
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     if (!relationshipId || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) throw new SecurityError("INVALID_APPOINTMENT_WINDOW", 400);
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `visitor-appointment-create:${visitor.userId}`, limit: 20, windowSeconds: 60 * 60 });
     const idempotencyScope = `visitor:${visitor.userId}:appointment:create`;
     const requestHash = await hashIdempotencyPayload({ relationshipId, requestedStart, requestedEnd, appointmentType });
     const claim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
@@ -113,6 +115,7 @@ export async function PATCH(request: Request) {
     const action = body.action === "cancel" || body.action === "reschedule" ? body.action : "";
     if (!appointmentId || !action) throw new SecurityError("INVALID_APPOINTMENT_ACTION", 400);
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `visitor-appointment-change:${visitor.userId}`, limit: 30, windowSeconds: 60 * 60 });
     const appointment = await d1.prepare(`SELECT a.id, a.facility_id, a.prisoner_id, a.status, a.version, a.requested_start, a.requested_end, f.current_state, vp.version AS policy_version, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time, f.timezone, ca.id AS credit_account_id
       FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id LEFT JOIN visit_policies vp ON vp.facility_id = a.facility_id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
       WHERE a.id = ? AND a.visitor_user_id = ?`).bind(appointmentId, visitor.userId).first<Record<string, string | number | null>>();

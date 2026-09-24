@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createVisitorRelationshipStatements } from "../lib/server/visitor-relationships.ts";
+
+test("visitor relationship and evidence writes have explicit abuse-rate boundaries", async () => {
+  const relationshipRoute = await readFile(new URL("../app/api/visitor/relationships/route.ts", import.meta.url), "utf8");
+  const evidenceRoute = await readFile(new URL("../app/api/visitor/verification/evidence/route.ts", import.meta.url), "utf8");
+  assert.match(relationshipRoute, /visitor-relationship-submit:\$\{visitor\.userId\}/);
+  assert.match(evidenceRoute, /visitor-evidence-upload:\$\{visitor\.userId\}/);
+  assert.match(relationshipRoute, /enforceRateLimit/);
+  assert.match(evidenceRoute, /enforceRateLimit/);
+});
 
 class SQLiteD1Statement {
   values = [];

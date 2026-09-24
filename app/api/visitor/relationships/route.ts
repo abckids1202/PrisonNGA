@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 import { createVisitorRelationshipStatements } from "../../../../lib/server/visitor-relationships";
 
 export async function GET() {
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     const relationshipType = typeof body.relationshipType === "string" ? body.relationshipType.trim().slice(0, 80) : "";
     if (!facilityId || !prisonerId || relationshipType.length < 2) throw new SecurityError("INVALID_RELATIONSHIP_REQUEST", 400);
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `visitor-relationship-submit:${visitor.userId}`, limit: 10, windowSeconds: 24 * 60 * 60 });
     const prisoner = await d1.prepare("SELECT id, facility_id, status, visitation_status FROM prisoners WHERE id = ? AND facility_id = ?").bind(prisonerId, facilityId).first<{ id: string; facility_id: string; status: string; visitation_status: string }>();
     if (!prisoner || prisoner.status !== "ACTIVE" || prisoner.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 404);
     const existing = await d1.prepare(`SELECT vr.id, vr.status, vc.id AS verification_id FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id WHERE vr.visitor_user_id = ? AND vr.prisoner_id = ?`).bind(visitor.userId, prisonerId).first<{ id: string; status: string; verification_id: string | null }>();

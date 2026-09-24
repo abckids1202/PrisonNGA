@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { cancelVisitorAppointmentStatements, createVisitorAppointmentStatements, rescheduleVisitorAppointmentStatements } from "../lib/server/visitor-appointments.ts";
+
+test("visitor appointment mutations use a visitor-scoped rate-limit boundary", async () => {
+  const source = await readFile(new URL("../app/api/visitor/appointments/route.ts", import.meta.url), "utf8");
+  assert.match(source, /visitor-appointment-create:\$\{visitor\.userId\}/);
+  assert.match(source, /visitor-appointment-change:\$\{visitor\.userId\}/);
+  assert.match(source, /enforceRateLimit/);
+});
 
 class Statement {
   constructor(db, sql) { this.db = db; this.sql = sql; }
