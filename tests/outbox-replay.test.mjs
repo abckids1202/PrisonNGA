@@ -37,3 +37,10 @@ test("outbox replay records audit after the event moves to pending", async () =>
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 2);
 });
+
+test("outbox worker consults persisted delivery state before retrying external notification", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  assert.match(source, /SELECT id FROM notifications WHERE idempotency_key = \? AND status = 'DELIVERED'/);
+  assert.match(source, /if \(!alreadyDelivered\)/);
+  assert.match(source, /externalNotificationKey/);
+});

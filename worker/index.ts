@@ -172,9 +172,13 @@ async function processOutbox(env: Env): Promise<void> {
           if (!visitor) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
           const channel = visitor.email ? "EMAIL" : visitor.phone ? "SMS" : null;
           if (!channel) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
-          await deliverNotification({ notificationId: row.id, email: visitor.email, phone: visitor.phone, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
-          await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:${channel.toLowerCase()}`, row.facility_id, visitorUserId, channel, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:${channel.toLowerCase()}`, now).run();
+          const externalNotificationKey = `${row.id}:visitor:${channel.toLowerCase()}`;
+          const alreadyDelivered = await env.DB.prepare("SELECT id FROM notifications WHERE idempotency_key = ? AND status = 'DELIVERED' LIMIT 1").bind(externalNotificationKey).first<{ id: string }>();
+          if (!alreadyDelivered) {
+            await deliverNotification({ notificationId: row.id, email: visitor.email, phone: visitor.phone, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
+            await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:${channel.toLowerCase()}`, row.facility_id, visitorUserId, channel, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, externalNotificationKey, now).run();
+          }
           await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'DELIVERED', finished_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, externalAttemptId).run();
         } else {
           await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'SKIPPED', error_message = 'External delivery is not configured for this environment.', finished_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, externalAttemptId).run();
