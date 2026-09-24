@@ -28,3 +28,13 @@ test("visit policy admin rejects malformed booking horizon and operating hours",
   assert.equal(parseEditableVisitPolicy({ ...valid, dailyStartTime: "17:00", dailyEndTime: "08:00" }), null);
   assert.equal(parseEditableVisitPolicy(null), null);
 });
+
+test("visit policy mutation is replay-safe and preserves the step-up boundary", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../app/api/control/visit-policy/route.ts", import.meta.url), "utf8");
+  assert.match(source, /Idempotency-Key/);
+  assert.match(source, /claimIdempotency\(database/);
+  assert.match(source, /completeIdempotencyStatement\(database/);
+  assert.match(source, /releaseIdempotencyClaim/);
+  assert.match(source, /requireStepUp/);
+});

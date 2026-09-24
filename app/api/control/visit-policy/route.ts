@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { parseEditableVisitPolicy } from "../../../../lib/server/visit-policy-admin";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
@@ -51,6 +52,8 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("facility.state.change");
     let body: Record<string, unknown>;
@@ -67,9 +70,17 @@ export async function PUT(request: Request) {
     if (!policy) throw new SecurityError("INVALID_VISIT_POLICY", 400);
     if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
 
-    const d1 = await getD1();
-    const current = await d1.prepare(selectPolicy).bind(authorization.facilityId).first<PolicyRow>();
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    const database = await getD1();
+    d1 = database;
+    const current = await database.prepare(selectPolicy).bind(authorization.facilityId).first<PolicyRow>();
     if (!current) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 404);
+    const scope = `visit-policy:${authorization.facilityId}`;
+    const requestHash = await hashIdempotencyPayload({ policy, reason, expectedVersion });
+    const claimed: IdempotencyClaim = await claimIdempotency(database, { scope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     if (current.version !== expectedVersion) throw new SecurityError("STALE_POLICY", 409);
     await requireStepUp({ purpose: "visit_policy_change", userId: authorization.userId, targetId: current.id, payload: { policy, reason, expectedVersion } });
 
@@ -78,17 +89,18 @@ export async function PUT(request: Request) {
     const nextSnapshot = { ...policy, version: nextVersion };
     const correlationId = crypto.randomUUID();
     const writeGuard = { sql: "changes() > 0", values: [] };
-    const statements = await d1.batch([
-      d1.prepare(`UPDATE visit_policies SET min_duration_minutes = ?, max_duration_minutes = ?,
+    const responseBody = { policy: { ...nextSnapshot, facilityId: authorization.facilityId, id: current.id, updatedAt: now }, correlationId };
+    const statements = await database.batch([
+      database.prepare(`UPDATE visit_policies SET min_duration_minutes = ?, max_duration_minutes = ?,
         min_advance_minutes = ?, max_advance_days = ?, daily_start_time = ?, daily_end_time = ?,
         version = version + 1, updated_at = ? WHERE facility_id = ? AND version = ?`)
         .bind(policy.minDurationMinutes, policy.maxDurationMinutes, policy.minAdvanceMinutes, policy.maxAdvanceDays,
           policy.dailyStartTime, policy.dailyEndTime, now, authorization.facilityId, current.version),
-      d1.prepare(`INSERT INTO visit_policy_history (id, facility_id, version, actor_user_id, reason, snapshot, created_at)
+      database.prepare(`INSERT INTO visit_policy_history (id, facility_id, version, actor_user_id, reason, snapshot, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), authorization.facilityId, nextVersion, authorization.userId, reason,
           JSON.stringify(nextSnapshot), now),
-      ...auditAndOutboxStatements(d1, {
+      ...auditAndOutboxStatements(database, {
         actorUserId: authorization.userId,
         actorRole: authorization.roles[0] || null,
         facilityId: authorization.facilityId,
@@ -103,10 +115,15 @@ export async function PUT(request: Request) {
         eventType: "VISIT_POLICY_UPDATED",
         payload: { facilityId: authorization.facilityId, version: nextVersion },
       }, writeGuard),
+      completeIdempotencyStatement(database, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM visit_policies WHERE facility_id = ? AND version = ?)", values: [authorization.facilityId, nextVersion] } }),
     ]);
-    if (!statements[0]?.meta.changes) throw new SecurityError("STALE_POLICY", 409);
-    return securityResponse({ policy: { ...nextSnapshot, facilityId: authorization.facilityId, id: current.id, updatedAt: now } }, 200, context.requestId);
+    if (!statements[0]?.meta.changes || !statements[statements.length - 1]?.meta.changes) throw new SecurityError("STALE_POLICY", 409);
+    idempotency = null;
+    return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {
+    if (d1 && idempotency) {
+      try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original policy error. */ }
+    }
     return securityErrorResponse(error, context.requestId);
   }
 }

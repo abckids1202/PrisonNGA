@@ -61,7 +61,7 @@ export default function VisitPolicyEditor() {
     try {
       const response = await fetch("/api/control/visit-policy", {
         method: "PUT",
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visit-policy-${crypto.randomUUID()}` },
         body: JSON.stringify({
           expectedVersion: policy.version,
           reason,
