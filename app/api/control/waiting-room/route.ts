@@ -4,6 +4,7 @@ import { createLiveKitProvider, createProviderRoomName } from "../../../../lib/s
 import { operationalLog } from "../../../../lib/server/observability";
 import { canTransitionWaitingRoom } from "../../../../lib/server/workflow";
 import { evaluateWaitingRoomReadiness } from "../../../../lib/server/waiting-room-readiness";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 
 const eligibleStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
 const commands = ["admit_visitor", "confirm_prisoner_presence", "run_preflight", "retry_device", "contact_visitor", "mark_late", "cancel_visit", "start_visit"] as const;
@@ -96,13 +97,17 @@ export async function GET() {
 export async function POST(request: Request) {
   const context = await getRequestContext();
   let roomCleanup: { provider: Awaited<ReturnType<typeof createLiveKitProvider>>; name: string } | null = null;
+  let databaseRef: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("appointment.review");
     const body = await request.json() as { appointmentId?: string; command?: string; expectedVersion?: number; reason?: string; staffNotes?: string };
     if (!body.appointmentId || !commands.includes(body.command as WaitingCommand)) throw new SecurityError("INVALID_WAITING_ROOM_COMMAND", 400);
     const command = body.command as WaitingCommand;
     const reason = assertReason(body.reason);
-    const d1 = await getD1();
+    const database = await getD1();
+    databaseRef = database;
+    const d1 = database;
     const current = await d1.prepare(`SELECT a.id, a.status AS appointment_status, a.version AS appointment_version, a.requested_start, a.requested_end, a.visitor_user_id, f.current_state,
         p.status AS prisoner_status, p.visitation_status,
         (SELECT vr.status FROM visitor_relationships vr WHERE vr.visitor_user_id = a.visitor_user_id AND vr.prisoner_id = a.prisoner_id AND vr.facility_id = a.facility_id LIMIT 1) AS relationship_status,
@@ -130,6 +135,19 @@ export async function POST(request: Request) {
       LEFT JOIN visit_sessions vs ON vs.appointment_id = a.id AND vs.facility_id = a.facility_id
       WHERE a.id = ? AND a.facility_id = ?`).bind(body.appointmentId, authorization.facilityId).first<Record<string, string | number | null>>();
     if (!current) throw new SecurityError("WAITING_APPOINTMENT_NOT_FOUND", 404);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    const scope = `waiting-room:${authorization.facilityId}:${body.appointmentId}`;
+    const requestHash = await hashIdempotencyPayload({ appointmentId: body.appointmentId, command, expectedVersion: body.expectedVersion ?? null, reason, staffNotes: body.staffNotes ?? null });
+    const claimed: IdempotencyClaim = await claimIdempotency(database, { scope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
+    const finish = async (responseBody: unknown, status = 200) => {
+      const completed = await database.batch([completeIdempotencyStatement(database, { ...idempotency!, status, body: responseBody })]);
+      if (!completed[0]?.meta.changes) throw new SecurityError("WAITING_ROOM_IDEMPOTENCY_CONFLICT", 409);
+      idempotency = null;
+      return securityResponse(responseBody, status, context.requestId);
+    };
     const currentVersion = Number(current.version || 1);
     if (body.expectedVersion !== undefined && body.expectedVersion !== currentVersion) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
     if (!eligibleStatuses.includes(current.appointment_status as typeof eligibleStatuses[number])) throw new SecurityError("APPOINTMENT_NOT_ELIGIBLE", 409);
@@ -143,7 +161,7 @@ export async function POST(request: Request) {
       if (current.visitor_presence !== "present" || current.prisoner_presence !== "present") throw new SecurityError("BOTH_PARTICIPANTS_NOT_PRESENT", 409);
     }
     if (command === "confirm_prisoner_presence" && !["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(currentState)) throw new SecurityError("PRISONER_PRESENCE_CANNOT_BE_CONFIRMED", 409);
-    if (command === "start_visit" && current.session_id && ["CONNECTING", "ACTIVE", "RECONNECTING"].includes(String(current.session_status))) return securityResponse({ appointmentId: body.appointmentId, sessionId: String(current.session_id), state: "LIVE", version: currentVersion, idempotent: true }, 200, context.requestId);
+    if (command === "start_visit" && current.session_id && ["CONNECTING", "ACTIVE", "RECONNECTING"].includes(String(current.session_status))) return finish({ appointmentId: body.appointmentId, sessionId: String(current.session_id), state: "LIVE", version: currentVersion, idempotent: true });
     if (command === "start_visit" && currentState !== "READY_TO_START") throw new SecurityError("WAITING_ROOM_NOT_READY", 409);
 
     const now = new Date().toISOString();
@@ -238,11 +256,14 @@ export async function POST(request: Request) {
     const results = await d1.batch(statements);
     if (!results[0]?.meta.changes) throw new SecurityError("STALE_APPOINTMENT_STATE", 409);
     roomCleanup = null;
-    return securityResponse({ appointmentId: body.appointmentId, sessionId: newSession?.id || current.session_id || null, state: nextState, version: nextVersion, correlationId }, 200, context.requestId);
+    return finish({ appointmentId: body.appointmentId, sessionId: newSession?.id || current.session_id || null, state: nextState, version: nextVersion, correlationId });
   } catch (error) {
     if (roomCleanup) {
       try { await roomCleanup.provider.endRoom(roomCleanup.name); }
       catch (error) { operationalLog("error", { event: "LIVEKIT_ORPHAN_ROOM_CLEANUP_FAILED", requestId: context.requestId, error }); }
+    }
+    if (databaseRef && idempotency) {
+      try { await releaseIdempotencyClaim(databaseRef, idempotency); } catch { /* Preserve the original waiting-room error. */ }
     }
     return securityErrorResponse(error, context.requestId);
   }

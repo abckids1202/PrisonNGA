@@ -774,7 +774,7 @@ function WaitingRoomPage({ facilityState, onNotify }: { facilityState: string; o
     }
     const command = ({ admit: "admit_visitor", confirm_prisoner: "confirm_prisoner_presence", checks: "run_preflight", contact: "contact_visitor", late: "mark_late", cancel: "cancel_visit", start: "start_visit" } as const)[kind];
     try {
-      const response = await fetch("/api/control/waiting-room", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ appointmentId: record.id, command, expectedVersion: record.backendVersion, reason: `Staff selected ${command.replaceAll("_", " ")} from the Waiting Room workflow.`, staffNotes: kind === "contact" ? "Staff contacted the assigned unit for a readiness update." : undefined }) });
+    const response = await fetch("/api/control/waiting-room", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `waiting-room-${crypto.randomUUID()}` }, credentials: "include", body: JSON.stringify({ appointmentId: record.id, command, expectedVersion: record.backendVersion, reason: `Staff selected ${command.replaceAll("_", " ")} from the Waiting Room workflow.`, staffNotes: kind === "contact" ? "Staff contacted the assigned unit for a readiness update." : undefined }) });
       const body = await response.json() as { error?: string; state?: WaitingState };
       if (!response.ok) throw new Error(body.error === "VIDEO_PROVIDER_NOT_CONFIGURED" ? "LiveKit is not configured for this environment yet." : body.error || "Waiting Room action was rejected by the staff API.");
       await refreshWaitingRoom();
