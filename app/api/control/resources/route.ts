@@ -133,13 +133,22 @@ export async function POST(request: Request) {
       return securityResponse({ resourceId: current.id, credentialStatus: "REVOKED", version: current.version + 1, correlationId }, 200, context.requestId);
     }
     if (body.command === "heartbeat") {
-      await d1.prepare("UPDATE resources SET last_heartbeat_at = ?, health_state = 'HEALTHY', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(now, now, current.id, authorization.facilityId, current.version).run();
+      const heartbeat = await d1.prepare("UPDATE resources SET last_heartbeat_at = ?, health_state = 'HEALTHY', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(now, now, current.id, authorization.facilityId, current.version).run();
+      if (!heartbeat.meta.changes) throw new SecurityError("STALE_RESOURCE", 409);
       return securityResponse({ resourceId: current.id, status: current.status, version: current.version + 1, reason }, 200, context.requestId);
     }
+    if (body.command !== "set_status") throw new SecurityError("INVALID_RESOURCE_COMMAND", 400);
     if (typeof body.status !== "string" || !["AVAILABLE", "ONLINE", "OFFLINE", "MAINTENANCE"].includes(body.status)) throw new SecurityError("INVALID_RESOURCE_STATUS", 400);
-    const result = await d1.prepare("UPDATE resources SET status = ?, health_state = CASE WHEN ? IN ('AVAILABLE', 'ONLINE') THEN 'HEALTHY' ELSE health_state END, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(body.status, body.status, now, current.id, authorization.facilityId, current.version).run();
-    if (!result.meta.changes) throw new SecurityError("STALE_RESOURCE", 409);
-    return securityResponse({ resourceId: current.id, status: body.status, version: current.version + 1, reason }, 200, context.requestId);
+    if (body.expectedVersion === undefined) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
+    const nextStatus = body.status;
+    const correlationId = crypto.randomUUID();
+    const resourceGuard = { sql: "EXISTS (SELECT 1 FROM resources WHERE id = ? AND facility_id = ? AND version = ? AND status = ?)", values: [current.id, authorization.facilityId, current.version + 1, nextStatus] };
+    const results = await d1.batch([
+      d1.prepare("UPDATE resources SET status = ?, health_state = CASE WHEN ? IN ('AVAILABLE', 'ONLINE') THEN 'HEALTHY' ELSE health_state END, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(nextStatus, nextStatus, now, current.id, authorization.facilityId, current.version),
+      ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "RESOURCE_STATUS_CHANGED", entityType: "resource", entityId: current.id, reason, oldValues: { status: current.status, version: current.version }, newValues: { status: nextStatus, version: current.version + 1 }, requestId: context.requestId, correlationId, eventType: "RESOURCE_STATUS_CHANGED", payload: { resourceId: current.id, status: nextStatus } }, resourceGuard),
+    ]);
+    if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes)) throw new SecurityError("STALE_RESOURCE", 409);
+    return securityResponse({ resourceId: current.id, status: nextStatus, version: current.version + 1, correlationId, reason }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }
