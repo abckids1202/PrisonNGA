@@ -2,6 +2,8 @@
 
 This document separates repository evidence from external launch prerequisites. A green local test suite does not prove that a provider, facility policy, or operational runbook is ready.
 
+The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.md](./FAILURE_HANDLING.md).
+
 ## Current repository evidence
 
 - Cloudflare Worker and D1 workflow foundation is present.
