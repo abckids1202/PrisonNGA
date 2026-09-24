@@ -30,8 +30,14 @@ export async function GET(request: Request) {
         .first();
       if (!reschedulable) throw new SecurityError("APPOINTMENT_NOT_RESCHEDULABLE", 409);
     }
-    const dayStart = facilityLocalDateTime(date, policy.daily_start_time, facility.timezone);
-    const dayEnd = facilityLocalDateTime(date, policy.daily_end_time, facility.timezone);
+    let dayStart: Date;
+    let dayEnd: Date;
+    try {
+      dayStart = facilityLocalDateTime(date, policy.daily_start_time, facility.timezone);
+      dayEnd = facilityLocalDateTime(date, policy.daily_end_time, facility.timezone);
+    } catch {
+      throw new SecurityError("INVALID_AVAILABILITY_DATE", 400);
+    }
     if (!Number.isFinite(dayStart.getTime()) || !Number.isFinite(dayEnd.getTime()) || dayEnd <= dayStart) throw new SecurityError("INVALID_AVAILABILITY_DATE", 400);
     const appointments = await d1.prepare(`SELECT requested_start, requested_end FROM appointments WHERE ((facility_id = ? AND prisoner_id = ?) OR visitor_user_id = ?) AND (? = '' OR id <> ?) AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS') AND requested_start < ? AND requested_end > ?`).bind(facilityId, prisonerId, visitor.userId, excludeAppointmentId, excludeAppointmentId, dayEnd.toISOString(), dayStart.toISOString()).all<{ requested_start: string; requested_end: string }>();
     const slots: string[] = [];
