@@ -37,6 +37,7 @@ The current repository already includes:
 - OIDC staff callbacks now require a configured `acr` and/or `amr` MFA claim; staging/production configuration fails closed when the claim requirement is missing.
 - SAML staff callbacks now request and validate the configured `AuthnContextClassRef` from the signed assertion; staging/production configuration fails closed when it is missing.
 - Failed OIDC and SAML callbacks now emit privacy-safe warning events with the provider, safe error category, request ID and hashed request context only; assertions, codes, tokens and identity payloads are never logged.
+- The readiness endpoint now applies the same central fail-closed environment validator used by deployment configuration, including MFA, step-up, pricing, provider, storage and delivery requirements; it reports only missing configuration names and never secret values.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Automated server tests and browser smoke tests. Current validation baseline is 227 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.

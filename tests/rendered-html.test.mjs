@@ -315,5 +315,17 @@ test("exposes a non-sensitive readiness endpoint", async () => {
   for (const key of ["payment", "paymentWebhook", "livekit", "evidenceStorage", "evidenceScanning", "visitorAuth", "staffIdentity", "notifications"]) {
     assert.equal(typeof body.checks.providerConfiguration[key], "boolean");
   }
+  assert.equal(typeof body.checks.environment.ok, "boolean");
+  assert.ok(Array.isArray(body.checks.environment.missing));
+  assert.ok(Array.isArray(body.checks.environment.warnings));
   assert.doesNotMatch(JSON.stringify(body), /LIVEKIT_API_SECRET|PAYMENT_WEBHOOK_SECRET|HASH_SALT/);
+});
+
+test("readiness applies the central fail-closed environment validator", async () => {
+  const source = await readFile(new URL("../app/api/health/readiness/route.ts", import.meta.url), "utf8");
+  assert.match(source, /validateEnvironment\(/);
+  assert.match(source, /environmentConfig\.ok/);
+  assert.match(source, /STAFF_OIDC_MFA_ACR/);
+  assert.match(source, /STAFF_SAML_MFA_ACR/);
+  assert.match(source, /STAFF_STEP_UP_SECRET/);
 });

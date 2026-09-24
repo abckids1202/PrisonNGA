@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { getEvidenceBucket } from "../../../../db/runtime";
 import { getRuntimeValue, securityResponse } from "../../../../lib/server/security";
+import { validateEnvironment } from "../../../../lib/server/config";
 import { getPaymentProvider } from "../../../../lib/server/payments/provider";
 import { getVideoConfig } from "../../../../lib/server/video/provider";
 import { getNotificationDelivery } from "../../../../lib/server/notifications/provider";
@@ -14,6 +15,14 @@ const requiredTables = [
   "payment_provider_events", "notifications", "incidents", "incident_events", "step_up_assertions",
 ];
 
+const configurationKeys = [
+  "SECUREVISIT_ENVIRONMENT", "SECUREVISIT_HASH_SALT", "STAFF_STEP_UP_SECRET", "VISITOR_AUTH_DELIVERY", "VISITOR_AUTH_WEBHOOK_URL", "VISITOR_AUTH_WEBHOOK_SECRET",
+  "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
+  "PAYMENT_PROVIDER", "VISIT_CREDIT_PRICE_MINOR", "PAYMENT_CHECKOUT_URL", "PAYMENT_PROVIDER_SECRET", "PAYMENT_WEBHOOK_SECRET", "NOTIFICATION_DELIVERY", "NOTIFICATION_WEBHOOK_URL", "NOTIFICATION_WEBHOOK_SECRET",
+  "STAFF_AUTH_PROVIDER", "STAFF_OIDC_ISSUER", "STAFF_OIDC_CLIENT_ID", "STAFF_OIDC_CLIENT_SECRET", "STAFF_OIDC_REDIRECT_URI", "STAFF_OIDC_MFA_ACR", "STAFF_OIDC_MFA_AMR",
+  "STAFF_SAML_ENTITY_ID", "STAFF_SAML_METADATA_URL", "STAFF_SAML_ENTRY_POINT", "STAFF_SAML_IDP_CERT", "STAFF_SAML_CALLBACK_URI", "STAFF_SAML_MFA_ACR",
+];
+
 export async function GET() {
   const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "invalid";
   try {
@@ -21,7 +30,7 @@ export async function GET() {
     const rows = await d1.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>();
     const present = new Set(rows.results.map((row) => row.name));
     const schemaReady = requiredTables.every((table) => present.has(table));
-    const [paymentProvider, videoConfig, notificationDelivery, evidenceBucket, notificationWebhookUrl, notificationWebhookSecret, visitorAuthDelivery, visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri] = await Promise.all([
+    const [paymentProvider, videoConfig, notificationDelivery, evidenceBucket, notificationWebhookUrl, notificationWebhookSecret, visitorAuthDelivery, visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, ...configurationValues] = await Promise.all([
       getPaymentProvider(),
       getVideoConfig(),
       getNotificationDelivery(),
@@ -45,7 +54,9 @@ export async function GET() {
       getRuntimeValue("STAFF_SAML_ENTRY_POINT"),
       getRuntimeValue("STAFF_SAML_IDP_CERT"),
       getRuntimeValue("STAFF_SAML_CALLBACK_URI"),
+      ...configurationKeys.map((key) => getRuntimeValue(key)),
     ]);
+    const environmentConfig = validateEnvironment({ DB: d1, EVIDENCE_BUCKET: evidenceBucket, ...Object.fromEntries(configurationKeys.map((key, index) => [key, configurationValues[index]])) });
     const isHttps = (value: string | null) => typeof value === "string" && /^https:\/\//i.test(value);
     const webhookConfigured = (url: string | null, secret: string | null) => isHttps(url) && Boolean(secret);
     const visitorAuth = visitorAuthDelivery === "webhook" && webhookConfigured(visitorAuthWebhookUrl, visitorAuthWebhookSecret);
@@ -67,9 +78,9 @@ export async function GET() {
       notifications: notificationDelivery === "in_app" || (Boolean(notificationWebhookUrl) && Boolean(notificationWebhookSecret)),
     };
     const providersReady = Object.values(providerConfiguration).every(Boolean);
-    const ready = schemaReady && (environment === "development" || providersReady);
-    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, providerConfiguration } }, ready ? 200 : 503);
+    const ready = schemaReady && environmentConfig.ok && (environment === "development" || providersReady);
+    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, providerConfiguration, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503);
   } catch {
-    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false } } }, 503);
+    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503);
   }
 }
