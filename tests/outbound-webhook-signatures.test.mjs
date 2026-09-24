@@ -19,6 +19,7 @@ test("outbound visitor, payment, and notification webhooks bind signatures to a 
   process.env.VISITOR_AUTH_WEBHOOK_SECRET = "visitor-secret";
   process.env.PAYMENT_PROVIDER = "webhook";
   process.env.PAYMENT_CHECKOUT_URL = "https://payments.example.test/checkout";
+  process.env.PAYMENT_REFUND_URL = "https://payments.example.test/refund";
   process.env.PAYMENT_PROVIDER_SECRET = "payment-secret";
   process.env.NOTIFICATION_DELIVERY = "webhook";
   process.env.NOTIFICATION_WEBHOOK_URL = "https://notify.example.test/send";
@@ -33,9 +34,10 @@ test("outbound visitor, payment, and notification webhooks bind signatures to a 
     const payment = await getPaymentProvider();
     assert.ok(payment);
     await payment.createCheckout({ paymentIntentId: "payment-1", email: "visitor@example.test", phone: null, creditQuantity: 1, amountMinor: 50000, currency: "IDR" });
+    await payment.requestRefund({ paymentIntentId: "payment-1", providerReference: "provider-1", amountMinor: 50000, currency: "IDR", reason: "Facility cancellation." });
     await deliverNotification({ notificationId: "notification-1", email: "visitor@example.test", phone: null, template: "APPOINTMENT_APPROVED", title: "Approved", body: "Your visit is approved.", payload: {} });
 
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
     for (const call of calls) {
       const headers = new Headers(call.init.headers);
       const timestamp = headers.get("x-securevisit-timestamp");
@@ -45,7 +47,8 @@ test("outbound visitor, payment, and notification webhooks bind signatures to a 
     }
     assert.equal(new Headers(calls[0].init.headers).get("idempotency-key"), "visitor-auth:challenge-1");
     assert.equal(new Headers(calls[1].init.headers).get("idempotency-key"), "payment-1");
-    assert.equal(new Headers(calls[2].init.headers).get("idempotency-key"), "notification-1:email");
+    assert.equal(new Headers(calls[2].init.headers).get("idempotency-key"), "refund:payment-1");
+    assert.equal(new Headers(calls[3].init.headers).get("idempotency-key"), "notification-1:email");
   } finally {
     globalThis.fetch = originalFetch;
     for (const key of Object.keys(process.env)) {

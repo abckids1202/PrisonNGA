@@ -38,6 +38,7 @@ The current repository already includes:
 - SAML staff callbacks now request and validate the configured `AuthnContextClassRef` from the signed assertion; staging/production configuration fails closed when it is missing.
 - Failed OIDC and SAML callbacks now emit privacy-safe warning events with the provider, safe error category, request ID and hashed request context only; assertions, codes, tokens and identity payloads are never logged.
 - The readiness endpoint now applies the same central fail-closed environment validator used by deployment configuration, including MFA, step-up, pricing, provider, storage and delivery requirements; it reports only missing configuration names and never secret values.
+- Staff finance now has a supervisor-only, step-up-protected refund request boundary with idempotency, persisted request state, provider-neutral signed initiation, audit/outbox evidence, retryable provider failure, and webhook-driven completion.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Automated server tests and browser smoke tests. Current validation baseline is 227 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
@@ -60,7 +61,7 @@ The current repository already includes:
 
 - The full browser journey is not yet a three-party test. Existing E2E tests cover the shell, OTP, persistence, kiosk boundary and session revocation, but not staff approval plus visitor device check plus kiosk presence plus LiveKit completion plus credit settlement.
 - The Management workspace still has intentionally unconnected sections, including policy areas beyond Visit Policies. They must either become real API-backed workflows or be clearly hidden from a pilot role.
-- Payment creation is now audited, but a real provider adapter, customer-facing checkout return handling, provider status polling, refund/dispute staff workflow and reconciliation dashboard still need completion.
+- Payment creation and refund requests are audited, but a real provider adapter, customer-facing checkout return handling, provider status polling, provider dispute workflow and reconciliation dashboard still need completion.
 - Notification records and outbox processing exist, but real email/SMS delivery adapters, templates, delivery receipts, retry operations and dead-letter replay need staging proof.
 - Visitor session controls still need production delivery, recovery, suspicious-login handling and device-management validation beyond the development OTP path.
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.

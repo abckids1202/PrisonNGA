@@ -548,6 +548,21 @@ export const paymentProviderEvents = sqliteTable("payment_provider_events", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({ eventKeyIdx: uniqueIndex("payment_provider_events_key_idx").on(table.provider, table.eventKey), createdIdx: index("payment_provider_events_created_idx").on(table.createdAt), retryIdx: index("payment_provider_events_retry_idx").on(table.status, table.availableAt, table.createdAt) }));
 
+export const paymentRefundRequests = sqliteTable("payment_refund_requests", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  paymentIntentId: text("payment_intent_id").notNull().references(() => paymentIntents.id),
+  requestedBy: text("requested_by").notNull().references(() => users.id),
+  provider: text("provider").notNull(),
+  providerReference: text("provider_reference"),
+  amountMinor: integer("amount_minor").notNull(),
+  currency: text("currency").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status", { enum: ["REQUESTED", "FAILED", "COMPLETED"] }).notNull().default("REQUESTED"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  ...timestamps,
+}, (table) => ({ idempotencyIdx: uniqueIndex("payment_refund_requests_idempotency_idx").on(table.idempotencyKey), facilityStatusIdx: index("payment_refund_requests_facility_status_idx").on(table.facilityId, table.status, table.createdAt), paymentIdx: index("payment_refund_requests_payment_idx").on(table.paymentIntentId, table.createdAt) }));
+
 export const notifications = sqliteTable("notifications", {
   id: text("id").primaryKey(),
   facilityId: text("facility_id").references(() => facilities.id),

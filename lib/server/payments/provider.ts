@@ -1,4 +1,5 @@
 export type PaymentCheckout = { provider: string; providerReference: string; checkoutUrl: string | null };
+export type PaymentRefundRequest = { provider: string; providerReference: string };
 
 export type PaymentWebhook = { eventId: string; eventType: string; paymentIntentId?: string; providerReference?: string; status?: string; amountMinor?: number; currency?: string };
 
@@ -15,6 +16,7 @@ export function serializePaymentWebhookSnapshot(payload: Pick<PaymentWebhook, "e
 
 export interface PaymentProvider {
   createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout>;
+  requestRefund(input: { paymentIntentId: string; providerReference: string; amountMinor: number; currency: string; reason: string }): Promise<PaymentRefundRequest>;
 }
 
 export async function getPaymentProvider(): Promise<PaymentProvider | null> {
@@ -22,15 +24,16 @@ export async function getPaymentProvider(): Promise<PaymentProvider | null> {
   if (!provider || provider === "none" || provider === "console") return null;
   if (provider === "webhook") {
     const url = await runtimeValue("PAYMENT_CHECKOUT_URL");
+    const refundUrl = await runtimeValue("PAYMENT_REFUND_URL");
     const secret = await runtimeValue("PAYMENT_PROVIDER_SECRET");
-    if (!url || !/^https:\/\//i.test(url) || !secret) return null;
-    return new WebhookCheckoutProvider(url, secret);
+    if (!url || !/^https:\/\//i.test(url) || !refundUrl || !/^https:\/\//i.test(refundUrl) || !secret) return null;
+    return new WebhookCheckoutProvider(url, refundUrl, secret);
   }
   return null;
 }
 
 class WebhookCheckoutProvider implements PaymentProvider {
-  constructor(private readonly url: string, private readonly secret: string) {}
+  constructor(private readonly url: string, private readonly refundUrl: string, private readonly secret: string) {}
 
   async createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout> {
     if (!input.email && !input.phone) throw new Error("PAYMENT_CONTACT_REQUIRED");
@@ -54,6 +57,28 @@ class WebhookCheckoutProvider implements PaymentProvider {
         if (parsed.protocol !== "https:" && !isLocalDevelopment) throw new Error("PAYMENT_CHECKOUT_INVALID_URL");
       }
       return { provider: "webhook", providerReference: result.providerReference, checkoutUrl };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async requestRefund(input: { paymentIntentId: string; providerReference: string; amountMinor: number; currency: string; reason: string }): Promise<PaymentRefundRequest> {
+    const payload = JSON.stringify(input);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(this.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${payload}`)));
+    const signature = Array.from(digest).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const response = await fetch(this.refundUrl, { method: "POST", headers: { "content-type": "application/json", "Idempotency-Key": `refund:${input.paymentIntentId}`, "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
+      if (!response.ok) throw new Error(`PAYMENT_REFUND_REQUEST_FAILED_${response.status}`);
+      const result = await response.json() as { providerReference?: unknown; refundReference?: unknown };
+      const providerReference = typeof result.refundReference === "string" && result.refundReference.trim()
+        ? result.refundReference.trim()
+        : typeof result.providerReference === "string" && result.providerReference.trim() ? result.providerReference.trim() : "";
+      if (!providerReference) throw new Error("PAYMENT_REFUND_INVALID_RESPONSE");
+      return { provider: "webhook", providerReference };
     } finally {
       clearTimeout(timeout);
     }

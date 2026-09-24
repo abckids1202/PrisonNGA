@@ -73,6 +73,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
         d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ${allowedPriorStatuses}`).bind(provider, nextStatus, now, intent.id, intent.facility_id, intent.user_id),
         ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
         ...refundStatements,
+        d1.prepare("UPDATE payment_refund_requests SET status = 'COMPLETED', provider_reference = COALESCE(?, provider_reference), updated_at = ? WHERE payment_intent_id = ? AND status = 'REQUESTED'").bind(payload.providerReference || null, now, intent.id),
         d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
       ]);
       if (!results[0]?.meta.changes) {

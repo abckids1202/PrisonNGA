@@ -10,6 +10,7 @@ class D1 {
     this.sqlite.exec(`
       CREATE TABLE payment_intents (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, provider TEXT, credit_quantity INTEGER, amount_minor INTEGER, currency TEXT, status TEXT, version INTEGER, provider_reference TEXT, updated_at TEXT);
       CREATE TABLE payment_provider_events (id TEXT PRIMARY KEY, provider TEXT, event_key TEXT, status TEXT, processed_at TEXT, last_error TEXT);
+      CREATE TABLE payment_refund_requests (id TEXT PRIMARY KEY, payment_intent_id TEXT, provider_reference TEXT, status TEXT, updated_at TEXT);
       CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, available_credits INTEGER, reserved_credits INTEGER, version INTEGER, created_at TEXT, updated_at TEXT);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, idempotency_key TEXT UNIQUE, reason TEXT, created_by TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);

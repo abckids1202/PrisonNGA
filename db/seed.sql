@@ -45,6 +45,7 @@ INSERT INTO permissions (id, permission_key, description) VALUES
   ('perm-notification-manage', 'notification.manage', 'Replay and operate failed notification deliveries.')
   ,('perm-visitor-directory-read', 'visitor.directory.read', 'Read facility-scoped visitor identity and relationship directory data.')
   ,('perm-finance-read', 'finance.read', 'Read facility-scoped credit ledger and payment records.')
+  ,('perm-finance-manage', 'finance.manage', 'Request provider refunds and operate facility payment exceptions.')
 ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id) VALUES
@@ -73,4 +74,5 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ,('role-supervisor', 'perm-visitor-directory-read')
   ,('role-supervisor', 'perm-finance-read')
   ,('role-auditor', 'perm-finance-read')
+  ,('role-supervisor', 'perm-finance-manage')
 ON CONFLICT(role_id, permission_id) DO NOTHING;

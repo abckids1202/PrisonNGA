@@ -50,6 +50,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   const visitCreditPrice = Number(value(env, "VISIT_CREDIT_PRICE_MINOR"));
   if (!Number.isSafeInteger(visitCreditPrice) || visitCreditPrice <= 0) missing.push("VISIT_CREDIT_PRICE_MINOR");
   if (!/^https:\/\//i.test(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL");
+  if (!/^https:\/\//i.test(value(env, "PAYMENT_REFUND_URL"))) missing.push("PAYMENT_REFUND_URL");
   if (!value(env, "PAYMENT_PROVIDER_SECRET")) missing.push("PAYMENT_PROVIDER_SECRET");
   if (!value(env, "PAYMENT_WEBHOOK_SECRET")) missing.push("PAYMENT_WEBHOOK_SECRET");
   if (value(env, "NOTIFICATION_DELIVERY") !== "webhook") missing.push("NOTIFICATION_DELIVERY=webhook");
