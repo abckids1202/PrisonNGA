@@ -33,13 +33,14 @@ class WebhookCheckoutProvider implements PaymentProvider {
   async createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout> {
     if (!input.email && !input.phone) throw new Error("PAYMENT_CONTACT_REQUIRED");
     const payload = JSON.stringify(input);
+    const timestamp = String(Math.floor(Date.now() / 1000));
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(this.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)));
+    const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${payload}`)));
     const signature = Array.from(digest).map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8_000);
     try {
-      const response = await fetch(this.url, { method: "POST", headers: { "content-type": "application/json", "Idempotency-Key": input.paymentIntentId, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
+      const response = await fetch(this.url, { method: "POST", headers: { "content-type": "application/json", "Idempotency-Key": input.paymentIntentId, "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
       if (!response.ok) throw new Error(`PAYMENT_CHECKOUT_FAILED_${response.status}`);
       const result = await response.json() as { providerReference?: unknown; checkoutUrl?: unknown };
       if (typeof result.providerReference !== "string" || !result.providerReference || (result.checkoutUrl !== null && typeof result.checkoutUrl !== "string")) throw new Error("PAYMENT_CHECKOUT_INVALID_RESPONSE");
