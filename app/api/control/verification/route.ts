@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { verificationDecisionStatements } from "../../../../lib/server/verification-decisions";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const reviewStatuses = ["APPROVED", "REJECTED", "MORE_INFO"] as const;
@@ -22,6 +23,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("verification.review");
     const body = await request.json() as { verificationCaseId?: unknown; status?: unknown; reason?: unknown; expectedVersion?: unknown };
@@ -29,15 +32,30 @@ export async function POST(request: Request) {
     const status = body.status as ReviewStatus;
     if (!verificationCaseId || !reviewStatuses.includes(status)) throw new SecurityError("INVALID_VERIFICATION_REVIEW", 400);
     const reason = assertReason(body.reason);
-    const d1 = await getD1();
+    d1 = await getD1();
     const current = await d1.prepare(`SELECT vc.id, vc.relationship_id, vc.status, vc.evidence_required, vc.version, vr.status AS relationship_status, vr.version AS relationship_version FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id WHERE vc.id = ? AND vc.facility_id = ?`).bind(verificationCaseId, authorization.facilityId).first<{ id: string; relationship_id: string; status: string; evidence_required: number; version: number; relationship_status: string; relationship_version: number }>();
     if (!current) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    const idempotencyScope = `verification-review:${authorization.facilityId}:${authorization.userId}:${verificationCaseId}`;
+    const requestHash = await hashIdempotencyPayload({ verificationCaseId, status, reason, expectedVersion: body.expectedVersion ?? current.version });
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope: idempotencyScope, key: idempotencyKey };
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_VERIFICATION_CASE", 409);
-    if (["APPROVED", "REJECTED"].includes(current.status)) return securityResponse({ verificationCaseId, status: current.status, idempotent: true }, 200, context.requestId);
+    if (["APPROVED", "REJECTED"].includes(current.status)) {
+      const responseBody = { verificationCaseId, status: current.status, relationshipStatus: current.relationship_status, version: current.version, idempotent: true };
+      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
+      if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
+      idempotency = null;
+      return securityResponse(responseBody, 200, context.requestId);
+    }
     const relationshipStatus = status === "APPROVED" ? "APPROVED" : status === "REJECTED" ? "REJECTED" : "PENDING";
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
-    const results = await d1.batch(verificationDecisionStatements(d1, {
+    const responseBody = { verificationCaseId, status, relationshipStatus, version: current.version + 1, correlationId };
+    const completedGuard = { sql: "EXISTS (SELECT 1 FROM verification_cases WHERE id = ? AND facility_id = ? AND status = ? AND version = ?) AND EXISTS (SELECT 1 FROM visitor_relationships WHERE id = ? AND facility_id = ? AND status = ? AND version = ?)", values: [verificationCaseId, authorization.facilityId, status, current.version + 1, current.relationship_id, authorization.facilityId, relationshipStatus, current.relationship_version + 1] };
+    const results = await d1.batch([...verificationDecisionStatements(d1, {
       verificationCaseId,
       relationshipId: current.relationship_id,
       facilityId: authorization.facilityId,
@@ -54,7 +72,7 @@ export async function POST(request: Request) {
       requestId: context.requestId,
       correlationId,
       now,
-    }));
+    }), completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: completedGuard })]);
     if (!results[0]?.meta.changes) {
       if (status === "APPROVED" && current.evidence_required) {
         const evidence = await d1.prepare("SELECT 1 AS present FROM evidence_documents WHERE verification_case_id = ? AND facility_id = ? AND status = 'AVAILABLE' LIMIT 1").bind(verificationCaseId, authorization.facilityId).first();
@@ -62,8 +80,13 @@ export async function POST(request: Request) {
       }
       throw new SecurityError("STALE_VERIFICATION_CASE", 409);
     }
-    return securityResponse({ verificationCaseId, status, relationshipStatus, version: current.version + 1, correlationId }, 200, context.requestId);
+    if (!results[results.length - 1]?.meta.changes) throw new SecurityError("VERIFICATION_REVIEW_NOT_PERSISTED", 409);
+    idempotency = null;
+    return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {
+    if (d1 && idempotency) {
+      try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original verification review error. */ }
+    }
     return securityErrorResponse(error, context.requestId);
   }
 }
