@@ -57,7 +57,7 @@ function VisitorAvatar({ initials, color = "sage" }: { initials: string; color?:
 
 export default function VisitorPage({ initialTab = "Home" }: { initialTab?: VisitorTab }) {
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "signed_out">("loading");
-  const [visitorName, setVisitorName] = useState("Sarah");
+  const [visitorName, setVisitorName] = useState("Visitor");
   const [dataError, setDataError] = useState<string | null>(null);
   const [visitorData, setVisitorData] = useState<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true, refreshAppointments: async () => undefined });
   const [tab, setTab] = useState<Tab>(initialTab);
