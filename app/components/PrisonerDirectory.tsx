@@ -69,7 +69,7 @@ export default function PrisonerDirectory({ onNotify }: { onNotify: (message: st
       const response = await fetch("/api/control/prisoners", {
         method: editing ? "PATCH" : "POST",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `prisoner-${editing ? "update" : "create"}-${editing?.id || draft.prisoner_number}-${editing?.version || 1}-${crypto.randomUUID()}` },
         body: JSON.stringify({
           prisonerNumber: draft.prisoner_number,
           displayName: draft.display_name,
