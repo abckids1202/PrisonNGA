@@ -1,7 +1,7 @@
 import { getD1, getEvidenceBucket } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
-import { validateEvidenceUpload } from "../../../../../lib/server/evidence-validation";
+import { MAX_EVIDENCE_BYTES, validateEvidenceUpload } from "../../../../../lib/server/evidence-validation";
 import { scanEvidence } from "../../../../../lib/server/evidence-scanner";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 
@@ -25,6 +25,10 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const visitor = await requireVisitorIdentity();
+    const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `visitor-evidence-upload:${visitor.userId}`, limit: 20, windowSeconds: 60 * 60 });
+    const contentLength = Number(request.headers.get("content-length") || "0");
+    if (Number.isFinite(contentLength) && contentLength > MAX_EVIDENCE_BYTES + 512 * 1024) throw new SecurityError("EVIDENCE_REQUEST_TOO_LARGE", 413);
     const bucket = await getEvidenceBucket();
     if (!bucket) throw new SecurityError("EVIDENCE_STORAGE_NOT_CONFIGURED", 503);
     const form = await request.formData();
@@ -34,8 +38,6 @@ export async function POST(request: Request) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     try { validateEvidenceUpload({ contentType: file.type, bytes }); }
     catch (error) { throw new SecurityError(error instanceof Error ? error.message : "EVIDENCE_FILE_NOT_ALLOWED", 400); }
-    const d1 = await getD1();
-    await enforceRateLimit(d1, { key: `visitor-evidence-upload:${visitor.userId}`, limit: 20, windowSeconds: 60 * 60 });
     const ownedCase = await d1.prepare(`SELECT vc.id, vc.facility_id FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id WHERE vc.id = ? AND vr.visitor_user_id = ?`).bind(verificationCaseId, visitor.userId).first<{ id: string; facility_id: string }>();
     if (!ownedCase) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
     const digest = await crypto.subtle.digest("SHA-256", bytes);

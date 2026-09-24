@@ -21,3 +21,10 @@ test("visitor evidence persistence claims duplicate content atomically", async (
   assert.match(source, /bytes\.length/);
   assert.match(source, /EVIDENCE_UPLOAD_NOT_PERSISTED/);
 });
+
+test("visitor evidence upload rejects oversized requests before parsing the multipart body", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/visitor/verification/evidence/route.ts", import.meta.url), "utf8");
+  assert.match(source, /visitor-evidence-upload:\$\{visitor\.userId\}/);
+  assert.match(source, /EVIDENCE_REQUEST_TOO_LARGE/);
+  assert.ok(source.indexOf("EVIDENCE_REQUEST_TOO_LARGE") < source.indexOf("request.formData()"));
+});
