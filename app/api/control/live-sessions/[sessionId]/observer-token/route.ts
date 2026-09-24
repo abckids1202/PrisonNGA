@@ -1,7 +1,7 @@
 import { getD1 } from "@/db/runtime";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { createLiveKitProvider, getVideoConfig } from "@/lib/server/video/provider";
-import { assertJoinable, getStaffSession, toSessionPayload } from "@/lib/server/video/session";
+import { assertJoinable, getStaffSession, sessionTokenTtlSeconds, toSessionPayload } from "@/lib/server/video/session";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
 type RouteContext = { params: Promise<{ sessionId: string }> };
@@ -20,7 +20,8 @@ export async function POST(request: Request, context: RouteContext) {
     const config = await getVideoConfig();
     if (!config.configured) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
     const provider = await createLiveKitProvider();
-    const token = await provider.createParticipantToken({ roomName: session.provider_room_name, identity: `observer:${authorization.userId}`, name: authorization.displayName, role: "STAFF_OBSERVER" });
+    const expiresInSeconds = sessionTokenTtlSeconds(session);
+    const token = await provider.createParticipantToken({ roomName: session.provider_room_name, identity: `observer:${authorization.userId}`, name: authorization.displayName, role: "STAFF_OBSERVER", ttlSeconds: expiresInSeconds });
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
     await d1.batch([
@@ -31,7 +32,7 @@ export async function POST(request: Request, context: RouteContext) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, "SESSION_MONITORING_STARTED", "visit_session", sessionId, reason, null, JSON.stringify({ participantRole: "STAFF_OBSERVER" }), correlationId, requestContext.requestId, now),
     ]);
-    return securityResponse({ token, serverUrl: config.url, session: toSessionPayload(session), participantRole: "STAFF_OBSERVER", expiresInSeconds: 600 }, 200, requestContext.requestId);
+    return securityResponse({ token, serverUrl: config.url, session: toSessionPayload(session), participantRole: "STAFF_OBSERVER", expiresInSeconds }, 200, requestContext.requestId);
   } catch (error) {
     return securityErrorResponse(error, requestContext.requestId);
   }

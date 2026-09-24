@@ -58,8 +58,21 @@ export function assertJoinable(record: SessionRecord): void {
     if (["ENDED", "TERMINATED", "CANCELLED"].includes(record.status)) throw new SecurityError("SESSION_ENDED", 409);
     throw new SecurityError("SESSION_NOT_READY", 409);
   }
+  const start = Date.parse(record.authorized_start_at);
   const end = Date.parse(record.authorized_end_at);
-  if (Number.isFinite(end) && Date.now() > end + 60_000) throw new SecurityError("SESSION_EXPIRED", 409);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new SecurityError("SESSION_INVALID_WINDOW", 409);
+  if (Date.now() > end + 60_000) throw new SecurityError("SESSION_EXPIRED", 409);
+}
+
+/**
+ * Keep the provider credential within the server-authorized visit window.
+ * The extra minute covers clock skew and the existing join grace period;
+ * the room is still terminated by the server-side session finalizer.
+ */
+export function sessionTokenTtlSeconds(record: Pick<SessionRecord, "authorized_end_at">): number {
+  const end = Date.parse(record.authorized_end_at);
+  if (!Number.isFinite(end)) throw new SecurityError("SESSION_INVALID_WINDOW", 409);
+  return Math.max(60, Math.min(30 * 60, Math.ceil((end - Date.now()) / 1000) + 60));
 }
 
 export function assertVisitorJoinAllowed(record: SessionRecord): void {

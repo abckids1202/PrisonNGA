@@ -2,7 +2,7 @@ import { getD1 } from "@/db/runtime";
 import { getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { authenticateKiosk } from "@/lib/server/kiosk-credentials";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
-import { assertVisitorJoinAllowed, toSessionPayload, type SessionRecord } from "@/lib/server/video/session";
+import { assertVisitorJoinAllowed, sessionTokenTtlSeconds, toSessionPayload, type SessionRecord } from "@/lib/server/video/session";
 import { createLiveKitProvider, getVideoConfig } from "@/lib/server/video/provider";
 
 type RouteContext = { params: Promise<{ visitId: string }> };
@@ -61,8 +61,9 @@ export async function POST(request: Request, context: RouteContext) {
     const config = await getVideoConfig();
     if (!config.configured) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
     const provider = await createLiveKitProvider();
-    const token = await provider.createParticipantToken({ roomName: String(session.provider_room_name), identity: `facility:${kiosk.resourceId}`, name: `Facility kiosk ${kiosk.resourceId}`, role: "FACILITY" });
-    return securityResponse({ token, serverUrl: config.url, session: toSessionPayload(sessionRecord), participantRole: "FACILITY", kioskId: kiosk.resourceId, expiresInSeconds: 600 }, 200, requestContext.requestId);
+    const expiresInSeconds = sessionTokenTtlSeconds(sessionRecord);
+    const token = await provider.createParticipantToken({ roomName: String(session.provider_room_name), identity: `facility:${kiosk.resourceId}`, name: `Facility kiosk ${kiosk.resourceId}`, role: "FACILITY", ttlSeconds: expiresInSeconds });
+    return securityResponse({ token, serverUrl: config.url, session: toSessionPayload(sessionRecord), participantRole: "FACILITY", kioskId: kiosk.resourceId, expiresInSeconds }, 200, requestContext.requestId);
   } catch (error) {
     return securityErrorResponse(error, requestContext.requestId);
   }

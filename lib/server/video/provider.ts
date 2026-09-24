@@ -5,7 +5,7 @@ export type VideoConfig = { provider: "livekit"; configured: boolean; url: strin
 
 export interface VideoProvider {
   createSession(roomName: string): Promise<{ roomName: string; roomSid: string | null }>;
-  createParticipantToken(input: { roomName: string; identity: string; name: string; role: ParticipantRole }): Promise<string>;
+  createParticipantToken(input: { roomName: string; identity: string; name: string; role: ParticipantRole; ttlSeconds?: number }): Promise<string>;
   removeParticipant(roomName: string, identity: string): Promise<void>;
   endRoom(roomName: string): Promise<void>;
 }
@@ -50,7 +50,7 @@ class LiveKitVideoProvider implements VideoProvider {
     return { roomName, roomSid: room.sid || null };
   }
 
-  async createParticipantToken(input: { roomName: string; identity: string; name: string; role: ParticipantRole }) {
+  async createParticipantToken(input: { roomName: string; identity: string; name: string; role: ParticipantRole; ttlSeconds?: number }) {
     const grant: VideoGrant = {
       roomJoin: true,
       room: input.roomName,
@@ -60,7 +60,8 @@ class LiveKitVideoProvider implements VideoProvider {
       canPublishData: input.role !== "STAFF_OBSERVER",
       roomAdmin: false,
     };
-    const token = new AccessToken(this.config.apiKey!, this.config.apiSecret!, { identity: input.identity, name: input.name, ttl: "10m", metadata: JSON.stringify({ role: input.role }) });
+    const ttlSeconds = Math.max(60, Math.min(30 * 60, Math.floor(input.ttlSeconds || 10 * 60)));
+    const token = new AccessToken(this.config.apiKey!, this.config.apiSecret!, { identity: input.identity, name: input.name, ttl: `${ttlSeconds}s`, metadata: JSON.stringify({ role: input.role }) });
     token.addGrant(grant);
     return token.toJwt();
   }
