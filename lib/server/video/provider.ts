@@ -3,6 +3,16 @@ import { AccessToken, RoomServiceClient, ServerError, TrackSource, type VideoGra
 export type ParticipantRole = "VISITOR" | "FACILITY" | "STAFF_OBSERVER";
 export type VideoConfig = { provider: "livekit"; configured: boolean; url: string | null; apiKey: string | null; apiSecret: string | null };
 
+export function isValidLiveKitUrl(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    return (url.protocol === "wss:" || url.protocol === "https:") && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 export interface VideoProvider {
   createSession(roomName: string): Promise<{ roomName: string; roomSid: string | null }>;
   createParticipantToken(input: { roomName: string; identity: string; name: string; role: ParticipantRole; ttlSeconds?: number }): Promise<string>;
@@ -22,7 +32,7 @@ export async function getVideoConfig(): Promise<VideoConfig> {
   const url = typeof values.LIVEKIT_URL === "string" ? values.LIVEKIT_URL : null;
   const apiKey = typeof values.LIVEKIT_API_KEY === "string" ? values.LIVEKIT_API_KEY : null;
   const apiSecret = typeof values.LIVEKIT_API_SECRET === "string" ? values.LIVEKIT_API_SECRET : null;
-  return { provider: "livekit", configured: provider === "livekit" && Boolean(url && apiKey && apiSecret), url, apiKey, apiSecret };
+  return { provider: "livekit", configured: provider === "livekit" && isValidLiveKitUrl(url) && Boolean(apiKey && apiSecret), url, apiKey, apiSecret };
 }
 
 export function createProviderRoomName(): string {

@@ -30,6 +30,7 @@ The current repository already includes:
 - Authenticated visitor payment receipts that only expose a settled payment with a matching `PURCHASE` ledger entry.
 - LiveKit token scopes, expiry, participant roles, session creation/finalization, stale-session reconciliation and recording disabled by policy.
 - LiveKit participant tokens are now derived from each session's authoritative end time, capped at 30 minutes, and issued only for valid session windows; malformed windows fail closed instead of receiving an open-ended provider credential.
+- LiveKit readiness and provider configuration now reject malformed URLs, non-HTTPS/WSS schemes, and credential-bearing URLs before a browser connection or provider client can be created.
 - Facility isolation checks, permission checks, step-up foundations, rate limits, security events, request/correlation identifiers, CSP and camera/microphone permissions policy.
 - Idempotent state-changing boundaries for appointment decisions, verification review, visitor profile, session revocation, notification read state, policy updates, live-session ending, waiting-room commands, outbox replay and visitor payment checkout audit events.
 - Privacy-safe `VISITOR_LOGIN_CHALLENGE_FAILED` security events with hashed request context and no OTP/destination logging.
@@ -43,7 +44,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 250 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 251 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
