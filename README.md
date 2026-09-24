@@ -18,6 +18,8 @@ The production checks are:
 ```bash
 npm run build
 npm run lint
+npm run typecheck
+npm run validate:environment
 npm test
 ```
 
@@ -64,7 +66,7 @@ Before institutional use, the platform still needs configured institutional OIDC
 
 The checkout adapter requires `VISIT_CREDIT_PRICE_MINOR` to be set to the institution-approved per-credit price in production. The local development fallback of 50,000 IDR is explicitly labeled as an example price and must not be treated as an approved tariff. The configured checkout service must honor the stable payment-intent idempotency key, return an HTTPS checkout URL, and send signed, idempotent payment events before any real purchase can be considered pilot-ready.
 
-Operational checks: run `npm run db:migrations:list` against the target D1 database, apply migrations with the matching `db:migrate:*` command, then verify `/api/health/readiness` before opening the pilot to users. Production Worker startup rejects requests when required provider bindings and secrets are missing.
+Operational checks: run `npm run validate:environment` with the target environment variables, run `npm run db:migrations:list` against the target D1 database, apply migrations with the matching `db:migrate:*` command, then verify `/api/health/readiness` before opening the pilot to users. The validator prints only missing configuration names and warnings; it never prints secret values. Production Worker startup also rejects requests when required provider bindings and secrets are missing.
 
 Visitor scheduling is policy-backed: `/api/visitor/availability` returns facility-scoped slots after relationship approval, and appointment creation revalidates facility state, operating hours, booking horizon, duration, visitor overlap, and prisoner overlap server-side.
 

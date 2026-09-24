@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit --incremental false",
+    "validate:environment": "node --import tsx --env-file-if-exists=.env.local scripts/validate-environment.mjs",
     "db:migrate:local": "node --env-file-if-exists=.env.local scripts/d1-migrations.mjs apply --local",
     "db:migrate:remote": "node --env-file-if-exists=.env.local scripts/d1-migrations.mjs apply --remote",
     "db:migrations:list:local": "node --env-file-if-exists=.env.local scripts/d1-migrations.mjs list --local",
