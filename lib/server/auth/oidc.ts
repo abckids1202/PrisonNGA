@@ -1,7 +1,21 @@
 import { getRuntimeValue, SecurityError } from "../security";
 
 type Discovery = { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string };
-type OidcClaims = { iss: string; sub: string; aud: string | string[]; exp: number; nonce?: string; email?: string; email_verified?: boolean; name?: string; preferred_username?: string };
+export type OidcClaims = { iss: string; sub: string; aud: string | string[]; exp: number; nonce?: string; email?: string; email_verified?: boolean; name?: string; preferred_username?: string; acr?: string; amr?: string[] };
+
+export type StaffMfaRequirement = { acr: string | null; amr: string[] };
+
+export function hasRequiredStaffMfa(claims: Pick<OidcClaims, "acr" | "amr">, requirement: StaffMfaRequirement): boolean {
+  if (requirement.acr && claims.acr !== requirement.acr) return false;
+  if (requirement.amr.length && !requirement.amr.some((method) => claims.amr?.includes(method))) return false;
+  return Boolean(requirement.acr || requirement.amr.length);
+}
+
+export async function getStaffMfaRequirement(): Promise<StaffMfaRequirement> {
+  const acr = (await getRuntimeValue("STAFF_OIDC_MFA_ACR"))?.trim() || null;
+  const amr = (await getRuntimeValue("STAFF_OIDC_MFA_AMR") || "").split(",").map((item) => item.trim()).filter(Boolean);
+  return { acr, amr: [...new Set(amr)] };
+}
 
 export function hasVerifiedStaffEmail(claims: Pick<OidcClaims, "email" | "email_verified">): claims is Pick<OidcClaims, "email" | "email_verified"> & { email: string; email_verified: true } {
   return typeof claims.email === "string" && claims.email.trim().length > 0 && claims.email_verified === true;

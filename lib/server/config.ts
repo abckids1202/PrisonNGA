@@ -62,6 +62,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
     if (!value(env, "STAFF_OIDC_CLIENT_ID")) missing.push("STAFF_OIDC_CLIENT_ID");
     if (!value(env, "STAFF_OIDC_CLIENT_SECRET")) missing.push("STAFF_OIDC_CLIENT_SECRET");
     if (!/^https:\/\//i.test(value(env, "STAFF_OIDC_REDIRECT_URI"))) missing.push("STAFF_OIDC_REDIRECT_URI");
+    if (!value(env, "STAFF_OIDC_MFA_ACR") && !value(env, "STAFF_OIDC_MFA_AMR")) missing.push("STAFF_OIDC_MFA_ACR or STAFF_OIDC_MFA_AMR");
   }
   if (staffProvider === "saml") {
     if (!value(env, "STAFF_SAML_ENTITY_ID")) missing.push("STAFF_SAML_ENTITY_ID");
