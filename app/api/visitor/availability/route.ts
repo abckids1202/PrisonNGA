@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { facilityLocalDateTime } from "../../../../lib/server/time";
+import { validateVisitWindow } from "../../../../lib/server/visit-policy";
 
 const slotMinutes = 15;
 
@@ -31,11 +32,21 @@ export async function GET(request: Request) {
     }
     const dayStart = facilityLocalDateTime(date, policy.daily_start_time, facility.timezone);
     const dayEnd = facilityLocalDateTime(date, policy.daily_end_time, facility.timezone);
+    if (!Number.isFinite(dayStart.getTime()) || !Number.isFinite(dayEnd.getTime()) || dayEnd <= dayStart) throw new SecurityError("INVALID_AVAILABILITY_DATE", 400);
     const appointments = await d1.prepare(`SELECT requested_start, requested_end FROM appointments WHERE ((facility_id = ? AND prisoner_id = ?) OR visitor_user_id = ?) AND (? = '' OR id <> ?) AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS') AND requested_start < ? AND requested_end > ?`).bind(facilityId, prisonerId, visitor.userId, excludeAppointmentId, excludeAppointmentId, dayEnd.toISOString(), dayStart.toISOString()).all<{ requested_start: string; requested_end: string }>();
     const slots: string[] = [];
     for (let cursor = dayStart.getTime(); cursor + duration * 60000 <= dayEnd.getTime(); cursor += slotMinutes * 60000) {
       const end = cursor + duration * 60000;
-      if (cursor < Date.now() + policy.min_advance_minutes * 60000 || cursor > Date.now() + policy.max_advance_days * 86400000) continue;
+      const window = validateVisitWindow(new Date(cursor).toISOString(), new Date(end).toISOString(), Date.now(), {
+        timezone: facility.timezone,
+        min_duration_minutes: policy.min_duration_minutes,
+        max_duration_minutes: policy.max_duration_minutes,
+        min_advance_minutes: policy.min_advance_minutes,
+        max_advance_days: policy.max_advance_days,
+        daily_start_time: policy.daily_start_time,
+        daily_end_time: policy.daily_end_time,
+      });
+      if (!window.ok) continue;
       if (appointments.results.some((appointment) => Date.parse(appointment.requested_start) < end && Date.parse(appointment.requested_end) > cursor)) continue;
       slots.push(new Date(cursor).toISOString());
     }

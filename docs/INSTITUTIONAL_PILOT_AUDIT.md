@@ -42,7 +42,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 244 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 245 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -64,6 +64,7 @@ The current repository already includes:
 - The full browser journey is not yet a three-party test. Existing E2E tests cover the shell, OTP, persistence, kiosk boundary and session revocation, but not staff approval plus visitor device check plus kiosk presence plus LiveKit completion plus credit settlement.
 - The Management workspace still has intentionally unconnected sections, including policy areas beyond Visit Policies. They must either become real API-backed workflows or be clearly hidden from a pilot role.
 - Facility → Visit Policies now opens the same authoritative persisted policy editor as the Visitation workspace; a regression test protects the shared entry point. Operating Hours, Restrictions and Closures remain explicitly unavailable until their own persisted workflows exist.
+- Visitor availability now reuses the same server-side visit-window validator as appointment creation and rescheduling, preventing the UI from advertising slots that the write path would reject.
 - Payment creation and refund requests are audited, but a real provider adapter, customer-facing checkout return handling, provider status polling, provider dispute workflow and reconciliation dashboard still need completion.
 - Notification records and outbox processing exist, but real email/SMS delivery adapters, templates, delivery receipts, retry operations and dead-letter replay need staging proof.
 - Visitor session controls still need production delivery, recovery, suspicious-login handling and device-management validation beyond the development OTP path.
