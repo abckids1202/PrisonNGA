@@ -9,8 +9,9 @@ export async function getStaffFederationConfig(): Promise<StaffFederationConfig>
   if (provider === "oidc") {
     const issuer = await getRuntimeValue("STAFF_OIDC_ISSUER");
     const clientId = await getRuntimeValue("STAFF_OIDC_CLIENT_ID");
+    const clientSecret = await getRuntimeValue("STAFF_OIDC_CLIENT_SECRET");
     const redirectUri = await getRuntimeValue("STAFF_OIDC_REDIRECT_URI");
-    const missing = [!issuer ? "STAFF_OIDC_ISSUER" : "", !clientId ? "STAFF_OIDC_CLIENT_ID" : "", !redirectUri ? "STAFF_OIDC_REDIRECT_URI" : ""].filter(Boolean);
+    const missing = [!issuer ? "STAFF_OIDC_ISSUER" : "", !clientId ? "STAFF_OIDC_CLIENT_ID" : "", !clientSecret ? "STAFF_OIDC_CLIENT_SECRET" : "", !redirectUri ? "STAFF_OIDC_REDIRECT_URI" : ""].filter(Boolean);
     let validIssuer = false;
     try { validIssuer = Boolean(issuer && new URL(issuer).protocol === "https:"); } catch { validIssuer = false; }
     if (issuer && !validIssuer) missing.push("STAFF_OIDC_ISSUER_HTTPS");

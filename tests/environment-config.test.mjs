@@ -31,3 +31,18 @@ test("staging and production fail closed until every required provider is config
     assert.ok(result.missing.includes("PAYMENT_PROVIDER=webhook"));
   }
 });
+
+test("institutional OIDC configuration requires a confidential client secret", () => {
+  const base = {
+    ...withDatabase,
+    SECUREVISIT_ENVIRONMENT: "staging",
+    STAFF_AUTH_PROVIDER: "oidc",
+    STAFF_OIDC_ISSUER: "https://idp.example.test",
+    STAFF_OIDC_CLIENT_ID: "securevisit-control",
+    STAFF_OIDC_REDIRECT_URI: "https://securevisit.example.test/api/auth/staff/oidc/callback",
+  };
+  const withoutSecret = validateEnvironment(base);
+  assert.ok(withoutSecret.missing.includes("STAFF_OIDC_CLIENT_SECRET"));
+  const withSecret = validateEnvironment({ ...base, STAFF_OIDC_CLIENT_SECRET: "client-secret" });
+  assert.ok(!withSecret.missing.includes("STAFF_OIDC_CLIENT_SECRET"));
+});

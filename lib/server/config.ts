@@ -54,6 +54,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (staffProvider === "oidc") {
     if (!/^https:\/\//i.test(value(env, "STAFF_OIDC_ISSUER"))) missing.push("STAFF_OIDC_ISSUER");
     if (!value(env, "STAFF_OIDC_CLIENT_ID")) missing.push("STAFF_OIDC_CLIENT_ID");
+    if (!value(env, "STAFF_OIDC_CLIENT_SECRET")) missing.push("STAFF_OIDC_CLIENT_SECRET");
     if (!/^https:\/\//i.test(value(env, "STAFF_OIDC_REDIRECT_URI"))) missing.push("STAFF_OIDC_REDIRECT_URI");
   }
   if (staffProvider === "saml") {

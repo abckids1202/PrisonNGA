@@ -26,7 +26,7 @@ export async function getOidcConfig(): Promise<{ issuer: string; clientId: strin
   const redirectUri = await getRuntimeValue("STAFF_OIDC_REDIRECT_URI") || "";
   let validIssuer = false;
   try { validIssuer = new URL(issuer).protocol === "https:"; } catch { validIssuer = false; }
-  if (!validIssuer || !clientId || !redirectUri) throw new SecurityError("STAFF_OIDC_NOT_CONFIGURED", 503);
+  if (!validIssuer || !clientId || !clientSecret || !redirectUri) throw new SecurityError("STAFF_OIDC_NOT_CONFIGURED", 503);
   try { if (new URL(redirectUri).protocol !== "https:") throw new Error("redirect"); } catch { throw new SecurityError("STAFF_OIDC_REDIRECT_INVALID", 503); }
   return { issuer, clientId, clientSecret, redirectUri };
 }
@@ -49,7 +49,7 @@ export function createPkcePair(): { state: string; nonce: string; verifier: stri
 
 export async function exchangeCode(discovery: Discovery, config: { clientId: string; clientSecret: string; redirectUri: string }, code: string, verifier: string): Promise<OidcClaims> {
   const form = new URLSearchParams({ grant_type: "authorization_code", code, client_id: config.clientId, redirect_uri: config.redirectUri, code_verifier: verifier });
-  if (config.clientSecret) form.set("client_secret", config.clientSecret);
+  form.set("client_secret", config.clientSecret);
   const response = await fetch(discovery.token_endpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: form });
   if (!response.ok) throw new SecurityError("STAFF_OIDC_TOKEN_EXCHANGE_FAILED", 401);
   const body = await response.json() as { id_token?: string };
