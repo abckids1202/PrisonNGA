@@ -29,6 +29,11 @@ export function parseWorkspaceIdentity(input: Headers): WorkspaceIdentity | null
 export async function getWorkspaceIdentity(): Promise<WorkspaceIdentity | null> {
   const staffSession = await getStaffSessionIdentity();
   if (staffSession) return staffSession;
+  // Workspace headers are supplied by the local desktop host and are useful
+  // for development rendering only. Never treat them as an institutional
+  // authentication mechanism in staging or production, where staff access
+  // must come from a persisted OIDC/SAML session.
+  if ((await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development") return null;
   return parseWorkspaceIdentity(await headers());
 }
 
