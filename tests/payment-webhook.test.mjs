@@ -45,6 +45,27 @@ test("payment webhook HMAC verification accepts only the signed raw body", async
   assert.equal(await verifyPaymentWebhookSignature(rawBody, `sha256=${signature}`, null), false);
 });
 
+test("payment webhook HMAC verification supports a bounded timestamp replay window", async () => {
+  const rawBody = '{"eventId":"evt-1"}';
+  const secret = "webhook-test-secret";
+  const timestamp = "1760000000";
+  const signedPayload = `${timestamp}.${rawBody}`;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedPayload)));
+  const signature = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+  assert.equal(await verifyPaymentWebhookSignature(rawBody, `sha256=${signature}`, secret, timestamp, 1760000000 * 1000), true);
+  assert.equal(await verifyPaymentWebhookSignature(rawBody, `sha256=${signature}`, secret, timestamp, (1760000000 + 301) * 1000), false);
+  assert.equal(await verifyPaymentWebhookSignature(rawBody, `sha256=${signature}`, secret, "not-a-timestamp", 1760000000 * 1000), false);
+});
+
+test("non-development payment webhooks require timestamped signatures", async () => {
+  const route = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
+  assert.match(route, /PAYMENT_WEBHOOK_TIMESTAMP_REQUIRED/);
+  assert.match(route, /x-securevisit-timestamp/);
+  assert.match(route, /environment !== "development"/);
+});
+
 test("payment webhook processing binds events to the configured provider", async () => {
   const route = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
   const processor = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");

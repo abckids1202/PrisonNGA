@@ -66,8 +66,24 @@ async function runtimeValue(key: string): Promise<string> {
   return typeof process !== "undefined" && typeof process.env?.[key] === "string" ? process.env[key].trim() : "";
 }
 
-export async function verifyPaymentWebhookSignature(payload: string, suppliedSignature: string | null, secret: string | null): Promise<boolean> {
+export async function verifyPaymentWebhookSignature(
+  payload: string,
+  suppliedSignature: string | null,
+  secret: string | null,
+  timestampHeader: string | null = null,
+  nowMs = Date.now(),
+  maxAgeSeconds = 300,
+): Promise<boolean> {
   if (!secret || !suppliedSignature) return false;
+  let signedPayload = payload;
+  if (timestampHeader !== null) {
+    const timestamp = timestampHeader.trim();
+    const timestampSeconds = Number(timestamp);
+    if (!/^\d{10}$/.test(timestamp) || !Number.isSafeInteger(timestampSeconds)) return false;
+    const ageSeconds = Math.abs(Math.floor(nowMs / 1000) - timestampSeconds);
+    if (ageSeconds > maxAgeSeconds) return false;
+    signedPayload = `${timestamp}.${payload}`;
+  }
   const normalized = suppliedSignature.trim().replace(/^sha256=/i, "").toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(normalized)) return false;
   const signature = new Uint8Array(32);
@@ -75,5 +91,5 @@ export async function verifyPaymentWebhookSignature(payload: string, suppliedSig
     signature[index] = Number.parseInt(normalized.slice(index * 2, index * 2 + 2), 16);
   }
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
-  return crypto.subtle.verify("HMAC", key, signature, new TextEncoder().encode(payload));
+  return crypto.subtle.verify("HMAC", key, signature, new TextEncoder().encode(signedPayload));
 }
