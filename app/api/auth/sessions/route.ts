@@ -1,7 +1,8 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { getDb } from "../../../../db";
-import { authSessions, securityEvents, users } from "../../../../db/schema";
+import { getD1 } from "../../../../db/runtime";
+import { authSessions, users } from "../../../../db/schema";
 import { getRequestContext, getSecuritySalt, getVisitorSessionIdentity, getWorkspaceIdentity, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 async function currentUser() {
@@ -35,16 +36,22 @@ export async function POST(request: Request) {
   try {
     const account = await currentUser();
     const body = await request.json() as { sessionId?: unknown; revokeAll?: unknown };
-    const db = await getDb();
+    const d1 = await getD1();
     const now = new Date().toISOString();
     if (body.revokeAll === true) {
-      await db.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, account.id), isNull(authSessions.revokedAt)));
+      await d1.batch([
+        d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL").bind(now, account.id),
+        d1.prepare("INSERT INTO security_events (id, user_id, event_type, severity, request_id, metadata, created_at) VALUES (?, ?, 'SESSION_REVOKED', 'WARNING', ?, ?, ?)").bind(crypto.randomUUID(), account.id, context.requestId, JSON.stringify({ revokeAll: true }), now),
+      ]);
     } else {
       if (typeof body.sessionId !== "string" || !body.sessionId.trim()) throw new SecurityError("SESSION_ID_REQUIRED", 400);
-      const result = await db.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.id, body.sessionId.trim()), eq(authSessions.userId, account.id), isNull(authSessions.revokedAt)));
-      if (!result.meta.changes) throw new SecurityError("SESSION_NOT_FOUND", 404);
+      const results = await d1.batch([
+        d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL").bind(now, body.sessionId.trim(), account.id),
+        d1.prepare("INSERT INTO security_events (id, user_id, event_type, severity, request_id, metadata, created_at) SELECT ?, ?, 'SESSION_REVOKED', 'WARNING', ?, ?, ? WHERE EXISTS (SELECT 1 FROM auth_sessions WHERE id = ? AND user_id = ? AND revoked_at = ?)")
+          .bind(crypto.randomUUID(), account.id, context.requestId, JSON.stringify({ revokeAll: false, sessionId: body.sessionId.trim() }), now, body.sessionId.trim(), account.id, now),
+      ]);
+      if (!results[1]?.meta.changes) throw new SecurityError("SESSION_NOT_FOUND", 404);
     }
-    await db.insert(securityEvents).values({ id: crypto.randomUUID(), userId: account.id, eventType: "SESSION_REVOKED", severity: "WARNING", requestId: context.requestId, metadata: { revokeAll: body.revokeAll === true } });
     return securityResponse({ ok: true, revokedAt: now }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
