@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
-import { appendAuditAndOutbox, auditAndOutboxStatements } from "../../../../lib/server/events";
+import { auditAndOutboxStatements } from "../../../../lib/server/events";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const statuses = ["ACTIVE", "SUSPENDED", "DISABLED"] as const;
@@ -18,6 +19,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("staff.manage");
     const body = await request.json() as { email?: unknown; displayName?: unknown; employeeReference?: unknown; jobTitle?: unknown; department?: unknown; roleId?: unknown; reason?: unknown };
@@ -28,22 +31,39 @@ export async function POST(request: Request) {
     const department = typeof body.department === "string" ? body.department.trim().slice(0, 120) : null;
     const roleId = typeof body.roleId === "string" ? body.roleId.trim() : "";
     const reason = assertReason(body.reason);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !displayName || !employeeReference || !jobTitle || !roleId) throw new SecurityError("INVALID_STAFF_PROVISIONING", 400);
-    const d1 = await getD1();
+    d1 = await getD1();
+    const idempotencyScope = `staff-provision:${authorization.facilityId}:${authorization.userId}`;
+    const requestHash = await hashIdempotencyPayload({ email, displayName, employeeReference, jobTitle, department, roleId, reason });
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope: idempotencyScope, key: idempotencyKey };
     const role = await d1.prepare("SELECT id, name FROM roles WHERE id = ?").bind(roleId).first<{ id: string; name: string }>();
     if (!role) throw new SecurityError("STAFF_ROLE_NOT_FOUND", 404);
     const existing = await d1.prepare("SELECT id FROM users WHERE lower(email) = lower(?)").bind(email).first<{ id: string }>();
     if (existing) throw new SecurityError("STAFF_EMAIL_ALREADY_REGISTERED", 409);
     const userId = crypto.randomUUID();
     const now = new Date().toISOString();
-    await d1.batch([
+    const correlationId = crypto.randomUUID();
+    const responseBody = { userId, email, displayName, status: "ACTIVE", role: role.name };
+    const auditGuard = { sql: "EXISTS (SELECT 1 FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE')", values: [userId] };
+    const results = await d1.batch([
       d1.prepare("INSERT INTO users (id, external_id, email, display_name, user_type, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'STAFF', 'ACTIVE', 1, ?, ?)").bind(userId, `pending:staff:${userId}`, email, displayName, now, now),
       d1.prepare("INSERT INTO staff_profiles (user_id, facility_id, employee_reference, job_title, department, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(userId, authorization.facilityId, employeeReference, jobTitle, department, now, now),
       d1.prepare("INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?, ?)").bind(userId, role.id, authorization.facilityId, authorization.userId, now),
+      ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "STAFF_PROVISIONED", entityType: "staff_user", entityId: userId, reason, newValues: { email, displayName, employeeReference, jobTitle, department, role: role.name, status: "ACTIVE" }, requestId: context.requestId, correlationId, eventType: "STAFF_PROVISIONED", payload: { userId, email } }, auditGuard),
+      completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: auditGuard }),
     ]);
-    await appendAuditAndOutbox({ actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "STAFF_PROVISIONED", entityType: "staff_user", entityId: userId, reason, newValues: { email, displayName, employeeReference, jobTitle, department, role: role.name, status: "ACTIVE" }, requestId: context.requestId, correlationId: crypto.randomUUID(), eventType: "STAFF_PROVISIONED", payload: { userId, email } });
-    return securityResponse({ userId, email, displayName, status: "ACTIVE", role: role.name }, 201, context.requestId);
-  } catch (error) { return securityErrorResponse(error, context.requestId); }
+    if (!results[0]?.meta.changes || !results[3]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("STAFF_PROVISIONING_FAILED", 409);
+    return securityResponse({ ...responseBody, correlationId }, 201, context.requestId);
+  } catch (error) {
+    if (d1 && idempotency) {
+      try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original provisioning error. */ }
+    }
+    return securityErrorResponse(error, context.requestId);
+  }
 }
 
 export async function PATCH(request: Request) {
