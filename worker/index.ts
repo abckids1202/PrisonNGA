@@ -10,6 +10,7 @@ import { purgeExpiredAuthArtifacts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { isSameOriginMutation } from "../lib/server/csrf";
+import { expiredEvidenceRetentionStatements } from "../lib/server/retention-workflow";
 
 interface Env {
   ASSETS: Fetcher;
@@ -198,10 +199,24 @@ async function processOutbox(env: Env): Promise<void> {
 
 async function purgeExpiredEvidence(env: Env): Promise<void> {
   if (!env.EVIDENCE_BUCKET) return;
-  const rows = await env.DB.prepare("SELECT id, storage_key FROM evidence_documents WHERE status = 'AVAILABLE' AND legal_hold = 0 AND retention_until <= CURRENT_TIMESTAMP LIMIT 50").all<{ id: string; storage_key: string }>();
+  const rows = await env.DB.prepare("SELECT id, facility_id, storage_key, retention_until FROM evidence_documents WHERE status = 'AVAILABLE' AND legal_hold = 0 AND retention_until <= CURRENT_TIMESTAMP LIMIT 50").all<{ id: string; facility_id: string; storage_key: string; retention_until: string }>();
   for (const row of rows.results) {
-    await env.EVIDENCE_BUCKET.delete(row.storage_key);
-    await env.DB.prepare("UPDATE evidence_documents SET status = 'DELETED', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'AVAILABLE' AND legal_hold = 0").bind(row.id).run();
+    try {
+      await env.EVIDENCE_BUCKET.delete(row.storage_key);
+      const now = new Date().toISOString();
+      const correlationId = crypto.randomUUID();
+      await env.DB.batch(expiredEvidenceRetentionStatements(env.DB, {
+        id: row.id,
+        facilityId: row.facility_id,
+        storageKey: row.storage_key,
+        retentionUntil: row.retention_until,
+        requestId: correlationId,
+        correlationId,
+        now,
+      }));
+    } catch (error) {
+      console.error(JSON.stringify({ event: "EVIDENCE_RETENTION_DELETE_FAILED", evidenceId: row.id, facilityId: row.facility_id, requestId: crypto.randomUUID(), error: error instanceof Error ? error.message : "UNKNOWN" }));
+    }
   }
 }
 
