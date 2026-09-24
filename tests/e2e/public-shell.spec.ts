@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+const testOrigin = `http://localhost:${process.env.PLAYWRIGHT_PORT || "4173"}`;
+
 test("control workspace renders its operational shell", async ({ page }) => {
   await page.goto("/");
 
@@ -49,6 +51,53 @@ test("development visitor SMS OTP creates a real browser session", async ({ page
   await expect(verify.json()).resolves.toMatchObject({ authenticated: true, visitor: { displayName: "SMS Browser Visitor", phone } });
 });
 
+test("visitor profile and relationship evidence survive a browser refresh", async ({ page }) => {
+  const email = `journey-${Date.now()}@example.test`;
+  const ipAddress = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": ipAddress }, data: { email } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
+  const verify = await page.request.post("/api/auth/visitor/verify", { headers: { "cf-connecting-ip": ipAddress }, data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Journey Visitor" } });
+  expect(verify.status()).toBe(200);
+
+  const profile = await page.request.put("/api/visitor/profile", { headers: { origin: testOrigin }, data: { legalName: "Journey Visitor", preferredName: "Journey", phone: "+6281234567890" } });
+  expect(profile.status()).toBe(200);
+  const prisoners = await page.request.get("/api/visitor/prisoners?facilityId=facility-central-001");
+  expect(prisoners.status()).toBe(200);
+  const prisonerBody = await prisoners.json() as { prisoners?: Array<{ id: string; facility_id: string }> };
+  const prisoner = prisonerBody.prisoners?.find((record) => record.id === "prisoner-ar-001");
+  expect(prisoner).toBeTruthy();
+
+  const relationship = await page.request.post("/api/visitor/relationships", { headers: { origin: testOrigin }, data: { facilityId: prisoner?.facility_id, prisonerId: prisoner?.id, relationshipType: "Family member" } });
+  expect(relationship.status()).toBe(201);
+  const relationshipBody = await relationship.json() as { verificationId?: string; status?: string };
+  expect(relationshipBody.status).toBe("PENDING");
+  expect(relationshipBody.verificationId).toBeTruthy();
+  if (!relationshipBody.verificationId) throw new Error("Expected a verification case id");
+
+  const evidence = await page.request.post("/api/visitor/verification/evidence", {
+    headers: { origin: testOrigin },
+    multipart: {
+      verificationCaseId: relationshipBody.verificationId,
+      file: { name: "relationship.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n") },
+    },
+  });
+  const evidenceBody = await evidence.json() as { error?: string };
+  const evidenceStored = evidence.status() === 201;
+  if (evidenceStored) expect(evidenceBody.error).toBeUndefined();
+  else expect(evidenceBody.error).toBe("EVIDENCE_STORAGE_NOT_CONFIGURED");
+
+  await page.goto("/visitor?section=Connections");
+  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "A. Rahman" })).toBeVisible();
+  await expect(page.locator("p").filter({ hasText: "Family member · Central Correctional Facility" }).first()).toBeVisible();
+  await expect(page.getByText(evidenceStored ? "Supporting document received" : "Supporting document still needed", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "A. Rahman" })).toBeVisible();
+  await expect(page.locator("p").filter({ hasText: "Family member · Central Correctional Facility" }).first()).toBeVisible();
+  await expect(page.getByText(evidenceStored ? "Supporting document received" : "Supporting document still needed", { exact: true })).toBeVisible();
+});
+
 test("browser requests to protected APIs are rejected without a session", async ({ request }) => {
   const response = await request.get("/api/auth/me");
 
@@ -75,7 +124,7 @@ test("visitor can revoke the current browser session and loses protected access"
 
   const revoke = await page.request.post("/api/auth/sessions", {
     data: { sessionId: current?.id },
-    headers: { origin: "http://localhost:4173" },
+    headers: { origin: testOrigin },
   });
   expect(revoke.status()).toBe(200);
   const protectedResponse = await page.request.get("/api/auth/me");
