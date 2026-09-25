@@ -79,7 +79,10 @@ export async function GET() {
       const savedState = String(row.state || "NOT_ARRIVED");
       return {
         ...row,
-        state: ["LIVE", "CANCELLED", "LATE"].includes(savedState) ? savedState : readiness.state,
+        // STAFF_REVIEW is an explicit operational escalation (for example,
+        // after contact_visitor). Keep it visible across refreshes until a
+        // deliberate readiness command resolves the case.
+        state: ["LIVE", "CANCELLED", "LATE", "STAFF_REVIEW"].includes(savedState) ? savedState : readiness.state,
         identity_state: readiness.checks.identity,
         camera_state: readiness.checks.camera,
         microphone_state: readiness.checks.microphone,

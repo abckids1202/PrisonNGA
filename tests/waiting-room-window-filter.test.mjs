@@ -11,3 +11,10 @@ test("Waiting Room window selector is controlled and filters persisted appointme
   assert.match(source, /windowFilter === "all_approved"/);
   assert.match(source, /new Intl\.DateTimeFormat\("en-CA", \{ timeZone: record\.timezone \|\| "Asia\/Jakarta"/);
 });
+
+test("Waiting Room preserves explicit staff-review state across refreshes", async () => {
+  const source = await readFile(new URL("../app/api/control/waiting-room/route.ts", import.meta.url), "utf8");
+
+  assert.match(source, /\["LIVE", "CANCELLED", "LATE", "STAFF_REVIEW"\]\.includes\(savedState\)/);
+  assert.match(source, /STAFF_REVIEW is an explicit operational escalation/);
+});
