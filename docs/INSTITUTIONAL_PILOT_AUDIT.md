@@ -47,7 +47,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 285 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 286 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -67,7 +67,7 @@ The current repository already includes:
 ### Product and workflow gaps inside the repository
 
 - The full browser journey is not yet a three-party test. Existing E2E tests cover the shell, OTP, persistence, kiosk boundary and session revocation, but not staff approval plus visitor device check plus kiosk presence plus LiveKit completion plus credit settlement.
-- The Management workspace still has a deliberately unconnected System Settings section. It must either become a real API-backed workflow or be clearly hidden from a pilot role.
+- The unimplemented System Settings section is hidden from the pilot Administration navigation; it must be added only when its policy model, permissions, history and operational effects are implemented.
 - Facility → Operating Hours and Visit Policies now open the authoritative persisted policy editor; Restrictions uses the facility-state API with reason capture and existing step-up/audit/idempotency enforcement; Closures uses the persisted closure workflow. Regression tests protect these entry points.
 - Visitation now reuses the persisted policy editor for Availability Rules and Operating Hours, the closure workflow for Closures, and a facility-scoped appointment-type catalog for Appointment Types. Visitor appointment creation rejects inactive or unknown catalog codes.
 - Appointment Types now has a supervisor-protected update path with optimistic versioning, idempotency, history, audit, and outbox records; the management panel can activate or deactivate catalog entries without direct database access.
