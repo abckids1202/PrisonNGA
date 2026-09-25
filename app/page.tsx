@@ -1414,15 +1414,26 @@ function FinancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["
   const [data, setData] = useState<FinancePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    fetch("/api/control/finance", { cache: "no-store" }).then(async (response) => {
+  const load = useCallback(async (): Promise<FinancePayload | null> => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/control/finance", { cache: "no-store" });
       const body = await response.json() as FinancePayload & { error?: string };
       if (!response.ok) throw new Error(body.error || "Unable to load financial records.");
-      if (active) { setData(body); setLoading(false); }
-    }).catch((reason: unknown) => { if (active) { setError(reason instanceof Error ? reason.message : "Unable to load financial records."); setLoading(false); } });
-    return () => { active = false; };
+      setData(body);
+      return body;
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to load financial records.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
   }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
   const summary = data?.summary || {};
   const formatMoney = (minor: number | undefined) => minor === undefined ? "—" : new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(minor));
   const formatDate = (value?: string | null) => value ? new Date(value).toLocaleString("en-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }) : "No recorded activity";
@@ -1431,14 +1442,19 @@ function FinancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["
   const ledger = data?.ledger || [];
   const payments = tab === "Refunds" ? (data?.payments || []).filter((payment) => ["REFUNDED", "DISPUTED"].includes(String(payment.status))) : data?.payments || [];
   const noData = loading ? "Loading persisted financial records…" : error || "No records have been persisted for this facility.";
+  const runChecks = async () => {
+    const refreshed = await load();
+    const issueCount = refreshed?.reconciliation.issueCount || 0;
+    onNotify(issueCount ? `${issueCount} reconciliation issue${issueCount === 1 ? "" : "s"} found. Provider actions still require review.` : "Reconciliation data refreshed with no recorded issues.", issueCount ? "warning" : "success");
+  };
   return <>
-    <PageHeader eyebrow="Management · Financial controls" title="Finance" description="Facility-scoped credits, payment intents, and the append-only ledger." actions={<Button variant="primary" disabled={!data?.reconciliation.available} onClick={() => onNotify(data?.reconciliation.issueCount ? `${data.reconciliation.issueCount} reconciliation issue${data.reconciliation.issueCount === 1 ? "" : "s"} found. Provider actions still require review.` : "Read-only reconciliation checks completed with no issues.", data?.reconciliation.issueCount ? "warning" : "success")}>Run checks</Button>} />
+    <PageHeader eyebrow="Management · Financial controls" title="Finance" description="Facility-scoped credits, payment intents, and the append-only ledger." actions={<Button variant="primary" disabled={!data?.reconciliation.available || loading} onClick={() => void runChecks()}>{loading ? "Refreshing…" : "Run checks"}</Button>} />
     <div className="sv3-finance-tabs">{["Overview", "Ledger", "Payments", "Refunds", "Reconciliation"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>
     {!loading && error ? <div className="sv3-settings-surface"><strong>Financial records unavailable</strong><p>{error}</p></div> : null}
     {tab === "Overview" ? <div className="sv3-finance-overview">
       <div className="sv3-finance-metrics"><Metric label="Credits purchased" value={data ? String(summary.credits_purchased ?? 0) : "—"} detail="Persisted ledger total" tone="green" /><Metric label="Credits consumed" value={data ? String(summary.credits_consumed ?? 0) : "—"} detail="Settled visit usage" tone="blue" /><Metric label="Credits reserved" value={data ? String(summary.credits_reserved ?? 0) : "—"} detail="Current account reservations" tone="orange" /><Metric label="Refund cases" value={data ? String(summary.refund_cases ?? 0) : "—"} detail={`${summary.pending_payments ?? 0} payment intents pending`} tone="red" /></div>
       <div className="sv3-finance-lower"><section className="sv3-surface sv3-ledger-preview"><div className="sv3-surface-head"><div><span className="sv3-eyebrow">Append-only ledger</span><h2>Recent activity</h2></div><button className="sv3-link-button" onClick={() => setTab("Ledger")}>Open ledger →</button></div>{ledger.length ? ledger.slice(0, 5).map((row) => <div className="sv3-ledger-row" key={row.id}><time>{new Date(row.created_at).toLocaleTimeString("en-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })}</time><span><strong>{label(String(row.entry_type))}</strong><small>{row.visitor_name || "Visitor unavailable"}{row.appointment_id ? ` · ${row.appointment_id}` : ""}</small></span><span>{row.amount === undefined ? "—" : `${row.amount > 0 ? "+" : ""}${row.amount} credit${Math.abs(row.amount) === 1 ? "" : "s"}`}</span><Status tone="green">RECORDED</Status></div>) : <div className="sv3-empty"><strong>{noData}</strong></div>}</section><aside className="sv3-reconcile-card"><span className="sv3-eyebrow">Reconciliation</span><strong>{data?.reconciliation.available ? "Available" : "Not configured"}</strong><p>{data?.reconciliation.available ? "A controlled reconciliation worker is available." : "No reconciliation worker is configured. No success state is being inferred from UI data."}</p><small>Last ledger activity · {formatDate(summary.last_ledger_activity)}</small></aside></div>
-    </div> : <div className="sv3-finance-tab-content"><div className="sv3-finance-tab-head"><div><span className="sv3-eyebrow">{tab}</span><h2>{tab === "Ledger" ? "Credit ledger" : tab === "Refunds" ? "Refund cases" : tab === "Payments" ? "Provider transactions" : "Control checks"}</h2></div><span className="sv3-toolbar-meta">{data ? `${data.providerConfigured ? "Provider configured" : "Provider not configured"} · facility scope` : "Loading facility scope…"}</span></div>{tab === "Reconciliation" ? <div className="sv3-control-checks"><ControlCheck label="Credit ledger" detail={data ? `${ledger.length} recent entries loaded from D1` : noData} /><ControlCheck label="Payment provider" detail={data?.providerConfigured ? "Configured for this environment" : "Not configured; checkout cannot be treated as real money"} warning={!data?.providerConfigured} /><ControlCheck label="Settlement" detail={data ? `${formatMoney(summary.settled_amount_minor)} in succeeded payment intents` : noData} /><ControlCheck label="Worker" detail={data?.reconciliation.workerConfigured ? "Scheduled reconciliation worker is configured" : "No reconciliation worker is configured"} warning={!data?.reconciliation.workerConfigured} /></div> : <div className="sv3-finance-table">{payments.length ? payments.map((row) => <button key={row.id} onClick={() => onNotify(`${row.id} is a persisted payment record.`)}><strong>{row.id}</strong><span>{row.visitor_name || "Visitor unavailable"}</span><span>{row.credit_quantity || 0} Visit Credit{row.credit_quantity === 1 ? "" : "s"}</span><span>{tab === "Refunds" ? label(String(row.status)) : formatMoney(row.amount_minor)}</span><Status tone={statusTone(String(row.status))}>{label(String(row.status))}</Status><b>→</b></button>) : <div className="sv3-empty"><strong>{noData}</strong></div>}</div>}</div>}
+    </div> : <div className="sv3-finance-tab-content"><div className="sv3-finance-tab-head"><div><span className="sv3-eyebrow">{tab}</span><h2>{tab === "Ledger" ? "Credit ledger" : tab === "Refunds" ? "Refund cases" : tab === "Payments" ? "Provider transactions" : "Control checks"}</h2></div><span className="sv3-toolbar-meta">{data ? `${data.providerConfigured ? "Provider configured" : "Provider not configured"} · facility scope` : "Loading facility scope…"}</span></div>{tab === "Reconciliation" ? <div className="sv3-control-checks"><ControlCheck label="Credit ledger" detail={data ? `${ledger.length} recent entries loaded from D1` : noData} /><ControlCheck label="Payment provider" detail={data?.providerConfigured ? "Configured for this environment" : "Not configured; checkout cannot be treated as real money"} warning={!data?.providerConfigured} /><ControlCheck label="Settlement" detail={data ? `${formatMoney(summary.settled_amount_minor)} in succeeded payment intents` : noData} /><ControlCheck label="Worker" detail={data?.reconciliation.workerConfigured ? "Scheduled reconciliation worker is configured" : "No reconciliation worker is configured"} warning={!data?.reconciliation.workerConfigured} />{data?.reconciliation.issues?.length ? <section className="sv3-settings-surface"><strong>Open reconciliation issues</strong>{data.reconciliation.issues.map((issue) => <p key={`${issue.issue_type}-${issue.payment_intent_id || issue.provider_event_id || "unknown"}`}><b>{label(issue.issue_type)}</b> · {issue.detail}</p>)}</section> : null}</div> : <div className="sv3-finance-table">{payments.length ? payments.map((row) => <button key={row.id} onClick={() => onNotify(`${row.id} is a persisted payment record.`)}><strong>{row.id}</strong><span>{row.visitor_name || "Visitor unavailable"}</span><span>{row.credit_quantity || 0} Visit Credit{row.credit_quantity === 1 ? "" : "s"}</span><span>{tab === "Refunds" ? label(String(row.status)) : formatMoney(row.amount_minor)}</span><Status tone={statusTone(String(row.status))}>{label(String(row.status))}</Status><b>→</b></button>) : <div className="sv3-empty"><strong>{noData}</strong></div>}</div>}</div>}
   </>;
 }
 function ControlCheck({ label, detail, warning = false }: { label: string; detail: string; warning?: boolean }) {

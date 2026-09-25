@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("Finance reconciliation UI uses the API worker status", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /data\?\.reconciliation\.workerConfigured \? "Scheduled reconciliation worker is configured"/);
-  assert.match(source, /warning=\{!data\?\.reconciliation\.workerConfigured\}/);
+const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+test("Finance reconciliation refreshes authoritative data and exposes open issues", () => {
+  assert.match(source, /const runChecks = async \(\) =>/);
+  assert.match(source, /const refreshed = await load\(\)/);
+  assert.match(source, /Open reconciliation issues/);
+  assert.match(source, /data\.reconciliation\.issues\.map/);
 });
