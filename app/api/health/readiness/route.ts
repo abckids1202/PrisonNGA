@@ -29,7 +29,7 @@ const requiredColumns: Record<string, string[]> = {
 
 const configurationKeys = [
   "SECUREVISIT_ENVIRONMENT", "SECUREVISIT_HASH_SALT", "STAFF_STEP_UP_SECRET", "VISITOR_AUTH_DELIVERY", "VISITOR_AUTH_WEBHOOK_URL", "VISITOR_AUTH_WEBHOOK_SECRET",
-  "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
+  "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "EVIDENCE_STORAGE_PROVIDER", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
   "PAYMENT_PROVIDER", "VISIT_CREDIT_PRICE_MINOR", "PAYMENT_CHECKOUT_URL", "PAYMENT_REFUND_URL", "PAYMENT_PROVIDER_SECRET", "PAYMENT_WEBHOOK_SECRET", "NOTIFICATION_DELIVERY", "NOTIFICATION_WEBHOOK_URL", "NOTIFICATION_WEBHOOK_SECRET",
   "STAFF_AUTH_PROVIDER", "STAFF_OIDC_ISSUER", "STAFF_OIDC_CLIENT_ID", "STAFF_OIDC_CLIENT_SECRET", "STAFF_OIDC_REDIRECT_URI", "STAFF_OIDC_MFA_ACR", "STAFF_OIDC_MFA_AMR",
   "STAFF_SAML_ENTITY_ID", "STAFF_SAML_METADATA_URL", "STAFF_SAML_ENTRY_POINT", "STAFF_SAML_IDP_CERT", "STAFF_SAML_CALLBACK_URI", "STAFF_SAML_MFA_ACR",
@@ -52,11 +52,12 @@ export async function GET() {
       for (const column of columns) if (!available.has(column)) missingColumns.push(`${table}.${column}`);
     }
     const schemaReady = missingTables.length === 0 && missingColumns.length === 0;
-    const [paymentProvider, videoConfig, notificationDelivery, evidenceBucket, notificationWebhookUrl, notificationWebhookSecret, visitorAuthDelivery, visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, ...configurationValues] = await Promise.all([
+    const [paymentProvider, videoConfig, notificationDelivery, evidenceBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, visitorAuthDelivery, visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, ...configurationValues] = await Promise.all([
       getPaymentProvider(),
       getVideoConfig(),
       getNotificationDelivery(),
       getEvidenceBucket(),
+      getRuntimeValue("EVIDENCE_STORAGE_PROVIDER"),
       getRuntimeValue("NOTIFICATION_WEBHOOK_URL"),
       getRuntimeValue("NOTIFICATION_WEBHOOK_SECRET"),
       getRuntimeValue("VISITOR_AUTH_DELIVERY"),
@@ -99,7 +100,7 @@ export async function GET() {
       payment: Boolean(paymentProvider),
       paymentWebhook,
       livekit: videoConfig.configured,
-      evidenceStorage: Boolean(evidenceBucket),
+      evidenceStorage: Boolean(evidenceBucket) && (environment === "development" ? evidenceStorageProvider === "local_test" || evidenceStorageProvider === "r2" : evidenceStorageProvider === "r2"),
       evidenceScanning,
       visitorAuth,
       staffIdentity,

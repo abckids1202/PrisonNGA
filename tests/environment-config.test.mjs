@@ -46,3 +46,11 @@ test("institutional OIDC configuration requires a confidential client secret", (
   const withSecret = validateEnvironment({ ...base, STAFF_OIDC_CLIENT_SECRET: "client-secret" });
   assert.ok(!withSecret.missing.includes("STAFF_OIDC_CLIENT_SECRET"));
 });
+
+test("staging and production require protected R2 evidence storage", () => {
+  const base = { ...withDatabase, SECUREVISIT_ENVIRONMENT: "staging", EVIDENCE_STORAGE_PROVIDER: "local_test" };
+  const result = validateEnvironment(base);
+  assert.ok(result.missing.includes("EVIDENCE_STORAGE_PROVIDER=r2"));
+  const configured = validateEnvironment({ ...base, EVIDENCE_STORAGE_PROVIDER: "r2" });
+  assert.ok(!configured.missing.includes("EVIDENCE_STORAGE_PROVIDER=r2"));
+});

@@ -49,6 +49,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (value(env, "VIDEO_PROVIDER") !== "livekit") missing.push("VIDEO_PROVIDER=livekit");
   if (!validLiveKitUrl(value(env, "LIVEKIT_URL"))) missing.push("LIVEKIT_URL (must be an https:// or wss:// URL without credentials)");
   for (const key of ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]) if (!value(env, key)) missing.push(key);
+  if (value(env, "EVIDENCE_STORAGE_PROVIDER") !== "r2") missing.push("EVIDENCE_STORAGE_PROVIDER=r2");
   if (!env.EVIDENCE_BUCKET) missing.push("EVIDENCE_BUCKET");
   const evidenceScanProvider = value(env, "EVIDENCE_SCAN_PROVIDER");
   if (evidenceScanProvider !== "webhook") missing.push("EVIDENCE_SCAN_PROVIDER=webhook");

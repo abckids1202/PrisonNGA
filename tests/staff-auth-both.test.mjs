@@ -16,6 +16,7 @@ const base = {
   LIVEKIT_API_KEY: "key",
   LIVEKIT_API_SECRET: "secret",
   EVIDENCE_BUCKET: {},
+  EVIDENCE_STORAGE_PROVIDER: "r2",
   EVIDENCE_SCAN_PROVIDER: "webhook",
   EVIDENCE_SCAN_WEBHOOK_URL: "https://scan.example.test",
   EVIDENCE_SCAN_WEBHOOK_SECRET: "scan-secret",
