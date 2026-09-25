@@ -60,7 +60,7 @@ The current repository already includes:
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 304 server tests and 15 browser tests passing in the local development suite.
+- Automated server tests and browser smoke tests. Current validation baseline is 305 server tests and 15 browser tests passing in the local development suite.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -99,6 +99,7 @@ The current repository already includes:
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
 - Staff cancellation from Waiting Room now atomically releases any active Visit Credit reservation and all held/reserved/active room and kiosk reservations, with idempotent guards and audit/outbox evidence.
+- Resource reassignment now requires a bounded idempotency key and replays the original successful response after a network retry, while preserving source/target/waiting-room optimistic concurrency and transactional audit/outbox behavior.
 - Repeat visitor Waiting Room heartbeats now refresh presence freshness without incrementing appointment or readiness versions; first check-in and actual state transitions remain optimistic-concurrency-protected.
 - Waiting Room's time-window selector now filters the persisted queue by the next two hours, facility-local today, or all approved records instead of being visual-only; queue counts use the selected window.
 - Control appointments and facility state now refresh from protected APIs every 15 seconds with no-store caching and explicit unavailable-state handling, so operational screens do not remain silently stale after mount.

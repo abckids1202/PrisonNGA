@@ -3,6 +3,7 @@ import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { createKioskCredentialSecret, hashKioskCredential } from "../../../../lib/server/kiosk-credentials";
 import { resourceReassignmentStatements } from "../../../../lib/server/resource-reassignment";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 
 const commands = ["set_status", "heartbeat", "issue_kiosk_credential", "revoke_kiosk_credential", "reassign_appointment"] as const;
 
@@ -25,6 +26,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
+  let databaseRef: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const body = await request.json() as {
       resourceId?: unknown;
@@ -41,6 +44,7 @@ export async function POST(request: Request) {
     if (typeof body.resourceId !== "string" || !body.resourceId.trim() || !commands.includes(body.command as typeof commands[number])) throw new SecurityError("INVALID_RESOURCE_COMMAND", 400);
     const reason = assertReason(body.reason);
     const d1 = await getD1();
+    databaseRef = d1;
     const current = await d1.prepare("SELECT id, display_name, status, version FROM resources WHERE id = ? AND facility_id = ?").bind(body.resourceId.trim(), authorization.facilityId).first<{ id: string; display_name: string; status: string; version: number }>();
     if (!current) throw new SecurityError("RESOURCE_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_RESOURCE", 409);
@@ -54,6 +58,28 @@ export async function POST(request: Request) {
       if (![expectedSourceVersion, expectedTargetVersion, expectedWaitingVersion].every(Number.isSafeInteger)) throw new SecurityError("INVALID_RESOURCE_VERSION", 400);
       const appointmentId = body.appointmentId.trim();
       const targetResourceId = body.targetResourceId.trim();
+      const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+      if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+      const scope = `resource-reassign:${authorization.facilityId}:${appointmentId}:${current.id}`;
+      const requestHash = await hashIdempotencyPayload({
+        resourceId: current.id,
+        appointmentId,
+        targetResourceId,
+        command: body.command,
+        expectedVersion: body.expectedVersion,
+        expectedTargetVersion: body.expectedTargetVersion,
+        expectedWaitingVersion: body.expectedWaitingVersion,
+        reason,
+      });
+      const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
+      if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+      idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
+      const finish = async (responseBody: unknown, status = 200) => {
+        const completed = await d1.batch([completeIdempotencyStatement(d1, { ...idempotency!, status, body: responseBody })]);
+        if (!completed[0]?.meta.changes) throw new SecurityError("RESOURCE_REASSIGNMENT_IDEMPOTENCY_CONFLICT", 409);
+        idempotency = null;
+        return securityResponse(responseBody, status, context.requestId);
+      };
       const source = await d1.prepare(`SELECT rr.id, rr.resource_type, rr.resource_id, rr.status, rr.starts_at, rr.ends_at,
         a.status AS appointment_status, a.version AS appointment_version,
         w.version AS waiting_version, w.assigned_room_id, w.assigned_kiosk_id
@@ -86,7 +112,7 @@ export async function POST(request: Request) {
         WHERE facility_id = ? AND appointment_id = ? AND resource_type = ? AND resource_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')`)
         .bind(authorization.facilityId, appointmentId, source.resource_type, target.id).first<{ id: string }>();
       if (existingTarget) {
-        return securityResponse({ appointmentId, resourceId: target.id, resourceType: target.resource_type, displayName: target.display_name, idempotent: true, waitingVersion: expectedWaitingVersion }, 200, context.requestId);
+        return finish({ appointmentId, resourceId: target.id, resourceType: target.resource_type, displayName: target.display_name, idempotent: true, waitingVersion: expectedWaitingVersion });
       }
       if (body.expectedVersion !== current.version) throw new SecurityError("STALE_RESOURCE", 409);
       const correlationId = crypto.randomUUID();
@@ -94,7 +120,7 @@ export async function POST(request: Request) {
       const results = await d1.batch(statements);
       const waitingUpdated = source.waiting_version === null || Boolean(results[4]?.meta.changes);
       if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes && results[3]?.meta.changes && waitingUpdated)) throw new SecurityError("RESOURCE_REASSIGNMENT_CONFLICT", 409);
-      return securityResponse({ appointmentId, resourceId: target.id, resourceType: target.resource_type, displayName: target.display_name, version: target.version + 1, waitingVersion: source.waiting_version === null ? null : expectedWaitingVersion + 1, correlationId }, 200, context.requestId);
+      return finish({ appointmentId, resourceId: target.id, resourceType: target.resource_type, displayName: target.display_name, version: target.version + 1, waitingVersion: source.waiting_version === null ? null : expectedWaitingVersion + 1, correlationId });
     }
     if (body.command === "issue_kiosk_credential") {
       const device = await d1.prepare("SELECT id, resource_type FROM resources WHERE id = ? AND facility_id = ?").bind(current.id, authorization.facilityId).first<{ id: string; resource_type: string }>();
@@ -150,6 +176,9 @@ export async function POST(request: Request) {
     if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes)) throw new SecurityError("STALE_RESOURCE", 409);
     return securityResponse({ resourceId: current.id, status: nextStatus, version: current.version + 1, correlationId, reason }, 200, context.requestId);
   } catch (error) {
+    if (databaseRef && idempotency) {
+      try { await releaseIdempotencyClaim(databaseRef, idempotency); } catch { /* Preserve the original resource error. */ }
+    }
     return securityErrorResponse(error, context.requestId);
   }
 }
