@@ -21,6 +21,7 @@ class FakeD1 {
   }
   prepare(sql) { return new FakeStatement(this, sql); }
   lookup(sql, [aggregateId, facilityId]) {
+    if (sql.includes("FROM users")) return aggregateId === "visitor-account" ? { id: aggregateId } : null;
     if (facilityId !== "facility-1") return null;
     if (sql.includes("FROM appointments")) return aggregateId === "appointment-1" ? this.rows.appointment : null;
     if (sql.includes("FROM visit_sessions")) return aggregateId === "session-1" ? this.rows.session : null;
@@ -45,6 +46,8 @@ test("outbox recipient resolution is facility-scoped for visitor aggregates", as
 
 test("non-visitor aggregates and incomplete rows do not create a recipient", async () => {
   const db = new FakeD1();
+  assert.equal(await resolveOutboxVisitorRecipient(db, { aggregate_type: "visitor_account", aggregate_id: "visitor-account", facility_id: null }), "visitor-account");
+  assert.equal(await resolveOutboxVisitorRecipient(db, { aggregate_type: "visitor_account", aggregate_id: "staff-account", facility_id: null }), null);
   assert.equal(await resolveOutboxVisitorRecipient(db, { aggregate_type: "incident", aggregate_id: "incident-1", facility_id: "facility-1" }), null);
   assert.equal(await resolveOutboxVisitorRecipient(db, { aggregate_type: "appointment", aggregate_id: null, facility_id: "facility-1" }), null);
   assert.equal(await resolveOutboxVisitorRecipient(db, { aggregate_type: "appointment", aggregate_id: "appointment-1", facility_id: null }), null);

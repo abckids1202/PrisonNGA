@@ -13,7 +13,19 @@ export async function resolveOutboxVisitorRecipient(
   db: Pick<D1Database, "prepare">,
   row: OutboxRecipientRow,
 ): Promise<string | null> {
-  if (!row.aggregate_id || !row.facility_id) return null;
+  if (!row.aggregate_id) return null;
+
+  // Account-security events are intentionally not facility-scoped. Resolve
+  // the aggregate only after confirming it is an active visitor account so a
+  // malformed event cannot turn a staff or disabled account into a recipient.
+  if (row.aggregate_type === "visitor_account") {
+    const visitor = await db.prepare(
+      "SELECT id FROM users WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'",
+    ).bind(row.aggregate_id).first<{ id: string }>();
+    return visitor?.id || null;
+  }
+
+  if (!row.facility_id) return null;
 
   if (row.aggregate_type === "appointment") {
     const appointment = await db.prepare(
