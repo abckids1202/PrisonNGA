@@ -275,7 +275,7 @@ function VisitorHome({
         <QuickAction icon="◷" title="My visits" copy="See upcoming and past visits" onClick={() => onNavigate("Visits")} tone="blue" />
         <QuickAction icon="↔" title="My connections" copy="People you’re approved to see" onClick={() => onNavigate("Connections")} tone="sage" />
         <QuickAction icon="◇" title="Visit credits" copy="Check your available balance" onClick={() => onNavigate("Credits")} tone="lilac" />
-        <QuickAction icon="⌁" title="Device check" copy="Make sure everything works" onClick={() => onAction("Device check is ready when you are.", "info")} tone="sand" />
+        <QuickAction icon="⌁" title="Device check" copy="Make sure everything works" onClick={nextVisit ? onOpenVisit : () => onAction("Schedule a visit first, then you can run the device check from Visit Details.", "info")} tone="sand" />
         <QuickAction icon="?" title="Help center" copy="Answers and visitor support" onClick={() => onAction("Our visitor support team is here to help.", "info")} tone="rose" />
       </div></section>
 
