@@ -97,6 +97,7 @@ The current repository already includes:
 - Visitor session controls still need production delivery, recovery and device-management validation beyond the development OTP path; suspicious-login auditing and visitor notification behavior are implemented but still require real delivery-provider staging proof.
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
+- Staff cancellation from Waiting Room now atomically releases any active Visit Credit reservation and all held/reserved/active room and kiosk reservations, with idempotent guards and audit/outbox evidence.
 - Repeat visitor Waiting Room heartbeats now refresh presence freshness without incrementing appointment or readiness versions; first check-in and actual state transitions remain optimistic-concurrency-protected.
 - Waiting Room's time-window selector now filters the persisted queue by the next two hours, facility-local today, or all approved records instead of being visual-only; queue counts use the selected window.
 - Control appointments and facility state now refresh from protected APIs every 15 seconds with no-store caching and explicit unavailable-state handling, so operational screens do not remain silently stale after mount.
