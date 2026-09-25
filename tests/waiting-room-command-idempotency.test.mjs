@@ -11,3 +11,12 @@ test("waiting-room commands are replay-safe and clean up orphan LiveKit rooms on
   assert.match(source, /LIVEKIT_ORPHAN_ROOM_CLEANUP_FAILED/);
   assert.match(source, /STALE_WAITING_ROOM_STATE/);
 });
+
+test("waiting-room cancellation releases reserved credit and assigned resources", async () => {
+  const source = await readFile(new URL("../app/api/control/waiting-room/route.ts", import.meta.url), "utf8");
+  assert.match(source, /releaseVisitCreditStatements/);
+  assert.match(source, /CREDIT_RESERVATION_NOT_SETTLEABLE/);
+  assert.match(source, /entry_type IN \('RESERVATION_RELEASE', 'CONSUMPTION'\)/);
+  assert.match(source, /UPDATE resource_reservations SET status = 'RELEASED'/);
+  assert.match(source, /last_transition_id = \?/);
+});

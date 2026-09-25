@@ -331,13 +331,17 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     });
     expect(webhook.status(), await webhook.text()).toBe(200);
 
-    const requestedDate = new Date(Date.now() + (3 + Math.floor(Math.random() * 20)) * 24 * 60 * 60 * 1000);
-    requestedDate.setUTCHours(1, 0, 0, 0);
-    const date = requestedDate.toISOString().slice(0, 10);
-    const availability = await page.request.get(`/api/visitor/availability?facilityId=facility-central-001&prisonerId=prisoner-ar-001&date=${date}&duration=30`);
-    expect(availability.status(), await availability.text()).toBe(200);
-    const availabilityBody = await availability.json() as { slots?: string[] };
-    const selectedStart = availabilityBody.slots?.[0];
+    let selectedStart: string | undefined;
+    for (let offset = 3; offset <= 25 && !selectedStart; offset += 1) {
+      const requestedDate = new Date(Date.now() + offset * 24 * 60 * 60 * 1000);
+      requestedDate.setUTCHours(1, 0, 0, 0);
+      if ([0, 6].includes(requestedDate.getUTCDay())) continue;
+      const date = requestedDate.toISOString().slice(0, 10);
+      const availability = await page.request.get(`/api/visitor/availability?facilityId=facility-central-001&prisonerId=prisoner-ar-001&date=${date}&duration=30`);
+      expect(availability.status(), await availability.text()).toBe(200);
+      const availabilityBody = await availability.json() as { slots?: string[] };
+      selectedStart = availabilityBody.slots?.[0];
+    }
     expect(selectedStart).toBeTruthy();
     if (!selectedStart) throw new Error("Expected at least one available appointment slot");
     const start = new Date(selectedStart);

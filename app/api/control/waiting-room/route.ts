@@ -4,6 +4,7 @@ import { createLiveKitProvider, createProviderRoomName } from "../../../../lib/s
 import { operationalLog } from "../../../../lib/server/observability";
 import { canTransitionWaitingRoom } from "../../../../lib/server/workflow";
 import { evaluateWaitingRoomReadiness, isRecentPresence } from "../../../../lib/server/waiting-room-readiness";
+import { releaseVisitCreditStatements } from "../../../../lib/server/credits";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
 
@@ -116,6 +117,9 @@ export async function POST(request: Request) {
     const d1 = database;
     const current = await d1.prepare(`SELECT a.id, a.status AS appointment_status, a.version AS appointment_version, a.requested_start, a.requested_end, a.visitor_user_id, f.current_state,
         p.status AS prisoner_status, p.visitation_status,
+        ca.id AS credit_account_id, ca.reserved_credits,
+        EXISTS (SELECT 1 FROM credit_ledger_entries cle WHERE cle.appointment_id = a.id AND cle.credit_account_id = ca.id AND cle.entry_type = 'RESERVATION'
+          AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = a.id AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))) AS active_credit_reservation,
         (SELECT vr.status FROM visitor_relationships vr WHERE vr.visitor_user_id = a.visitor_user_id AND vr.prisoner_id = a.prisoner_id AND vr.facility_id = a.facility_id LIMIT 1) AS relationship_status,
         vs.id AS session_id, vs.status AS session_status, vs.provider_room_name,
         w.state, w.visitor_presence, w.visitor_presence_at, w.prisoner_presence, w.prisoner_presence_at, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.restriction_state,
@@ -138,6 +142,7 @@ export async function POST(request: Request) {
       FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
+      LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
       LEFT JOIN visit_sessions vs ON vs.appointment_id = a.id AND vs.facility_id = a.facility_id
       WHERE a.id = ? AND a.facility_id = ?`).bind(body.appointmentId, authorization.facilityId).first<Record<string, string | number | null>>();
     if (!current) throw new SecurityError("WAITING_APPOINTMENT_NOT_FOUND", 404);
@@ -161,6 +166,7 @@ export async function POST(request: Request) {
     const prisonerEligible = current.prisoner_status === "ACTIVE" && current.visitation_status === "APPROVED";
     const facilityEligible = current.current_state === "NORMAL_OPERATIONS";
     if (command === "cancel_visit" && (currentState === "LIVE" || current.appointment_status === "IN_PROGRESS")) throw new SecurityError("LIVE_VISIT_MUST_BE_TERMINATED", 409);
+    if (command === "cancel_visit" && Number(current.active_credit_reservation) === 1 && (!current.credit_account_id || Number(current.reserved_credits || 0) < 1)) throw new SecurityError("CREDIT_RESERVATION_NOT_SETTLEABLE", 409);
     if (command === "start_visit" && !facilityEligible) throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (command === "start_visit" && !prisonerEligible) throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
     if (command === "run_preflight" || command === "retry_device") {
@@ -284,6 +290,22 @@ export async function POST(request: Request) {
       statements.push(d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), newSession.id, "SESSION_CREATED", "SECUREVISIT", "FACILITY", JSON.stringify({ appointmentId: body.appointmentId }), correlationId, now));
+    }
+    if (command === "cancel_visit") {
+      if (Number(current.active_credit_reservation) === 1 && current.credit_account_id) {
+        statements.push(...releaseVisitCreditStatements(d1, {
+          accountId: String(current.credit_account_id),
+          appointmentId: body.appointmentId,
+          actorUserId: authorization.userId,
+          reason,
+          now,
+          guard: { sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)", values: [body.appointmentId, authorization.facilityId, correlationId] },
+        }));
+      }
+      statements.push(d1.prepare(`UPDATE resource_reservations SET status = 'RELEASED'
+        WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')
+          AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)`)
+        .bind(body.appointmentId, authorization.facilityId, body.appointmentId, authorization.facilityId, correlationId));
     }
     const results = await d1.batch(statements);
     if (!results[0]?.meta.changes) throw new SecurityError("STALE_APPOINTMENT_STATE", 409);
