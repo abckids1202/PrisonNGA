@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const e2ePort = process.env.PLAYWRIGHT_PORT || "4173";
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER === "true";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -16,7 +17,10 @@ export default defineConfig({
   webServer: {
     command: `npm run dev -- --host 127.0.0.1 --port ${e2ePort}`,
     url: `http://localhost:${e2ePort}/`,
-    reuseExistingServer: !process.env.CI,
+    // Never trust an arbitrary process already listening on the test port.
+    // Opt in explicitly when a caller has started the correctly configured
+    // SecureVisit server and wants Playwright to reuse it.
+    reuseExistingServer,
     timeout: 120_000,
     env: {
       SECUREVISIT_ENVIRONMENT: "development",
