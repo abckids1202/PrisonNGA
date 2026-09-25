@@ -42,7 +42,7 @@ test("visitor authentication atomically audits login and caps failed-code increm
 test("visitor verification records a privacy-safe new-device security event", async () => {
   const source = await readFile(new URL("../app/api/auth/visitor/verify/route.ts", import.meta.url), "utf8");
   assert.match(source, /knownDevice/);
-  assert.match(source, /created_at >= datetime\('now', '-30 days'\)/);
+  assert.match(source, /julianday\(created_at\) >= julianday\('now', '-30 days'\)/);
   assert.match(source, /VISITOR_SUSPICIOUS_LOGIN/);
   assert.match(source, /reason: "NEW_DEVICE"/);
   assert.doesNotMatch(source, /challenge\.destination.*VISITOR_SUSPICIOUS_LOGIN/);

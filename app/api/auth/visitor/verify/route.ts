@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     const userAgentHash = context.userAgent ? await hashIdentifier(context.userAgent, salt) : null;
     const ipHash = context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null;
     const knownDevice = existingAccount?.id && userAgentHash
-      ? await d1.prepare(`SELECT 1 AS known FROM auth_sessions WHERE user_id = ? AND user_agent_hash = ? AND created_at >= datetime('now', '-30 days') LIMIT 1`).bind(existingAccount.id, userAgentHash).first()
+      ? await d1.prepare(`SELECT 1 AS known FROM auth_sessions WHERE user_id = ? AND user_agent_hash = ? AND julianday(created_at) >= julianday('now', '-30 days') LIMIT 1`).bind(existingAccount.id, userAgentHash).first()
       : null;
     const suspiciousLogin = Boolean(existingAccount?.id && userAgentHash && !knownDevice);
     const results = await d1.batch([
