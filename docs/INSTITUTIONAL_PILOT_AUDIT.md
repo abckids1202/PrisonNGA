@@ -100,6 +100,7 @@ The current repository already includes:
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
 - Staff cancellation from Waiting Room now atomically releases any active Visit Credit reservation and all held/reserved/active room and kiosk reservations, with idempotent guards and audit/outbox evidence.
 - Resource reassignment now requires a bounded idempotency key and replays the original successful response after a network retry, while preserving source/target/waiting-room optimistic concurrency and transactional audit/outbox behavior.
+- Kiosk credential issue/revoke now use transactional idempotency claims. Replays return only a sanitized lifecycle result; the one-time credential secret is never stored in the replay body, and a lost secret requires an intentional new rotation.
 - Repeat visitor Waiting Room heartbeats now refresh presence freshness without incrementing appointment or readiness versions; first check-in and actual state transitions remain optimistic-concurrency-protected.
 - Waiting Room's time-window selector now filters the persisted queue by the next two hours, facility-local today, or all approved records instead of being visual-only; queue counts use the selected window.
 - Control appointments and facility state now refresh from protected APIs every 15 seconds with no-store caching and explicit unavailable-state handling, so operational screens do not remain silently stale after mount.

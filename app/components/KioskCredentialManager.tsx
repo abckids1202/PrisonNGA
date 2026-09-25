@@ -27,7 +27,7 @@ export default function KioskCredentialManager({ resourceId, resourceName, resou
     try {
       const response = await fetch("/api/control/resources", {
         method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `kiosk-credential-${resourceId}-${command}-${crypto.randomUUID()}` },
         credentials: "include",
         body: JSON.stringify({ resourceId, command, expectedVersion: resourceVersion, reason: reason.trim() }),
       });
@@ -49,6 +49,9 @@ export default function KioskCredentialManager({ resourceId, resourceName, resou
       if (command === "issue_kiosk_credential" && body.credential?.token) {
         setOneTimeToken(body.credential.token);
         onNotify(`${resourceName} credential issued. Copy it now; it will not be shown again.`, "success");
+      } else if (command === "issue_kiosk_credential" && body.credentialStatus === "ACTIVE") {
+        setOneTimeToken(null);
+        onNotify(`${resourceName} already has the credential from that request. The one-time secret was not returned again. Start a new rotation if the secret was lost.`, "warning");
       } else {
         setOneTimeToken(null);
         onNotify(`${resourceName} credential revoked.`, "success");

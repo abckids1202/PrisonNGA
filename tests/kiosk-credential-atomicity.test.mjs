@@ -12,4 +12,16 @@ test("kiosk credential rotation keeps resource, credential, audit, and outbox wr
   assert.match(source, /auditAndOutboxStatements\(d1/);
   assert.match(source, /version = version \+ 1/);
   assert.match(source, /INSERT INTO kiosk_credentials/);
+  assert.match(source, /kiosk-credential:\$\{authorization\.facilityId\}:\$\{current\.id\}/);
+  assert.match(source, /IDEMPOTENCY_KEY_REQUIRED/);
+  assert.match(source, /completeIdempotencyStatement\(d1/);
+  assert.match(source, /credentialStatus: "ACTIVE", version/);
+  assert.match(source, /credentialStatus: "REVOKED", version/);
+});
+
+test("kiosk credential UI sends idempotency keys and explains sanitized retries", async () => {
+  const source = await readFile(new URL("../app/components/KioskCredentialManager.tsx", import.meta.url), "utf8");
+  assert.match(source, /"Idempotency-Key": `kiosk-credential-/);
+  assert.match(source, /one-time secret was not returned again/);
+  assert.match(source, /Start a new rotation if the secret was lost/);
 });
