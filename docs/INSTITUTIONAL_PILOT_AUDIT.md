@@ -44,6 +44,7 @@ The current repository already includes:
 - Idempotent state-changing boundaries for appointment decisions, verification review, visitor profile, session revocation, notification read state, policy updates, live-session ending, waiting-room commands, outbox replay and visitor payment checkout audit events.
 - Privacy-safe `VISITOR_LOGIN_CHALLENGE_FAILED` security events with hashed request context and no OTP/destination logging.
 - Visitor phone verification state is sourced from the authoritative user session record; profile reads and writes no longer invent verification timestamps or erase verified SMS state.
+- Visitor prisoner and appointment-type discovery now requires a configured, normally operating facility, so direct API calls cannot expose operational records from a lockdown or unconfigured facility.
 - Workspace identity headers are now accepted only in explicit development mode; staging and production require persisted staff sessions from OIDC or SAML.
 - OIDC staff callbacks now require a configured `acr` and/or `amr` MFA claim; staging/production configuration fails closed when the claim requirement is missing.
 - SAML staff callbacks now request and validate the configured `AuthnContextClassRef` from the signed assertion; staging/production configuration fails closed when it is missing.
@@ -53,7 +54,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 296 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 298 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
