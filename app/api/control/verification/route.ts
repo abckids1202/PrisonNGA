@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_VERIFICATION_CASE", 409);
     if (["APPROVED", "REJECTED"].includes(current.status)) {
       const responseBody = { verificationCaseId, status: current.status, relationshipStatus: current.relationship_status, version: current.version, idempotent: true };
-      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
+      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', processing_started_at = NULL, response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
       if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
       idempotency = null;
       return securityResponse(responseBody, 200, context.requestId);

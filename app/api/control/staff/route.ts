@@ -91,7 +91,7 @@ export async function PATCH(request: Request) {
     if (status === "DISABLED") await requireStepUp({ purpose: "staff_disable", userId: authorization.userId, targetId: userId, payload: { status, expectedVersion: body.expectedVersion ?? current.version, reason } });
     if (current.status === status) {
       const responseBody = { userId, status, version: current.version, idempotent: true };
-      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
+      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', processing_started_at = NULL, response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
       if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
       idempotency = null;
       return securityResponse(responseBody, 200, context.requestId);

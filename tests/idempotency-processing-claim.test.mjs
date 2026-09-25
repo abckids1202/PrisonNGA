@@ -9,4 +9,5 @@ test("idempotency claims track processing age separately from creation age", asy
   assert.match(source, /processing_started_at, created_at/);
   assert.match(source, /COALESCE\(processing_started_at, created_at\) <= \?/);
   assert.match(source, /const processingStartedAt = existing\.processing_started_at \|\| existing\.created_at/);
+  assert.match(source, /status = 'COMPLETED', processing_started_at = NULL/);
 });

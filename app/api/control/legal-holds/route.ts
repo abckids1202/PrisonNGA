@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     if (hold.status === "RELEASED") {
       const responseBody = { id: holdId, status: "RELEASED", idempotent: true };
-      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), now, idempotency.claimId, idempotency.scope, idempotency.key).run();
+      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', processing_started_at = NULL, response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), now, idempotency.claimId, idempotency.scope, idempotency.key).run();
       if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
       return securityResponse(responseBody, 200, context.requestId);
     }

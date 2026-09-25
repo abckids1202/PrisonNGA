@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       const allocation = command === "approve" ? await getAssignedResources(d1, authorization.facilityId, appointmentId) : null;
       if (command === "approve" && !allocation) throw new SecurityError("APPOINTMENT_RESOURCE_ASSIGNMENT_INCOMPLETE", 500);
       const responseBody = { appointmentId, status: nextStatus, idempotent: true, allocation: allocation && { roomId: allocation.roomId, roomName: allocation.roomName, deviceId: allocation.deviceId, deviceName: allocation.deviceName } };
-      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
+      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', processing_started_at = NULL, response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
       if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
       idempotency = null;
       return securityResponse(responseBody, 200, context.requestId);
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
         const allocation = command === "approve" ? await getAssignedResources(d1, authorization.facilityId, appointmentId) : null;
         if (command === "approve" && !allocation) throw new SecurityError("APPOINTMENT_RESOURCE_ASSIGNMENT_INCOMPLETE", 500);
         const responseBody = { appointmentId, status: nextStatus, idempotent: true, allocation: allocation && { roomId: allocation.roomId, roomName: allocation.roomName, deviceId: allocation.deviceId, deviceName: allocation.deviceName } };
-        const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
+        const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', processing_started_at = NULL, response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
         if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
         idempotency = null;
         return securityResponse(responseBody, 200, context.requestId);
@@ -173,7 +173,7 @@ export async function POST(request: Request) {
     if (command === "approve" && !allocation) throw new SecurityError("APPOINTMENT_RESOURCE_ASSIGNMENT_INCOMPLETE", 500);
     const assignedResources = allocation ? { roomId: allocation.roomId, roomName: allocation.roomName, deviceId: allocation.deviceId, deviceName: allocation.deviceName } : null;
     const responseBody = { appointmentId, status: nextStatus, version: current.version + 1, allocation: assignedResources, correlationId };
-    const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
+    const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', processing_started_at = NULL, response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(200, JSON.stringify(responseBody), new Date().toISOString(), idempotency.claimId, idempotency.scope, idempotency.key).run();
     if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
