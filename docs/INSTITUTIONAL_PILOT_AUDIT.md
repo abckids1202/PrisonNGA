@@ -23,7 +23,7 @@ Current assessment:
 The current repository already includes:
 
 - Facility-scoped D1 schema and migrations for users, staff roles, prisoners, visitors, relationships, verification, policies, appointments, resources, kiosks, waiting room, live sessions, incidents, notifications, payment intents, payment events, credit ledger, audit, retention and legal holds.
-- Visitor email/SMS development OTP flows, visitor sessions, profile and relationship submission, evidence metadata, appointment and device-check APIs, credit display and payment-intent creation. Visitor relationship, appointment, verification-case and evidence joins now enforce matching facility IDs, reducing cross-facility data-integrity risk.
+- Visitor email/SMS development OTP flows, visitor sessions, profile and relationship submission, evidence metadata, appointment and device-check APIs, credit display and payment-intent creation. Visitor, staff, verification, evidence, waiting-room, and LiveKit joins now enforce matching facility IDs, reducing cross-facility data-integrity risk.
 - Persisted OTP delivery-attempt records with sent/failed status, provider label, sanitized failure code and scheduled cleanup; OTP values and destinations are not copied into the delivery-attempt table.
 - Staff appointment decisions, verification decisions, waiting-room commands, live-session termination, facility policy mutation, staff provisioning, kiosk credentials, resource health, retention and legal-hold operations.
 - Provider-neutral payment checkout boundary, signed payment webhook ingestion, duplicate-event protection, delayed-event retry and credit settlement/refund invariants.
@@ -54,7 +54,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 299 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 300 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven

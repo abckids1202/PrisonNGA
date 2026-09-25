@@ -41,7 +41,7 @@ export async function GET() {
         (SELECT dc.created_at FROM visitor_device_check_attempts dc WHERE dc.appointment_id = a.id AND dc.visitor_user_id = a.visitor_user_id ORDER BY dc.created_at DESC, dc.id DESC LIMIT 1) AS visitor_device_checked_at
       FROM appointments a
       INNER JOIN users u ON u.id = a.visitor_user_id
-      INNER JOIN prisoners p ON p.id = a.prisoner_id
+      INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       INNER JOIN facilities f ON f.id = a.facility_id
       LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
       WHERE a.facility_id = ? AND a.status IN (${placeholders})

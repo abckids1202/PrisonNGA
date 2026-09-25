@@ -11,7 +11,7 @@ export function controlAppointmentsStatement(d1: D1Database, facilityId: string,
         AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries t WHERE t.appointment_id = a.id AND t.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))) THEN 1 ELSE 0 END AS active_credit_reservation,
       (SELECT r.display_name FROM resource_reservations rr INNER JOIN resources r ON r.id = rr.resource_id WHERE rr.facility_id = a.facility_id AND rr.appointment_id = a.id AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1) AS room_name,
       (SELECT r.display_name FROM resource_reservations rr INNER JOIN resources r ON r.id = rr.resource_id WHERE rr.facility_id = a.facility_id AND rr.appointment_id = a.id AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1) AS kiosk_name
-    FROM appointments a INNER JOIN users u ON u.id = a.visitor_user_id INNER JOIN prisoners p ON p.id = a.prisoner_id INNER JOIN facilities f ON f.id = a.facility_id
+    FROM appointments a INNER JOIN users u ON u.id = a.visitor_user_id INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id INNER JOIN facilities f ON f.id = a.facility_id
     LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
     WHERE a.facility_id = ?${statusFilter} ORDER BY a.requested_start ASC`).bind(...values);
 }

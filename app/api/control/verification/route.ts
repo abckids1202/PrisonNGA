@@ -13,7 +13,7 @@ export async function GET() {
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT vc.id, vc.relationship_id, vc.status, vc.evidence_required, vc.submitted_at, vc.reviewed_at, vc.review_reason, vc.version, vr.visitor_user_id, vr.prisoner_id, vr.relationship_type, u.display_name AS visitor_name, p.prisoner_number, p.display_name AS prisoner_name,
         (SELECT COUNT(*) FROM evidence_documents ed WHERE ed.verification_case_id = vc.id AND ed.facility_id = vc.facility_id AND ed.status = 'AVAILABLE') AS evidence_count
-      FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id INNER JOIN users u ON u.id = vr.visitor_user_id INNER JOIN prisoners p ON p.id = vr.prisoner_id
+      FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN users u ON u.id = vr.visitor_user_id INNER JOIN prisoners p ON p.id = vr.prisoner_id AND p.facility_id = vr.facility_id
       WHERE vc.facility_id = ? ORDER BY vc.submitted_at ASC`).bind(authorization.facilityId).all();
     return securityResponse({ cases: result.results, facilityId: authorization.facilityId }, 200, context.requestId);
   } catch (error) {
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     if (!verificationCaseId || !reviewStatuses.includes(status)) throw new SecurityError("INVALID_VERIFICATION_REVIEW", 400);
     const reason = assertReason(body.reason);
     d1 = await getD1();
-    const current = await d1.prepare(`SELECT vc.id, vc.relationship_id, vc.status, vc.evidence_required, vc.version, vr.status AS relationship_status, vr.version AS relationship_version FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id WHERE vc.id = ? AND vc.facility_id = ?`).bind(verificationCaseId, authorization.facilityId).first<{ id: string; relationship_id: string; status: string; evidence_required: number; version: number; relationship_status: string; relationship_version: number }>();
+    const current = await d1.prepare(`SELECT vc.id, vc.relationship_id, vc.status, vc.evidence_required, vc.version, vr.status AS relationship_status, vr.version AS relationship_version FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id WHERE vc.id = ? AND vc.facility_id = ?`).bind(verificationCaseId, authorization.facilityId).first<{ id: string; relationship_id: string; status: string; evidence_required: number; version: number; relationship_status: string; relationship_version: number }>();
     if (!current) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);

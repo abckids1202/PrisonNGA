@@ -28,7 +28,7 @@ class SQLiteD1 {
       CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, last_checked_at TEXT, updated_at TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, current_state TEXT NOT NULL, timezone TEXT NOT NULL);
       CREATE TABLE visit_policies (facility_id TEXT PRIMARY KEY, version INTEGER NOT NULL, min_duration_minutes INTEGER NOT NULL, max_duration_minutes INTEGER NOT NULL, min_advance_minutes INTEGER NOT NULL, max_advance_days INTEGER NOT NULL, daily_start_time TEXT NOT NULL, daily_end_time TEXT NOT NULL);
-      CREATE TABLE prisoners (id TEXT PRIMARY KEY, status TEXT NOT NULL, visitation_status TEXT NOT NULL);
+      CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, visitation_status TEXT NOT NULL);
       CREATE TABLE visitor_relationships (facility_id TEXT NOT NULL, prisoner_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, status TEXT NOT NULL);
       INSERT INTO appointments VALUES ('visit-1', 'facility-1', 'visitor-1', 'prisoner-1', 'UNDER_REVIEW', 3, '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'Asia/Jakarta', 1, 30, 'before', NULL);
       INSERT INTO credit_accounts VALUES ('credit-1', 2, 0, 1, 'before');
@@ -36,7 +36,7 @@ class SQLiteD1 {
       INSERT INTO resources VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE');
       INSERT INTO facilities VALUES ('facility-1', 'NORMAL_OPERATIONS', 'Asia/Jakarta');
       INSERT INTO visit_policies VALUES ('facility-1', 1, 15, 30, 60, 30, '08:00', '17:00');
-      INSERT INTO prisoners VALUES ('prisoner-1', 'ACTIVE', 'APPROVED');
+      INSERT INTO prisoners VALUES ('prisoner-1', 'facility-1', 'ACTIVE', 'APPROVED');
       INSERT INTO visitor_relationships VALUES ('facility-1', 'prisoner-1', 'visitor-1', 'APPROVED');
     `);
   }

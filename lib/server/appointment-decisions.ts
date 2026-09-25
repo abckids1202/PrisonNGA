@@ -52,7 +52,7 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
           AND NOT EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.resource_id = r.id AND rr.facility_id = ? AND rr.appointment_id <> ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.starts_at < ? AND rr.ends_at > ?))
       )
       AND EXISTS (SELECT 1 FROM appointments a
-        INNER JOIN prisoners p ON p.id = a.prisoner_id
+        INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
         INNER JOIN facilities f ON f.id = a.facility_id
         INNER JOIN visit_policies vp ON vp.facility_id = f.id
         WHERE a.id = appointments.id AND a.facility_id = appointments.facility_id
