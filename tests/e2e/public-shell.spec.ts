@@ -11,6 +11,29 @@ test("control workspace renders its operational shell", async ({ page }) => {
   await expect(page.getByText("DEVELOPMENT ENVIRONMENT", { exact: true })).toBeVisible();
 });
 
+test("staff can create a persisted incident through the protected operational boundary", async ({ browser }) => {
+  const staff = await browser.newContext({ extraHTTPHeaders: {
+    "oai-authenticated-user-id": "staff-local-supervisor",
+    "oai-authenticated-user-email": "staff.local@example.test",
+  } });
+  try {
+    const title = `Browser incident ${Date.now()}`;
+    const create = await staff.request.post("/api/control/incidents", {
+      headers: { origin: testOrigin, "Idempotency-Key": `incident-create-e2e-${Date.now()}` },
+      data: { title, description: "Browser acceptance test recorded a kiosk readiness issue.", incidentType: "TECHNICAL", severity: "MEDIUM" },
+    });
+    expect(create.status(), await create.text()).toBe(201);
+    const created = await create.json() as { incidentId?: string };
+    expect(created.incidentId).toBeTruthy();
+    const queue = await staff.request.get("/api/control/incidents");
+    expect(queue.status(), await queue.text()).toBe(200);
+    const body = await queue.json() as { incidents?: Array<{ id: string; title: string; status: string }> };
+    expect(body.incidents?.find((incident) => incident.id === created.incidentId)).toMatchObject({ title, status: "OPEN" });
+  } finally {
+    await staff.close();
+  }
+});
+
 test("visitor workspace is a separate authenticated boundary", async ({ page }) => {
   await page.goto("/visitor");
 
