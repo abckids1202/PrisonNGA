@@ -103,7 +103,7 @@ test("refund webhooks remain retryable until reserved credits can be released", 
 test("payment reconciliation recovers stale processing claims", async () => {
   const source = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
   assert.match(source, /status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim\.'/);
-  assert.match(source, /status = 'PROCESSING' AND created_at < datetime\('now', '-5 minutes'\)/);
+  assert.match(source, /status = 'PROCESSING' AND julianday\(created_at\) < julianday\('now', '-5 minutes'\)/);
 });
 
 test("notification delivery resolves recipients from facility-scoped aggregates", async () => {

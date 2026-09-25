@@ -64,12 +64,12 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
       AND vs.status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING', 'ENDING')
     LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
     WHERE a.status IN ('APPROVED', 'WAITING')
-      AND a.requested_end <= CURRENT_TIMESTAMP
+      AND julianday(a.requested_end) <= julianday('now')
       AND vs.id IS NULL
       -- A stored presence is only meaningful while its heartbeat is fresh.
       -- Otherwise a disconnected browser or kiosk could block no-show cleanup forever.
-      AND NOT (w.visitor_presence = 'present' AND w.visitor_presence_at >= datetime('now', '-3 minutes'))
-      AND NOT (w.prisoner_presence = 'present' AND w.prisoner_presence_at >= datetime('now', '-3 minutes'))
+      AND NOT (w.visitor_presence = 'present' AND julianday(w.visitor_presence_at) >= julianday('now', '-3 minutes'))
+      AND NOT (w.prisoner_presence = 'present' AND julianday(w.prisoner_presence_at) >= julianday('now', '-3 minutes'))
     ORDER BY a.requested_end ASC LIMIT 25`).all<{ id: string; facility_id: string; visitor_user_id: string; status: string; version: number; requested_end: string; credit_account_id: string | null }>();
 
   for (const row of rows.results) {
@@ -102,7 +102,7 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
 async function reconcilePaymentEvents(env: Env): Promise<void> {
   await env.DB.prepare(`UPDATE payment_provider_events
     SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim.'
-    WHERE status = 'PROCESSING' AND created_at < datetime('now', '-5 minutes')`).run();
+    WHERE status = 'PROCESSING' AND julianday(created_at) < julianday('now', '-5 minutes')`).run();
   const rows = await env.DB.prepare("SELECT id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
   for (const row of rows.results) {
     const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
@@ -137,7 +137,7 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
 async function expireAbandonedPaymentIntents(env: Env): Promise<void> {
   const rows = await env.DB.prepare(`SELECT id, facility_id, user_id, credit_quantity, amount_minor, currency, version
     FROM payment_intents
-    WHERE status = 'PENDING' AND created_at <= datetime('now', '-30 minutes')
+    WHERE status = 'PENDING' AND julianday(created_at) <= julianday('now', '-30 minutes')
     ORDER BY created_at ASC LIMIT 25`).all<AbandonedPaymentIntent>();
   for (const row of rows.results) {
     const now = new Date().toISOString();
@@ -252,7 +252,7 @@ async function processOutbox(env: Env): Promise<void> {
 async function purgeExpiredEvidence(env: Env): Promise<void> {
   if (!env.EVIDENCE_BUCKET) return;
   await env.DB.prepare("UPDATE evidence_documents SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE status = 'PENDING_DELETION' AND legal_hold = 1").run();
-  const rows = await env.DB.prepare("SELECT id, facility_id, storage_key, retention_until, status FROM evidence_documents WHERE legal_hold = 0 AND ((status = 'AVAILABLE' AND retention_until <= CURRENT_TIMESTAMP) OR status = 'PENDING_DELETION') LIMIT 50").all<{ id: string; facility_id: string; storage_key: string; retention_until: string; status: string }>();
+  const rows = await env.DB.prepare("SELECT id, facility_id, storage_key, retention_until, status FROM evidence_documents WHERE legal_hold = 0 AND ((status = 'AVAILABLE' AND julianday(retention_until) <= julianday('now')) OR status = 'PENDING_DELETION') LIMIT 50").all<{ id: string; facility_id: string; storage_key: string; retention_until: string; status: string }>();
   for (const row of rows.results) {
     const correlationId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -328,8 +328,8 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
     LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
     WHERE a.status = 'IN_PROGRESS' AND (
-      (vs.status = 'ENDING' AND vs.updated_at <= datetime('now', '-1 minute'))
-      OR (vs.status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING') AND vs.authorized_end_at <= CURRENT_TIMESTAMP)
+      (vs.status = 'ENDING' AND julianday(vs.updated_at) <= julianday('now', '-1 minute'))
+      OR (vs.status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING') AND julianday(vs.authorized_end_at) <= julianday('now'))
     ) LIMIT 25`).all<ExpiredSession>();
   if (!sessions.results.length) return;
 
