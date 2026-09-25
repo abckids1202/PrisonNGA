@@ -15,6 +15,18 @@ const requiredTables = [
   "payment_provider_events", "payment_refund_requests", "notifications", "incidents", "incident_events", "step_up_assertions",
 ];
 
+// Table existence alone is not enough for a safe rollout. A database can have
+// every historical table while still missing columns introduced by a newer
+// migration. Keep this list focused on columns used by recovery-sensitive
+// workflows so a partially migrated database fails closed before traffic is
+// admitted.
+const requiredColumns: Record<string, string[]> = {
+  payment_provider_events: ["processing_started_at"],
+  idempotency_records: ["processing_started_at"],
+  auth_sessions: ["revoked_at"],
+  outbox_events: ["attempt_count", "next_attempt_at"],
+};
+
 const configurationKeys = [
   "SECUREVISIT_ENVIRONMENT", "SECUREVISIT_HASH_SALT", "STAFF_STEP_UP_SECRET", "VISITOR_AUTH_DELIVERY", "VISITOR_AUTH_WEBHOOK_URL", "VISITOR_AUTH_WEBHOOK_SECRET",
   "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
@@ -31,7 +43,15 @@ export async function GET() {
     const d1 = await getD1();
     const rows = await d1.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>();
     const present = new Set(rows.results.map((row) => row.name));
-    const schemaReady = requiredTables.every((table) => present.has(table));
+    const missingTables = requiredTables.filter((table) => !present.has(table));
+    const missingColumns: string[] = [];
+    for (const [table, columns] of Object.entries(requiredColumns)) {
+      if (!present.has(table)) continue;
+      const tableInfo = await d1.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+      const available = new Set(tableInfo.results.map((column) => column.name));
+      for (const column of columns) if (!available.has(column)) missingColumns.push(`${table}.${column}`);
+    }
+    const schemaReady = missingTables.length === 0 && missingColumns.length === 0;
     const [paymentProvider, videoConfig, notificationDelivery, evidenceBucket, notificationWebhookUrl, notificationWebhookSecret, visitorAuthDelivery, visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, ...configurationValues] = await Promise.all([
       getPaymentProvider(),
       getVideoConfig(),
@@ -87,7 +107,7 @@ export async function GET() {
     };
     const providersReady = Object.values(providerConfiguration).every(Boolean);
     const ready = schemaReady && environmentConfig.ok && (environment === "development" || providersReady);
-    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, providerConfiguration, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
+    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
   } catch (error) {
     if (error instanceof Error && error.name === "SecurityError") return securityErrorResponse(error, context.requestId);
     return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
