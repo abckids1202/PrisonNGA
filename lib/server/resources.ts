@@ -10,13 +10,13 @@ export async function allocateVisitResources(d1: D1Database, input: { facilityId
   try {
     results = await d1.batch([
       d1.prepare(`INSERT INTO resource_reservations (id, facility_id, appointment_id, resource_type, resource_id, status, starts_at, ends_at, created_at)
-        SELECT ?, ?, ?, 'ROOM', (SELECT r.id FROM resources r WHERE r.facility_id = ? AND r.resource_type = 'ROOM' AND r.status = 'AVAILABLE'
+        SELECT ?, ?, ?, 'ROOM', (SELECT r.id FROM resources r WHERE r.facility_id = ? AND r.resource_type = 'ROOM' AND r.status = 'AVAILABLE' AND r.health_state = 'HEALTHY'
           AND NOT EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.resource_id = r.id AND rr.resource_type = 'ROOM' AND rr.facility_id = ? AND rr.appointment_id <> ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.starts_at < ? AND rr.ends_at > ?)
           ORDER BY r.display_name ASC LIMIT 1), 'RESERVED', ?, ?, ?
         WHERE NOT EXISTS (SELECT 1 FROM resource_reservations WHERE appointment_id = ? AND resource_type = 'ROOM' AND status IN ('HELD', 'RESERVED', 'ACTIVE'))`)
         .bind(roomId, input.facilityId, input.appointmentId, input.facilityId, input.facilityId, input.appointmentId, input.endsAt, input.startsAt, input.startsAt, input.endsAt, now, input.appointmentId),
       d1.prepare(`INSERT INTO resource_reservations (id, facility_id, appointment_id, resource_type, resource_id, status, starts_at, ends_at, created_at)
-        SELECT ?, ?, ?, 'DEVICE', (SELECT r.id FROM resources r WHERE r.facility_id = ? AND r.resource_type = 'DEVICE' AND r.status = 'ONLINE'
+        SELECT ?, ?, ?, 'DEVICE', (SELECT r.id FROM resources r WHERE r.facility_id = ? AND r.resource_type = 'DEVICE' AND r.status = 'ONLINE' AND r.health_state = 'HEALTHY'
           AND NOT EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.resource_id = r.id AND rr.resource_type = 'DEVICE' AND rr.facility_id = ? AND rr.appointment_id <> ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.starts_at < ? AND rr.ends_at > ?)
           ORDER BY r.display_name ASC LIMIT 1), 'RESERVED', ?, ?, ?
         WHERE NOT EXISTS (SELECT 1 FROM resource_reservations WHERE appointment_id = ? AND resource_type = 'DEVICE' AND status IN ('HELD', 'RESERVED', 'ACTIVE'))`)

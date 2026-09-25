@@ -44,6 +44,15 @@ export async function GET(request: Request) {
       WHERE facility_id = ? AND status = 'ACTIVE' AND starts_at < ? AND ends_at > ?`)
       .bind(facilityId, dayEnd.toISOString(), dayStart.toISOString())
       .all<{ starts_at: string; ends_at: string }>();
+    const resources = await d1.prepare(`SELECT id, resource_type, status, health_state FROM resources
+      WHERE facility_id = ? AND health_state = 'HEALTHY' AND status IN ('AVAILABLE', 'ONLINE')`)
+      .bind(facilityId)
+      .all<{ id: string; resource_type: "ROOM" | "DEVICE"; status: string; health_state: string }>();
+    const reservations = await d1.prepare(`SELECT resource_id, starts_at, ends_at FROM resource_reservations
+      WHERE facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE') AND starts_at < ? AND ends_at > ?`)
+      .bind(facilityId, dayEnd.toISOString(), dayStart.toISOString())
+      .all<{ resource_id: string; starts_at: string; ends_at: string }>();
+    const hasCapacity = (start: number, end: number) => ["ROOM", "DEVICE"].every((type) => resources.results.some((resource) => resource.resource_type === type && !reservations.results.some((reservation) => reservation.resource_id === resource.id && Date.parse(reservation.starts_at) < end && Date.parse(reservation.ends_at) > start)));
     const slots: string[] = [];
     for (let cursor = dayStart.getTime(); cursor + duration * 60000 <= dayEnd.getTime(); cursor += slotMinutes * 60000) {
       const end = cursor + duration * 60000;
@@ -59,6 +68,7 @@ export async function GET(request: Request) {
       if (!window.ok) continue;
       if (appointments.results.some((appointment) => Date.parse(appointment.requested_start) < end && Date.parse(appointment.requested_end) > cursor)) continue;
       if (closures.results.some((closure) => Date.parse(closure.starts_at) < end && Date.parse(closure.ends_at) > cursor)) continue;
+      if (!hasCapacity(cursor, end)) continue;
       slots.push(new Date(cursor).toISOString());
     }
     return securityResponse({ facilityId, prisonerId, date, duration, timezone: facility.timezone, slots }, 200, context.requestId);
