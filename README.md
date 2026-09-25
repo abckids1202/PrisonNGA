@@ -68,6 +68,8 @@ The checkout adapter requires `VISIT_CREDIT_PRICE_MINOR` to be set to the instit
 
 Operational checks: run `npm run validate:environment` with the target environment variables, run `npm run db:migrations:list` against the target D1 database, apply migrations with the matching `db:migrate:*` command, then verify `/api/health/readiness` before opening the pilot to users. The validator prints only missing configuration names and warnings; it never prints secret values. Production Worker startup also rejects requests when required provider bindings and secrets are missing.
 
+The staging release gate is documented in [docs/STAGING_ACCEPTANCE_RUNBOOK.md](docs/STAGING_ACCEPTANCE_RUNBOOK.md). It covers provider setup, the refresh-safe visitor → staff → kiosk → LiveKit journey, failure rehearsals, evidence collection, rollback, and institutional go/no-go approval. Local adapters and passing automated tests are not a substitute for this staging run.
+
 Visitor scheduling is policy-backed: `/api/visitor/availability` returns facility-scoped slots after relationship approval, and appointment creation revalidates facility state, operating hours, booking horizon, duration, visitor overlap, and prisoner overlap server-side.
 
 Resource recovery is facility-scoped and transactional: staff with appointment-review permission can send `reassign_appointment` to `/api/control/resources` with source/target resource IDs, expected resource and Waiting Room versions, and a reason. The command swaps the reservation, updates the Waiting Room assignment, and writes audit/outbox records together; unhealthy, unavailable, cross-type, conflicting, or stale targets are rejected.
