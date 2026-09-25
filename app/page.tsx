@@ -223,31 +223,44 @@ export default function ControlApp() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/control/appointments", { headers: { accept: "application/json" }, credentials: "include" }).then(async (response) => {
-      if (!active || !response.ok) return;
-      const body = await response.json() as { appointments?: Array<{ id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; timezone?: string | null; appointment_type?: string; status: string; version?: number; room_name?: string | null; kiosk_name?: string | null; relationship_type?: string | null; relationship_status?: string | null; prisoner_status?: string | null; visitation_status?: string | null; facility_state?: string | null; available_credits?: number; reserved_credits?: number; active_credit_reservation?: number }> };
-      if (body.appointments) {
-        setAppointments(body.appointments.map(mapBackendAppointment));
+    const loadAppointments = async () => {
+      try {
+        const response = await fetch("/api/control/appointments", { headers: { accept: "application/json" }, credentials: "include", cache: "no-store" });
+        if (!response.ok) throw new Error("APPOINTMENTS_UNAVAILABLE");
+        const body = await response.json() as { appointments?: Array<{ id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; timezone?: string | null; appointment_type?: string; status: string; version?: number; room_name?: string | null; kiosk_name?: string | null; relationship_type?: string | null; relationship_status?: string | null; prisoner_status?: string | null; visitation_status?: string | null; facility_state?: string | null; available_credits?: number; reserved_credits?: number; active_credit_reservation?: number }> };
+        if (!active) return;
+        setAppointments((body.appointments || []).map(mapBackendAppointment));
         setBackendStatus("connected");
+      } catch {
+        if (active) setBackendStatus("unavailable");
       }
-    }).catch(() => undefined);
-    return () => { active = false; };
+    };
+    void loadAppointments();
+    const timer = window.setInterval(() => { void loadAppointments(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
   }, []);
 
   useEffect(() => {
     let active = true;
-    fetch("/api/facility/state", { headers: { accept: "application/json" } }).then(async (response) => {
-      if (!response.ok) return;
-      const body = await response.json() as { facility?: { name?: string; timezone?: string; currentState: string; version: number } };
-      if (active && body.facility) {
-        setFacilityName(body.facility.name || "Facility workspace");
-        setFacilityTimezone(body.facility.timezone || "Asia/Jakarta");
-        setFacilityState(body.facility.currentState);
-        setFacilityVersion(body.facility.version);
-        setBackendStatus("connected");
+    const loadFacilityState = async () => {
+      try {
+        const response = await fetch("/api/facility/state", { headers: { accept: "application/json" }, credentials: "include", cache: "no-store" });
+        if (!response.ok) throw new Error("FACILITY_STATE_UNAVAILABLE");
+        const body = await response.json() as { facility?: { name?: string; timezone?: string; currentState: string; version: number } };
+        if (active && body.facility) {
+          setFacilityName(body.facility.name || "Facility workspace");
+          setFacilityTimezone(body.facility.timezone || "Asia/Jakarta");
+          setFacilityState(body.facility.currentState);
+          setFacilityVersion(body.facility.version);
+          setBackendStatus("connected");
+        }
+      } catch {
+        if (active) setBackendStatus("unavailable");
       }
-    }).catch(() => undefined);
-    return () => { active = false; };
+    };
+    void loadFacilityState();
+    const timer = window.setInterval(() => { void loadFacilityState(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
   }, []);
 
   function notify(message: string, tone: Notice["tone"] = "info") {
