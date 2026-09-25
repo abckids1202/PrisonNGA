@@ -7,6 +7,8 @@ Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker +
 
 SecureVisit is a strong persisted workflow prototype with meaningful security and failure-handling foundations. It is not yet an institutional production system. The remaining risk is concentrated in external integrations, multi-party staging proof, operational administration, and release assurance rather than in the basic page designs.
 
+The authoritative state, failure, and staging-evidence matrix is [WORKFLOW_STATE_MATRIX.md](./WORKFLOW_STATE_MATRIX.md).
+
 Current assessment:
 
 | Area | Assessment | Meaning |

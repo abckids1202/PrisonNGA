@@ -2,6 +2,8 @@
 
 This document is the execution baseline for taking SecureVisit from a persisted prototype to a staging-ready, single-facility institutional pilot. The existing UI is not evidence that a workflow is complete. A capability is complete only when its state is persisted, authorized, transactional, retry-safe, audited, observable, and proven after refresh and failure.
 
+The transition-by-transition implementation and staging evidence contract is maintained in [WORKFLOW_STATE_MATRIX.md](./WORKFLOW_STATE_MATRIX.md).
+
 ## Current position
 
 The repository currently provides a substantial platform foundation:
