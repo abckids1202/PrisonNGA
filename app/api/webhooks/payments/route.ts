@@ -76,14 +76,14 @@ export async function POST(request: Request) {
       }
       if (prior.status === "PROCESSED" || prior.status === "IGNORED") return securityResponse({ accepted: true, idempotent: true, eventKey }, 200, context.requestId);
     }
-    const claim = await d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE provider = ? AND event_key = ? AND status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now')`).bind(provider, eventKey).run();
+    const claim = await d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE provider = ? AND event_key = ? AND status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now')`).bind(provider, eventKey).run();
     if (!claim.meta.changes) return securityResponse({ accepted: false, retryable: true, eventKey }, 503, context.requestId);
     try {
       const result = await processPaymentProviderEvent(d1, { provider, eventKey, payload: payload as PaymentWebhook });
       return securityResponse({ accepted: true, paymentIntentId: result.paymentIntentId, status: result.status, ignored: result.ignored, eventKey }, 200, context.requestId);
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 500) : "PAYMENT_WEBHOOK_PROCESSING_FAILED";
-      await d1.prepare("UPDATE payment_provider_events SET status = 'FAILED', available_at = datetime('now', '+30 seconds'), last_error = ? WHERE provider = ? AND event_key = ? AND status = 'PROCESSING'").bind(message, provider, eventKey).run();
+      await d1.prepare("UPDATE payment_provider_events SET status = 'FAILED', available_at = datetime('now', '+30 seconds'), processing_started_at = NULL, last_error = ? WHERE provider = ? AND event_key = ? AND status = 'PROCESSING'").bind(message, provider, eventKey).run();
       throw error;
     }
   } catch (error) {

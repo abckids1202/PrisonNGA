@@ -589,6 +589,7 @@ export const paymentProviderEvents = sqliteTable("payment_provider_events", {
   status: text("status", { enum: ["RECEIVED", "PROCESSING", "PROCESSED", "FAILED", "DEAD_LETTER", "IGNORED"] }).notNull().default("RECEIVED"),
   attemptCount: integer("attempt_count").notNull().default(0),
   availableAt: text("available_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  processingStartedAt: text("processing_started_at"),
   lastError: text("last_error"),
   processedAt: text("processed_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
