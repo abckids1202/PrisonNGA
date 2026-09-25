@@ -22,14 +22,39 @@ export interface PaymentProvider {
 export async function getPaymentProvider(): Promise<PaymentProvider | null> {
   const provider = (await runtimeValue("PAYMENT_PROVIDER")).toLowerCase();
   if (!provider || provider === "none" || provider === "console") return null;
+  // This deterministic adapter exists only for local acceptance tests; staging
+  // and production environment validation require the signed webhook adapter.
+  if (provider === "local_test") {
+    return (await runtimeValue("SECUREVISIT_ENVIRONMENT")) === "development" ? new LocalDevelopmentPaymentProvider() : null;
+  }
   if (provider === "webhook") {
     const url = await runtimeValue("PAYMENT_CHECKOUT_URL");
     const refundUrl = await runtimeValue("PAYMENT_REFUND_URL");
     const secret = await runtimeValue("PAYMENT_PROVIDER_SECRET");
-    if (!url || !/^https:\/\//i.test(url) || !refundUrl || !/^https:\/\//i.test(refundUrl) || !secret) return null;
+    const isLocalDevelopment = (await runtimeValue("SECUREVISIT_ENVIRONMENT")) === "development";
+    const validEndpoint = (candidate: string) => {
+      try {
+        const parsed = new URL(candidate);
+        const localHttp = parsed.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+        return parsed.protocol === "https:" || (isLocalDevelopment && localHttp);
+      } catch {
+        return false;
+      }
+    };
+    if (!url || !validEndpoint(url) || !refundUrl || !validEndpoint(refundUrl) || !secret) return null;
     return new WebhookCheckoutProvider(url, refundUrl, secret);
   }
   return null;
+}
+
+class LocalDevelopmentPaymentProvider implements PaymentProvider {
+  async createCheckout(input: { paymentIntentId: string }): Promise<PaymentCheckout> {
+    return { provider: "local_test", providerReference: `local-payment-${input.paymentIntentId}`, checkoutUrl: null };
+  }
+
+  async requestRefund(input: { paymentIntentId: string }): Promise<PaymentRefundRequest> {
+    return { provider: "local_test", providerReference: `local-refund-${input.paymentIntentId}` };
+  }
 }
 
 class WebhookCheckoutProvider implements PaymentProvider {

@@ -18,6 +18,12 @@ export default defineConfig({
     url: `http://localhost:${e2ePort}/`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { SECUREVISIT_ENVIRONMENT: "development", VISITOR_AUTH_DELIVERY: "console" },
+    env: {
+      SECUREVISIT_ENVIRONMENT: "development",
+      VISITOR_AUTH_DELIVERY: "console",
+      PAYMENT_PROVIDER: "local_test",
+      PAYMENT_WEBHOOK_SECRET: "local-e2e-payment-secret",
+      VISIT_CREDIT_PRICE_MINOR: "50000",
+    },
   },
 });

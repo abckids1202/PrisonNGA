@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { createHmac } from "node:crypto";
 
 const testOrigin = `http://localhost:${process.env.PLAYWRIGHT_PORT || "4173"}`;
 
@@ -88,6 +89,48 @@ test("development visitor SMS OTP creates a real browser session", async ({ page
   const verify = await page.request.post("/api/auth/visitor/verify", { headers: { "cf-connecting-ip": ipAddress }, data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "SMS Browser Visitor" } });
   expect(verify.status()).toBe(200);
   await expect(verify.json()).resolves.toMatchObject({ authenticated: true, visitor: { displayName: "SMS Browser Visitor", phone } });
+});
+
+test("visitor credit purchase is settled only by the signed webhook and is duplicate-safe", async ({ page }) => {
+  const email = `payment-${Date.now()}@example.test`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { data: { email } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
+  const verify = await page.request.post("/api/auth/visitor/verify", { data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Payment Visitor" } });
+  expect(verify.status()).toBe(200);
+
+  const payment = await page.request.post("/api/visitor/payments", {
+    headers: { origin: testOrigin, "Idempotency-Key": `payment-e2e-${Date.now()}` },
+    data: { facilityId: "facility-central-001", creditQuantity: 1 },
+  });
+  expect(payment.status(), await payment.text()).toBe(201);
+  const paymentBody = await payment.json() as { paymentIntent?: { id: string; amountMinor: number; currency: string }; };
+  expect(paymentBody.paymentIntent?.id).toBeTruthy();
+  expect(paymentBody.paymentIntent?.amountMinor).toBe(50000);
+
+  const payload = JSON.stringify({
+    eventId: `evt-${Date.now()}`,
+    eventType: "PAYMENT_SUCCEEDED",
+    paymentIntentId: paymentBody.paymentIntent?.id,
+    providerReference: `local-payment-${paymentBody.paymentIntent?.id}`,
+    status: "SUCCEEDED",
+    amountMinor: paymentBody.paymentIntent?.amountMinor,
+    currency: paymentBody.paymentIntent?.currency,
+  });
+  const signature = createHmac("sha256", "local-e2e-payment-secret").update(payload).digest("hex");
+  const webhookHeaders = { "content-type": "application/json", "x-payment-provider": "local_test", "x-securevisit-signature": `sha256=${signature}` };
+  const firstWebhook = await page.request.post("/api/webhooks/payments", { headers: webhookHeaders, data: payload });
+  expect(firstWebhook.status()).toBe(200);
+  await expect(firstWebhook.json()).resolves.toMatchObject({ accepted: true, status: "SUCCEEDED" });
+  const duplicateWebhook = await page.request.post("/api/webhooks/payments", { headers: webhookHeaders, data: payload });
+  expect(duplicateWebhook.status()).toBe(200);
+  await expect(duplicateWebhook.json()).resolves.toMatchObject({ accepted: true, idempotent: true });
+
+  const credits = await page.request.get("/api/visitor/credits");
+  expect(credits.status()).toBe(200);
+  const creditBody = await credits.json() as { accounts?: Array<{ facility_id: string; available_credits: number }>; ledger?: Array<{ entry_type: string; amount: number }> };
+  expect(creditBody.accounts?.find((account) => account.facility_id === "facility-central-001")?.available_credits).toBe(1);
+  expect(creditBody.ledger?.filter((entry) => entry.entry_type === "PURCHASE")).toHaveLength(1);
 });
 
 test("visitor profile and relationship evidence survive a browser refresh", async ({ page }) => {

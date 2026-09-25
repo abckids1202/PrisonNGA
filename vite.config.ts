@@ -11,7 +11,16 @@ const { d1, r2 } = hostingConfig;
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const environmentVars: Record<string, string> = {};
-for (const key of ["SECUREVISIT_ENVIRONMENT", "VISITOR_AUTH_DELIVERY"]) {
+for (const key of [
+  "SECUREVISIT_ENVIRONMENT",
+  "VISITOR_AUTH_DELIVERY",
+  "PAYMENT_PROVIDER",
+  "PAYMENT_CHECKOUT_URL",
+  "PAYMENT_REFUND_URL",
+  "PAYMENT_PROVIDER_SECRET",
+  "PAYMENT_WEBHOOK_SECRET",
+  "VISIT_CREDIT_PRICE_MINOR",
+]) {
   if (process.env[key]) environmentVars[key] = process.env[key];
 }
 
