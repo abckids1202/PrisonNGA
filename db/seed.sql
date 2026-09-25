@@ -16,6 +16,16 @@ INSERT INTO prisoners (id, facility_id, prisoner_number, display_name, housing_u
 VALUES ('prisoner-ar-001', 'facility-central-001', 'AR-2041', 'A. Rahman', 'Unit 4', 'ACTIVE', 'APPROVED')
 ON CONFLICT(id) DO NOTHING;
 
+-- Local-only staff identity used by browser acceptance tests. This seed is never
+-- applied by the remote migration command and does not bypass production SSO.
+INSERT INTO users (id, external_id, email, display_name, user_type, status, email_verified_at)
+VALUES ('staff-local-supervisor', 'staff-local-supervisor', 'staff.local@example.test', 'Local Supervisor', 'STAFF', 'ACTIVE', CURRENT_TIMESTAMP)
+ON CONFLICT(id) DO NOTHING;
+
+INSERT INTO staff_profiles (user_id, facility_id, employee_reference, job_title, department)
+VALUES ('staff-local-supervisor', 'facility-central-001', 'LOCAL-001', 'Pilot Supervisor', 'Operations')
+ON CONFLICT(user_id) DO NOTHING;
+
 INSERT INTO resources (id, facility_id, resource_type, display_name, status, room_id, health_state, last_heartbeat_at)
 VALUES
   ('room-01', 'facility-central-001', 'ROOM', 'Room 01', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
@@ -35,6 +45,14 @@ INSERT INTO roles (id, name, description) VALUES
   ('role-supervisor', 'Supervisor', 'Approves exceptional actions and facility state changes.'),
   ('role-auditor', 'Auditor', 'Reads compliance records and exports authorized audit reports.')
 ON CONFLICT(id) DO NOTHING;
+
+INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by)
+VALUES ('staff-local-supervisor', 'role-supervisor', 'facility-central-001', 'local-seed')
+ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
+
+INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by)
+VALUES ('staff-local-supervisor', 'role-verification-officer', 'facility-central-001', 'local-seed')
+ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
 
 INSERT INTO permissions (id, permission_key, description) VALUES
   ('perm-facility-read', 'facility.read', 'Read facility state and operational context.'),

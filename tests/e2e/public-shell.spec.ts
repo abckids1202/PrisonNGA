@@ -146,6 +146,57 @@ test("visitor profile and relationship evidence survive a browser refresh", asyn
   await expect(page.getByText("This device", { exact: false }).first()).toBeVisible();
 });
 
+test("local staff review changes the persisted visitor verification state", async ({ page, browser }) => {
+  const email = `review-${Date.now()}@example.test`;
+  const ipAddress = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": ipAddress }, data: { email } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
+  const verify = await page.request.post("/api/auth/visitor/verify", { headers: { "cf-connecting-ip": ipAddress }, data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Review Visitor" } });
+  expect(verify.status()).toBe(200);
+
+  const relationship = await page.request.post("/api/visitor/relationships", {
+    headers: { origin: testOrigin },
+    data: { facilityId: "facility-central-001", prisonerId: "prisoner-ar-001", relationshipType: "Family member" },
+  });
+  expect(relationship.status()).toBe(201);
+  const relationshipBody = await relationship.json() as { verificationId?: string };
+  expect(relationshipBody.verificationId).toBeTruthy();
+
+  const staff = await browser.newContext({
+    extraHTTPHeaders: {
+      "oai-authenticated-user-id": "staff-local-supervisor",
+      "oai-authenticated-user-email": "staff.local@example.test",
+      "oai-authenticated-user-full-name": "Local%20Supervisor",
+      "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    },
+  });
+  try {
+    const queue = await staff.request.get("/api/control/verification");
+    expect(queue.status(), await queue.text()).toBe(200);
+    const queueBody = await queue.json() as { cases?: Array<{ id: string; version: number }> };
+    const reviewCase = queueBody.cases?.find((item) => item.id === relationshipBody.verificationId);
+    expect(reviewCase).toBeTruthy();
+
+    const decision = await staff.request.post("/api/control/verification", {
+      headers: { origin: testOrigin, "Idempotency-Key": `review-more-info-${Date.now()}` },
+      data: { verificationCaseId: relationshipBody.verificationId, status: "MORE_INFO", reason: "Please provide relationship evidence." },
+    });
+    expect(decision.status()).toBe(200);
+    await expect(decision.json()).resolves.toMatchObject({ status: "MORE_INFO", relationshipStatus: "PENDING" });
+  } finally {
+    await staff.close();
+  }
+
+  const relationships = await page.request.get("/api/visitor/relationships");
+  expect(relationships.status()).toBe(200);
+  await expect(relationships.json()).resolves.toMatchObject({ relationships: [{ verification_status: "MORE_INFO", review_reason: "Please provide relationship evidence." }] });
+  await page.goto("/visitor");
+  await page.getByRole("button", { name: "Connections", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "A. Rahman", exact: true })).toBeVisible();
+});
+
 test("browser requests to protected APIs are rejected without a session", async ({ request }) => {
   const response = await request.get("/api/auth/me");
 
