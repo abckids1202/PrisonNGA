@@ -11,6 +11,9 @@ test("resource status changes require optimistic concurrency and create audit/ou
   assert.match(source, /version = version \+ 1/);
   assert.match(source, /RESOURCE_HAS_ACTIVE_APPOINTMENT/);
   assert.match(source, /active_appointment_id/);
+  assert.match(source, /resource-status:\$\{authorization\.facilityId\}:\$\{current\.id\}/);
+  assert.match(source, /claimIdempotency\(d1/);
+  assert.match(source, /completeIdempotencyStatement\(d1/);
 });
 
 test("resource reassignment requires and replays an idempotency claim", async () => {

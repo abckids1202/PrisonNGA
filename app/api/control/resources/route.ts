@@ -190,14 +190,24 @@ export async function POST(request: Request) {
     if (body.expectedVersion === undefined) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
     const nextStatus = body.status;
     if (["OFFLINE", "MAINTENANCE"].includes(nextStatus) && current.active_appointment_id) throw new SecurityError("RESOURCE_HAS_ACTIVE_APPOINTMENT", 409);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    const scope = `resource-status:${authorization.facilityId}:${current.id}`;
+    const requestHash = await hashIdempotencyPayload({ resourceId: current.id, command: body.command, status: nextStatus, expectedVersion: body.expectedVersion, reason });
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const correlationId = crypto.randomUUID();
+    const replayBody = { resourceId: current.id, status: nextStatus, version: current.version + 1, correlationId, reason };
     const resourceGuard = { sql: "EXISTS (SELECT 1 FROM resources WHERE id = ? AND facility_id = ? AND version = ? AND status = ?)", values: [current.id, authorization.facilityId, current.version + 1, nextStatus] };
     const results = await d1.batch([
       d1.prepare("UPDATE resources SET status = ?, health_state = CASE WHEN ? IN ('AVAILABLE', 'ONLINE') THEN 'HEALTHY' ELSE health_state END, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(nextStatus, nextStatus, now, current.id, authorization.facilityId, current.version),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "RESOURCE_STATUS_CHANGED", entityType: "resource", entityId: current.id, reason, oldValues: { status: current.status, version: current.version }, newValues: { status: nextStatus, version: current.version + 1 }, requestId: context.requestId, correlationId, eventType: "RESOURCE_STATUS_CHANGED", payload: { resourceId: current.id, status: nextStatus } }, resourceGuard),
+      completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: replayBody, guard: resourceGuard }),
     ]);
-    if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes)) throw new SecurityError("STALE_RESOURCE", 409);
-    return securityResponse({ resourceId: current.id, status: nextStatus, version: current.version + 1, correlationId, reason }, 200, context.requestId);
+    if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes && results[results.length - 1]?.meta.changes)) throw new SecurityError("STALE_RESOURCE", 409);
+    idempotency = null;
+    return securityResponse(replayBody, 200, context.requestId);
   } catch (error) {
     if (databaseRef && idempotency) {
       try { await releaseIdempotencyClaim(databaseRef, idempotency); } catch { /* Preserve the original resource error. */ }
