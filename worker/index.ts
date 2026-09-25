@@ -19,6 +19,10 @@ interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   EVIDENCE_BUCKET?: R2Bucket;
+  // Optional in local development. Production can bind a Cloudflare Queue to
+  // move notification draining off the cron path while retaining cron as a
+  // safe fallback when the queue is unavailable.
+  NOTIFICATION_QUEUE?: { send(message: unknown): Promise<void> };
   [key: string]: unknown;
   IMAGES: {
     input(stream: ReadableStream): {
@@ -32,6 +36,16 @@ interface Env {
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
   passThroughOnException(): void;
+}
+
+interface NotificationQueueMessage {
+  body: unknown;
+  ack(): void;
+  retry(): void;
+}
+
+interface NotificationQueueBatch {
+  messages: NotificationQueueMessage[];
 }
 
 function liveKitConnectSources(env: Env): string {
@@ -462,7 +476,28 @@ function notificationCopy(eventType: string, payload: Record<string, unknown> = 
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), purgeExpiredAuthArtifacts(env.DB), purgeExpiredAuthSessions(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
+    const outboxWork = env.NOTIFICATION_QUEUE
+      ? env.NOTIFICATION_QUEUE.send({ type: "OUTBOX_DRAIN", requestedAt: new Date().toISOString() }).catch((error) => {
+        // Queue delivery is an optimization, not a correctness dependency.
+        // The durable D1 outbox remains drained if a binding is unavailable or
+        // temporarily rejects a message.
+        operationalLog("error", { event: "NOTIFICATION_QUEUE_DISPATCH_FAILED", actorId: "system:scheduler", error });
+        return processOutbox(env);
+      })
+      : processOutbox(env);
+    ctx.waitUntil(Promise.all([outboxWork, reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), purgeExpiredAuthArtifacts(env.DB), purgeExpiredAuthSessions(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
+  },
+  async queue(batch: NotificationQueueBatch, env: Env): Promise<void> {
+    // Claiming remains inside processOutbox, so duplicate queue deliveries
+    // are safe and only one consumer can process each D1 row.
+    try {
+      await processOutbox(env);
+      for (const message of batch.messages) message.ack();
+    } catch (error) {
+      operationalLog("error", { event: "NOTIFICATION_QUEUE_CONSUME_FAILED", actorId: "system:queue", error });
+      for (const message of batch.messages) message.retry();
+      throw error;
+    }
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
