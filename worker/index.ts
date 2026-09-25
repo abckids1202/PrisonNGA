@@ -396,6 +396,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
 }
 
 function notificationCopy(eventType: string, payload: Record<string, unknown> = {}): { title: string; body: string } {
+  if (eventType === "LIVE_SESSION_START_FAILED") return { title: "Your visit is temporarily delayed", body: "The facility could not open the secure video room. Your visit has not started or consumed its credit; staff can retry when the video service is available." };
   if (eventType === "APPOINTMENT_APPROVE") return { title: "Your visit was approved", body: "Your appointment is ready. Open Visit Details to prepare." };
   if (eventType === "APPOINTMENT_REJECT") return { title: "Your visit needs attention", body: "Your appointment request was not approved. Open Visit Details to see the reason." };
   if (eventType === "APPOINTMENT_RESCHEDULED") return { title: "Your visit time changed", body: "Your new time is waiting for facility review. Open Visit Details to see the updated request." };

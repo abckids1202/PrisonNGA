@@ -417,7 +417,16 @@ test("persisted visitor verification, payment, appointment request, and staff ap
       data: { appointmentId: approvedAppointmentId, command: "run_preflight", expectedVersion: waitingVisit.version, reason: "All pilot pre-call checks passed." },
     });
     expect(preflight.status(), await preflight.text()).toBe(200);
-    await expect(preflight.json()).resolves.toMatchObject({ state: "READY_TO_START" });
+    const preflightBody = await preflight.json() as { state?: string; version?: number };
+    expect(preflightBody).toMatchObject({ state: "READY_TO_START" });
+    expect(preflightBody.version).toBeGreaterThan(waitingVisit.version);
+
+    const providerStart = await staff.request.post("/api/control/waiting-room", {
+      headers: { origin: testOrigin, "Idempotency-Key": `waiting-start-provider-outage-${Date.now()}-e2e` },
+      data: { appointmentId: approvedAppointmentId, command: "start_visit", expectedVersion: preflightBody.version, reason: "Pilot acceptance provider-outage check." },
+    });
+    expect(providerStart.status(), await providerStart.text()).toBe(503);
+    await expect(providerStart.json()).resolves.toMatchObject({ error: "VIDEO_PROVIDER_NOT_CONFIGURED" });
   } finally {
     await staff.close();
   }

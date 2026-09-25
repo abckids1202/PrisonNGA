@@ -5,6 +5,7 @@ import { operationalLog } from "../../../../lib/server/observability";
 import { canTransitionWaitingRoom } from "../../../../lib/server/workflow";
 import { evaluateWaitingRoomReadiness, isRecentPresence } from "../../../../lib/server/waiting-room-readiness";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
+import { auditAndOutboxStatements } from "../../../../lib/server/events";
 
 const eligibleStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
 const commands = ["admit_visitor", "confirm_prisoner_presence", "run_preflight", "retry_device", "contact_visitor", "mark_late", "cancel_visit", "start_visit"] as const;
@@ -230,6 +231,28 @@ export async function POST(request: Request) {
         newSession = { id: crypto.randomUUID(), ...(await provider.createSession(createProviderRoomName())) };
         roomCleanup = { provider, name: newSession.roomName };
       } catch (error) {
+        const providerFailure = error instanceof Error ? error.message : "VIDEO_PROVIDER_START_FAILED";
+        const failureCode = providerFailure === "VIDEO_PROVIDER_NOT_CONFIGURED" ? providerFailure : "VIDEO_PROVIDER_START_FAILED";
+        const failureCorrelationId = crypto.randomUUID();
+        try {
+          await d1.batch(auditAndOutboxStatements(d1, {
+            actorUserId: authorization.userId,
+            actorRole: authorization.roles[0] || null,
+            facilityId: authorization.facilityId,
+            actionType: "LIVE_SESSION_START_FAILED",
+            entityType: "appointment",
+            entityId: body.appointmentId,
+            reason: failureCode === "VIDEO_PROVIDER_NOT_CONFIGURED" ? "Live video provider is not configured for this environment." : "Live video provider could not create the authorized room.",
+            oldValues: { appointmentStatus: current.appointment_status, waitingRoomState: currentState },
+            newValues: { status: "NOT_STARTED", failureCode },
+            requestId: context.requestId,
+            correlationId: failureCorrelationId,
+            eventType: "LIVE_SESSION_START_FAILED",
+            payload: { appointmentId: body.appointmentId, failureCode, retryable: true },
+          }));
+        } catch (auditError) {
+          operationalLog("error", { event: "LIVE_SESSION_START_FAILURE_AUDIT_FAILED", appointmentId: body.appointmentId, facilityId: authorization.facilityId, correlationId: failureCorrelationId, error: auditError });
+        }
         if (error instanceof Error && error.message === "VIDEO_PROVIDER_NOT_CONFIGURED") throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
         throw new SecurityError("VIDEO_PROVIDER_START_FAILED", 502);
       }
