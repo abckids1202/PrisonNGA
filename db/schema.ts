@@ -165,6 +165,7 @@ export const idempotencyRecords = sqliteTable("idempotency_records", {
   status: text("status", { enum: ["PROCESSING", "COMPLETED"] }).notNull().default("PROCESSING"),
   responseStatus: integer("response_status"),
   responseBody: text("response_body"),
+  processingStartedAt: text("processing_started_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   completedAt: text("completed_at"),
 }, (table) => ({

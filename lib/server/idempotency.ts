@@ -11,11 +11,11 @@ export async function hashIdempotencyPayload(value: unknown): Promise<string> {
 export async function claimIdempotency(d1: D1Database, input: { scope: string; key: string; requestHash: string }): Promise<IdempotencyClaim> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const inserted = await d1.prepare("INSERT OR IGNORE INTO idempotency_records (id, scope, idempotency_key, request_hash, status, created_at) VALUES (?, ?, ?, ?, 'PROCESSING', ?)")
-    .bind(id, input.scope, input.key, input.requestHash, now).run();
+  const inserted = await d1.prepare("INSERT OR IGNORE INTO idempotency_records (id, scope, idempotency_key, request_hash, status, processing_started_at, created_at) VALUES (?, ?, ?, ?, 'PROCESSING', ?, ?)")
+    .bind(id, input.scope, input.key, input.requestHash, now, now).run();
   if (inserted.meta.changes) return { claimId: id };
-  const existing = await d1.prepare("SELECT id, request_hash, status, response_status, response_body, created_at FROM idempotency_records WHERE scope = ? AND idempotency_key = ?")
-    .bind(input.scope, input.key).first<{ id: string; request_hash: string; status: string; response_status: number | null; response_body: string | null; created_at: string }>();
+  const existing = await d1.prepare("SELECT id, request_hash, status, response_status, response_body, processing_started_at, created_at FROM idempotency_records WHERE scope = ? AND idempotency_key = ?")
+    .bind(input.scope, input.key).first<{ id: string; request_hash: string; status: string; response_status: number | null; response_body: string | null; processing_started_at: string | null; created_at: string }>();
   if (!existing) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
   if (existing.request_hash !== input.requestHash) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
   if (existing.status === "COMPLETED") {
@@ -25,9 +25,10 @@ export async function claimIdempotency(d1: D1Database, input: { scope: string; k
   if (existing.status !== "PROCESSING") throw new SecurityError("IDEMPOTENCY_IN_PROGRESS", 409);
 
   const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
-  if (existing.created_at > staleBefore) throw new SecurityError("IDEMPOTENCY_IN_PROGRESS", 409);
+  const processingStartedAt = existing.processing_started_at || existing.created_at;
+  if (processingStartedAt > staleBefore) throw new SecurityError("IDEMPOTENCY_IN_PROGRESS", 409);
   const replacementId = crypto.randomUUID();
-  const reclaimed = await d1.prepare("UPDATE idempotency_records SET id = ?, created_at = ?, response_status = NULL, response_body = NULL, completed_at = NULL WHERE id = ? AND scope = ? AND idempotency_key = ? AND request_hash = ? AND status = 'PROCESSING' AND created_at <= ?")
+  const reclaimed = await d1.prepare("UPDATE idempotency_records SET id = ?, processing_started_at = ?, response_status = NULL, response_body = NULL, completed_at = NULL WHERE id = ? AND scope = ? AND idempotency_key = ? AND request_hash = ? AND status = 'PROCESSING' AND COALESCE(processing_started_at, created_at) <= ?")
     .bind(replacementId, now, existing.id, input.scope, input.key, input.requestHash, staleBefore).run();
   if (reclaimed.meta.changes) return { claimId: replacementId };
 

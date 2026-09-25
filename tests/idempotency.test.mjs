@@ -36,18 +36,18 @@ class IdempotencyStatement {
 
   async run() {
     if (this.sql.startsWith("INSERT OR IGNORE INTO idempotency_records")) {
-      const [id, scope, key, requestHash, createdAt] = this.values;
+      const [id, scope, key, requestHash, processingStartedAt, createdAt] = this.values;
       const recordKey = `${scope}:${key}`;
       if (this.database.records.has(recordKey)) return { meta: { changes: 0 } };
-      this.database.records.set(recordKey, { id, scope, key, request_hash: requestHash, status: "PROCESSING", created_at: createdAt });
+      this.database.records.set(recordKey, { id, scope, key, request_hash: requestHash, status: "PROCESSING", processing_started_at: processingStartedAt, created_at: createdAt });
       return { meta: { changes: 1 } };
     }
     if (this.sql.startsWith("UPDATE idempotency_records SET id =")) {
-      const [id, createdAt, oldId, scope, key, requestHash, staleBefore] = this.values;
+      const [id, processingStartedAt, oldId, scope, key, requestHash, staleBefore] = this.values;
       const recordKey = `${scope}:${key}`;
       const record = this.database.records.get(recordKey);
-      if (!record || record.id !== oldId || record.request_hash !== requestHash || record.status !== "PROCESSING" || record.created_at > staleBefore) return { meta: { changes: 0 } };
-      Object.assign(record, { id, created_at: createdAt, response_status: null, response_body: null, completed_at: null });
+      if (!record || record.id !== oldId || record.request_hash !== requestHash || record.status !== "PROCESSING" || (record.processing_started_at || record.created_at) > staleBefore) return { meta: { changes: 0 } };
+      Object.assign(record, { id, processing_started_at: processingStartedAt, response_status: null, response_body: null, completed_at: null });
       return { meta: { changes: 1 } };
     }
     if (this.sql.startsWith("UPDATE idempotency_records SET status = 'COMPLETED'")) {
@@ -133,7 +133,8 @@ test("stale claims can be reclaimed without allowing the former owner to delete 
     key: request.key,
     request_hash: request.requestHash,
     status: "PROCESSING",
-    created_at: new Date(Date.now() - 11 * 60_000).toISOString(),
+    processing_started_at: new Date(Date.now() - 11 * 60_000).toISOString(),
+    created_at: new Date().toISOString(),
   });
 
   const reclaimed = await claimIdempotency(database, request);
