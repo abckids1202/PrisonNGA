@@ -13,6 +13,21 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 - Development OTP delivery and development simulation controls are environment-gated and are not pilot capabilities.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, and dependency audit must pass before every pushed phase.
 
+### Baseline verification — 2026-09-25
+
+The current repository baseline was rechecked against the pilot contract:
+
+- `npm test`: 316 tests passed.
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- Production build: passed.
+- Local D1 migration verification: passed.
+- Browser smoke suite: 16 tests passed on an isolated local port.
+- `npm audit --audit-level=high`: 0 vulnerabilities reported.
+- Working tree: clean after the verified push.
+
+This evidence proves the repository workflows and local failure handling remain internally consistent. It does not prove external provider readiness, institutional policy approval, real hardware operation, or production resilience.
+
 ## External provider contracts
 
 ### Visitor email/SMS delivery
@@ -62,6 +77,19 @@ The pilot cannot open to real visitors until all of these have evidence:
 - security review;
 - Indonesian privacy and correctional-policy approval;
 - complete staging journey from visitor sign-in through receipt and audit.
+
+The following items are intentionally not marked complete by local tests and require external evidence:
+
+- production email/SMS delivery and OTP operations;
+- institutional OIDC/SAML identity mapping with enforced MFA;
+- payment-provider sandbox checkout, webhook, refund, dispute, and reconciliation tests;
+- protected object storage, malware scanning, retention, legal hold, and restore verification;
+- remote D1 migration review, backup, and restore drill;
+- three-party visitor/kiosk/staff LiveKit session using real configured credentials;
+- deployed WAF, rate limits, monitoring, alerting, secret rotation, and outage rehearsal;
+- independent security review and Indonesian privacy/correctional-policy approval.
+
+Until each item has a named owner, environment, test evidence, and approval record, the release status remains `STAGING FOUNDATION — NOT PILOT READY`.
 
 ## Failure-handling rule
 
