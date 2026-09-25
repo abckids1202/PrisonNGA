@@ -14,4 +14,5 @@ test("Facility management exposes persisted operating hours and restriction cont
   assert.match(component, /setDraft\(normalizeState\(state\)\)/);
   assert.match(component, /Keep the selector aligned with the last persisted facility state/);
   assert.match(component, /role="alert"/);
+  assert.match(page, /throw new Error\("The protected staff API rejected the facility state change\."\)/);
 });

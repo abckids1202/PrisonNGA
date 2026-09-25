@@ -296,25 +296,14 @@ export default function ControlApp() {
 
   async function changeFacilityState(nextState: string, reason?: string) {
     if (facilityState === "UNKNOWN" || backendStatus !== "connected") {
-      notify("The facility state cannot change until the protected facility record is available.", "error");
-      return;
+      throw new Error("The facility state cannot change until the protected facility record is available.");
     }
-    const previousState = facilityState;
-    try {
-      const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-state:${nextState}:${facilityVersion}:${crypto.randomUUID()}` }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: reason || (nextState === "LOCKDOWN" ? "Staff supervisor declared a controlled facility lockdown." : "Staff supervisor restored normal operations.") }) });
-      if (response.ok) {
-        const body = await response.json() as { facility?: { version?: number } };
-        setFacilityState(nextState);
-        setFacilityVersion(body.facility?.version || facilityVersion + 1);
-        setBackendStatus("connected");
-        notify(nextState === "LOCKDOWN" ? "Facility lockdown declared and audit event created." : "Facility returned to normal operations.", nextState === "LOCKDOWN" ? "warning" : "success");
-      } else {
-        notify("The facility state was not changed because the protected staff API rejected the request.", "error");
-      }
-    } catch {
-      notify("The facility state was not changed because the protected staff API is unavailable.", "error");
-    }
-    if (previousState === nextState) notify("No facility state change was needed.");
+    const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-state:${nextState}:${facilityVersion}:${crypto.randomUUID()}` }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: reason || (nextState === "LOCKDOWN" ? "Staff supervisor declared a controlled facility lockdown." : "Staff supervisor restored normal operations.") }) });
+    if (!response.ok) throw new Error("The protected staff API rejected the facility state change.");
+    const body = await response.json() as { facility?: { version?: number } };
+    setFacilityState(nextState);
+    setFacilityVersion(body.facility?.version || facilityVersion + 1);
+    setBackendStatus("connected");
   }
 
   async function updateAppointment(id: string, status: AppointmentStatus, commandOverride?: "approve" | "reject" | "request_info" | "cancel" | "no_show") {
