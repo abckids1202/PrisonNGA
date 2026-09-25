@@ -15,7 +15,7 @@ export function serializePaymentWebhookSnapshot(payload: Pick<PaymentWebhook, "e
 }
 
 export interface PaymentProvider {
-  createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout>;
+  createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string; successUrl?: string; cancelUrl?: string }): Promise<PaymentCheckout>;
   requestRefund(input: { paymentIntentId: string; providerReference: string; amountMinor: number; currency: string; reason: string }): Promise<PaymentRefundRequest>;
 }
 
@@ -35,7 +35,7 @@ export async function getPaymentProvider(): Promise<PaymentProvider | null> {
 class WebhookCheckoutProvider implements PaymentProvider {
   constructor(private readonly url: string, private readonly refundUrl: string, private readonly secret: string) {}
 
-  async createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string }): Promise<PaymentCheckout> {
+  async createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string; successUrl?: string; cancelUrl?: string }): Promise<PaymentCheckout> {
     if (!input.email && !input.phone) throw new Error("PAYMENT_CONTACT_REQUIRED");
     const payload = JSON.stringify(input);
     const timestamp = String(Math.floor(Date.now() / 1000));

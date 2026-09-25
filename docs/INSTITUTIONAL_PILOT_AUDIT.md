@@ -47,7 +47,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 280 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 285 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -79,7 +79,7 @@ The current repository already includes:
 - Evidence retention now uses a recoverable `PENDING_DELETION` database claim before R2 deletion; storage failure restores the record for retry and a crash can be recovered by the next scheduled run.
 - Pending-deletion evidence is excluded from break-glass retrieval, and the retention worker rechecks legal-hold state after claiming before deleting from R2.
 - OIDC ID-token validation now rejects malformed issuer, subject, audience, or expiry claim shapes before signature claims are used for staff authorization.
-- Payment creation and refund requests are audited, but a real provider adapter, customer-facing checkout return handling, provider status polling, provider dispute workflow and reconciliation dashboard still need completion.
+- Payment creation and refund requests are audited, and the visitor now has an owner-scoped payment status/return page with bounded webhook-status polling; a real provider adapter, provider dispute workflow and staging reconciliation proof still need completion.
 - Notification records and outbox processing exist, but real email/SMS delivery adapters, templates, delivery receipts, retry operations and dead-letter replay need staging proof.
 - Visitor session controls still need production delivery, recovery, suspicious-login handling and device-management validation beyond the development OTP path.
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.

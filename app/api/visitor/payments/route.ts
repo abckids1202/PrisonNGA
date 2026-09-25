@@ -67,7 +67,17 @@ export async function POST(request: Request) {
     }
     let checkout;
     try {
-      checkout = await provider.createCheckout({ paymentIntentId, email: visitor.email, phone: visitor.phone, creditQuantity, amountMinor, currency: "IDR" });
+      const origin = new URL(request.url).origin;
+      checkout = await provider.createCheckout({
+        paymentIntentId,
+        email: visitor.email,
+        phone: visitor.phone,
+        creditQuantity,
+        amountMinor,
+        currency: "IDR",
+        successUrl: `${origin}/visitor/payment/${encodeURIComponent(paymentIntentId)}?result=success`,
+        cancelUrl: `${origin}/visitor/payment/${encodeURIComponent(paymentIntentId)}?result=cancelled`,
+      });
     } catch (error) {
       const now = new Date().toISOString();
       const message = error instanceof Error ? error.message.slice(0, 240) : "PAYMENT_CHECKOUT_FAILED";
