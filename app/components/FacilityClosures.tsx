@@ -75,7 +75,7 @@ export default function FacilityClosures() {
       const response = await fetch("/api/control/facility-closures", {
         method: "DELETE",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-closure-cancel-${crypto.randomUUID()}` },
         body: JSON.stringify({ closureId: closure.id, expectedVersion: closure.version, reason: "Staff reopened this facility window." }),
       });
       const body = await response.json() as { error?: string };

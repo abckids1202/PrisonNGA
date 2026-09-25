@@ -34,3 +34,11 @@ test("closure management requires idempotency, step-up, facility scope, and audi
   assert.match(route, /facility_id = \?/g);
   assert.match(route, /CLOSURE_OVERLAPS_EXISTING/);
 });
+
+test("closure cancellation is replay-safe and commits state, audit, and outbox atomically", () => {
+  assert.match(route, /facility-closure-cancel:/);
+  assert.match(route, /completeIdempotencyStatement\(d1/);
+  assert.match(route, /d1\.batch\(\[/);
+  assert.match(route, /CLOSURE_AUDIT_FAILED/);
+  assert.match(route, /releaseIdempotencyClaim/);
+});

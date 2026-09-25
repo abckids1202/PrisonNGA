@@ -71,20 +71,38 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("facility.state.change");
     const body = await request.json() as { closureId?: unknown; expectedVersion?: unknown; reason?: unknown };
     if (typeof body.closureId !== "string" || !body.closureId.trim() || typeof body.expectedVersion !== "number" || !Number.isSafeInteger(body.expectedVersion)) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
     const reason = assertReason(body.reason);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     await requireStepUp({ purpose: "facility_closure_cancel", userId: authorization.userId, targetId: body.closureId, payload: { closureId: body.closureId, expectedVersion: body.expectedVersion, reason } });
-    const d1 = await getD1();
+    d1 = await getD1();
+    const scope = `facility-closure-cancel:${authorization.facilityId}:${body.closureId.trim()}`;
+    const requestHash = await hashIdempotencyPayload({ closureId: body.closureId.trim(), expectedVersion: body.expectedVersion, reason });
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
-    const changed = await d1.prepare(`UPDATE facility_closures SET status = 'CANCELLED', version = version + 1, updated_at = ?
-      WHERE id = ? AND facility_id = ? AND status = 'ACTIVE' AND version = ?`).bind(now, body.closureId.trim(), authorization.facilityId, body.expectedVersion).run();
-    if (!changed.meta.changes) throw new SecurityError("STALE_CLOSURE", 409);
-    const event = await d1.batch(auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "FACILITY_CLOSURE_CANCELLED", entityType: "facility_closure", entityId: body.closureId.trim(), reason, newValues: { status: "CANCELLED", version: Number(body.expectedVersion) + 1 }, requestId: context.requestId, correlationId, eventType: "FACILITY_CLOSURE_CANCELLED", payload: { closureId: body.closureId.trim() } }, { sql: "EXISTS (SELECT 1 FROM facility_closures WHERE id = ? AND facility_id = ? AND status = 'CANCELLED' AND version = ?)", values: [body.closureId.trim(), authorization.facilityId, Number(body.expectedVersion) + 1] }));
-    if (!event.length) throw new SecurityError("CLOSURE_AUDIT_FAILED", 500);
-    return securityResponse({ closureId: body.closureId.trim(), status: "CANCELLED", version: Number(body.expectedVersion) + 1, correlationId }, 200, context.requestId);
-  } catch (error) { return securityErrorResponse(error, context.requestId); }
+    const responseBody = { closureId: body.closureId.trim(), status: "CANCELLED", version: Number(body.expectedVersion) + 1, correlationId };
+    const guard = { sql: "EXISTS (SELECT 1 FROM facility_closures WHERE id = ? AND facility_id = ? AND status = 'CANCELLED' AND version = ?)", values: [body.closureId.trim(), authorization.facilityId, Number(body.expectedVersion) + 1] };
+    const results = await d1.batch([
+      d1.prepare(`UPDATE facility_closures SET status = 'CANCELLED', version = version + 1, updated_at = ?
+        WHERE id = ? AND facility_id = ? AND status = 'ACTIVE' AND version = ?`).bind(now, body.closureId.trim(), authorization.facilityId, body.expectedVersion),
+      ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "FACILITY_CLOSURE_CANCELLED", entityType: "facility_closure", entityId: body.closureId.trim(), reason, newValues: responseBody, requestId: context.requestId, correlationId, eventType: "FACILITY_CLOSURE_CANCELLED", payload: { closureId: body.closureId.trim() } }, guard),
+      completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard }),
+    ]);
+    if (!results[0]?.meta.changes) throw new SecurityError("STALE_CLOSURE", 409);
+    if (!results[results.length - 1]?.meta.changes) throw new SecurityError("CLOSURE_AUDIT_FAILED", 500);
+    idempotency = null;
+    return securityResponse(responseBody, 200, context.requestId);
+  } catch (error) {
+    if (d1 && idempotency) { try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original closure error. */ } }
+    return securityErrorResponse(error, context.requestId);
+  }
 }
