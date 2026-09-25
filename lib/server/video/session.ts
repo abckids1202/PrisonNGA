@@ -62,6 +62,7 @@ export function assertJoinable(record: SessionRecord): void {
   const start = Date.parse(record.authorized_start_at);
   const end = Date.parse(record.authorized_end_at);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new SecurityError("SESSION_INVALID_WINDOW", 409);
+  if (Date.now() < start - 60_000) throw new SecurityError("SESSION_NOT_STARTED", 409);
   if (Date.now() > end + 60_000) throw new SecurityError("SESSION_EXPIRED", 409);
 }
 

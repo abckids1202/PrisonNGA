@@ -90,6 +90,7 @@ The current repository already includes:
 - Control appointments and facility state now refresh from protected APIs every 15 seconds with no-store caching and explicit unavailable-state handling, so operational screens do not remain silently stale after mount.
 - The Control top-bar notification action now reads facility-scoped persisted security events and distinguishes loading, empty, and unavailable states instead of claiming there are no notifications without an API read.
 - Live-session staff observation and provider webhook behavior need a real deployment test. Recording remains intentionally disabled and must not be silently enabled.
+- Live-session join validation now rejects participant tokens before the authorized start window, with a one-minute clock-skew grace, in addition to the existing expiry and recording-policy checks.
 - Administration now exposes the protected deployment-readiness API, including database, schema, provider, storage, visitor-auth, staff-identity and notification checks without returning secret values.
 - Audit export manifests can now be retrieved through an authorized, facility-scoped verification endpoint. Break-glass requests and supervisor decisions are now persisted with time-bound grants, step-up checks, optimistic concurrency, audit events, and outbox events; staging access-review and policy validation remain release gates.
 - Data retention and deletion need scheduled-job evidence, exception handling, legal-hold behavior and restore/rollback procedures.
