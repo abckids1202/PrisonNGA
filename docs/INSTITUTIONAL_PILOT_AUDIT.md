@@ -33,6 +33,7 @@ The current repository already includes:
 - LiveKit readiness and provider configuration now reject malformed URLs, non-HTTPS/WSS schemes, and credential-bearing URLs before a browser connection or provider client can be created.
 - Staff evidence retrieval now verifies the stored object’s SHA-256 against the immutable evidence record before serving it, preventing a size-matching replacement or corruption from being presented as the submitted document.
 - Staff LiveKit observer tokens now require both a joinable session and an `IN_PROGRESS` appointment, matching the visitor and kiosk lifecycle boundary.
+- LiveKit webhook activation now requires a joined visitor or assigned facility/kiosk participant; staff observers and room-level telemetry cannot start a credit-consuming session or set its actual start time.
 - Live-session join/token issuance fails closed unless the persisted session explicitly remains `OFF` / `NOT_RECORDED`; legacy or malformed recording-enabled rows cannot join.
 - Facility isolation checks, permission checks, step-up foundations, rate limits, security events, request/correlation identifiers, CSP and camera/microphone permissions policy.
 - Idempotent state-changing boundaries for appointment decisions, verification review, visitor profile, session revocation, notification read state, policy updates, live-session ending, waiting-room commands, outbox replay and visitor payment checkout audit events.
@@ -47,7 +48,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 291 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 292 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven

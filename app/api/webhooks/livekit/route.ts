@@ -105,7 +105,9 @@ export async function POST(request: Request) {
       throw new SecurityError("LIVE_SESSION_FINALIZATION_CONFLICT", 409);
     }
 
-    const nextStatus = session.status === "ENDING" ? session.status : event.event === "room_started" || event.event === "participant_joined" ? "ACTIVE" : event.event === "participant_connection_aborted" ? "RECONNECTING" : session.status;
+    const participantStarted = event.event === "participant_joined" && (participantRole === "VISITOR" || participantRole === "FACILITY");
+    const participantReconnecting = event.event === "participant_connection_aborted" && (participantRole === "VISITOR" || participantRole === "FACILITY");
+    const nextStatus = session.status === "ENDING" ? session.status : participantStarted ? "ACTIVE" : participantReconnecting ? "RECONNECTING" : session.status;
     const statements = [
       d1.prepare(`INSERT OR IGNORE INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
         VALUES (?, ?, ?, 'LIVEKIT_WEBHOOK', ?, ?, ?, ?)`)
