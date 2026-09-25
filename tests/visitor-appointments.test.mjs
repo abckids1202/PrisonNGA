@@ -30,6 +30,7 @@ class D1 {
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT, status TEXT, visitation_status TEXT);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, current_state TEXT, timezone TEXT);
       CREATE TABLE visit_policies (facility_id TEXT PRIMARY KEY, version INTEGER);
+      CREATE TABLE facility_closures (id TEXT PRIMARY KEY, facility_id TEXT, starts_at TEXT, ends_at TEXT, reason TEXT, status TEXT, version INTEGER, created_by TEXT, created_at TEXT, updated_at TEXT);
       CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, user_id TEXT, facility_id TEXT, available_credits INTEGER, reserved_credits INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at TEXT);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, idempotency_key TEXT UNIQUE, reason TEXT, created_by TEXT, created_at TEXT);
       CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT, appointment_id TEXT, resource_type TEXT, resource_id TEXT, status TEXT, starts_at TEXT, ends_at TEXT);
