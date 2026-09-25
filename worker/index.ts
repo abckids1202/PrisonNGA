@@ -322,6 +322,32 @@ async function expireBreakGlassRequests(env: Env): Promise<void> {
   }
 }
 
+async function recordSessionProviderCloseFailure(env: Env, session: ExpiredSession, reason: string): Promise<void> {
+  try {
+    const priorFailure = await env.DB.prepare("SELECT 1 AS present FROM audit_events WHERE facility_id = ? AND action_type = 'LIVE_SESSION_PROVIDER_CLOSE_FAILED' AND entity_type = 'visit_session' AND entity_id = ? LIMIT 1")
+      .bind(session.facility_id, session.id).first<{ present: number }>();
+    if (priorFailure) return;
+    const correlationId = crypto.randomUUID();
+    await env.DB.batch(auditAndOutboxStatements(env.DB, {
+      actorUserId: "system:scheduler",
+      actorRole: "SYSTEM",
+      facilityId: session.facility_id,
+      actionType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
+      entityType: "visit_session",
+      entityId: session.id,
+      reason,
+      oldValues: { sessionStatus: session.status, providerRoomName: session.provider_room_name },
+      newValues: { interventionRequired: true, retryable: true },
+      requestId: correlationId,
+      correlationId,
+      eventType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
+      payload: { sessionId: session.id, appointmentId: session.appointment_id, visitorUserId: session.visitor_user_id, retryable: true },
+    }));
+  } catch (auditError) {
+    operationalLog("error", { event: "EXPIRED_SESSION_CLOSE_FAILURE_AUDIT_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", error: auditError });
+  }
+}
+
 async function reconcileExpiredSessions(env: Env): Promise<void> {
     const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, vs.version, vs.status, vs.actual_started_at,
       vs.termination_reason, vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
@@ -338,6 +364,9 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
     provider = await createLiveKitProvider();
   } catch (error) {
     operationalLog("error", { event: "EXPIRED_SESSION_PROVIDER_UNAVAILABLE", actorId: "system:scheduler", error });
+    for (const session of sessions.results) {
+      await recordSessionProviderCloseFailure(env, session, "The video provider was unavailable while the authorized session window expired.");
+    }
     return;
   }
 
@@ -347,30 +376,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
       await provider.endRoom(session.provider_room_name);
     } catch (error) {
       operationalLog("error", { event: "EXPIRED_SESSION_ROOM_CLOSE_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", error });
-      try {
-        const priorFailure = await env.DB.prepare("SELECT 1 AS present FROM audit_events WHERE facility_id = ? AND action_type = 'LIVE_SESSION_PROVIDER_CLOSE_FAILED' AND entity_type = 'visit_session' AND entity_id = ? LIMIT 1")
-          .bind(session.facility_id, session.id).first<{ present: number }>();
-        if (!priorFailure) {
-          const correlationId = crypto.randomUUID();
-          await env.DB.batch(auditAndOutboxStatements(env.DB, {
-            actorUserId: "system:scheduler",
-            actorRole: "SYSTEM",
-            facilityId: session.facility_id,
-            actionType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
-            entityType: "visit_session",
-            entityId: session.id,
-            reason: "The video provider did not confirm room closure after the authorized session window expired.",
-            oldValues: { sessionStatus: session.status, providerRoomName: session.provider_room_name },
-            newValues: { interventionRequired: true, retryable: true },
-            requestId: correlationId,
-            correlationId,
-            eventType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
-            payload: { sessionId: session.id, appointmentId: session.appointment_id, visitorUserId: session.visitor_user_id, retryable: true },
-          }));
-        }
-      } catch (auditError) {
-        operationalLog("error", { event: "EXPIRED_SESSION_CLOSE_FAILURE_AUDIT_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", error: auditError });
-      }
+      await recordSessionProviderCloseFailure(env, session, "The video provider did not confirm room closure after the authorized session window expired.");
       continue;
     }
     if (!session.credit_account_id) {
