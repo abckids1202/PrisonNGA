@@ -336,24 +336,18 @@ test("declares the outbox worker schedule in the generated Worker build", async 
   assert.deepEqual(workerConfig.triggers?.crons, ["*/1 * * * *"]);
 });
 
-test("exposes a non-sensitive readiness endpoint", async () => {
-  const response = await renderApi("/api/health/readiness");
-  assert.ok([200, 503].includes(response.status));
-  const body = await response.json();
-  assert.ok(["ready", "not_ready"].includes(body.status));
-  assert.equal(typeof body.checks.database, "boolean");
-  assert.equal(typeof body.checks.schema, "boolean");
-  for (const key of ["payment", "paymentWebhook", "livekit", "evidenceStorage", "evidenceScanning", "visitorAuth", "staffIdentity", "notifications"]) {
-    assert.equal(typeof body.checks.providerConfiguration[key], "boolean");
-  }
-  assert.equal(typeof body.checks.environment.ok, "boolean");
-  assert.ok(Array.isArray(body.checks.environment.missing));
-  assert.ok(Array.isArray(body.checks.environment.warnings));
-  assert.doesNotMatch(JSON.stringify(body), /LIVEKIT_API_SECRET|PAYMENT_WEBHOOK_SECRET|HASH_SALT/);
+test("readiness details require a staff facility permission while liveness stays probeable", async () => {
+  const unauthorized = await renderApi("/api/health/readiness");
+  assert.equal(unauthorized.status, 401);
+  assert.deepEqual(await unauthorized.json().then((body) => body.error), "AUTHENTICATION_REQUIRED");
+  const live = await renderApi("/api/health/live");
+  assert.equal(live.status, 200);
+  assert.deepEqual(await live.json(), { status: "ok" });
 });
 
 test("readiness applies the central fail-closed environment validator", async () => {
   const source = await readFile(new URL("../app/api/health/readiness/route.ts", import.meta.url), "utf8");
+  assert.match(source, /requirePermission\("facility\.read"\)/);
   assert.match(source, /validateEnvironment\(/);
   assert.match(source, /environmentConfig\.ok/);
   assert.match(source, /STAFF_OIDC_MFA_ACR/);

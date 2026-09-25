@@ -55,7 +55,8 @@ npm audit --omit=dev --audit-level=high
 Then verify the deployed readiness endpoint:
 
 ```text
-GET /api/health/readiness
+GET /api/health/live
+GET /api/health/readiness (authenticated staff request with facility.read)
 ```
 
 The response must indicate that required staging bindings and provider configuration are available. Do not seed staging with `db:seed:local`; load only an approved, synthetic staging fixture through the controlled data process.

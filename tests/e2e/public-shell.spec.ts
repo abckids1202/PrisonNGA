@@ -3,12 +3,21 @@ import { createHmac } from "node:crypto";
 
 const testOrigin = `http://localhost:${process.env.PLAYWRIGHT_PORT || "4173"}`;
 
-test("control workspace renders its operational shell", async ({ page }) => {
-  await page.goto("/");
+test("control workspace renders its operational shell", async ({ browser }) => {
+  const staff = await browser.newContext({ extraHTTPHeaders: {
+    "oai-authenticated-user-id": "staff-local-supervisor",
+    "oai-authenticated-user-email": "staff.local@example.test",
+  } });
+  const page = await staff.newPage();
+  try {
+    await page.goto("/");
 
-  await expect(page.getByText("SecureVisit Control").first()).toBeVisible();
-  await expect(page.getByText("Command Center", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("DEVELOPMENT ENVIRONMENT", { exact: true })).toBeVisible();
+    await expect(page.getByText("SecureVisit Control").first()).toBeVisible();
+    await expect(page.getByText("Command Center", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("DEVELOPMENT ENVIRONMENT", { exact: true })).toBeVisible();
+  } finally {
+    await staff.close();
+  }
 });
 
 test("management facility resources open the selected operational record", async ({ browser }) => {

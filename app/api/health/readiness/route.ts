@@ -1,6 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { getEvidenceBucket } from "../../../../db/runtime";
-import { getRuntimeValue, securityResponse } from "../../../../lib/server/security";
+import { getRequestContext, getRuntimeValue, requirePermission, securityErrorResponse, securityResponse } from "../../../../lib/server/security";
 import { validateEnvironment } from "../../../../lib/server/config";
 import { getPaymentProvider } from "../../../../lib/server/payments/provider";
 import { getVideoConfig } from "../../../../lib/server/video/provider";
@@ -24,8 +24,10 @@ const configurationKeys = [
 ];
 
 export async function GET() {
+  const context = await getRequestContext();
   const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "invalid";
   try {
+    await requirePermission("facility.read");
     const d1 = await getD1();
     const rows = await d1.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>();
     const present = new Set(rows.results.map((row) => row.name));
@@ -85,8 +87,9 @@ export async function GET() {
     };
     const providersReady = Object.values(providerConfiguration).every(Boolean);
     const ready = schemaReady && environmentConfig.ok && (environment === "development" || providersReady);
-    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, providerConfiguration, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503);
-  } catch {
-    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503);
+    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, providerConfiguration, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
+  } catch (error) {
+    if (error instanceof Error && error.name === "SecurityError") return securityErrorResponse(error, context.requestId);
+    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
   }
 }

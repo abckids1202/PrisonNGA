@@ -32,7 +32,8 @@ This matrix is the release-review index for the current API surface. “Implemen
 | `/api/kiosk/*` | Kiosk credential bound to resource/facility | Credential/resource/appointment facility | Credential and device-check idempotency | Kiosk heartbeat/device/presence events | Controlled-device enrollment, secure credential storage and physical recovery |
 | `/api/webhooks/payments` | Provider HMAC signature and replay window | Payment intent/provider scope | Event-key idempotency, amount/currency/reference checks | Provider event retry/dead-letter and ledger audit | Real provider signature and delayed/replayed event tests |
 | `/api/webhooks/livekit` | LiveKit webhook signature | Room/session facility binding | Event reconciliation and participant upsert | Participant/session audit evidence | Real provider webhook delivery and outage tests |
-| `/api/health/readiness` | Health endpoint; no business data | Runtime/schema/provider configuration | Read-only | Structured readiness response | Cloudflare deployment secrets, alert routing and backup checks |
+| `/api/health/live` | Public liveness probe | None | None | `{ status: "ok" }` | Deployment probe only; no configuration detail |
+| `/api/health/readiness` | Authenticated staff facility scope | `facility.read` | Read-only | Structured readiness response | Cloudflare deployment secrets, alert routing and backup checks |
 
 ## Release-review use
 
