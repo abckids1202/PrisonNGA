@@ -14,4 +14,6 @@ test("appointment type changes require version, idempotency, step-up, history, a
   assert.match(route, /auditAndOutboxStatements/);
   assert.match(migration, /appointment_type_history/);
   assert.match(panel, /Save status · requires supervisor step-up/);
+  assert.match(panel, /failed mutation must not leave an optimistic local status visible/);
+  assert.match(panel, /await load\(\);\s*setError\(message\)/);
 });

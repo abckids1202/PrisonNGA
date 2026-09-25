@@ -11,20 +11,22 @@ export default function AppointmentTypesPanel() {
   const [editing, setEditing] = useState<string>("");
   const [reason, setReason] = useState("");
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    fetch("/api/control/appointment-types", { credentials: "include", cache: "no-store", headers: { accept: "application/json" } })
-      .then(async (response) => {
+    try {
+      const response = await fetch("/api/control/appointment-types", { credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
         const body = await response.json() as { appointmentTypes?: AppointmentType[]; error?: string };
         if (!response.ok) throw new Error(body.error || "Appointment types are unavailable.");
         setTypes(body.appointmentTypes || []);
         setError("");
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Appointment types are unavailable."))
-      .finally(() => setLoading(false));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Appointment types are unavailable.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { const timer = window.setTimeout(load, 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, []);
 
   const save = async (type: AppointmentType) => {
     if (reason.trim().length < 8) { setError("Add a specific change reason of at least 8 characters."); return; }
@@ -36,8 +38,14 @@ export default function AppointmentTypesPanel() {
       if (!response.ok) throw new Error(body.error || "Appointment type could not be saved.");
       setEditing("");
       setReason("");
-      load();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Appointment type could not be saved."); }
+      await load();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Appointment type could not be saved.";
+      // A failed mutation must not leave an optimistic local status visible.
+      // Reload the persisted catalog, then restore the failure message.
+      await load();
+      setError(message);
+    }
   };
 
   return <div className="sv3-settings-surface">
