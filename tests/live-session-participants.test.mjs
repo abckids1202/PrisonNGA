@@ -27,6 +27,6 @@ test("staff observer and room events cannot start credit-consuming sessions", as
   const source = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
 
   assert.match(source, /participantStarted = event\.event === "participant_joined" && \(participantRole === "VISITOR" \|\| participantRole === "FACILITY"\)/);
-  assert.match(source, /participantReconnecting = event\.event === "participant_connection_aborted" && \(participantRole === "VISITOR" \|\| participantRole === "FACILITY"\)/);
+  assert.match(source, /participantReconnecting = \(event\.event === "participant_connection_aborted" \|\| event\.event === "participant_left"\) && \(participantRole === "VISITOR" \|\| participantRole === "FACILITY"\)/);
   assert.doesNotMatch(source, /event\.event === "room_started" \|\| event\.event === "participant_joined" \? "ACTIVE"/);
 });
