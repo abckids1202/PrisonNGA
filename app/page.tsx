@@ -176,6 +176,7 @@ export default function ControlApp() {
   const [runtimeEnvironment, setRuntimeEnvironment] = useState<RuntimeEnvironment>("unknown");
   const [simulationPaused, setSimulationPaused] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [resourceToFocus, setResourceToFocus] = useState<string | null>(null);
   const [selectedDrawer, setSelectedDrawer] = useState<DrawerPayload | null>(null);
   const [approvalAppointment, setApprovalAppointment] = useState<Appointment | null>(null);
   const [popover, setPopover] = useState<PopoverKind>(null);
@@ -334,7 +335,7 @@ export default function ControlApp() {
   }
 
   async function reassignAppointment(input: ResourceReassignment) {
-    const response = await fetch("/api/control/resources", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({
+    const response = await fetch("/api/control/resources", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `resource-reassign:${input.appointmentId}:${input.sourceResourceId}:${input.expectedSourceVersion}:${crypto.randomUUID()}` }, credentials: "include", body: JSON.stringify({
       resourceId: input.sourceResourceId,
       command: "reassign_appointment",
       appointmentId: input.appointmentId,
@@ -388,6 +389,11 @@ export default function ControlApp() {
     window.history.replaceState(null, "", `/?workspace=${nextMode}&page=${encodeURIComponent(nextPage)}`);
   }
 
+  function openResource(resourceId: string) {
+    setResourceToFocus(resourceId);
+    navigate("Resources", "operations");
+  }
+
   const currentNav = mode === "operations" ? operationsNav : managementNav;
   const pageContent = mode === "operations" ? renderOperationsPage() : renderManagementPage();
 
@@ -395,7 +401,7 @@ export default function ControlApp() {
     if (page === "Appointments") return <AppointmentsPage appointments={appointments} onSelect={setSelectedAppointment} onNotify={notify} />;
     if (page === "Waiting Room") return <WaitingRoomPage facilityState={facilityState} onNotify={notify} />;
     if (page === "Live Sessions") return <LiveSessionsPage onNotify={notify} />;
-    if (page === "Resources") return <ResourcesPage onNotify={notify} onReassign={reassignAppointment} />;
+    if (page === "Resources") return <ResourcesPage initialResourceId={resourceToFocus} onNotify={notify} onReassign={reassignAppointment} />;
     if (page === "Incidents") return <IncidentsPage onNotify={notify} />;
     return <CommandCenterPage appointments={appointments} facilityName={facilityName} facilityTimezone={facilityTimezone} now={now} facilityState={facilityState} backendStatus={backendStatus} demoMode={runtimeEnvironment === "development"} simulationPaused={simulationPaused} simulationTick={simulationTick} onFacilityStateChange={changeFacilityState} onPause={() => setSimulationPaused((current) => !current)} onAdvance={() => { setSimulationTick((current) => current + 1); notify("Development simulation advanced locally; no facility record changed.", "info"); }} onNavigate={navigate} onOpenDrawer={openDrawer} onOpenAppointment={setSelectedAppointment} onOpenPopover={(kind) => setPopover((current) => current === kind ? null : kind)} onNotify={notify} popover={popover} />;
   }
@@ -405,7 +411,7 @@ export default function ControlApp() {
     if (page === "Visitation") return <VisitationPage />;
     if (page === "Finance") return <FinancePage onNotify={notify} />;
     if (page === "Compliance") return <CompliancePageInteractive onNotify={notify} />;
-    if (page === "Facility") return <FacilityPage facilityState={facilityState} onFacilityStateChange={changeFacilityState} onNotify={notify} />;
+    if (page === "Facility") return <FacilityPage facilityState={facilityState} onFacilityStateChange={changeFacilityState} onOpenResource={openResource} onNotify={notify} />;
     return <RealAdministrationPage onNotify={notify} />;
   }
 
@@ -985,7 +991,7 @@ function LiveSessionsPage({ onNotify }: { onNotify: (message: string, tone?: Not
 
 type ResourceApiRow = { id: string; resource_type: "ROOM" | "DEVICE"; display_name: string; status: string; room_id?: string | null; health_state: string; last_heartbeat_at?: string | null; active_appointment_id?: string | null; waiting_version?: number | null; has_active_kiosk_credential?: number; kiosk_credential_last_used_at?: string | null; version: number };
 
-function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, tone?: Notice["tone"]) => void; onReassign: (input: ResourceReassignment) => Promise<void> }) {
+function ResourcesPage({ initialResourceId, onNotify, onReassign }: { initialResourceId?: string | null; onNotify: (message: string, tone?: Notice["tone"]) => void; onReassign: (input: ResourceReassignment) => Promise<void> }) {
   const [resources, setResources] = useState<ResourceApiRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reassignTargetId, setReassignTargetId] = useState("");
@@ -999,10 +1005,14 @@ function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, t
     if (!response.ok) throw new Error("Resource records could not be loaded from the staff API.");
     const body = await response.json() as { resources?: ResourceApiRow[] };
     setResources(body.resources || []);
-    setSelectedId((current) => current && (body.resources || []).some((resource) => resource.id === current) ? current : body.resources?.[0]?.id || null);
+    setSelectedId((current) => {
+      const available = body.resources || [];
+      if (initialResourceId && available.some((resource) => resource.id === initialResourceId)) return initialResourceId;
+      return current && available.some((resource) => resource.id === current) ? current : available[0]?.id || null;
+    });
     setLoading(false);
   }
-  useEffect(() => { const timer = window.setTimeout(() => { refresh().catch(() => setLoading(false)); }, 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => { const timer = window.setTimeout(() => { refresh().catch(() => setLoading(false)); }, 0); return () => window.clearTimeout(timer); }, [initialResourceId]);
   const selected = resources.find((resource) => resource.id === selectedId) || resources[0];
   const rooms = resources.filter((resource) => resource.resource_type === "ROOM");
   const usableRooms = rooms.filter((resource) => resource.status !== "MAINTENANCE" && resource.status !== "OFFLINE");
@@ -1663,7 +1673,7 @@ function ComplianceTab({ tab, onNotify }: { tab: string; onNotify: (message: str
 type FacilityResource = { id: string; resource_type: string; display_name: string; status: string; room_id: string | null; health_state: string; last_heartbeat_at: string | null; version: number; active_appointment_id: string | null; has_active_kiosk_credential: number; kiosk_credential_last_used_at: string | null };
 type FacilityRecord = { id: string; name: string; timezone: string; currentState: string; stateReason: string | null; version: number };
 
-function FacilityPage({ facilityState, onFacilityStateChange, onNotify }: { facilityState: string; onFacilityStateChange: (state: string, reason?: string) => Promise<void>; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function FacilityPage({ facilityState, onFacilityStateChange, onOpenResource, onNotify }: { facilityState: string; onFacilityStateChange: (state: string, reason?: string) => Promise<void>; onOpenResource: (resourceId: string) => void; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [tab, setTab] = useState("Profile");
   const [facility, setFacility] = useState<FacilityRecord | null>(null);
   const [resources, setResources] = useState<FacilityResource[]>([]);
@@ -1686,7 +1696,7 @@ function FacilityPage({ facilityState, onFacilityStateChange, onNotify }: { faci
   const visible = tab === "Rooms" ? rooms : devices;
   const healthTone = (resource: FacilityResource) => resource.health_state === "HEALTHY" && ["AVAILABLE", "ONLINE"].includes(resource.status) ? "green" : resource.health_state === "FAILED" || resource.status === "OFFLINE" ? "red" : "orange";
   const formatHeartbeat = (value: string | null) => value ? new Date(value).toLocaleString("en-ID", { dateStyle: "medium", timeStyle: "short", timeZone: facility?.timezone || "Asia/Jakarta" }) : "No heartbeat recorded";
-  return <><PageHeader eyebrow="Management · Facility configuration" title="Facility" description="Read the current facility identity, operational state, and resource health from authoritative records." actions={<Status tone={state === "NORMAL_OPERATIONS" ? "green" : "red"}>{stateLabel}</Status>} /><div className="sv3-facility-layout"><nav className="sv3-facility-nav">{["Profile", "Operating Hours", "Rooms", "Devices", "Restrictions", "Closures", "Visit Policies"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}<b>›</b></button>)}</nav><section className="sv3-facility-editor"><div className="sv3-facility-editor-head"><div><span className="sv3-eyebrow">{facility?.name || "Facility record"}</span><h2>{tab}</h2></div><Status tone={state === "NORMAL_OPERATIONS" ? "green" : "red"}>{stateLabel}</Status></div>{error ? <div className="sv3-settings-surface"><strong>Facility records unavailable</strong><p>{error}</p><Button onClick={() => window.location.reload()}>Try again</Button></div> : tab === "Profile" ? <div className="sv3-facility-profile">{loading ? <div className="sv3-empty"><strong>Loading facility record…</strong></div> : <><div className="sv3-facility-map"><span>{facility?.name?.slice(0, 3).toUpperCase() || "FAC"}</span><small>{facility?.id || "Facility ID unavailable"}</small><i>⌖</i></div><div className="sv3-form-grid"><label>Facility name<input value={facility?.name || ""} readOnly /></label><label>Timezone<input value={facility?.timezone || ""} readOnly /></label><label>Facility reference<input value={facility?.id || ""} readOnly /></label><label>Operational state<input value={stateLabel} readOnly /></label><label>State reason<textarea value={facility?.stateReason || "No active state reason recorded."} readOnly /></label></div></>}</div> : tab === "Operating Hours" || tab === "Visit Policies" ? <VisitPolicyEditor /> : ["Rooms", "Devices"].includes(tab) ? <div className="sv3-facility-table">{loading ? <div className="sv3-empty"><strong>Loading resource health…</strong></div> : visible.length ? visible.map((resource) => <button key={resource.id} onClick={() => onNotify(`${resource.display_name} is a persisted facility resource.`)}><strong>{resource.display_name}</strong><span>{tab === "Devices" ? (resource.room_id ? rooms.find((room) => room.id === resource.room_id)?.display_name || "Assigned room unavailable" : "Unassigned") : `${resource.status} · ${resource.active_appointment_id ? `Appointment ${resource.active_appointment_id}` : "No active appointment"}`}</span><span>{tab === "Devices" ? `Heartbeat · ${formatHeartbeat(resource.last_heartbeat_at)}` : `Version ${resource.version}`}</span><Status tone={healthTone(resource)}>{resource.health_state}</Status><b>→</b></button>) : <div className="sv3-empty"><strong>No {tab.toLowerCase()} records</strong><p>This facility has no persisted resources of this type.</p></div>}</div> : tab === "Restrictions" ? <FacilityRestrictions state={state} onChange={async (nextState, reason) => { await onFacilityStateChange(nextState, reason); onNotify(`Facility state change requested: ${nextState.replaceAll("_", " ")}.`, nextState === "NORMAL_OPERATIONS" ? "success" : "warning"); }} /> : tab === "Closures" ? <FacilityClosures /> : <div className="sv3-settings-surface"><Status tone="orange">NOT CONNECTED</Status><strong>{tab} is not yet backed by a persisted facility configuration workflow.</strong><p>This section is intentionally unavailable until its data model, permissions, history, and operational effects are implemented. Resource health is available in Rooms and Devices.</p><Button onClick={() => setTab("Profile")}>Open an available facility view</Button></div>}</section></div></>;
+  return <><PageHeader eyebrow="Management · Facility configuration" title="Facility" description="Read the current facility identity, operational state, and resource health from authoritative records." actions={<Status tone={state === "NORMAL_OPERATIONS" ? "green" : "red"}>{stateLabel}</Status>} /><div className="sv3-facility-layout"><nav className="sv3-facility-nav">{["Profile", "Operating Hours", "Rooms", "Devices", "Restrictions", "Closures", "Visit Policies"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}<b>›</b></button>)}</nav><section className="sv3-facility-editor"><div className="sv3-facility-editor-head"><div><span className="sv3-eyebrow">{facility?.name || "Facility record"}</span><h2>{tab}</h2></div><Status tone={state === "NORMAL_OPERATIONS" ? "green" : "red"}>{stateLabel}</Status></div>{error ? <div className="sv3-settings-surface"><strong>Facility records unavailable</strong><p>{error}</p><Button onClick={() => window.location.reload()}>Try again</Button></div> : tab === "Profile" ? <div className="sv3-facility-profile">{loading ? <div className="sv3-empty"><strong>Loading facility record…</strong></div> : <><div className="sv3-facility-map"><span>{facility?.name?.slice(0, 3).toUpperCase() || "FAC"}</span><small>{facility?.id || "Facility ID unavailable"}</small><i>⌖</i></div><div className="sv3-form-grid"><label>Facility name<input value={facility?.name || ""} readOnly /></label><label>Timezone<input value={facility?.timezone || ""} readOnly /></label><label>Facility reference<input value={facility?.id || ""} readOnly /></label><label>Operational state<input value={stateLabel} readOnly /></label><label>State reason<textarea value={facility?.stateReason || "No active state reason recorded."} readOnly /></label></div></>}</div> : tab === "Operating Hours" || tab === "Visit Policies" ? <VisitPolicyEditor /> : ["Rooms", "Devices"].includes(tab) ? <div className="sv3-facility-table">{loading ? <div className="sv3-empty"><strong>Loading resource health…</strong></div> : visible.length ? visible.map((resource) => <button key={resource.id} onClick={() => onOpenResource(resource.id)} aria-label={`Open ${resource.display_name} in Resources`}><strong>{resource.display_name}</strong><span>{tab === "Devices" ? (resource.room_id ? rooms.find((room) => room.id === resource.room_id)?.display_name || "Assigned room unavailable" : "Unassigned") : `${resource.status} · ${resource.active_appointment_id ? `Appointment ${resource.active_appointment_id}` : "No active appointment"}`}</span><span>{tab === "Devices" ? `Heartbeat · ${formatHeartbeat(resource.last_heartbeat_at)}` : `Version ${resource.version}`}</span><Status tone={healthTone(resource)}>{resource.health_state}</Status><b>→</b></button>) : <div className="sv3-empty"><strong>No {tab.toLowerCase()} records</strong><p>This facility has no persisted resources of this type.</p></div>}</div> : tab === "Restrictions" ? <FacilityRestrictions state={state} onChange={async (nextState, reason) => { await onFacilityStateChange(nextState, reason); onNotify(`Facility state change requested: ${nextState.replaceAll("_", " ")}.`, nextState === "NORMAL_OPERATIONS" ? "success" : "warning"); }} /> : tab === "Closures" ? <FacilityClosures /> : <div className="sv3-settings-surface"><Status tone="orange">NOT CONNECTED</Status><strong>{tab} is not yet backed by a persisted facility configuration workflow.</strong><p>This section is intentionally unavailable until its data model, permissions, history, and operational effects are implemented. Resource health is available in Rooms and Devices.</p><Button onClick={() => setTab("Profile")}>Open an available facility view</Button></div>}</section></div></>;
 }
 
 type StaffRecord = { id: string; email: string; display_name: string; status: string; last_login_at: string | null; version: number; employee_reference: string; job_title: string; department: string | null; roles: string | null };
