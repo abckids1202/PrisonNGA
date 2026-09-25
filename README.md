@@ -34,6 +34,8 @@ npm run db:seed:local
 npm run dev
 ```
 
+Before running browser tests against the local Worker, run the migration and seed commands above. The browser suite uses the same persisted `.wrangler/state` D1 database; a stale local schema can otherwise surface as an internal API error when a route references a newly added migration column. CI performs this preparation automatically.
+
 Both the app's local Worker binding and the migration command use the same local D1 binding name, placeholder ID, and `.wrangler/state` persistence directory. Local migration commands do not require Cloudflare credentials. The SQL files in `drizzle/` are the migration source of truth and are applied by Wrangler's D1 migration tracker. `db:seed:local` loads explicitly fictional baseline facility and role records after migrations; it is local-only. To verify every migration and the seed against a disposable, empty local D1 database without touching the normal local database, run `npm run db:test:migrations:local`. The legacy Drizzle journal is not used by this Wrangler-based migration path.
 
 For a real Cloudflare D1 database, copy `.env.example` to the ignored `.env.local` and set `D1_DATABASE_ID` to that database's exact UUID and `D1_DATABASE_NAME` to its configured name. Review pending changes with `npm run db:migrations:list` before applying them with `npm run db:migrate:remote`. Remote commands refuse to run with a missing, malformed, or local-placeholder database ID. Do not point these commands at a production database until the migration has been reviewed and a backup/restore procedure is in place.
