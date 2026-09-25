@@ -66,8 +66,10 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
     WHERE a.status IN ('APPROVED', 'WAITING')
       AND a.requested_end <= CURRENT_TIMESTAMP
       AND vs.id IS NULL
-      AND COALESCE(w.visitor_presence, 'absent') <> 'present'
-      AND COALESCE(w.prisoner_presence, 'waiting') <> 'present'
+      -- A stored presence is only meaningful while its heartbeat is fresh.
+      -- Otherwise a disconnected browser or kiosk could block no-show cleanup forever.
+      AND NOT (w.visitor_presence = 'present' AND w.visitor_presence_at >= datetime('now', '-3 minutes'))
+      AND NOT (w.prisoner_presence = 'present' AND w.prisoner_presence_at >= datetime('now', '-3 minutes'))
     ORDER BY a.requested_end ASC LIMIT 25`).all<{ id: string; facility_id: string; visitor_user_id: string; status: string; version: number; requested_end: string; credit_account_id: string | null }>();
 
   for (const row of rows.results) {

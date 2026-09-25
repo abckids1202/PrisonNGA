@@ -35,6 +35,7 @@ The current repository already includes:
 - Staff LiveKit observer tokens now require both a joinable session and an `IN_PROGRESS` appointment, matching the visitor and kiosk lifecycle boundary.
 - LiveKit webhook activation now requires a joined visitor or assigned facility/kiosk participant; staff observers and room-level telemetry cannot start a credit-consuming session or set its actual start time.
 - LiveKit participant disconnects now move visitor/kiosk sessions into `RECONNECTING` for recovery, while observer disconnects remain telemetry-only.
+- No-show reconciliation now treats presence as valid only when its persisted heartbeat timestamp is fresh, preventing disconnected clients from blocking terminal appointment cleanup.
 - Live-session join/token issuance fails closed unless the persisted session explicitly remains `OFF` / `NOT_RECORDED`; legacy or malformed recording-enabled rows cannot join.
 - Facility isolation checks, permission checks, step-up foundations, rate limits, security events, request/correlation identifiers, CSP and camera/microphone permissions policy.
 - Idempotent state-changing boundaries for appointment decisions, verification review, visitor profile, session revocation, notification read state, policy updates, live-session ending, waiting-room commands, outbox replay and visitor payment checkout audit events.
