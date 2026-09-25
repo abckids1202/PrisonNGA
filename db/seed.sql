@@ -54,6 +54,10 @@ INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by)
 VALUES ('staff-local-supervisor', 'role-verification-officer', 'facility-central-001', 'local-seed')
 ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
 
+INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by)
+VALUES ('staff-local-supervisor', 'role-scheduling-officer', 'facility-central-001', 'local-seed')
+ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
+
 INSERT INTO permissions (id, permission_key, description) VALUES
   ('perm-facility-read', 'facility.read', 'Read facility state and operational context.'),
   ('perm-facility-state-change', 'facility.state.change', 'Change the facility operational state.'),

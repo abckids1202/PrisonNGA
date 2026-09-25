@@ -240,6 +240,123 @@ test("local staff review changes the persisted visitor verification state", asyn
   await expect(page.getByRole("heading", { name: "A. Rahman", exact: true })).toBeVisible();
 });
 
+test("persisted visitor verification, payment, appointment request, and staff approval join safely", async ({ page, browser }) => {
+  const email = `appointment-${Date.now()}@example.test`;
+  const ipAddress = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { headers: { "cf-connecting-ip": ipAddress }, data: { email } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
+  const verify = await page.request.post("/api/auth/visitor/verify", { headers: { "cf-connecting-ip": ipAddress }, data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Appointment Visitor" } });
+  expect(verify.status()).toBe(200);
+
+  const relationship = await page.request.post("/api/visitor/relationships", {
+    headers: { origin: testOrigin },
+    data: { facilityId: "facility-central-001", prisonerId: "prisoner-ar-001", relationshipType: "Family member" },
+  });
+  expect(relationship.status()).toBe(201);
+  const relationshipBody = await relationship.json() as { relationshipId?: string; verificationId?: string };
+  expect(relationshipBody.relationshipId).toBeTruthy();
+  expect(relationshipBody.verificationId).toBeTruthy();
+  if (!relationshipBody.relationshipId || !relationshipBody.verificationId) throw new Error("Expected persisted relationship and verification ids");
+
+  const evidence = await page.request.post("/api/visitor/verification/evidence", {
+    headers: { origin: testOrigin },
+    multipart: {
+      verificationCaseId: relationshipBody.verificationId,
+      file: { name: "relationship.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n") },
+    },
+  });
+  expect(evidence.status(), await evidence.text()).toBe(201);
+
+  const staff = await browser.newContext({
+    extraHTTPHeaders: {
+      "oai-authenticated-user-id": "staff-local-supervisor",
+      "oai-authenticated-user-email": "staff.local@example.test",
+      "oai-authenticated-user-full-name": "Local%20Supervisor",
+      "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    },
+  });
+  let approvedAppointmentId = "";
+  try {
+    const approval = await staff.request.post("/api/control/verification", {
+      headers: { origin: testOrigin, "Idempotency-Key": `review-approve-${Date.now()}-e2e` },
+      data: { verificationCaseId: relationshipBody.verificationId, status: "APPROVED", reason: "Evidence reviewed for pilot acceptance." },
+    });
+    expect(approval.status(), await approval.text()).toBe(200);
+    await expect(approval.json()).resolves.toMatchObject({ status: "APPROVED", relationshipStatus: "APPROVED" });
+
+    const payment = await page.request.post("/api/visitor/payments", {
+      headers: { origin: testOrigin, "Idempotency-Key": `appointment-payment-${Date.now()}-e2e` },
+      data: { facilityId: "facility-central-001", creditQuantity: 1 },
+    });
+    expect(payment.status(), await payment.text()).toBe(201);
+    const paymentBody = await payment.json() as { paymentIntent?: { id: string; amountMinor: number; currency: string } };
+    expect(paymentBody.paymentIntent?.id).toBeTruthy();
+    const payload = JSON.stringify({
+      eventId: `appointment-payment-event-${Date.now()}`,
+      eventType: "PAYMENT_SUCCEEDED",
+      paymentIntentId: paymentBody.paymentIntent?.id,
+      providerReference: `local-payment-${paymentBody.paymentIntent?.id}`,
+      status: "SUCCEEDED",
+      amountMinor: paymentBody.paymentIntent?.amountMinor,
+      currency: paymentBody.paymentIntent?.currency,
+    });
+    const signature = createHmac("sha256", "local-e2e-payment-secret").update(payload).digest("hex");
+    const webhook = await page.request.post("/api/webhooks/payments", {
+      headers: { "content-type": "application/json", "x-payment-provider": "local_test", "x-securevisit-signature": `sha256=${signature}` },
+      data: payload,
+    });
+    expect(webhook.status(), await webhook.text()).toBe(200);
+
+    const requestedDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    requestedDate.setUTCHours(1, 0, 0, 0);
+    const date = requestedDate.toISOString().slice(0, 10);
+    const availability = await page.request.get(`/api/visitor/availability?facilityId=facility-central-001&prisonerId=prisoner-ar-001&date=${date}&duration=30`);
+    expect(availability.status(), await availability.text()).toBe(200);
+    const availabilityBody = await availability.json() as { slots?: string[] };
+    const selectedStart = availabilityBody.slots?.[0];
+    expect(selectedStart).toBeTruthy();
+    if (!selectedStart) throw new Error("Expected at least one available appointment slot");
+    const start = new Date(selectedStart);
+    const end = new Date(start.getTime() + 30 * 60 * 1000);
+
+    const appointment = await page.request.post("/api/visitor/appointments", {
+      headers: { origin: testOrigin, "Idempotency-Key": `appointment-create-${Date.now()}-e2e` },
+      data: { relationshipId: relationshipBody.relationshipId, requestedStart: start.toISOString(), requestedEnd: end.toISOString(), appointmentType: "FAMILY" },
+    });
+    expect(appointment.status(), await appointment.text()).toBe(201);
+    const appointmentBody = await appointment.json() as { appointmentId?: string; status?: string };
+    expect(appointmentBody.appointmentId).toBeTruthy();
+    expect(appointmentBody.status).toBe("SUBMITTED");
+    if (!appointmentBody.appointmentId) throw new Error("Expected appointment id");
+    approvedAppointmentId = appointmentBody.appointmentId;
+
+    const queue = await staff.request.get("/api/control/appointments?status=SUBMITTED");
+    expect(queue.status(), await queue.text()).toBe(200);
+    const queueBody = await queue.json() as { appointments?: Array<{ id: string; version: number }> };
+    const queued = queueBody.appointments?.find((item) => item.id === appointmentBody.appointmentId);
+    expect(queued).toBeTruthy();
+    if (!queued) throw new Error("Expected appointment in the staff queue");
+
+    const decision = await staff.request.post("/api/control/appointments", {
+      headers: { origin: testOrigin, "Idempotency-Key": `appointment-approve-${Date.now()}-e2e` },
+      data: { appointmentId: queued.id, command: "approve", expectedVersion: queued.version, reason: "Pilot acceptance approval." },
+    });
+    expect(decision.status(), await decision.text()).toBe(200);
+    const decisionBody = await decision.json() as { status?: string; allocation?: { roomId?: string; deviceId?: string } };
+    expect(decisionBody.status).toBe("APPROVED");
+    expect(decisionBody.allocation?.roomId).toBeTruthy();
+    expect(decisionBody.allocation?.deviceId).toBeTruthy();
+  } finally {
+    await staff.close();
+  }
+
+  const appointments = await page.request.get("/api/visitor/appointments");
+  expect(appointments.status()).toBe(200);
+  const appointmentList = await appointments.json() as { appointments?: Array<{ id: string; status: string }> };
+  expect(appointmentList.appointments?.find((item) => item.id === approvedAppointmentId)?.status).toBe("APPROVED");
+});
+
 test("browser requests to protected APIs are rejected without a session", async ({ request }) => {
   const response = await request.get("/api/auth/me");
 
