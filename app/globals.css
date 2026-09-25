@@ -712,3 +712,4 @@ button, input, select, textarea { font-family: inherit; }
 .sv9-observer-media { border-radius: 9px; max-height: 520px; max-width: 100%; object-fit: contain; }
 .sv10-observer-panel > footer { align-items: center; border-top: 1px solid #e7eeeb; color: #7b8b90; display: flex; font-size: 10px; gap: 12px; justify-content: space-between; padding: 14px 24px; }
 @media (max-width: 740px) { .sv10-observer-backdrop { padding: 0; }.sv10-observer-panel { border-radius: 0; max-height: 100vh; min-height: 100vh; }.sv10-observer-media { min-height: 300px; }.sv10-observer-panel > footer { align-items: stretch; flex-direction: column; }.sv10-observer-panel > footer .sv4-button { width: 100%; } }
+.sv3-dialog-field input { min-height: 38px; }
