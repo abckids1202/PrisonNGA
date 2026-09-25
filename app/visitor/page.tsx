@@ -628,6 +628,7 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
+  const paymentPolls = useRef(0);
   const idempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   useEffect(() => {
@@ -655,6 +656,20 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [onCreditsLoaded, refreshTick]);
+
+  useEffect(() => {
+    const hasPendingCheckout = payments.some((payment) => ["PENDING", "CHECKOUT_CREATED"].includes(payment.status));
+    if (!hasPendingCheckout) {
+      paymentPolls.current = 0;
+      return;
+    }
+    if (paymentPolls.current >= 6) return;
+    const timer = window.setTimeout(() => {
+      paymentPolls.current += 1;
+      setRefreshTick((value) => value + 1);
+    }, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [payments]);
 
   async function beginPurchase(targetFacilityId: string, targetQuantity: number) {
     if (!checkoutAvailable) return setError(checkoutUnavailableReason === "VISIT_CREDIT_PRICE_NOT_CONFIGURED" ? "The facility has not configured an approved Visit Credit price." : "Secure checkout is not configured at this facility yet. Your balance has not been charged.");
