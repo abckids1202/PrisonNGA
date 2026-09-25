@@ -103,9 +103,9 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
   await env.DB.prepare(`UPDATE payment_provider_events
     SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, last_error = 'Recovered stale processing claim.'
     WHERE status = 'PROCESSING' AND julianday(created_at) < julianday('now', '-5 minutes')`).run();
-  const rows = await env.DB.prepare("SELECT id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
+  const rows = await env.DB.prepare("SELECT id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now') ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
   for (const row of rows.results) {
-    const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
+    const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now')").bind(row.id).run();
     if (!claim.meta.changes) continue;
     try {
       const payload = JSON.parse(row.payload) as { eventType?: unknown; paymentIntentId?: unknown; providerReference?: unknown; status?: unknown; amountMinor?: unknown; currency?: unknown };
@@ -181,14 +181,14 @@ async function processOutbox(env: Env): Promise<void> {
           AND outbox_events.status = 'FAILED'
           AND outbox_events.last_error = 'Recovered stale processing claim.'
       )`).run();
-  const result = await env.DB.prepare("SELECT id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, attempt_count FROM outbox_events WHERE status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP ORDER BY created_at ASC LIMIT 25").all<OutboxRow>();
+  const result = await env.DB.prepare("SELECT id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, attempt_count FROM outbox_events WHERE status IN ('PENDING', 'FAILED') AND julianday(available_at) <= julianday('now') ORDER BY created_at ASC LIMIT 25").all<OutboxRow>();
   for (const row of result.results) {
     const now = new Date().toISOString();
     try {
       // Claim before parsing or doing any external work. Otherwise a malformed
       // payload remains PENDING forever because the failure handler only
       // updates rows that have already entered PROCESSING.
-      const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND available_at <= CURRENT_TIMESTAMP").bind(row.id).run();
+      const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND julianday(available_at) <= julianday('now')").bind(row.id).run();
       if (!claim.meta.changes) continue;
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
       const attemptNumber = row.attempt_count + 1;

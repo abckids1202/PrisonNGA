@@ -37,6 +37,7 @@ The current repository already includes:
 - LiveKit participant disconnects now move visitor/kiosk sessions into `RECONNECTING` for recovery, while observer disconnects remain telemetry-only.
 - No-show reconciliation now treats presence as valid only when its persisted heartbeat timestamp is fresh, preventing disconnected clients from blocking terminal appointment cleanup.
 - Scheduled cleanup now normalizes ISO-8601 application timestamps with SQLite `julianday()` before comparing them with the database clock, covering no-shows, abandoned payments, stale provider claims, evidence retention, expired sessions, and authentication artifacts.
+- Payment-provider and notification-outbox retry claims now also normalize `available_at` through `julianday()`; ISO-8601 backoff timestamps can no longer be stranded by lexicographic comparison with SQLite's space-separated `CURRENT_TIMESTAMP`.
 - Visitor suspicious-login detection now normalizes persisted session timestamps before its 30-day recognized-device lookup, so a valid recent device is not misclassified because of SQLite timestamp formatting.
 - Live-session join/token issuance fails closed unless the persisted session explicitly remains `OFF` / `NOT_RECORDED`; legacy or malformed recording-enabled rows cannot join.
 - Facility isolation checks, permission checks, step-up foundations, rate limits, security events, request/correlation identifiers, CSP and camera/microphone permissions policy.
@@ -52,7 +53,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 294 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 295 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven

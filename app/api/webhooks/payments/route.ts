@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       }
       if (prior.status === "PROCESSED" || prior.status === "IGNORED") return securityResponse({ accepted: true, idempotent: true, eventKey }, 200, context.requestId);
     }
-    const claim = await d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE provider = ? AND event_key = ? AND status IN ('RECEIVED', 'FAILED') AND available_at <= CURRENT_TIMESTAMP`).bind(provider, eventKey).run();
+    const claim = await d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, last_error = NULL WHERE provider = ? AND event_key = ? AND status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now')`).bind(provider, eventKey).run();
     if (!claim.meta.changes) return securityResponse({ accepted: false, retryable: true, eventKey }, 503, context.requestId);
     try {
       const result = await processPaymentProviderEvent(d1, { provider, eventKey, payload: payload as PaymentWebhook });

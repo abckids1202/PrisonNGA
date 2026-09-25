@@ -22,3 +22,16 @@ test("scheduled cleanup normalizes ISO timestamps before comparing SQLite clock 
   assert.match(cleanup, /julianday\(expires_at\) <= julianday\('now'\)/);
   assert.match(cleanup, /julianday\(created_at\) <= julianday\('now', '-1 day'\)/);
 });
+
+test("payment and outbox retry claims normalize mixed timestamp formats", async () => {
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const paymentRoute = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
+
+  assert.match(worker, /julianday\(available_at\) <= julianday\('now'\)/);
+  assert.match(worker, /WHERE id = \? AND status IN \('RECEIVED', 'FAILED'\) AND julianday\(available_at\) <= julianday\('now'\)/);
+  assert.match(worker, /status IN \('PENDING', 'FAILED'\) AND julianday\(available_at\) <= julianday\('now'\)/);
+  assert.match(worker, /WHERE id = \? AND status IN \('PENDING', 'FAILED'\) AND julianday\(available_at\) <= julianday\('now'\)/);
+  assert.match(paymentRoute, /status IN \('RECEIVED', 'FAILED'\) AND julianday\(available_at\) <= julianday\('now'\)/);
+  assert.doesNotMatch(worker, /available_at <= CURRENT_TIMESTAMP/);
+  assert.doesNotMatch(paymentRoute, /available_at <= CURRENT_TIMESTAMP/);
+});
