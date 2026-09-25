@@ -6,7 +6,7 @@ import { finalizeLiveSessionStatements, getExpiredSessionDisposition } from "../
 import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
-import { purgeExpiredAuthArtifacts } from "../lib/server/auth/cleanup";
+import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { isSameOriginMutation } from "../lib/server/csrf";
@@ -462,7 +462,7 @@ function notificationCopy(eventType: string, payload: Record<string, unknown> = 
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), purgeExpiredAuthArtifacts(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), purgeExpiredAuthArtifacts(env.DB), purgeExpiredAuthSessions(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);

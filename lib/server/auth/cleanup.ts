@@ -6,3 +6,10 @@ export async function purgeExpiredAuthArtifacts(db: Pick<D1Database, "prepare" |
     db.prepare("DELETE FROM saml_request_cache WHERE julianday(created_at) <= julianday('now', '-1 day')"),
   ]);
 }
+
+/** Keep revoked session history available for a bounded period, but do not
+ * retain expired authentication tokens indefinitely. Token hashes are not
+ * useful after expiry and the session table is operational security data. */
+export async function purgeExpiredAuthSessions(db: Pick<D1Database, "prepare">): Promise<void> {
+  await db.prepare("DELETE FROM auth_sessions WHERE julianday(expires_at) <= julianday('now') OR (revoked_at IS NOT NULL AND julianday(revoked_at) <= julianday('now', '-30 days'))").run();
+}

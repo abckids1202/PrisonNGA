@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { purgeExpiredAuthArtifacts } from "../lib/server/auth/cleanup.ts";
+import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions } from "../lib/server/auth/cleanup.ts";
 
 class Statement {
   constructor(database, sql) { this.database = database; this.sql = sql; }
@@ -38,4 +38,18 @@ test("expired authentication artifacts are purged while recent state remains", a
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_challenge_delivery_attempts").get().count, 1);
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_federation_states").get().count, 1);
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM saml_request_cache").get().count, 1);
+});
+
+test("expired sessions are purged while active and recently revoked sessions remain", async () => {
+  const d1 = new D1();
+  const expired = new Date(Date.now() - 60_000).toISOString();
+  const oldRevocation = new Date(Date.now() - 31 * 24 * 60 * 60_000).toISOString();
+  const recentRevocation = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+  const future = new Date(Date.now() + 60 * 60_000).toISOString();
+  d1.database.exec(`
+    CREATE TABLE auth_sessions (id TEXT PRIMARY KEY, expires_at TEXT, revoked_at TEXT);
+    INSERT INTO auth_sessions VALUES ('expired', '${expired}', NULL), ('old-revoked', '${future}', '${oldRevocation}'), ('recent-revoked', '${future}', '${recentRevocation}'), ('active', '${future}', NULL);
+  `);
+  await purgeExpiredAuthSessions(d1);
+  assert.deepEqual(d1.database.prepare("SELECT id FROM auth_sessions ORDER BY id").all().map((row) => row.id), ["active", "recent-revoked"]);
 });
