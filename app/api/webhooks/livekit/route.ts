@@ -12,6 +12,13 @@ function roleForParticipant(identity: string | undefined): "VISITOR" | "FACILITY
   return null;
 }
 
+function participantAuditAction(event: string | undefined): string | null {
+  if (event === "participant_joined") return "LIVE_SESSION_PARTICIPANT_JOINED";
+  if (event === "participant_left") return "LIVE_SESSION_PARTICIPANT_DISCONNECTED";
+  if (event === "participant_connection_aborted") return "LIVE_SESSION_PARTICIPANT_RECONNECTING";
+  return null;
+}
+
 export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
@@ -119,6 +126,31 @@ export async function POST(request: Request) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(session_id, identity) DO UPDATE SET participant_sid = excluded.participant_sid, status = excluded.status, last_seen_at = excluded.last_seen_at, disconnected_at = excluded.disconnected_at, metadata = excluded.metadata`)
         .bind(crypto.randomUUID(), session.id, session.facility_id, participantIdentity, participantRole, event.participant?.sid || null, participantStatus, now, now, participantStatus === "DISCONNECTED" ? now : null, JSON.stringify(eventMetadata)));
+      const auditAction = participantAuditAction(event.event);
+      if (auditAction) {
+        // Provider presence events are operationally sensitive but should not
+        // create a visitor notification for every reconnect/observer change.
+        // Keep them in the immutable facility audit trail instead.
+        const auditId = crypto.randomUUID();
+        statements.push(d1.prepare(`INSERT INTO audit_events
+          (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
+          SELECT ?, 'system:livekit', 'SYSTEM', ?, ?, 'visit_session', ?, ?, ?, ?, ?, ?, ?
+          WHERE EXISTS (SELECT 1 FROM visit_session_events WHERE id = ? AND session_id = ?)`)
+          .bind(
+            auditId,
+            session.facility_id,
+            auditAction,
+            session.id,
+            `LiveKit provider reported ${event.event} for ${participantRole}.`,
+            JSON.stringify({ participantRole, participantIdentity, providerStatus: "UNKNOWN" }),
+            JSON.stringify({ participantRole, participantIdentity, providerStatus: participantStatus, participantSid: event.participant?.sid || null }),
+            context.requestId,
+            context.requestId,
+            now,
+            eventId,
+            session.id,
+          ));
+      }
     }
     if (nextStatus !== session.status || (nextStatus === "ACTIVE" && !session.actual_started_at)) {
       statements.push(d1.prepare(`UPDATE visit_sessions SET status = ?, actual_started_at = CASE WHEN ? = 'ACTIVE' AND actual_started_at IS NULL THEN ? ELSE actual_started_at END,

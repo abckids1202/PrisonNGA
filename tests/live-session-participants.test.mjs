@@ -23,6 +23,16 @@ test("LiveKit participant events are bound to the appointment visitor and assign
   assert.match(source, /PARTICIPANT_ASSIGNMENT_UNAVAILABLE/);
 });
 
+test("LiveKit participant transitions are written to the facility audit trail without notification fan-out", async () => {
+  const source = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
+  assert.match(source, /LIVE_SESSION_PARTICIPANT_JOINED/);
+  assert.match(source, /LIVE_SESSION_PARTICIPANT_DISCONNECTED/);
+  assert.match(source, /LIVE_SESSION_PARTICIPANT_RECONNECTING/);
+  assert.match(source, /INSERT INTO audit_events/);
+  assert.match(source, /system:livekit/);
+  assert.doesNotMatch(source, /auditAction[\s\S]*auditAndOutboxStatements/);
+});
+
 test("staff observer and room events cannot start credit-consuming sessions", async () => {
   const source = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
 
