@@ -53,6 +53,7 @@ function liveKitConnectSources(env: Env): string {
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 type ExpiredSession = { id: string; appointment_id: string; facility_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
+type AbandonedPaymentIntent = { id: string; facility_id: string; user_id: string; credit_quantity: number; amount_minor: number; currency: string; version: number };
 
 async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
   const rows = await env.DB.prepare(`SELECT a.id, a.facility_id, a.visitor_user_id, a.status, a.version, a.requested_end,
@@ -127,6 +128,42 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
       const message = error instanceof Error ? error.message.slice(0, 500) : "PAYMENT_EVENT_RECONCILIATION_FAILED";
       await env.DB.prepare("UPDATE payment_provider_events SET status = CASE WHEN attempt_count >= 8 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
       operationalLog("error", { event: "PAYMENT_EVENT_RECONCILIATION_FAILED", eventId: row.id, provider: row.provider, attempt, correlationId: row.event_key, error: message });
+    }
+  }
+}
+
+async function expireAbandonedPaymentIntents(env: Env): Promise<void> {
+  const rows = await env.DB.prepare(`SELECT id, facility_id, user_id, credit_quantity, amount_minor, currency, version
+    FROM payment_intents
+    WHERE status = 'PENDING' AND created_at <= datetime('now', '-30 minutes')
+    ORDER BY created_at ASC LIMIT 25`).all<AbandonedPaymentIntent>();
+  for (const row of rows.results) {
+    const now = new Date().toISOString();
+    const correlationId = crypto.randomUUID();
+    try {
+      const results = await env.DB.batch([
+        env.DB.prepare(`UPDATE payment_intents SET status = 'EXPIRED', version = version + 1, updated_at = ?
+          WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND version = ?`)
+          .bind(now, row.id, row.facility_id, row.version),
+        ...auditAndOutboxStatements(env.DB, {
+          actorUserId: "system:scheduler",
+          actorRole: "SYSTEM",
+          facilityId: row.facility_id,
+          actionType: "PAYMENT_EXPIRED",
+          entityType: "payment_intent",
+          entityId: row.id,
+          reason: "Payment intent remained pending before checkout creation beyond the retry window.",
+          oldValues: { status: "PENDING", version: row.version },
+          newValues: { status: "EXPIRED", version: row.version + 1 },
+          requestId: correlationId,
+          correlationId,
+          eventType: "PAYMENT_STATUS_UPDATED",
+          payload: { paymentIntentId: row.id, visitorUserId: row.user_id, status: "EXPIRED", creditQuantity: row.credit_quantity, amountMinor: row.amount_minor, currency: row.currency },
+        }, { sql: "EXISTS (SELECT 1 FROM payment_intents WHERE id = ? AND facility_id = ? AND status = 'EXPIRED' AND version = ?)", values: [row.id, row.facility_id, row.version + 1] }),
+      ]);
+      if (!results[0]?.meta.changes) continue;
+    } catch (error) {
+      operationalLog("error", { event: "ABANDONED_PAYMENT_EXPIRY_FAILED", paymentIntentId: row.id, facilityId: row.facility_id, correlationId, error });
     }
   }
 }
@@ -382,7 +419,7 @@ function notificationCopy(eventType: string, payload: Record<string, unknown> = 
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), purgeExpiredAuthArtifacts(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([processOutbox(env), reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), purgeExpiredAuthArtifacts(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
