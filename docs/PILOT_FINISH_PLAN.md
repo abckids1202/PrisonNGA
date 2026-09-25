@@ -7,7 +7,7 @@ This document is the execution baseline for taking SecureVisit from a persisted 
 The repository currently provides a substantial platform foundation:
 
 - Cloudflare Worker, D1 migrations, facility-scoped authorization, visitor email/SMS OTP development flow, staff federation structure, visitor relationships, appointment and waiting-room APIs, LiveKit session/token foundations, append-only credit ledger, payment webhook processing, notification outbox, retention/legal-hold workflows, audit exports, incidents, browser smoke tests, and recording-disabled enforcement.
-- The latest automated baseline is 307 server tests and 16 browser tests. Development E2E covers signed payment settlement, duplicate webhook delivery, the persisted verification-to-payment-to-appointment approval handoff through a local-only provider adapter, and the management-to-operations resource handoff; this proves the boundary, not readiness for real external providers.
+- The latest automated baseline is 308 server tests and 16 browser tests. Development E2E covers signed payment settlement, duplicate webhook delivery, the persisted verification-to-payment-to-appointment approval handoff through a local-only provider adapter, and the management-to-operations resource handoff; this proves the boundary, not readiness for real external providers.
 
 The product remains a staging candidate rather than a production institutional system. The main gap is external proof and a few workflow joins: real provider adapters, full refresh-safe journey coverage, kiosk/device reality, and operational recovery.
 
