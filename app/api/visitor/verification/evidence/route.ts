@@ -5,6 +5,7 @@ import { MAX_EVIDENCE_BYTES, validateEvidenceUpload } from "../../../../../lib/s
 import { scanEvidence } from "../../../../../lib/server/evidence-scanner";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { getEvidenceStore } from "../../../../../lib/server/evidence-storage";
+import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../lib/server/idempotency";
 
 function safeFilename(value: string): string {
   const cleaned = value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
@@ -25,9 +26,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const visitor = await requireVisitorIdentity();
-    const d1 = await getD1();
+    d1 = await getD1();
     await enforceRateLimit(d1, { key: `visitor-evidence-upload:${visitor.userId}`, limit: 20, windowSeconds: 60 * 60 });
     const contentLength = Number(request.headers.get("content-length") || "0");
     if (Number.isFinite(contentLength) && contentLength > MAX_EVIDENCE_BYTES + 512 * 1024) throw new SecurityError("EVIDENCE_REQUEST_TOO_LARGE", 413);
@@ -44,9 +47,23 @@ export async function POST(request: Request) {
     if (!ownedCase) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const suppliedIdempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (suppliedIdempotencyKey && !/^[A-Za-z0-9._:-]{8,128}$/.test(suppliedIdempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_INVALID", 400);
+    const idempotencyKey = suppliedIdempotencyKey || `content-${sha256}`;
+    const scope = `visitor-evidence:${visitor.userId}:${verificationCaseId}`;
+    const requestHash = await hashIdempotencyPayload({ verificationCaseId, sha256, contentType: file.type, byteSize: bytes.length, filename: safeFilename(file.name) });
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const existingEvidence = await d1.prepare(`SELECT id, retention_until FROM evidence_documents WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE' ORDER BY created_at DESC LIMIT 1`)
       .bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null }>();
-    if (existingEvidence) return securityResponse({ evidenceId: existingEvidence.id, status: "AVAILABLE", retentionUntil: existingEvidence.retention_until, idempotent: true }, 200, context.requestId);
+    if (existingEvidence) {
+      const responseBody = { evidenceId: existingEvidence.id, status: "AVAILABLE", retentionUntil: existingEvidence.retention_until, idempotent: true };
+      const completed = await d1.batch([completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status = 'AVAILABLE')", values: [existingEvidence.id, verificationCaseId, visitor.userId] } })]);
+      if (!completed[0]?.meta.changes) throw new SecurityError("EVIDENCE_IDEMPOTENCY_CONFLICT", 409);
+      idempotency = null;
+      return securityResponse(responseBody, 200, context.requestId);
+    }
     const id = crypto.randomUUID();
     const storageKey = `${ownedCase.facility_id}/verification/${verificationCaseId}/${id}`;
     const now = new Date();
@@ -63,6 +80,7 @@ export async function POST(request: Request) {
     if (scanVerdict === "INFECTED") throw new SecurityError("EVIDENCE_MALWARE_DETECTED", 422);
     await bucket.put(storageKey, bytes, { httpMetadata: { contentType: file.type } });
     const correlationId = crypto.randomUUID();
+    const responseBody = { evidenceId: id, status: "AVAILABLE", retentionUntil, correlationId };
     try {
       const inserted = await d1.batch([
         d1.prepare(`INSERT INTO evidence_documents (id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, retention_until, legal_hold, created_by, created_at, updated_at)
@@ -86,19 +104,29 @@ export async function POST(request: Request) {
           eventType: "EVIDENCE_UPLOADED",
           payload: { evidenceId: id, verificationCaseId, visitorUserId: visitor.userId },
         }, { sql: "changes() > 0", values: [] }),
+        completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status = 'AVAILABLE')", values: [id, verificationCaseId, visitor.userId] } }),
       ]);
       if (!inserted[0]?.meta.changes) {
         await bucket.delete(storageKey);
+        await releaseIdempotencyClaim(d1, idempotency);
+        idempotency = null;
         const duplicate = await d1.prepare(`SELECT id, retention_until FROM evidence_documents
           WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE'
           ORDER BY created_at DESC LIMIT 1`).bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null }>();
         if (duplicate) return securityResponse({ evidenceId: duplicate.id, status: "AVAILABLE", retentionUntil: duplicate.retention_until, idempotent: true }, 200, context.requestId);
         throw new SecurityError("EVIDENCE_UPLOAD_NOT_PERSISTED", 409);
       }
+      if (!inserted[inserted.length - 1]?.meta.changes) throw new SecurityError("EVIDENCE_IDEMPOTENCY_CONFLICT", 409);
+      idempotency = null;
     } catch (error) {
       await bucket.delete(storageKey);
       throw error;
     }
-    return securityResponse({ evidenceId: id, status: "AVAILABLE", retentionUntil, correlationId }, 201, context.requestId);
-  } catch (error) { return securityErrorResponse(error, context.requestId); }
+    return securityResponse(responseBody, 201, context.requestId);
+  } catch (error) {
+    if (d1 && idempotency) {
+      try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original evidence error. */ }
+    }
+    return securityErrorResponse(error, context.requestId);
+  }
 }

@@ -20,6 +20,9 @@ test("visitor evidence persistence claims duplicate content atomically", async (
   assert.match(source, /WHERE NOT EXISTS \([\s\S]*verification_case_id = \? AND visitor_user_id = \? AND sha256 = \? AND status = 'AVAILABLE'/);
   assert.match(source, /bytes\.length/);
   assert.match(source, /EVIDENCE_UPLOAD_NOT_PERSISTED/);
+  assert.match(source, /claimIdempotency\(d1/);
+  assert.match(source, /completeIdempotencyStatement\(d1/);
+  assert.match(source, /visitor-evidence:\$\{visitor\.userId\}:\$\{verificationCaseId\}/);
 });
 
 test("visitor evidence upload rejects oversized requests before parsing the multipart body", async () => {

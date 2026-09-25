@@ -92,6 +92,7 @@ The current repository already includes:
 - Outbox processing now persists claim start time and stale-claim recovery uses claim age rather than event creation age, preventing long-queued events from being reclaimed while an active delivery is still running.
 - Outbox workers claim rows before parsing payloads, so malformed events enter bounded retry/dead-letter handling instead of remaining permanently `PENDING`.
 - Evidence retention now uses a recoverable `PENDING_DELETION` database claim before R2 deletion; storage failure restores the record for retry and a crash can be recovered by the next scheduled run.
+- Visitor evidence uploads now claim a user/case-scoped idempotency record before scanning and storage, replay the persisted response, and release the claim on scan, storage, or database failure; content-hash deduplication remains as a second concurrency guard.
 - Pending-deletion evidence is excluded from break-glass retrieval, and the retention worker rechecks legal-hold state after claiming before deleting from R2.
 - OIDC ID-token validation now rejects malformed issuer, subject, audience, or expiry claim shapes before signature claims are used for staff authorization.
 - Payment creation and refund requests are audited, and the visitor now has an owner-scoped payment status/return page with bounded webhook-status polling; a real provider adapter, provider dispute workflow and staging reconciliation proof still need completion.
