@@ -20,6 +20,7 @@ for (const key of [
   "PAYMENT_PROVIDER_SECRET",
   "PAYMENT_WEBHOOK_SECRET",
   "VISIT_CREDIT_PRICE_MINOR",
+  "EVIDENCE_STORAGE_PROVIDER",
 ]) {
   if (process.env[key]) environmentVars[key] = process.env[key];
 }

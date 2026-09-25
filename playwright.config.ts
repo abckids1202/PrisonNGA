@@ -24,6 +24,7 @@ export default defineConfig({
       PAYMENT_PROVIDER: "local_test",
       PAYMENT_WEBHOOK_SECRET: "local-e2e-payment-secret",
       VISIT_CREDIT_PRICE_MINOR: "50000",
+      EVIDENCE_STORAGE_PROVIDER: "local_test",
     },
   },
 });

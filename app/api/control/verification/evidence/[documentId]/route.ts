@@ -1,5 +1,6 @@
-import { getD1, getEvidenceBucket } from "../../../../../../db/runtime";
+import { getD1 } from "../../../../../../db/runtime";
 import { applySecurityHeaders, getRequestContext, requireActiveBreakGlass, requirePermission, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
+import { getEvidenceStore } from "../../../../../../lib/server/evidence-storage";
 
 type RouteContext = { params: Promise<{ documentId: string }> };
 const allowedTypes = new Set(["image/jpeg", "image/png", "application/pdf"]);
@@ -30,7 +31,7 @@ export async function GET(_request: Request, context: RouteContext) {
       breakGlassRequestId = grant.requestId;
     }
     if (!allowedTypes.has(evidence.content_type) || evidence.byte_size < 1 || evidence.byte_size > 10 * 1024 * 1024) throw new SecurityError("EVIDENCE_NOT_AVAILABLE", 409);
-    const bucket = await getEvidenceBucket();
+    const bucket = await getEvidenceStore();
     if (!bucket) throw new SecurityError("EVIDENCE_STORAGE_NOT_CONFIGURED", 503);
     const object = await bucket.get(evidence.storage_key);
     if (!object?.body || object.size !== evidence.byte_size) throw new SecurityError("EVIDENCE_NOT_AVAILABLE", 404);

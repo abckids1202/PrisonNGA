@@ -1,9 +1,10 @@
-import { getD1, getEvidenceBucket } from "../../../../../db/runtime";
+import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { MAX_EVIDENCE_BYTES, validateEvidenceUpload } from "../../../../../lib/server/evidence-validation";
 import { scanEvidence } from "../../../../../lib/server/evidence-scanner";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
+import { getEvidenceStore } from "../../../../../lib/server/evidence-storage";
 
 function safeFilename(value: string): string {
   const cleaned = value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     await enforceRateLimit(d1, { key: `visitor-evidence-upload:${visitor.userId}`, limit: 20, windowSeconds: 60 * 60 });
     const contentLength = Number(request.headers.get("content-length") || "0");
     if (Number.isFinite(contentLength) && contentLength > MAX_EVIDENCE_BYTES + 512 * 1024) throw new SecurityError("EVIDENCE_REQUEST_TOO_LARGE", 413);
-    const bucket = await getEvidenceBucket();
+    const bucket = await getEvidenceStore();
     if (!bucket) throw new SecurityError("EVIDENCE_STORAGE_NOT_CONFIGURED", 503);
     const form = await request.formData();
     const verificationCaseId = String(form.get("verificationCaseId") || "").trim();
