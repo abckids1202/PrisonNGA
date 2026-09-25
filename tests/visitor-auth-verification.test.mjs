@@ -45,6 +45,8 @@ test("visitor verification records a privacy-safe new-device security event", as
   assert.match(source, /julianday\(created_at\) >= julianday\('now', '-30 days'\)/);
   assert.match(source, /VISITOR_SUSPICIOUS_LOGIN/);
   assert.match(source, /reason: "NEW_DEVICE"/);
+  assert.match(source, /INSERT INTO outbox_events/);
+  assert.match(source, /'visitor_account'/);
   assert.doesNotMatch(source, /challenge\.destination.*VISITOR_SUSPICIOUS_LOGIN/);
 });
 

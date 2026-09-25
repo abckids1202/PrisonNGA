@@ -73,6 +73,10 @@ export async function POST(request: Request) {
         SELECT ?, id, 'VISITOR_SUSPICIOUS_LOGIN', 'WARNING', ?, ?, ?, ?, ? FROM users
         WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE' AND ? = 1`)
         .bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel, reason: "NEW_DEVICE" }), now, challenge.destination, suspiciousLogin ? 1 : 0),
+      d1.prepare(`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
+        SELECT ?, 'VISITOR_SUSPICIOUS_LOGIN', 'visitor_account', id, NULL, ?, ?, ? FROM users
+        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE' AND ? = 1`)
+        .bind(crypto.randomUUID(), JSON.stringify({ visitorUserId: existingAccount?.id || null, channel: challenge.channel, reason: "NEW_DEVICE" }), context.requestId, now, challenge.destination, suspiciousLogin ? 1 : 0),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("AUTH_CODE_ALREADY_USED", 409);
     if (!results[2]?.meta.changes) throw new SecurityError("VISITOR_SESSION_NOT_CREATED", 500);

@@ -22,4 +22,6 @@ test("outbox notification copy explains critical payment and visit outcomes", as
   assert.match(source, /recordSessionProviderCloseFailure/);
   assert.match(source, /EXPIRED_SESSION_PROVIDER_UNAVAILABLE/);
   assert.match(source, /authorized session window expired/);
+  assert.match(source, /VISITOR_SUSPICIOUS_LOGIN/);
+  assert.match(source, /New sign-in detected/);
 });

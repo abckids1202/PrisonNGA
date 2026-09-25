@@ -426,6 +426,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
 }
 
 function notificationCopy(eventType: string, payload: Record<string, unknown> = {}): { title: string; body: string } {
+  if (eventType === "VISITOR_SUSPICIOUS_LOGIN") return { title: "New sign-in detected", body: "A new browser signed in to your SecureVisit account. If this was not you, open Account and sign out all sessions, then contact the facility support team." };
   if (eventType === "LIVE_SESSION_START_FAILED") return { title: "Your visit is temporarily delayed", body: "The facility could not open the secure video room. Your visit has not started or consumed its credit; staff can retry when the video service is available." };
   if (eventType === "LIVE_SESSION_PROVIDER_CLOSE_FAILED") return { title: "Your visit needs facility attention", body: "The video service did not confirm that the visit room closed safely. The facility team has been alerted and will resolve the session before any credit settlement is finalized." };
   if (eventType === "APPOINTMENT_APPROVE") return { title: "Your visit was approved", body: "Your appointment is ready. Open Visit Details to prepare." };
