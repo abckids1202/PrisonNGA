@@ -19,6 +19,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS appointment_types_facility_code_idx ON appoint
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS appointment_types_facility_status_idx ON appointment_types (facility_id, status);
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS appointment_type_history (
+  `id` text PRIMARY KEY NOT NULL,
+  `appointment_type_id` text NOT NULL REFERENCES appointment_types(id),
+  `facility_id` text NOT NULL REFERENCES facilities(id),
+  `version` integer NOT NULL,
+  `actor_user_id` text NOT NULL REFERENCES users(id),
+  `reason` text NOT NULL,
+  `snapshot` text NOT NULL,
+  `created_at` text NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS appointment_type_history_version_idx ON appointment_type_history (appointment_type_id, version);
+--> statement-breakpoint
 INSERT OR IGNORE INTO appointment_types (id, facility_id, code, display_name, description, duration_minutes, credit_cost)
 SELECT 'appointment-type-' || f.id || '-family', f.id, 'FAMILY', 'Family visit', 'Standard approved visitor relationship visit.', 30, 1
 FROM facilities f;
