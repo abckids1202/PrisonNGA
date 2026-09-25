@@ -40,6 +40,10 @@ export async function GET(request: Request) {
     }
     if (!Number.isFinite(dayStart.getTime()) || !Number.isFinite(dayEnd.getTime()) || dayEnd <= dayStart) throw new SecurityError("INVALID_AVAILABILITY_DATE", 400);
     const appointments = await d1.prepare(`SELECT requested_start, requested_end FROM appointments WHERE ((facility_id = ? AND prisoner_id = ?) OR visitor_user_id = ?) AND (? = '' OR id <> ?) AND status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS') AND requested_start < ? AND requested_end > ?`).bind(facilityId, prisonerId, visitor.userId, excludeAppointmentId, excludeAppointmentId, dayEnd.toISOString(), dayStart.toISOString()).all<{ requested_start: string; requested_end: string }>();
+    const closures = await d1.prepare(`SELECT starts_at, ends_at FROM facility_closures
+      WHERE facility_id = ? AND status = 'ACTIVE' AND starts_at < ? AND ends_at > ?`)
+      .bind(facilityId, dayEnd.toISOString(), dayStart.toISOString())
+      .all<{ starts_at: string; ends_at: string }>();
     const slots: string[] = [];
     for (let cursor = dayStart.getTime(); cursor + duration * 60000 <= dayEnd.getTime(); cursor += slotMinutes * 60000) {
       const end = cursor + duration * 60000;
@@ -54,6 +58,7 @@ export async function GET(request: Request) {
       });
       if (!window.ok) continue;
       if (appointments.results.some((appointment) => Date.parse(appointment.requested_start) < end && Date.parse(appointment.requested_end) > cursor)) continue;
+      if (closures.results.some((closure) => Date.parse(closure.starts_at) < end && Date.parse(closure.ends_at) > cursor)) continue;
       slots.push(new Date(cursor).toISOString());
     }
     return securityResponse({ facilityId, prisonerId, date, duration, timezone: facility.timezone, slots }, 200, context.requestId);

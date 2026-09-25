@@ -51,6 +51,10 @@ export function createVisitorAppointmentStatements(d1: D1Database, input: Create
         )
         AND EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.user_id = ? AND ca.facility_id = ? AND ca.available_credits >= 1)
         AND NOT EXISTS (
+          SELECT 1 FROM facility_closures fc
+          WHERE fc.facility_id = ? AND fc.status = 'ACTIVE' AND fc.starts_at < ? AND fc.ends_at > ?
+        )
+        AND NOT EXISTS (
           SELECT 1 FROM appointments a
           WHERE a.visitor_user_id = ? AND a.status IN (${activePlaceholders})
             AND a.requested_start < ? AND a.requested_end > ?
@@ -68,6 +72,7 @@ export function createVisitorAppointmentStatements(d1: D1Database, input: Create
         input.relationshipId, input.facilityId, input.visitorUserId, input.prisonerId,
         input.facilityId, input.timezone, input.policyVersion,
         input.visitorUserId, input.facilityId,
+        input.facilityId, input.requestedEnd, input.requestedStart,
         input.visitorUserId, ...activeAppointmentStatuses, input.requestedEnd, input.requestedStart,
         input.facilityId, input.prisonerId, ...activeAppointmentStatuses, input.requestedEnd, input.requestedStart,
       ),
@@ -141,6 +146,10 @@ export function rescheduleVisitorAppointmentStatements(d1: D1Database, input: Re
             AND vr.status = 'APPROVED' AND p.status = 'ACTIVE' AND p.visitation_status = 'APPROVED'
         )
         AND NOT EXISTS (
+          SELECT 1 FROM facility_closures fc
+          WHERE fc.facility_id = ? AND fc.status = 'ACTIVE' AND fc.starts_at < ? AND fc.ends_at > ?
+        )
+        AND NOT EXISTS (
           SELECT 1 FROM appointments a WHERE a.id <> ? AND a.visitor_user_id = ?
             AND a.status IN (${activePlaceholders}) AND a.requested_start < ? AND a.requested_end > ?
         )
@@ -154,6 +163,7 @@ export function rescheduleVisitorAppointmentStatements(d1: D1Database, input: Re
         input.prisonerId, input.expectedVersion, input.idempotency.claimId, input.idempotency.scope,
         input.idempotency.key, input.facilityId, input.timezone, input.policyVersion, input.facilityId,
         input.visitorUserId, input.prisonerId, input.appointmentId, input.visitorUserId,
+        input.facilityId, input.requestedEnd, input.requestedStart,
         ...activeAppointmentStatuses, input.requestedEnd, input.requestedStart, input.appointmentId,
         input.facilityId, input.prisonerId, ...activeAppointmentStatuses, input.requestedEnd, input.requestedStart,
       ),
