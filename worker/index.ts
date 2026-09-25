@@ -51,7 +51,7 @@ function liveKitConnectSources(env: Env): string {
 }
 
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
-type ExpiredSession = { id: string; appointment_id: string; facility_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
+type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
 type AbandonedPaymentIntent = { id: string; facility_id: string; user_id: string; credit_quantity: number; amount_minor: number; currency: string; version: number };
 
@@ -323,7 +323,7 @@ async function expireBreakGlassRequests(env: Env): Promise<void> {
 }
 
 async function reconcileExpiredSessions(env: Env): Promise<void> {
-  const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.version, vs.status, vs.actual_started_at,
+    const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, vs.version, vs.status, vs.actual_started_at,
       vs.termination_reason, vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
     LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
@@ -347,6 +347,30 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
       await provider.endRoom(session.provider_room_name);
     } catch (error) {
       operationalLog("error", { event: "EXPIRED_SESSION_ROOM_CLOSE_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", error });
+      try {
+        const priorFailure = await env.DB.prepare("SELECT 1 AS present FROM audit_events WHERE facility_id = ? AND action_type = 'LIVE_SESSION_PROVIDER_CLOSE_FAILED' AND entity_type = 'visit_session' AND entity_id = ? LIMIT 1")
+          .bind(session.facility_id, session.id).first<{ present: number }>();
+        if (!priorFailure) {
+          const correlationId = crypto.randomUUID();
+          await env.DB.batch(auditAndOutboxStatements(env.DB, {
+            actorUserId: "system:scheduler",
+            actorRole: "SYSTEM",
+            facilityId: session.facility_id,
+            actionType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
+            entityType: "visit_session",
+            entityId: session.id,
+            reason: "The video provider did not confirm room closure after the authorized session window expired.",
+            oldValues: { sessionStatus: session.status, providerRoomName: session.provider_room_name },
+            newValues: { interventionRequired: true, retryable: true },
+            requestId: correlationId,
+            correlationId,
+            eventType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
+            payload: { sessionId: session.id, appointmentId: session.appointment_id, visitorUserId: session.visitor_user_id, retryable: true },
+          }));
+        }
+      } catch (auditError) {
+        operationalLog("error", { event: "EXPIRED_SESSION_CLOSE_FAILURE_AUDIT_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", error: auditError });
+      }
       continue;
     }
     if (!session.credit_account_id) {
@@ -397,6 +421,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
 
 function notificationCopy(eventType: string, payload: Record<string, unknown> = {}): { title: string; body: string } {
   if (eventType === "LIVE_SESSION_START_FAILED") return { title: "Your visit is temporarily delayed", body: "The facility could not open the secure video room. Your visit has not started or consumed its credit; staff can retry when the video service is available." };
+  if (eventType === "LIVE_SESSION_PROVIDER_CLOSE_FAILED") return { title: "Your visit needs facility attention", body: "The video service did not confirm that the visit room closed safely. The facility team has been alerted and will resolve the session before any credit settlement is finalized." };
   if (eventType === "APPOINTMENT_APPROVE") return { title: "Your visit was approved", body: "Your appointment is ready. Open Visit Details to prepare." };
   if (eventType === "APPOINTMENT_REJECT") return { title: "Your visit needs attention", body: "Your appointment request was not approved. Open Visit Details to see the reason." };
   if (eventType === "APPOINTMENT_RESCHEDULED") return { title: "Your visit time changed", body: "Your new time is waiting for facility review. Open Visit Details to see the updated request." };
