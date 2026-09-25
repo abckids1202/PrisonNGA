@@ -47,7 +47,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
-- Automated server tests and browser smoke tests. Current validation baseline is 288 server tests and 11 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 289 server tests and 11 browser tests passing.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -86,6 +86,7 @@ The current repository already includes:
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
 - Repeat visitor Waiting Room heartbeats now refresh presence freshness without incrementing appointment or readiness versions; first check-in and actual state transitions remain optimistic-concurrency-protected.
+- Waiting Room's time-window selector now filters the persisted queue by the next two hours, facility-local today, or all approved records instead of being visual-only; queue counts use the selected window.
 - Live-session staff observation and provider webhook behavior need a real deployment test. Recording remains intentionally disabled and must not be silently enabled.
 - Administration now exposes the protected deployment-readiness API, including database, schema, provider, storage, visitor-auth, staff-identity and notification checks without returning secret values.
 - Audit export manifests can now be retrieved through an authorized, facility-scoped verification endpoint. Break-glass requests and supervisor decisions are now persisted with time-bound grants, step-up checks, optimistic concurrency, audit events, and outbox events; staging access-review and policy validation remain release gates.
