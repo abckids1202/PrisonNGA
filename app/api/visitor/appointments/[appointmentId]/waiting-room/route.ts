@@ -13,7 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
 
     const d1 = await getD1();
     const existingKey = `${visitor.userId}:${appointmentId}:${idempotencyKey}`;
-    const existing = await d1.prepare(`SELECT id, appointment_id, version, state, visitor_presence, prisoner_presence
+    const existing = await d1.prepare(`SELECT id, appointment_id, version, state
       FROM visitor_waiting_room_checkins WHERE idempotency_key = ?`).bind(existingKey).first<Record<string, string | number | null>>();
     if (existing) return securityResponse({ checkIn: existing, idempotent: true }, 200, context.requestId);
 

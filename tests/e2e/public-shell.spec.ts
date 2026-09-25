@@ -308,7 +308,7 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     });
     expect(webhook.status(), await webhook.text()).toBe(200);
 
-    const requestedDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const requestedDate = new Date(Date.now() + (3 + Math.floor(Math.random() * 20)) * 24 * 60 * 60 * 1000);
     requestedDate.setUTCHours(1, 0, 0, 0);
     const date = requestedDate.toISOString().slice(0, 10);
     const availability = await page.request.get(`/api/visitor/availability?facilityId=facility-central-001&prisonerId=prisoner-ar-001&date=${date}&duration=30`);
@@ -347,6 +347,54 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     expect(decisionBody.status).toBe("APPROVED");
     expect(decisionBody.allocation?.roomId).toBeTruthy();
     expect(decisionBody.allocation?.deviceId).toBeTruthy();
+    expect(decisionBody.allocation?.deviceId).toBe("kiosk-02");
+
+    const deviceCheck = await page.request.post(`/api/visitor/appointments/${approvedAppointmentId}/device-check`, {
+      headers: { origin: testOrigin, "Idempotency-Key": `visitor-device-check-${Date.now()}-e2e` },
+      data: { cameraResult: "ready", microphoneResult: "ready", networkResult: "stable", latencyMs: 84 },
+    });
+    expect(deviceCheck.status(), await deviceCheck.text()).toBe(201);
+
+    const visitorCheckIn = await page.request.post(`/api/visitor/appointments/${approvedAppointmentId}/waiting-room`, {
+      headers: { origin: testOrigin, "Idempotency-Key": `visitor-check-in-${Date.now()}-e2e` },
+    });
+    expect(visitorCheckIn.status(), await visitorCheckIn.text()).toBe(201);
+    await expect(visitorCheckIn.json()).resolves.toMatchObject({ checkIn: { state: "VISITOR_WAITING", visitorPresence: "present" } });
+
+    const kioskHeaders = {
+      origin: testOrigin,
+      "x-securevisit-kiosk-id": "kiosk-02",
+      "x-securevisit-kiosk-token": "local-e2e-kiosk-token-012345678901234567890123",
+    };
+    const heartbeat = await page.request.post("/api/kiosk/heartbeat", { headers: kioskHeaders });
+    expect(heartbeat.status(), await heartbeat.text()).toBe(200);
+    const kioskCheck = await page.request.post(`/api/kiosk/visits/${approvedAppointmentId}/device-check`, {
+      headers: { ...kioskHeaders, "Idempotency-Key": `kiosk-device-check-${Date.now()}-e2e` },
+      data: { cameraResult: "ready", microphoneResult: "ready", networkResult: "stable", latencyMs: 42 },
+    });
+    expect(kioskCheck.status(), await kioskCheck.text()).toBe(201);
+
+    const kioskPresence = await page.request.post(`/api/kiosk/visits/${approvedAppointmentId}/presence`, {
+      headers: kioskHeaders,
+      data: { presence: "present" },
+    });
+    expect(kioskPresence.status(), await kioskPresence.text()).toBe(200);
+    await expect(kioskPresence.json()).resolves.toMatchObject({ state: "BOTH_PRESENT", prisonerPresence: "present" });
+
+    const waitingRoom = await staff.request.get("/api/control/waiting-room");
+    expect(waitingRoom.status(), await waitingRoom.text()).toBe(200);
+    const waitingRoomBody = await waitingRoom.json() as { visits?: Array<{ id: string; state: string; version: number }> };
+    const waitingVisit = waitingRoomBody.visits?.find((visit) => visit.id === approvedAppointmentId);
+    expect(waitingVisit?.state, JSON.stringify(waitingVisit)).toBe("READY_TO_START");
+    expect(waitingVisit?.version).toBeGreaterThan(0);
+    if (!waitingVisit) throw new Error("Expected approved appointment in the Waiting Room");
+
+    const preflight = await staff.request.post("/api/control/waiting-room", {
+      headers: { origin: testOrigin, "Idempotency-Key": `waiting-preflight-${Date.now()}-e2e` },
+      data: { appointmentId: approvedAppointmentId, command: "run_preflight", expectedVersion: waitingVisit.version, reason: "All pilot pre-call checks passed." },
+    });
+    expect(preflight.status(), await preflight.text()).toBe(200);
+    await expect(preflight.json()).resolves.toMatchObject({ state: "READY_TO_START" });
   } finally {
     await staff.close();
   }
@@ -354,7 +402,7 @@ test("persisted visitor verification, payment, appointment request, and staff ap
   const appointments = await page.request.get("/api/visitor/appointments");
   expect(appointments.status()).toBe(200);
   const appointmentList = await appointments.json() as { appointments?: Array<{ id: string; status: string }> };
-  expect(appointmentList.appointments?.find((item) => item.id === approvedAppointmentId)?.status).toBe("APPROVED");
+  expect(appointmentList.appointments?.find((item) => item.id === approvedAppointmentId)?.status).toBe("WAITING");
 });
 
 test("browser requests to protected APIs are rejected without a session", async ({ request }) => {

@@ -38,6 +38,12 @@ VALUES
   ('kiosk-08', 'facility-central-001', 'DEVICE', 'Kiosk 08', 'MAINTENANCE', NULL, 'WARNING', CURRENT_TIMESTAMP)
 ON CONFLICT(id) DO NOTHING;
 
+-- Local-only kiosk acceptance credential. The raw secret is intentionally not stored;
+-- browser acceptance tests provide it through the controlled-device header boundary.
+INSERT INTO kiosk_credentials (id, facility_id, resource_id, credential_hash, status, created_by, created_at)
+VALUES ('credential-local-e2e-kiosk-02', 'facility-central-001', 'kiosk-02', '5537616105e030399d09f6aef4f4ecaae220fd45192dea09015533cad1ac554e', 'ACTIVE', 'staff-local-supervisor', CURRENT_TIMESTAMP)
+ON CONFLICT(id) DO NOTHING;
+
 INSERT INTO roles (id, name, description) VALUES
   ('role-scheduling-officer', 'Scheduling Officer', 'Reviews and coordinates visitation appointments.'),
   ('role-verification-officer', 'Verification Officer', 'Reviews visitor identity and relationship evidence.'),
