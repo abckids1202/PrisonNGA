@@ -55,7 +55,7 @@ Each workspace uses a different interaction pattern: timelines and action center
 - Approval queue with approve / decline interactions
 - Daily appointment agenda and room status
 - Visitor portal preview via the Staff view toggle
-- Fictional records remain in several Control dashboards and People tabs; the Visitor Connections flow and People → Verifications queue use persisted facility-scoped APIs
+- Control dashboards and People tabs load facility-scoped records from protected APIs; development-only simulation controls are explicitly labeled and never change facility records
 - Audit activity surface and secure-mode messaging
 - Persisted visitor profile, relationship verification/evidence review, prisoner, and appointment workflow APIs
 - LiveKit-backed Live Session V1 with visitor and controlled kiosk routes, scoped tokens, timer, reconnect states, staff monitoring authorization, and completion lifecycle
