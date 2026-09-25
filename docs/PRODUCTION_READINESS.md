@@ -61,6 +61,8 @@ The provider integration is not pilot-ready until sandbox tests prove:
 
 Configure `NOTIFICATION_DELIVERY=webhook` with an HTTPS adapter. Notification requests include a stable idempotency key based on the outbox event and destination channel. The adapter must deduplicate retries and return a failure when it cannot accept the message.
 
+For staging and production, set `NOTIFICATION_QUEUE_NAME` to the provisioned Cloudflare Queue name to dispatch outbox draining through the queue consumer. The scheduled Worker remains a durable fallback for queue-dispatch failures; queue delivery must still be monitored for retry and dead-letter activity.
+
 ## Pilot go/no-go gates
 
 The pilot cannot open to real visitors until all of these have evidence:

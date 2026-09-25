@@ -17,7 +17,7 @@ Assign an owner and an evidence location for every item before the run begins.
 | Staff identity | OIDC and SAML metadata, callback URLs, MFA policy, role/facility mapping | Successful login and denied-role evidence for both protocols |
 | Payments | One sandbox provider adapter, approved credit tariff, checkout/webhook/refund credentials | Checkout, signed webhook, duplicate, refund, dispute, and reconciliation evidence |
 | Video | LiveKit URL, API key/secret, webhook secret, separate staging project | Visitor, kiosk, observer, disconnect, expiry, and termination evidence |
-| Notifications | Email/SMS delivery adapter and retry destination | Delivery attempt, retry, dead-letter, and replay evidence |
+| Notifications | Email/SMS delivery adapter, retry destination, and optional Cloudflare Queue binding (`NOTIFICATION_QUEUE_NAME`) | Delivery attempt, queue/cron processing, retry, dead-letter, and replay evidence |
 | Operations | WAF/rate limits, logs, alerts, support ownership, incident runbooks | Alert screenshots/links and acknowledged test incidents |
 | Governance | Retention schedule, legal hold process, privacy/correctional approval, recording-off decision | Signed approval record |
 
