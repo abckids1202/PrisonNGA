@@ -11,4 +11,7 @@ test("Facility management exposes persisted operating hours and restriction cont
   assert.match(component, /Apply facility state/);
   assert.match(component, /onChange\(draft, reason\.trim\(\)\)/);
   assert.match(component, /LOCKDOWN/);
+  assert.match(component, /setDraft\(normalizeState\(state\)\)/);
+  assert.match(component, /Keep the selector aligned with the last persisted facility state/);
+  assert.match(component, /role="alert"/);
 });

@@ -13,17 +13,25 @@ const options: Array<{ value: FacilityState; label: string; detail: string }> = 
 ];
 
 export default function FacilityRestrictions({ state, onChange }: { state: string; onChange: (nextState: FacilityState, reason: string) => Promise<void> }) {
-  const [draft, setDraft] = useState<FacilityState>((options.some((option) => option.value === state) ? state : "NORMAL_OPERATIONS") as FacilityState);
+  const normalizeState = (value: string): FacilityState => (options.some((option) => option.value === value) ? value : "NORMAL_OPERATIONS") as FacilityState;
+  const [draft, setDraft] = useState<FacilityState>(normalizeState(state));
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const selected = options.find((option) => option.value === draft) || options[0];
 
   const save = async () => {
     if (reason.trim().length < 8) return;
     setBusy(true);
+    setError("");
     try {
       await onChange(draft, reason.trim());
       setReason("");
+    } catch (cause) {
+      // Keep the selector aligned with the last persisted facility state when
+      // step-up, version, or server validation rejects the mutation.
+      setDraft(normalizeState(state));
+      setError(cause instanceof Error ? cause.message : "Facility state could not be changed.");
     } finally {
       setBusy(false);
     }
@@ -37,6 +45,7 @@ export default function FacilityRestrictions({ state, onChange }: { state: strin
       <label className="sv3-policy-reason">Reason for change<textarea value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="Explain the operational reason (minimum 8 characters)." /></label>
     </div>
     <p className="sv3-policy-feedback">Current restriction: {state.replaceAll("_", " ")}. A fresh supervisor step-up is required for lockdown and emergency closure.</p>
+    {error ? <p role="alert" className="sv3-policy-feedback error">{error}</p> : null}
     <button className="sv3-button sv3-button-primary" onClick={() => void save()} disabled={busy || reason.trim().length < 8 || draft === state}>{busy ? "Applying…" : "Apply facility state"}</button>
   </div>;
 }
