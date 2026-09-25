@@ -45,6 +45,7 @@ The current repository already includes:
 - Facility isolation checks, permission checks, step-up foundations, rate limits, security events, request/correlation identifiers, CSP and camera/microphone permissions policy.
 - Idempotent state-changing boundaries for appointment decisions, verification review, visitor profile, session revocation, notification read state, policy updates, live-session ending, waiting-room commands, outbox replay and visitor payment checkout audit events.
 - Privacy-safe `VISITOR_LOGIN_CHALLENGE_FAILED` security events with hashed request context and no OTP/destination logging.
+- Recognized visitors signing in from a new device now create a privacy-safe, facility-independent security notification; recipient resolution validates the referenced active visitor account, while ordinary operational notifications remain facility-scoped.
 - Visitor phone verification state is sourced from the authoritative user session record; profile reads and writes no longer invent verification timestamps or erase verified SMS state.
 - Visitor prisoner and appointment-type discovery now requires a configured, normally operating facility, so direct API calls cannot expose operational records from a lockdown or unconfigured facility.
 - Workspace identity headers are now accepted only in explicit development mode; staging and production require persisted staff sessions from OIDC or SAML.
@@ -93,7 +94,7 @@ The current repository already includes:
 - Payment creation and refund requests are audited, and the visitor now has an owner-scoped payment status/return page with bounded webhook-status polling; a real provider adapter, provider dispute workflow and staging reconciliation proof still need completion.
 - The scheduled worker now expires only abandoned pre-checkout payment intents after a bounded window with optimistic concurrency, audit, outbox notification and no effect on provider-created checkouts.
 - Notification records and outbox processing exist, but real email/SMS delivery adapters, templates, delivery receipts, retry operations and dead-letter replay need staging proof.
-- Visitor session controls still need production delivery, recovery, suspicious-login handling and device-management validation beyond the development OTP path.
+- Visitor session controls still need production delivery, recovery and device-management validation beyond the development OTP path; suspicious-login auditing and visitor notification behavior are implemented but still require real delivery-provider staging proof.
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
 - Repeat visitor Waiting Room heartbeats now refresh presence freshness without incrementing appointment or readiness versions; first check-in and actual state transitions remain optimistic-concurrency-protected.
