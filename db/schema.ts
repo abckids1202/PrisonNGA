@@ -65,6 +65,19 @@ export const visitPolicyHistory = sqliteTable("visit_policy_history", {
   facilityCreatedIdx: index("visit_policy_history_facility_created_idx").on(table.facilityId, table.createdAt),
 }));
 
+export const appointmentTypes = sqliteTable("appointment_types", {
+  id: text("id").primaryKey(),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  code: text("code").notNull(),
+  displayName: text("display_name").notNull(),
+  description: text("description").notNull(),
+  durationMinutes: integer("duration_minutes").notNull(),
+  creditCost: integer("credit_cost").notNull().default(1),
+  status: text("status", { enum: ["ACTIVE", "INACTIVE"] }).notNull().default("ACTIVE"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ facilityCodeIdx: uniqueIndex("appointment_types_facility_code_idx").on(table.facilityId, table.code), facilityStatusIdx: index("appointment_types_facility_status_idx").on(table.facilityId, table.status) }));
+
 export const staffProfiles = sqliteTable("staff_profiles", {
   userId: text("user_id").primaryKey().references(() => users.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
