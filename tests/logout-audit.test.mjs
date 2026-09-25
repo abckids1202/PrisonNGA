@@ -20,5 +20,8 @@ test("logout resolves the session owner before revoking the session", () => {
 
 test("logout retains an audit event for session-authenticated users", () => {
   assert.match(source, /eventType: "LOGOUT_REQUESTED"/);
-  assert.match(source, /if \(user\) \{/);
+  assert.match(source, /let shouldAuditLogout = Boolean\(identity\)/);
+  assert.match(source, /if \(sessionUser && !sessionUser\.revokedAt\) shouldAuditLogout = true/);
+  assert.match(source, /if \(user && shouldAuditLogout\)/);
+  assert.match(source, /db\.insert\(securityEvents\)\.values\(/);
 });
