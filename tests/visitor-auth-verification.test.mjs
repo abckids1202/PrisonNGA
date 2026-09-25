@@ -50,6 +50,13 @@ test("visitor verification records a privacy-safe new-device security event", as
   assert.doesNotMatch(source, /challenge\.destination.*VISITOR_SUSPICIOUS_LOGIN/);
 });
 
+test("visitor verification does not enumerate staff or disabled accounts", async () => {
+  const source = await readFile(new URL("../app/api/auth/visitor/verify/route.ts", import.meta.url), "utf8");
+  assert.match(source, /VISITOR_AUTH_UNAVAILABLE/);
+  assert.doesNotMatch(source, /VISITOR_ACCOUNT_CONFLICT/);
+  assert.doesNotMatch(source, /VISITOR_ACCOUNT_DISABLED/);
+});
+
 test("session revocation commits the auth mutation and audit event as one D1 batch", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/auth/sessions/route.ts", import.meta.url), "utf8");
   assert.match(source, /d1 = await getD1\(\)/);

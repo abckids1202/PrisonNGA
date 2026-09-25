@@ -45,6 +45,7 @@ The current repository already includes:
 - Facility isolation checks, permission checks, step-up foundations, rate limits, security events, request/correlation identifiers, CSP and camera/microphone permissions policy.
 - Idempotent state-changing boundaries for appointment decisions, verification review, visitor profile, session revocation, notification read state, policy updates, live-session ending, waiting-room commands, outbox replay and visitor payment checkout audit events.
 - Privacy-safe `VISITOR_LOGIN_CHALLENGE_FAILED` security events with hashed request context and no OTP/destination logging.
+- Visitor OTP verification now returns one generic unavailable response for staff, disabled, and other non-active account conflicts, preventing destination/account-status enumeration while retaining rate limits and internal audit behavior.
 - Recognized visitors signing in from a new device now create a privacy-safe, facility-independent security notification; recipient resolution validates the referenced active visitor account, while ordinary operational notifications remain facility-scoped.
 - Visitor phone verification state is sourced from the authoritative user session record; profile reads and writes no longer invent verification timestamps or erase verified SMS state.
 - Visitor prisoner and appointment-type discovery now requires a configured, normally operating facility, so direct API calls cannot expose operational records from a lockdown or unconfigured facility.

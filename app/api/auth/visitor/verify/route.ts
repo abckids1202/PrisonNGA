@@ -23,8 +23,11 @@ export async function POST(request: Request) {
     if (challenge.attempt_count >= challenge.max_attempts) throw new SecurityError("AUTH_CODE_LOCKED", 429);
     const contactColumn = challenge.channel === "EMAIL" ? "email" : "phone";
     const existingAccount = await d1.prepare(`SELECT id, user_type, status FROM users WHERE ${contactColumn} = ?`).bind(challenge.destination).first<{ id: string; user_type: string; status: string }>();
-    if (existingAccount && existingAccount.user_type !== "VISITOR") throw new SecurityError("VISITOR_ACCOUNT_CONFLICT", 409);
-    if (existingAccount && existingAccount.status !== "ACTIVE") throw new SecurityError("VISITOR_ACCOUNT_DISABLED", 403);
+    // Do not reveal whether a verified destination belongs to staff, a
+    // disabled account, or another non-visitor record. These cases share one
+    // public response so the OTP endpoint cannot be used for account
+    // enumeration.
+    if (existingAccount && (existingAccount.user_type !== "VISITOR" || existingAccount.status !== "ACTIVE")) throw new SecurityError("VISITOR_AUTH_UNAVAILABLE", 403);
     const salt = await getSecuritySalt();
     const codeHash = await hashIdentifier(`visitor-sign-in:${code}`, salt);
     if (codeHash !== challenge.code_hash) {
