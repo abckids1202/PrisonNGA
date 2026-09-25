@@ -8,6 +8,11 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
 
 const { d1, r2 } = hostingConfig;
 
+// Queue names are deployment configuration, not application secrets. Leave
+// the binding absent locally so the scheduled D1 outbox worker remains the
+// default development path.
+const notificationQueueName = process.env.NOTIFICATION_QUEUE_NAME?.trim();
+
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const environmentVars: Record<string, string> = {};
@@ -50,6 +55,12 @@ const localBindingConfig = {
         },
       ]
     : [],
+  queues: notificationQueueName
+    ? {
+        producers: [{ binding: "NOTIFICATION_QUEUE", queue: notificationQueueName }],
+        consumers: [{ queue: notificationQueueName, max_batch_size: 25, max_batch_timeout: 5 }],
+      }
+    : undefined,
 };
 
 export default defineConfig(async () => {
