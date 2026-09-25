@@ -16,7 +16,8 @@ export async function GET() {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.original_filename, ed.content_type, ed.byte_size, ed.status, ed.retention_until, ed.legal_hold, ed.created_at
-      FROM evidence_documents ed WHERE ed.visitor_user_id = ? AND ed.status <> 'DELETED' ORDER BY ed.created_at DESC`).bind(visitor.userId).all();
+      FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id
+      WHERE ed.visitor_user_id = ? AND vr.visitor_user_id = ? AND ed.status <> 'DELETED' ORDER BY ed.created_at DESC`).bind(visitor.userId, visitor.userId).all();
     return securityResponse({ evidence: result.results }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }

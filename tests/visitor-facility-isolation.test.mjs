@@ -12,5 +12,8 @@ test("visitor relationship queries keep related records inside the same facility
   assert.match(relationshipsRoute, /WHERE vr\.visitor_user_id = \? AND vr\.facility_id = \? AND vr\.prisoner_id = \?/);
   assert.match(relationshipsRoute, /\.bind\(visitor\.userId, facilityId, prisonerId\)/);
   assert.match(appointmentsRoute, /p\.id = vr\.prisoner_id AND p\.facility_id = vr\.facility_id/);
+  assert.match(appointmentsRoute, /p\.id = a\.prisoner_id AND p\.facility_id = a\.facility_id/);
   assert.match(evidenceRoute, /vr\.id = vc\.relationship_id AND vr\.facility_id = vc\.facility_id/);
+  assert.match(evidenceRoute, /vc\.id = ed\.verification_case_id AND vc\.facility_id = ed\.facility_id/);
+  assert.match(evidenceRoute, /WHERE ed\.visitor_user_id = \? AND vr\.visitor_user_id = \?/);
 });

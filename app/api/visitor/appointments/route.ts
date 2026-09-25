@@ -13,7 +13,7 @@ export async function GET() {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT a.id, a.facility_id, f.name AS facility_name, a.prisoner_id, p.prisoner_number, p.display_name AS prisoner_name, a.status, a.requested_start, a.requested_end, a.timezone, a.appointment_type, a.version, a.created_at, a.updated_at
-      FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id INNER JOIN prisoners p ON p.id = a.prisoner_id WHERE a.visitor_user_id = ? ORDER BY a.requested_start DESC`).bind(visitor.userId).all();
+      FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id WHERE a.visitor_user_id = ? ORDER BY a.requested_start DESC`).bind(visitor.userId).all();
     return securityResponse({ appointments: result.results }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
