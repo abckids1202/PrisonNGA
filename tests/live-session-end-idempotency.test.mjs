@@ -11,4 +11,7 @@ test("staff live-session termination is replay-safe across provider and settleme
   assert.match(source, /requestLiveSessionEndStatements/);
   assert.match(source, /finalizeLiveSessionStatements/);
   assert.match(source, /SESSION_SETTLEMENT_REQUIRES_RECONCILIATION/);
+  assert.match(source, /LIVE_SESSION_PROVIDER_CLOSE_FAILED/);
+  assert.match(source, /auditAndOutboxStatements/);
+  assert.match(source, /visitorUserId/);
 });

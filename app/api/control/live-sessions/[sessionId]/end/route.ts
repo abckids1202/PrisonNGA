@@ -4,6 +4,8 @@ import { assertReason, getRequestContext, requirePermission, securityErrorRespon
 import { getStaffSession } from "@/lib/server/video/session";
 import { createLiveKitProvider } from "@/lib/server/video/provider";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "@/lib/server/idempotency";
+import { auditAndOutboxStatements } from "@/lib/server/events";
+import { operationalLog } from "@/lib/server/observability";
 
 type RouteContext = { params: Promise<{ sessionId: string }> };
 type EndMode = "normal" | "terminate";
@@ -34,10 +36,10 @@ export async function POST(request: Request, context: RouteContext) {
       idempotency = null;
       return securityResponse(responseBody, status, requestContext.requestId);
     };
-    const appointment = await d1.prepare(`SELECT a.status, a.version, ca.id AS credit_account_id
+    const appointment = await d1.prepare(`SELECT a.status, a.version, a.visitor_user_id, ca.id AS credit_account_id
       FROM appointments a LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
       WHERE a.id = ? AND a.facility_id = ?`).bind(session.appointment_id, authorization.facilityId)
-      .first<{ status: string; version: number; credit_account_id: string | null }>();
+      .first<{ status: string; version: number; visitor_user_id: string; credit_account_id: string | null }>();
     if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
 
     if (["ENDED", "TERMINATED", "CANCELLED"].includes(session.status)) {
@@ -90,6 +92,32 @@ export async function POST(request: Request, context: RouteContext) {
       const provider = await createLiveKitProvider();
       await provider.endRoom(session.provider_room_name);
     } catch (error) {
+      try {
+        const priorFailure = await d1.prepare("SELECT 1 AS present FROM audit_events WHERE facility_id = ? AND action_type = 'LIVE_SESSION_PROVIDER_CLOSE_FAILED' AND entity_type = 'visit_session' AND entity_id = ? LIMIT 1")
+          .bind(authorization.facilityId, sessionId).first<{ present: number }>();
+        if (!priorFailure) {
+          const failureCorrelationId = crypto.randomUUID();
+          await d1.batch(auditAndOutboxStatements(d1, {
+            actorUserId: authorization.userId,
+            actorRole: authorization.roles[0] || "STAFF",
+            facilityId: authorization.facilityId,
+            actionType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
+            entityType: "visit_session",
+            entityId: sessionId,
+            reason: "The video provider did not confirm room closure after a staff end-session request.",
+            oldValues: { sessionStatus: "ENDING", mode },
+            newValues: { interventionRequired: true, retryable: true },
+            requestId: requestContext.requestId,
+            correlationId: failureCorrelationId,
+            eventType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
+            payload: { sessionId, appointmentId: session.appointment_id, visitorUserId: appointment.visitor_user_id, retryable: true },
+          }));
+        }
+      } catch (auditError) {
+        // Preserve the provider failure response while making the audit failure
+        // observable to operations; the next retry remains safe and idempotent.
+        operationalLog("error", { event: "LIVE_SESSION_PROVIDER_CLOSE_FAILURE_AUDIT_FAILED", sessionId, facilityId: authorization.facilityId, requestId: requestContext.requestId, error: auditError });
+      }
       if (error instanceof Error && error.message === "VIDEO_PROVIDER_NOT_CONFIGURED") throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
       throw new SecurityError("VIDEO_PROVIDER_END_FAILED", 502);
     }
