@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new SecurityError("CREDIT_PRICE_INVALID", 503);
     if (!existing) {
       const now = new Date().toISOString();
-      const created = await d1.prepare(`INSERT OR IGNORE INTO payment_intents (id, facility_id, user_id, provider, credit_quantity, amount_minor, currency, status, idempotency_key, version, created_at, updated_at) VALUES (?, ?, ?, 'webhook', ?, ?, 'IDR', 'PENDING', ?, 1, ?, ?)`).bind(paymentIntentId, facilityId, visitor.userId, creditQuantity, amountMinor, storedIdempotencyKey, now, now).run();
+      const created = await d1.prepare(`INSERT OR IGNORE INTO payment_intents (id, facility_id, user_id, provider, credit_quantity, amount_minor, currency, status, idempotency_key, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'IDR', 'PENDING', ?, 1, ?, ?)`).bind(paymentIntentId, facilityId, visitor.userId, provider.name, creditQuantity, amountMinor, storedIdempotencyKey, now, now).run();
       if (!created.meta.changes) {
         existing = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE idempotency_key = ? AND user_id = ?").bind(storedIdempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
         if (!existing || existing.facility_id !== facilityId || Number(existing.credit_quantity) !== creditQuantity) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);

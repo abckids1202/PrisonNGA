@@ -15,6 +15,7 @@ export function serializePaymentWebhookSnapshot(payload: Pick<PaymentWebhook, "e
 }
 
 export interface PaymentProvider {
+  readonly name: string;
   createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string; successUrl?: string; cancelUrl?: string }): Promise<PaymentCheckout>;
   requestRefund(input: { paymentIntentId: string; providerReference: string; amountMinor: number; currency: string; reason: string }): Promise<PaymentRefundRequest>;
 }
@@ -48,6 +49,8 @@ export async function getPaymentProvider(): Promise<PaymentProvider | null> {
 }
 
 class LocalDevelopmentPaymentProvider implements PaymentProvider {
+  readonly name = "local_test";
+
   async createCheckout(input: { paymentIntentId: string }): Promise<PaymentCheckout> {
     return { provider: "local_test", providerReference: `local-payment-${input.paymentIntentId}`, checkoutUrl: null };
   }
@@ -58,6 +61,8 @@ class LocalDevelopmentPaymentProvider implements PaymentProvider {
 }
 
 class WebhookCheckoutProvider implements PaymentProvider {
+  readonly name = "webhook";
+
   constructor(private readonly url: string, private readonly refundUrl: string, private readonly secret: string) {}
 
   async createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string; successUrl?: string; cancelUrl?: string }): Promise<PaymentCheckout> {
