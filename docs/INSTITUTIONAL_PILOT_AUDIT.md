@@ -35,6 +35,8 @@ The current repository already includes:
 - Staff LiveKit observer tokens now require both a joinable session and an `IN_PROGRESS` appointment, matching the visitor and kiosk lifecycle boundary.
 - LiveKit webhook activation now requires a joined visitor or assigned facility/kiosk participant; staff observers and room-level telemetry cannot start a credit-consuming session or set its actual start time.
 - LiveKit participant disconnects now move visitor/kiosk sessions into `RECONNECTING` for recovery, while observer disconnects remain telemetry-only.
+- LiveKit participant joins, disconnects, and reconnect attempts now create immutable facility audit events without notification fan-out, preserving a provider-level connection history.
+- Staff-initiated and scheduled LiveKit room-close failures now create a deduplicated `LIVE_SESSION_PROVIDER_CLOSE_FAILED` audit/outbox record. Provider-client-unavailable failures are recorded for every affected expired session, so no timeout failure disappears into logs only.
 - No-show reconciliation now treats presence as valid only when its persisted heartbeat timestamp is fresh, preventing disconnected clients from blocking terminal appointment cleanup.
 - Scheduled cleanup now normalizes ISO-8601 application timestamps with SQLite `julianday()` before comparing them with the database clock, covering no-shows, abandoned payments, stale provider claims, evidence retention, expired sessions, and authentication artifacts.
 - Payment-provider and notification-outbox retry claims now also normalize `available_at` through `julianday()`; ISO-8601 backoff timestamps can no longer be stranded by lexicographic comparison with SQLite's space-separated `CURRENT_TIMESTAMP`.
@@ -56,7 +58,7 @@ The current repository already includes:
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 301 server tests and 14 browser tests passing.
+- Automated server tests and browser smoke tests. Current validation baseline is 302 server tests and 15 browser tests listed/passing in the local development suite.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -99,6 +101,7 @@ The current repository already includes:
 - Control appointments and facility state now refresh from protected APIs every 15 seconds with no-store caching and explicit unavailable-state handling, so operational screens do not remain silently stale after mount.
 - The Control top-bar notification action now reads facility-scoped persisted security events and distinguishes loading, empty, and unavailable states instead of claiming there are no notifications without an API read.
 - Live-session staff observation and provider webhook behavior need a real deployment test. Recording remains intentionally disabled and must not be silently enabled.
+- Provider-close failure records are now visible through the facility audit feed and notification operations path; staging must still prove the actual provider outage, retry, visitor delivery, and staff recovery experience.
 - Live-session join validation now rejects participant tokens before the authorized start window, with a one-minute clock-skew grace, in addition to the existing expiry and recording-policy checks.
 - Administration now exposes the protected deployment-readiness API, including database, schema, provider, storage, visitor-auth, staff-identity and notification checks without returning secret values.
 - Audit export manifests can now be retrieved through an authorized, facility-scoped verification endpoint. Break-glass requests and supervisor decisions are now persisted with time-bound grants, step-up checks, optimistic concurrency, audit events, and outbox events; staging access-review and policy validation remain release gates.
@@ -145,6 +148,8 @@ Visitor signs in
 - Failed provider, database, kiosk and notification operations remain visible and retryable; no UI substitutes invented success data.
 
 ## Completion plan
+
+The executable staging gate for this plan is [STAGING_ACCEPTANCE_RUNBOOK.md](./STAGING_ACCEPTANCE_RUNBOOK.md). It is the required evidence checklist for provider configuration, full-journey validation, failure rehearsals, rollback, retention, and go/no-go approval.
 
 ### Phase 0 — Baseline and environment contract
 
