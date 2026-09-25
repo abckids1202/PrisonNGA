@@ -26,6 +26,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
     const now = new Date().toISOString();
     const prisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at));
     const nextState = prisonerPresent ? "BOTH_PRESENT" : "VISITOR_WAITING";
+    if (current.visitor_presence === "present" && current.state !== "NOT_ARRIVED") {
+      const refreshed = await d1.prepare(`UPDATE waiting_room_sessions
+        SET visitor_presence_at = ?, last_checked_at = ?, updated_at = ?
+        WHERE appointment_id = ? AND facility_id = ? AND version = ? AND visitor_presence = 'present'`)
+        .bind(now, now, now, appointmentId, current.facility_id, Number(current.waiting_version)).run();
+      if (!refreshed.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+      return securityResponse({ presence: "present", state: current.state, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : "waiting", prisonerPresenceAt: prisonerPresent ? current.prisoner_presence_at || null : null, version: Number(current.waiting_version), idempotent: true }, 200, context.requestId);
+    }
     const nextVersion = Number(current.waiting_version) + 1;
     const result = await d1.batch([
       d1.prepare(`UPDATE waiting_room_sessions SET state = CASE WHEN state IN ('NOT_ARRIVED', 'VISITOR_WAITING', 'PRISONER_WAITING', 'BOTH_PRESENT') THEN ? ELSE state END,
