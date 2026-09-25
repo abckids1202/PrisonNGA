@@ -168,7 +168,7 @@ export default function ControlApp() {
   const [mode, setMode] = useState<Mode>("operations");
   const [page, setPage] = useState("Command Center");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [facilityState, setFacilityState] = useState("NORMAL_OPERATIONS");
+  const [facilityState, setFacilityState] = useState("UNKNOWN");
   const [facilityVersion, setFacilityVersion] = useState(1);
   const [facilityName, setFacilityName] = useState("Facility workspace");
   const [facilityTimezone, setFacilityTimezone] = useState("Asia/Jakarta");
@@ -295,6 +295,10 @@ export default function ControlApp() {
   }
 
   async function changeFacilityState(nextState: string, reason?: string) {
+    if (facilityState === "UNKNOWN" || backendStatus !== "connected") {
+      notify("The facility state cannot change until the protected facility record is available.", "error");
+      return;
+    }
     const previousState = facilityState;
     try {
       const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-state:${nextState}:${facilityVersion}:${crypto.randomUUID()}` }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: reason || (nextState === "LOCKDOWN" ? "Staff supervisor declared a controlled facility lockdown." : "Staff supervisor restored normal operations.") }) });

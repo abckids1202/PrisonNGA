@@ -10,4 +10,7 @@ test("Control workspace refreshes appointments and facility state from protected
   assert.match(source, /setInterval\(\(\) => \{ void loadAppointments\(\); \}, 15000\)/);
   assert.match(source, /setInterval\(\(\) => \{ void loadFacilityState\(\); \}, 15000\)/);
   assert.match(source, /setBackendStatus\("unavailable"\)/);
+  assert.match(source, /useState\("UNKNOWN"\)/);
+  assert.match(source, /facilityState === "UNKNOWN" \|\| backendStatus !== "connected"/);
+  assert.match(source, /The facility state cannot change until the protected facility record is available/);
 });
