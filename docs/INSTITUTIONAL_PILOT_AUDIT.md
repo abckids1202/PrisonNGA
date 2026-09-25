@@ -98,6 +98,7 @@ The current repository already includes:
 - The scheduled worker now expires only abandoned pre-checkout payment intents after a bounded window with optimistic concurrency, audit, outbox notification and no effect on provider-created checkouts.
 - Notification records and outbox processing exist, but real email/SMS delivery adapters, templates, delivery receipts, retry operations and dead-letter replay need staging proof.
 - Visitor session controls still need production delivery, recovery and device-management validation beyond the development OTP path; suspicious-login auditing and visitor notification behavior are implemented but still require real delivery-provider staging proof.
+- Logout revocation is retry-safe: the session owner is resolved before revocation, and repeated requests for an already-revoked token do not emit duplicate `LOGOUT_REQUESTED` security events.
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
 - Staff cancellation from Waiting Room now atomically releases any active Visit Credit reservation and all held/reserved/active room and kiosk reservations, with idempotent guards and audit/outbox evidence.
