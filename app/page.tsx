@@ -1000,7 +1000,7 @@ function ResourcesPage({ initialResourceId, onNotify, onReassign }: { initialRes
   const [maintenanceConfirm, setMaintenanceConfirm] = useState(false);
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const response = await fetch("/api/control/resources", { headers: { accept: "application/json" }, credentials: "include" });
     if (!response.ok) throw new Error("Resource records could not be loaded from the staff API.");
     const body = await response.json() as { resources?: ResourceApiRow[] };
@@ -1011,8 +1011,8 @@ function ResourcesPage({ initialResourceId, onNotify, onReassign }: { initialRes
       return current && available.some((resource) => resource.id === current) ? current : available[0]?.id || null;
     });
     setLoading(false);
-  }
-  useEffect(() => { const timer = window.setTimeout(() => { refresh().catch(() => setLoading(false)); }, 0); return () => window.clearTimeout(timer); }, [initialResourceId]);
+  }, [initialResourceId]);
+  useEffect(() => { const timer = window.setTimeout(() => { refresh().catch(() => setLoading(false)); }, 0); return () => window.clearTimeout(timer); }, [refresh]);
   const selected = resources.find((resource) => resource.id === selectedId) || resources[0];
   const rooms = resources.filter((resource) => resource.resource_type === "ROOM");
   const usableRooms = rooms.filter((resource) => resource.status !== "MAINTENANCE" && resource.status !== "OFFLINE");

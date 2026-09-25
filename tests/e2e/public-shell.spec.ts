@@ -11,6 +11,29 @@ test("control workspace renders its operational shell", async ({ page }) => {
   await expect(page.getByText("DEVELOPMENT ENVIRONMENT", { exact: true })).toBeVisible();
 });
 
+test("management facility resources open the selected operational record", async ({ browser }) => {
+  const staff = await browser.newContext({ extraHTTPHeaders: {
+    "oai-authenticated-user-id": "staff-local-supervisor",
+    "oai-authenticated-user-email": "staff.local@example.test",
+  } });
+  try {
+    const page = await staff.newPage();
+    await page.goto("/");
+    await expect(page.getByText("DEVELOPMENT ENVIRONMENT", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Management", exact: true }).click();
+    await page.locator("nav.sv3-nav").getByRole("button", { name: /Facility/ }).click();
+    await page.locator("nav.sv3-facility-nav").getByRole("button", { name: /Rooms/ }).click();
+    const resourceLink = page.locator('button[aria-label^="Open "][aria-label$=" in Resources"]').first();
+    await expect(resourceLink).toBeVisible();
+    const resourceName = (await resourceLink.locator("strong").innerText()).trim();
+    await resourceLink.click();
+    await expect(page.getByRole("heading", { name: "Resources", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: resourceName, exact: true })).toBeVisible();
+  } finally {
+    await staff.close();
+  }
+});
+
 test("staff can create a persisted incident through the protected operational boundary", async ({ browser }) => {
   const staff = await browser.newContext({ extraHTTPHeaders: {
     "oai-authenticated-user-id": "staff-local-supervisor",
