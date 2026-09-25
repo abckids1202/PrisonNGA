@@ -17,4 +17,5 @@ test("appointment types are facility-scoped, seeded, exposed, and enforced", () 
   assert.match(visitorTypes, /requireVisitorIdentity/);
   assert.match(controlTypes, /requirePermission\("facility\.read"\)/);
   assert.match(page, /tab === "Appointment Types" \? <AppointmentTypesPanel \/>/);
+  assert.match(page, /\["Visit Policies", "Appointment Types", "Availability Rules", "Operating Hours", "Closures"\]\.includes\(tab\)/);
 });
