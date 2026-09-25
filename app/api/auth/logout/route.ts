@@ -17,19 +17,19 @@ export async function POST() {
     if (identity) [user] = await db.select({ id: users.id }).from(users).where(eq(users.externalId, identity.externalId)).limit(1);
     if (sessionToken) {
       const tokenHash = await hashIdentifier(sessionToken, salt);
-      await db.update(authSessions).set({ revokedAt: new Date().toISOString() }).where(eq(authSessions.tokenHash, tokenHash));
       if (!user) {
         const [sessionUser] = await db.select({ id: users.id }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).where(eq(authSessions.tokenHash, tokenHash)).limit(1);
         user = sessionUser;
       }
+      await db.update(authSessions).set({ revokedAt: new Date().toISOString() }).where(eq(authSessions.tokenHash, tokenHash));
     }
     if (staffSessionToken) {
       const tokenHash = await hashIdentifier(staffSessionToken, salt);
-      await db.update(authSessions).set({ revokedAt: new Date().toISOString() }).where(eq(authSessions.tokenHash, tokenHash));
       if (!user) {
         const [sessionUser] = await db.select({ id: users.id }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).where(eq(authSessions.tokenHash, tokenHash)).limit(1);
         user = sessionUser;
       }
+      await db.update(authSessions).set({ revokedAt: new Date().toISOString() }).where(eq(authSessions.tokenHash, tokenHash));
     }
     if (user) {
       await db.insert(securityEvents).values({ id: crypto.randomUUID(), userId: user.id, eventType: "LOGOUT_REQUESTED", severity: "INFO", requestId: context.requestId, ipHash: context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null, userAgentHash: context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, metadata: { provider: "workspace-auth" } });
