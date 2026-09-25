@@ -11,4 +11,10 @@ test("outbox notification copy explains critical payment and visit outcomes", as
   assert.match(source, /Refund completed/);
   assert.match(source, /VISIT_COMPLETED/);
   assert.match(source, /SESSION_TERMINATED/);
+  assert.match(source, /Payment confirmation is pending/);
+  assert.match(source, /VERIFICATION_MORE_INFO/);
+  assert.match(source, /APPOINTMENT_RESCHEDULED/);
+  assert.match(source, /EVIDENCE_UPLOADED/);
+  assert.match(source, /eventType\.startsWith\("WAITING_ROOM_"\)/);
+  assert.match(source, /SESSION_EXPIRED/);
 });

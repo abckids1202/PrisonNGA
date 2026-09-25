@@ -398,8 +398,13 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
 function notificationCopy(eventType: string, payload: Record<string, unknown> = {}): { title: string; body: string } {
   if (eventType === "APPOINTMENT_APPROVE") return { title: "Your visit was approved", body: "Your appointment is ready. Open Visit Details to prepare." };
   if (eventType === "APPOINTMENT_REJECT") return { title: "Your visit needs attention", body: "Your appointment request was not approved. Open Visit Details to see the reason." };
+  if (eventType === "APPOINTMENT_RESCHEDULED") return { title: "Your visit time changed", body: "Your new time is waiting for facility review. Open Visit Details to see the updated request." };
+  if (eventType === "APPOINTMENT_CANCELLED_BY_VISITOR") return { title: "Your visit was cancelled", body: "The appointment was cancelled and any eligible reserved credit is being returned according to facility policy." };
   if (eventType === "VERIFICATION_APPROVED") return { title: "Connection approved", body: "You can now request a visit with this connection." };
   if (eventType === "VERIFICATION_REJECTED") return { title: "Verification needs attention", body: "Your relationship verification needs an update before you can request a visit." };
+  if (eventType === "VERIFICATION_MORE_INFO") return { title: "More information is needed", body: "The facility team needs more information for this connection. Open Connections to review the request." };
+  if (eventType === "RELATIONSHIP_SUBMITTED") return { title: "Connection request received", body: "Your relationship request is with the facility team for review." };
+  if (eventType === "EVIDENCE_UPLOADED") return { title: "Document received", body: "Your supporting document was received and is being checked before review." };
   if (eventType === "APPOINTMENT_SUBMITTED") return { title: "Visit request received", body: "The facility team has your request and will review it shortly." };
   if (eventType === "PAYMENT_CHECKOUT_CREATED") return { title: "Checkout is ready", body: "Complete your payment with the secure payment service. Credits are added after confirmation." };
   if (eventType === "PAYMENT_CHECKOUT_FAILED") return { title: "Checkout could not start", body: "Your payment was not charged. You can try starting checkout again from Visit Credits." };
@@ -407,8 +412,11 @@ function notificationCopy(eventType: string, payload: Record<string, unknown> = 
   if (eventType === "PAYMENT_REFUND_REQUESTED" || eventType === "PAYMENT_REFUND_PROVIDER_ACCEPTED") return { title: "Refund requested", body: "Your refund request is being processed. We will update your Visit Credit balance when the payment service confirms it." };
   if (eventType === "PAYMENT_STATUS_UPDATED" && payload.status === "REFUNDED") return { title: "Refund completed", body: "Your refund was confirmed and your Visit Credit balance has been updated." };
   if (eventType === "PAYMENT_STATUS_UPDATED" && payload.status === "DISPUTED") return { title: "Payment under review", body: "Your payment is under provider review. The facility team will update you when the review is resolved." };
+  if (eventType === "PAYMENT_STATUS_UPDATED" && ["PENDING", "PROCESSING"].includes(String(payload.status || "").toUpperCase())) return { title: "Payment confirmation is pending", body: "Your payment provider has not confirmed the purchase yet. Your Visit Credit balance will update after confirmation." };
   if (eventType === "PAYMENT_STATUS_UPDATED") return { title: "Payment status updated", body: "Your Visit Credit payment status changed. Open Visit Credits to see the confirmed balance or next step." };
+  if (eventType === "SESSION_EXPIRED" || eventType === "SESSION_ABANDONED") return { title: "Your visit could not continue", body: "The live visit timed out or lost its connection. Open Visit Details to see the final credit outcome." };
   if (eventType === "SESSION_TERMINATED" || eventType === "VISIT_TERMINATED") return { title: "Visit ended", body: "Your visit ended and the final credit outcome is available in Visit Details." };
+  if (eventType.startsWith("WAITING_ROOM_")) return { title: "Your visit is being prepared", body: "The facility team updated your visit readiness. Open Visit Details for the latest next step." };
   if (eventType === "VISIT_COMPLETED") return { title: "Visit completed", body: "Your visit is complete. Open Visit Details to review the outcome and credit receipt." };
   return { title: "SecureVisit update", body: "There is a new update in your SecureVisit account." };
 }
