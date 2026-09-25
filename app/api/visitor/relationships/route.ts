@@ -10,7 +10,7 @@ export async function GET() {
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT vr.id, vr.facility_id, f.name AS facility_name, vr.prisoner_id, p.prisoner_number, p.display_name AS prisoner_name, vr.relationship_type, vr.status, vr.review_reason, vr.version, vr.created_at, vr.updated_at, vc.id AS verification_case_id, vc.status AS verification_status,
         (SELECT COUNT(*) FROM evidence_documents ed WHERE ed.verification_case_id = vc.id AND ed.facility_id = vc.facility_id AND ed.status = 'AVAILABLE') AS evidence_count
-      FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id INNER JOIN facilities f ON f.id = vr.facility_id LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id
+      FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id AND p.facility_id = vr.facility_id INNER JOIN facilities f ON f.id = vr.facility_id LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id AND vc.facility_id = vr.facility_id
       WHERE vr.visitor_user_id = ? ORDER BY vr.created_at DESC`).bind(visitor.userId).all();
     const relationships = await Promise.all(result.results.map(async (relationship) => {
       const history = await d1.prepare(`SELECT entity_type, action_type, reason, created_at
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     await enforceRateLimit(d1, { key: `visitor-relationship-submit:${visitor.userId}`, limit: 10, windowSeconds: 24 * 60 * 60 });
     const prisoner = await d1.prepare("SELECT id, facility_id, status, visitation_status FROM prisoners WHERE id = ? AND facility_id = ?").bind(prisonerId, facilityId).first<{ id: string; facility_id: string; status: string; visitation_status: string }>();
     if (!prisoner || prisoner.status !== "ACTIVE" || prisoner.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 404);
-    const existing = await d1.prepare(`SELECT vr.id, vr.status, vc.id AS verification_id FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id WHERE vr.visitor_user_id = ? AND vr.prisoner_id = ?`).bind(visitor.userId, prisonerId).first<{ id: string; status: string; verification_id: string | null }>();
+    const existing = await d1.prepare(`SELECT vr.id, vr.status, vc.id AS verification_id FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id AND vc.facility_id = vr.facility_id WHERE vr.visitor_user_id = ? AND vr.facility_id = ? AND vr.prisoner_id = ?`).bind(visitor.userId, facilityId, prisonerId).first<{ id: string; status: string; verification_id: string | null }>();
     if (existing) return securityResponse({ relationshipId: existing.id, verificationId: existing.verification_id, status: existing.status, idempotent: true }, 200, context.requestId);
     const relationshipId = crypto.randomUUID();
     const verificationId = crypto.randomUUID();
@@ -59,9 +59,9 @@ export async function POST(request: Request) {
     }));
     if (!created[0]?.meta.changes) {
       const racedRequest = await d1.prepare(`SELECT vr.id, vr.facility_id, vr.status, vc.id AS verification_id
-        FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id
-        WHERE vr.visitor_user_id = ? AND vr.prisoner_id = ?`)
-        .bind(visitor.userId, prisonerId).first<{ id: string; facility_id: string; status: string; verification_id: string | null }>();
+        FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id AND vc.facility_id = vr.facility_id
+        WHERE vr.visitor_user_id = ? AND vr.facility_id = ? AND vr.prisoner_id = ?`)
+        .bind(visitor.userId, facilityId, prisonerId).first<{ id: string; facility_id: string; status: string; verification_id: string | null }>();
       if (racedRequest) {
         return securityResponse({ relationshipId: racedRequest.id, verificationId: racedRequest.verification_id, status: racedRequest.status, idempotent: true }, 200, context.requestId);
       }
