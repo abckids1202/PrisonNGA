@@ -83,6 +83,7 @@ type AuditEvent = {
   correlationId: string;
   createdAt: string;
 };
+type SecurityNotification = { id: string; eventType: string; severity: string; createdAt: string; requestId?: string | null };
 type StaffShellIdentity = { displayName?: string; userType?: string; scope?: { facilityName?: string; jobTitle?: string } | null };
 type CommandWaitingVisit = { id: string; visitor_name?: string | null; prisoner_name?: string | null; state?: string | null; readiness?: { state?: string | null } };
 type CommandLiveSession = { id: string; appointment_id: string; status: string; visitor_name?: string | null; prisoner_name?: string | null; room_name?: string | null; kiosk_name?: string | null; participants?: Array<{ participant_role?: string; status?: string }> };
@@ -180,6 +181,10 @@ export default function ControlApp() {
   const [popover, setPopover] = useState<PopoverKind>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
+  const [securityNotifications, setSecurityNotifications] = useState<SecurityNotification[]>([]);
+  const [notificationLoading, setNotificationLoading] = useState(false);
+  const [notificationError, setNotificationError] = useState(false);
   const [simulationTick, setSimulationTick] = useState(0);
   const [staffIdentity, setStaffIdentity] = useState<StaffShellIdentity | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -267,6 +272,25 @@ export default function ControlApp() {
     const id = Date.now();
     setNotices((current) => [...current.slice(-2), { id, message, tone }]);
     window.setTimeout(() => setNotices((current) => current.filter((notice) => notice.id !== id)), 4200);
+  }
+
+  async function openNotifications() {
+    const nextOpen = !notificationPanelOpen;
+    setNotificationPanelOpen(nextOpen);
+    if (!nextOpen) return;
+    setNotificationLoading(true);
+    setNotificationError(false);
+    try {
+      const response = await fetch("/api/control/security-events", { credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
+      if (!response.ok) throw new Error("SECURITY_NOTIFICATIONS_UNAVAILABLE");
+      const body = await response.json() as { events?: SecurityNotification[] };
+      setSecurityNotifications(Array.isArray(body.events) ? body.events.slice(0, 8) : []);
+    } catch {
+      setSecurityNotifications([]);
+      setNotificationError(true);
+    } finally {
+      setNotificationLoading(false);
+    }
   }
 
   async function changeFacilityState(nextState: string, reason?: string) {
@@ -395,8 +419,8 @@ export default function ControlApp() {
       <div className="sv3-sidebar-foot"><div className="sv3-connection"><span className={backendStatus === "connected" ? "online" : "demo"} />{backendStatus === "connected" ? "Protected API connected" : "Protected API unavailable"}</div><button className="sv3-user"><Avatar initials={(staffIdentity?.displayName || "Staff").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()} tone="orange" /><span><strong>{staffIdentity?.displayName || "Staff session"}</strong><small>{staffIdentity?.scope?.jobTitle || "Facility operator"}</small></span><span>···</span></button></div>
     </aside>
     <main className="sv3-main">
-      <div className="sv3-topbar"><div className="sv3-breadcrumb"><span>SecureVisit Control</span><i>/</i><strong>{mode === "operations" ? "Operations" : "Management"}</strong><i>/</i><strong>{page}</strong></div><div className="sv3-top-actions"><button type="button" className="sv3-demo-badge" aria-label={`Runtime environment: ${runtimeEnvironment}`} onClick={() => runtimeEnvironment === "development" && setPopover(popover === "demo" ? null : "demo")}><i />{runtimeEnvironment === "unknown" ? "CHECKING ENVIRONMENT" : `${runtimeEnvironment.toUpperCase()} ENVIRONMENT`}</button><span className="sv3-clock" suppressHydrationWarning>{new Intl.DateTimeFormat("en-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(now)} WIB</span><button className="sv3-icon-button" aria-label="Open command palette" onClick={() => setCommandOpen(true)}>⌕</button><button className="sv3-visitor-link" aria-label="Open Visitor Portal" onClick={() => router.push("/visitor")}><span>↗</span> Visitor Portal</button><button className="sv3-icon-button" aria-label="Notifications" onClick={() => notify("No new security notifications.")}>◔</button></div></div>
-      <div className="sv3-page-scroll">{pageContent}</div>
+      <div className="sv3-topbar"><div className="sv3-breadcrumb"><span>SecureVisit Control</span><i>/</i><strong>{mode === "operations" ? "Operations" : "Management"}</strong><i>/</i><strong>{page}</strong></div><div className="sv3-top-actions"><button type="button" className="sv3-demo-badge" aria-label={`Runtime environment: ${runtimeEnvironment}`} onClick={() => runtimeEnvironment === "development" && setPopover(popover === "demo" ? null : "demo")}><i />{runtimeEnvironment === "unknown" ? "CHECKING ENVIRONMENT" : `${runtimeEnvironment.toUpperCase()} ENVIRONMENT`}</button><span className="sv3-clock" suppressHydrationWarning>{new Intl.DateTimeFormat("en-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(now)} WIB</span><button className="sv3-icon-button" aria-label="Open command palette" onClick={() => setCommandOpen(true)}>⌕</button><button className="sv3-visitor-link" aria-label="Open Visitor Portal" onClick={() => router.push("/visitor")}><span>↗</span> Visitor Portal</button><button className={`sv3-icon-button ${notificationPanelOpen ? "active" : ""}`} aria-label="Notifications" aria-expanded={notificationPanelOpen} onClick={() => void openNotifications()}>◔</button></div></div>
+      <div className="sv3-page-scroll">{pageContent}</div>{notificationPanelOpen ? <div className="sv3-top-popover sv3-notification-popover" role="dialog" aria-label="Security notifications"><header><strong>Security notifications</strong><button type="button" aria-label="Close notifications" onClick={() => setNotificationPanelOpen(false)}>×</button></header>{notificationLoading ? <p>Loading facility security events…</p> : notificationError ? <p role="alert">Security events are unavailable. No empty notification state is being inferred.</p> : securityNotifications.length ? securityNotifications.map((event) => <button type="button" className="sv3-notification-row" key={event.id} onClick={() => { setNotificationPanelOpen(false); navigate("Compliance", "management"); }}><span className={event.severity === "CRITICAL" ? "critical" : event.severity === "WARNING" ? "warning" : ""}>{event.severity === "CRITICAL" ? "!" : event.severity === "WARNING" ? "!" : "✓"}</span><strong>{event.eventType.replaceAll("_", " ")}</strong><small>{new Date(event.createdAt).toLocaleString("en-ID", { timeZone: facilityTimezone })}</small></button>) : <p>No security events recorded for this facility.</p>}</div> : null}
     </main>
     {runtimeEnvironment === "development" && popover === "demo" ? <div className="sv3-top-popover"><span className="sv3-eyebrow">Development environment</span><strong>Local simulation controls are enabled</strong><span>Scenario · Normal day</span><span>Simulation · {simulationPaused ? "Paused" : "Running"}</span><Button variant="quiet" onClick={() => { setPopover(null); notify("Development simulation reset. No facility record changed."); }}>Reset simulation</Button></div> : null}
     <div className="sv3-toasts" aria-live="polite">{notices.map((notice) => <div key={notice.id} className={`sv3-toast sv3-toast-${notice.tone || "info"}`} role="status"><i>{notice.tone === "error" ? "×" : notice.tone === "warning" ? "!" : notice.tone === "success" ? "✓" : "•"}</i><span>{notice.message}</span><button type="button" aria-label="Dismiss notification" onClick={() => setNotices((current) => current.filter((item) => item.id !== notice.id))}>×</button></div>)}</div>
