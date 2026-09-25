@@ -991,6 +991,8 @@ function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, t
   const [reassignTargetId, setReassignTargetId] = useState("");
   const [reassignReason, setReassignReason] = useState("Resource failure requires a controlled reassignment.");
   const [reassigning, setReassigning] = useState(false);
+  const [maintenanceConfirm, setMaintenanceConfirm] = useState(false);
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   async function refresh() {
     const response = await fetch("/api/control/resources", { headers: { accept: "application/json" }, credentials: "include" });
@@ -1038,13 +1040,36 @@ function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, t
     } catch (error) { onNotify(error instanceof Error ? error.message : "Heartbeat failed.", "error"); }
   }
 
+  async function changeMaintenance(resource: ResourceApiRow) {
+    const nextStatus = resource.status === "MAINTENANCE" ? (resource.resource_type === "DEVICE" ? "ONLINE" : "AVAILABLE") : "MAINTENANCE";
+    setMaintenanceBusy(true);
+    try {
+      const response = await fetch("/api/control/resources", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `resource-status-${resource.id}-${resource.version}-${nextStatus}-${crypto.randomUUID()}` },
+        credentials: "include",
+        body: JSON.stringify({ resourceId: resource.id, command: "set_status", status: nextStatus, expectedVersion: resource.version, reason: nextStatus === "MAINTENANCE" ? "Staff requested controlled maintenance for this facility resource." : "Staff completed maintenance and returned this resource to service." }),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) {
+        if (body.error === "RESOURCE_HAS_ACTIVE_APPOINTMENT") throw new Error("Reassign the active appointment before placing this resource into maintenance.");
+        if (body.error === "STALE_RESOURCE") throw new Error("This resource changed while you were reviewing it. Refresh and try again.");
+        throw new Error(body.error || "The resource status could not be changed.");
+      }
+      setMaintenanceConfirm(false);
+      await refresh();
+      onNotify(`${resource.display_name} is now ${nextStatus.toLowerCase()}.`, "success");
+    } catch (error) { onNotify(error instanceof Error ? error.message : "The resource status could not be changed.", "error"); }
+    finally { setMaintenanceBusy(false); }
+  }
+
   return (
     <>
       <PageHeader
         eyebrow="Operations · Resource map"
         title="Resources"
         description="Rooms and kiosk devices are read from the facility resource catalog and current reservation records."
-        actions={<><Button onClick={() => selected ? sendHeartbeat(selected) : onNotify("No resource is selected.", "warning")}>↻ Poll selected</Button><Button variant="primary" onClick={() => onNotify("Maintenance requests require a resource record and supervisor workflow.", "info")}>+ Maintenance request</Button></>}
+        actions={<><Button onClick={() => selected ? sendHeartbeat(selected) : onNotify("No resource is selected.", "warning")}>↻ Poll selected</Button><Button variant="primary" onClick={() => selected ? setMaintenanceConfirm(true) : onNotify("No resource is selected.", "warning")}>{selected?.status === "MAINTENANCE" ? "Restore selected" : "+ Maintenance request"}</Button></>}
       />
       {loading ? <div className="sv3-empty"><span>◌</span><strong>Loading resource catalog</strong><p>Reading facility-scoped room and device state.</p></div> : !resources.length ? <EmptyState title="No resource catalog configured" body="Apply the resources migration and seed the facility room/device records before approving appointments." /> : (
         <>
@@ -1075,6 +1100,7 @@ function ResourcesPage({ onNotify, onReassign }: { onNotify: (message: string, t
                   <div><dt>Current reservation</dt><dd>{selected.active_appointment_id || "None"}</dd></div>
                   <div><dt>Version</dt><dd className="sv8-mono">{selected.version}</dd></div>
                 </dl>
+                {maintenanceConfirm ? <div className="sv3-resource-warning" role="alert"><strong>{selected.status === "MAINTENANCE" ? "Restore this resource?" : "Place this resource into maintenance?"}</strong><span>{selected.display_name}</span><small>{selected.active_appointment_id ? "An active appointment must be reassigned before maintenance can begin." : selected.status === "MAINTENANCE" ? "The resource will return to its normal available or online state." : "The resource will stop being considered available for new assignments."}</small><div><Button variant="quiet" onClick={() => setMaintenanceConfirm(false)} disabled={maintenanceBusy}>Cancel</Button><Button variant={selected.status === "MAINTENANCE" ? "primary" : "danger"} onClick={() => void changeMaintenance(selected)} disabled={maintenanceBusy || Boolean(selected.active_appointment_id && selected.status !== "MAINTENANCE")}>{maintenanceBusy ? "Saving…" : selected.status === "MAINTENANCE" ? "Restore resource" : "Confirm maintenance"}</Button></div></div> : null}
                 {selected.active_appointment_id && (selected.status === "OFFLINE" || selected.health_state === "FAILED") ? <div className="sv3-resource-warning"><strong>Assignment requires attention</strong><span>{selected.active_appointment_id}</span><small>Move this visit to a healthy {selected.resource_type === "DEVICE" ? "kiosk" : "room"} before admission.</small>{reassignmentTargets.length ? <><label>Healthy target<select value={effectiveReassignTargetId} onChange={(event) => setReassignTargetId(event.target.value)}><option value="">Choose a target</option>{reassignmentTargets.map((resource) => <option key={resource.id} value={resource.id}>{resource.display_name} · v{resource.version}</option>)}</select></label><label>Reason<textarea value={reassignReason} onChange={(event) => setReassignReason(event.target.value)} minLength={8} /></label><Button variant="primary" onClick={() => void submitReassignment()} disabled={reassigning || !effectiveReassignTargetId}>{reassigning ? "Reassigning…" : "Reassign visit"}</Button></> : <small>No healthy unreserved target is currently available.</small>}</div> : <Button onClick={() => sendHeartbeat(selected)}>Record heartbeat</Button>}
                 {selected.resource_type === "DEVICE" ? <KioskCredentialManager key={selected.id} resourceId={selected.id} resourceName={selected.display_name} resourceVersion={selected.version} active={selected.has_active_kiosk_credential === 1} lastUsedAt={selected.kiosk_credential_last_used_at} onRefresh={refresh} onNotify={onNotify} /> : null}
               </aside>

@@ -45,7 +45,9 @@ export async function POST(request: Request) {
     const reason = assertReason(body.reason);
     const d1 = await getD1();
     databaseRef = d1;
-    const current = await d1.prepare("SELECT id, display_name, status, version FROM resources WHERE id = ? AND facility_id = ?").bind(body.resourceId.trim(), authorization.facilityId).first<{ id: string; display_name: string; status: string; version: number }>();
+    const current = await d1.prepare(`SELECT r.id, r.display_name, r.status, r.version,
+      (SELECT rr.appointment_id FROM resource_reservations rr WHERE rr.resource_id = r.id AND rr.facility_id = r.facility_id AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.starts_at ASC LIMIT 1) AS active_appointment_id
+      FROM resources r WHERE r.id = ? AND r.facility_id = ?`).bind(body.resourceId.trim(), authorization.facilityId).first<{ id: string; display_name: string; status: string; version: number; active_appointment_id: string | null }>();
     if (!current) throw new SecurityError("RESOURCE_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_RESOURCE", 409);
     const now = new Date().toISOString();
@@ -187,6 +189,7 @@ export async function POST(request: Request) {
     if (typeof body.status !== "string" || !["AVAILABLE", "ONLINE", "OFFLINE", "MAINTENANCE"].includes(body.status)) throw new SecurityError("INVALID_RESOURCE_STATUS", 400);
     if (body.expectedVersion === undefined) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
     const nextStatus = body.status;
+    if (["OFFLINE", "MAINTENANCE"].includes(nextStatus) && current.active_appointment_id) throw new SecurityError("RESOURCE_HAS_ACTIVE_APPOINTMENT", 409);
     const correlationId = crypto.randomUUID();
     const resourceGuard = { sql: "EXISTS (SELECT 1 FROM resources WHERE id = ? AND facility_id = ? AND version = ? AND status = ?)", values: [current.id, authorization.facilityId, current.version + 1, nextStatus] };
     const results = await d1.batch([

@@ -9,6 +9,8 @@ test("resource status changes require optimistic concurrency and create audit/ou
   assert.match(source, /RESOURCE_STATUS_CHANGED/);
   assert.match(source, /auditAndOutboxStatements\(d1/);
   assert.match(source, /version = version \+ 1/);
+  assert.match(source, /RESOURCE_HAS_ACTIVE_APPOINTMENT/);
+  assert.match(source, /active_appointment_id/);
 });
 
 test("resource reassignment requires and replays an idempotency claim", async () => {
@@ -19,4 +21,13 @@ test("resource reassignment requires and replays an idempotency claim", async ()
   assert.match(source, /claimIdempotency\(d1/);
   assert.match(source, /completeIdempotencyStatement\(d1/);
   assert.match(source, /releaseIdempotencyClaim\(databaseRef, idempotency\)/);
+});
+
+test("resource workspace maintenance control uses the persisted status boundary", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /changeMaintenance\(resource/);
+  assert.match(source, /command: "set_status"/);
+  assert.match(source, /status: nextStatus/);
+  assert.match(source, /RESOURCE_HAS_ACTIVE_APPOINTMENT/);
+  assert.doesNotMatch(source, /Maintenance requests require a resource record and supervisor workflow/);
 });
