@@ -33,7 +33,7 @@ export async function getVisitorSession(visitId: string, allowTerminal = false):
   const record = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, p.display_name AS prisoner_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
       p.status AS prisoner_status, p.visitation_status, f.current_state AS facility_state,
       vs.status, vs.provider, vs.provider_room_name, vs.authorized_start_at, vs.authorized_end_at, vs.actual_started_at, vs.actual_ended_at, vs.termination_reason, vs.recording_policy, vs.recording_status, vs.version
-    FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
+    FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       INNER JOIN facilities f ON f.id = a.facility_id
     WHERE vs.appointment_id = ? AND a.visitor_user_id = ?`).bind(visitId, visitor.userId).first<SessionRecord>();
@@ -46,7 +46,7 @@ export async function getStaffSession(sessionId: string, facilityId: string): Pr
   const d1 = await getD1();
   const record = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, p.display_name AS prisoner_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
       vs.status, vs.provider, vs.provider_room_name, vs.authorized_start_at, vs.authorized_end_at, vs.actual_started_at, vs.actual_ended_at, vs.termination_reason, vs.recording_policy, vs.recording_status, vs.version
-    FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
+    FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
     WHERE vs.id = ? AND vs.facility_id = ?`).bind(sessionId, facilityId).first<SessionRecord>();
   if (!record) throw new SecurityError("SESSION_NOT_FOUND", 404);

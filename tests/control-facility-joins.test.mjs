@@ -29,6 +29,8 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(waitingRoom, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(controlLiveSessions, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(kioskLiveSession, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
+  const videoSession = await readFile(new URL("../lib/server/video/session.ts", import.meta.url), "utf8");
+  assert.match(videoSession, /a\.id = vs\.appointment_id AND a\.facility_id = vs\.facility_id/);
   assert.match(incidents, /reporter\.id = i\.reporter_user_id AND reporter\.user_type = 'STAFF'/);
   assert.match(incidents, /assignee\.id = i\.assigned_user_id AND assignee\.user_type = 'STAFF'/);
 });
