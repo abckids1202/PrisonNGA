@@ -25,6 +25,7 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(verification, /p\.id = vr\.prisoner_id AND p\.facility_id = vr\.facility_id/);
   assert.match(evidence, /vc\.id = ed\.verification_case_id AND vc\.facility_id = ed\.facility_id/);
   assert.match(liveKit, /a\.id = vs\.appointment_id AND a\.facility_id = vs\.facility_id/);
+  assert.match(kioskLiveSession, /a\.id = vs\.appointment_id AND a\.facility_id = vs\.facility_id/);
   assert.match(controlAppointments, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   const appointmentRoute = await readFile(new URL("../app/api/control/appointments/route.ts", import.meta.url), "utf8");
   assert.match(appointmentRoute, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
