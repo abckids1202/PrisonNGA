@@ -99,7 +99,7 @@ class ReassignmentD1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
-      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT, resource_type TEXT, display_name TEXT, status TEXT, health_state TEXT, version INTEGER, updated_at TEXT);
+      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT, resource_type TEXT, display_name TEXT, status TEXT, health_state TEXT, version INTEGER, updated_at TEXT, last_heartbeat_at TEXT);
       CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT, appointment_id TEXT, resource_type TEXT, resource_id TEXT, status TEXT, starts_at TEXT, ends_at TEXT, created_at TEXT);
       CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT, assigned_room_id TEXT, assigned_kiosk_id TEXT, version INTEGER, updated_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
@@ -120,8 +120,8 @@ class ReassignmentD1 {
 
 function seedReassignment(d1, withCollision = false) {
   d1.sqlite.exec(`
-    INSERT INTO resources VALUES ('source', 'facility-1', 'DEVICE', 'Kiosk 01', 'OFFLINE', 'FAILED', 1, 'before');
-    INSERT INTO resources VALUES ('target', 'facility-1', 'DEVICE', 'Kiosk 02', 'ONLINE', 'HEALTHY', 1, 'before');
+    INSERT INTO resources VALUES ('source', 'facility-1', 'DEVICE', 'Kiosk 01', 'OFFLINE', 'FAILED', 1, 'before', CURRENT_TIMESTAMP);
+    INSERT INTO resources VALUES ('target', 'facility-1', 'DEVICE', 'Kiosk 02', 'ONLINE', 'HEALTHY', 1, 'before', CURRENT_TIMESTAMP);
     INSERT INTO resource_reservations VALUES ('reservation-source', 'facility-1', 'visit-1', 'DEVICE', 'source', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'before');
     INSERT INTO waiting_room_sessions VALUES ('visit-1', 'facility-1', NULL, 'source', 4, 'before');
   `);
