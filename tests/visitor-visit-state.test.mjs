@@ -31,6 +31,12 @@ test("a terminated or failed session is never described as a completed visit", (
   assert.equal(getVisitorVisitViewState({ status: "IN_PROGRESS", session_status: "FAILED", waiting_room_state: null }), "issue");
 });
 
+test("terminal appointment state wins over stale session state", () => {
+  assert.equal(getVisitorVisitViewState({ status: "CANCELLED_BY_VISITOR", session_status: "CONNECTING", waiting_room_state: null }), "cancelled");
+  assert.equal(getVisitorVisitViewState({ status: "COMPLETED", session_status: "ACTIVE", waiting_room_state: null }), "issue");
+  assert.equal(getVisitorVisitViewState({ status: "COMPLETED", session_status: "ENDED", waiting_room_state: null }), "completed");
+});
+
 test("visitor details keeps waiting-room entry available when the prisoner arrives first", async () => {
   const { readFile } = await import("node:fs/promises");
   const source = await readFile(new URL("../app/visitor/VisitDetailsClient.tsx", import.meta.url), "utf8");
