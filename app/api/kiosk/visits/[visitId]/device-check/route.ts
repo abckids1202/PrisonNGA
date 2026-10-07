@@ -32,6 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     const current = await d1.prepare(`SELECT a.id, a.version AS appointment_version, a.status AS appointment_status, a.facility_id,
         f.current_state AS facility_state, w.version AS waiting_version, w.state, w.visitor_presence, w.prisoner_presence
       FROM appointments a
+      INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN facilities f ON f.id = a.facility_id
       INNER JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
       LEFT JOIN resource_reservations rr ON rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.resource_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')
