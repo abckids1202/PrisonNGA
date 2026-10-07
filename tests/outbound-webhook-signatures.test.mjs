@@ -57,3 +57,31 @@ test("outbound visitor, payment, and notification webhooks bind signatures to a 
     Object.assign(process.env, previous);
   }
 });
+
+test("outbound providers reject unsafe endpoint configuration before sending data", async () => {
+  const previous = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  process.env.SECUREVISIT_ENVIRONMENT = "staging";
+  process.env.VISITOR_AUTH_WEBHOOK_URL = "https://user:pass@auth.example.test/send";
+  process.env.VISITOR_AUTH_WEBHOOK_SECRET = "visitor-secret";
+  process.env.PAYMENT_PROVIDER = "webhook";
+  process.env.PAYMENT_CHECKOUT_URL = "http://payments.example.test/checkout";
+  process.env.PAYMENT_REFUND_URL = "https://payments.example.test/refund#unsafe";
+  process.env.PAYMENT_PROVIDER_SECRET = "payment-secret";
+  process.env.NOTIFICATION_WEBHOOK_URL = "https://notify.example.test/send#unsafe";
+  process.env.NOTIFICATION_WEBHOOK_SECRET = "notification-secret";
+  globalThis.fetch = async () => { calls += 1; return new Response("unexpected", { status: 500 }); };
+  try {
+    await assert.rejects(() => deliverVisitorChallenge({ channel: "EMAIL", challengeId: "challenge-unsafe", destination: "visitor@example.test", code: "123456", expiresAt: "2026-09-24T12:00:00.000Z" }), /VISITOR_AUTH_DELIVERY_NOT_CONFIGURED/);
+    assert.equal(await getPaymentProvider(), null);
+    await assert.rejects(() => deliverNotification({ notificationId: "notification-unsafe", email: "visitor@example.test", phone: null, template: "TEST", title: "Test", body: "Test", payload: {} }), /NOTIFICATION_DELIVERY_NOT_CONFIGURED/);
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previous)) delete process.env[key];
+    }
+    Object.assign(process.env, previous);
+  }
+});

@@ -1,5 +1,6 @@
 export type PaymentCheckout = { provider: string; providerReference: string; checkoutUrl: string | null };
 export type PaymentRefundRequest = { provider: string; providerReference: string };
+import { isSecureEndpoint } from "../endpoint";
 
 export type PaymentWebhook = { eventId: string; eventType: string; paymentIntentId?: string; providerReference?: string; status?: string; amountMinor?: number; currency?: string };
 
@@ -33,16 +34,7 @@ export async function getPaymentProvider(): Promise<PaymentProvider | null> {
     const refundUrl = await runtimeValue("PAYMENT_REFUND_URL");
     const secret = await runtimeValue("PAYMENT_PROVIDER_SECRET");
     const isLocalDevelopment = (await runtimeValue("SECUREVISIT_ENVIRONMENT")) === "development";
-    const validEndpoint = (candidate: string) => {
-      try {
-        const parsed = new URL(candidate);
-        const localHttp = parsed.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
-        return parsed.protocol === "https:" || (isLocalDevelopment && localHttp);
-      } catch {
-        return false;
-      }
-    };
-    if (!url || !validEndpoint(url) || !refundUrl || !validEndpoint(refundUrl) || !secret) return null;
+    if (!url || !isSecureEndpoint(url, { allowLocalHttp: isLocalDevelopment }) || !refundUrl || !isSecureEndpoint(refundUrl, { allowLocalHttp: isLocalDevelopment }) || !secret) return null;
     return new WebhookCheckoutProvider(url, refundUrl, secret);
   }
   return null;
@@ -84,7 +76,7 @@ class WebhookCheckoutProvider implements PaymentProvider {
         let parsed: URL;
         try { parsed = new URL(checkoutUrl); } catch { throw new Error("PAYMENT_CHECKOUT_INVALID_URL"); }
         const isLocalDevelopment = (await runtimeValue("SECUREVISIT_ENVIRONMENT")) === "development" && parsed.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
-        if (parsed.protocol !== "https:" && !isLocalDevelopment) throw new Error("PAYMENT_CHECKOUT_INVALID_URL");
+        if (!isSecureEndpoint(checkoutUrl, { allowLocalHttp: isLocalDevelopment })) throw new Error("PAYMENT_CHECKOUT_INVALID_URL");
       }
       return { provider: "webhook", providerReference: result.providerReference, checkoutUrl };
     } finally {

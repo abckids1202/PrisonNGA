@@ -1,4 +1,5 @@
 import { getRuntimeValue } from "./security";
+import { isSecureHttpsEndpoint } from "./endpoint";
 
 export type EvidenceScanVerdict = "CLEAN" | "INFECTED";
 
@@ -34,7 +35,7 @@ export async function scanEvidence(input: EvidenceScanInput): Promise<EvidenceSc
   if (provider !== "webhook") throw new Error("EVIDENCE_SCAN_PROVIDER_UNSUPPORTED");
   const url = (await getRuntimeValue("EVIDENCE_SCAN_WEBHOOK_URL")) || "";
   const secret = (await getRuntimeValue("EVIDENCE_SCAN_WEBHOOK_SECRET")) || "";
-  if (!/^https:\/\//i.test(url) || !secret) throw new Error("EVIDENCE_SCAN_NOT_CONFIGURED");
+  if (!isSecureHttpsEndpoint(url) || !secret) throw new Error("EVIDENCE_SCAN_NOT_CONFIGURED");
 
   const payload = JSON.stringify({
     type: "SECUREVISIT_EVIDENCE_SCAN",

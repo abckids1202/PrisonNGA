@@ -1,4 +1,5 @@
 import { getRuntimeValue } from "../security";
+import { isSecureHttpsEndpoint } from "../endpoint";
 
 export async function getNotificationDelivery(): Promise<"in_app" | "webhook"> {
   return (await getRuntimeValue("NOTIFICATION_DELIVERY") || "in_app").toLowerCase() === "webhook" ? "webhook" : "in_app";
@@ -7,7 +8,7 @@ export async function getNotificationDelivery(): Promise<"in_app" | "webhook"> {
 export async function deliverNotification(input: { notificationId: string; email: string | null; phone: string | null; template: string; title: string; body: string; payload: Record<string, unknown> }): Promise<void> {
   const url = await getRuntimeValue("NOTIFICATION_WEBHOOK_URL");
   const secret = await getRuntimeValue("NOTIFICATION_WEBHOOK_SECRET");
-  if (!url || !/^https:\/\//i.test(url) || !secret) throw new Error("NOTIFICATION_DELIVERY_NOT_CONFIGURED");
+  if (!url || !isSecureHttpsEndpoint(url) || !secret) throw new Error("NOTIFICATION_DELIVERY_NOT_CONFIGURED");
   const channel = input.email ? "EMAIL" : input.phone ? "SMS" : null;
   const destination = input.email || input.phone;
   if (!channel || !destination) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");

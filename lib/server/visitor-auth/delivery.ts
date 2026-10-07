@@ -1,9 +1,10 @@
 import { getRuntimeValue } from "../security";
+import { isSecureHttpsEndpoint } from "../endpoint";
 
 export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS"; challengeId: string; destination: string; code: string; expiresAt: string }): Promise<void> {
   const url = await getRuntimeValue("VISITOR_AUTH_WEBHOOK_URL");
   const secret = await getRuntimeValue("VISITOR_AUTH_WEBHOOK_SECRET");
-  if (!url || !/^https:\/\//i.test(url) || !secret) throw new Error("VISITOR_AUTH_DELIVERY_NOT_CONFIGURED");
+  if (!url || !isSecureHttpsEndpoint(url) || !secret) throw new Error("VISITOR_AUTH_DELIVERY_NOT_CONFIGURED");
   const payload = JSON.stringify({ type: "VISITOR_AUTH_CODE", channel: input.channel, challengeId: input.challengeId, destination: input.destination, code: input.code, expiresAt: input.expiresAt });
   const timestamp = String(Math.floor(Date.now() / 1000));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);

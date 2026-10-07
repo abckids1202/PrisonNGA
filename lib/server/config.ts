@@ -1,4 +1,5 @@
 export type RuntimeConfig = Record<string, unknown>;
+import { isSecureHttpsEndpoint } from "./endpoint";
 
 export type EnvironmentCheck = {
   environment: "development" | "staging" | "production" | "invalid";
@@ -11,15 +12,6 @@ function validLiveKitUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return (url.protocol === "wss:" || url.protocol === "https:") && Boolean(url.hostname) && !url.username && !url.password;
-  } catch {
-    return false;
-  }
-}
-
-function validHttpsEndpoint(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password && !url.hash;
   } catch {
     return false;
   }
@@ -52,7 +44,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   const visitorDelivery = value(env, "VISITOR_AUTH_DELIVERY");
   if (visitorDelivery !== "webhook") missing.push("VISITOR_AUTH_DELIVERY=webhook");
   if (visitorDelivery === "webhook") {
-    if (!validHttpsEndpoint(value(env, "VISITOR_AUTH_WEBHOOK_URL"))) missing.push("VISITOR_AUTH_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "VISITOR_AUTH_WEBHOOK_URL"))) missing.push("VISITOR_AUTH_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
     if (!value(env, "VISITOR_AUTH_WEBHOOK_SECRET")) missing.push("VISITOR_AUTH_WEBHOOK_SECRET");
   }
   if (value(env, "VIDEO_PROVIDER") !== "livekit") missing.push("VIDEO_PROVIDER=livekit");
@@ -63,36 +55,36 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   const evidenceScanProvider = value(env, "EVIDENCE_SCAN_PROVIDER");
   if (evidenceScanProvider !== "webhook") missing.push("EVIDENCE_SCAN_PROVIDER=webhook");
   if (evidenceScanProvider === "webhook") {
-    if (!validHttpsEndpoint(value(env, "EVIDENCE_SCAN_WEBHOOK_URL"))) missing.push("EVIDENCE_SCAN_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "EVIDENCE_SCAN_WEBHOOK_URL"))) missing.push("EVIDENCE_SCAN_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
     if (!value(env, "EVIDENCE_SCAN_WEBHOOK_SECRET")) missing.push("EVIDENCE_SCAN_WEBHOOK_SECRET");
   }
   if (value(env, "PAYMENT_PROVIDER") !== "webhook") missing.push("PAYMENT_PROVIDER=webhook");
   const visitCreditPrice = Number(value(env, "VISIT_CREDIT_PRICE_MINOR"));
   if (!Number.isSafeInteger(visitCreditPrice) || visitCreditPrice <= 0) missing.push("VISIT_CREDIT_PRICE_MINOR");
-  if (!validHttpsEndpoint(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL (must be an https:// URL without credentials or fragments)");
-  if (!validHttpsEndpoint(value(env, "PAYMENT_REFUND_URL"))) missing.push("PAYMENT_REFUND_URL (must be an https:// URL without credentials or fragments)");
+  if (!isSecureHttpsEndpoint(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL (must be an https:// URL without credentials or fragments)");
+  if (!isSecureHttpsEndpoint(value(env, "PAYMENT_REFUND_URL"))) missing.push("PAYMENT_REFUND_URL (must be an https:// URL without credentials or fragments)");
   if (!value(env, "PAYMENT_PROVIDER_SECRET")) missing.push("PAYMENT_PROVIDER_SECRET");
   if (!value(env, "PAYMENT_WEBHOOK_SECRET")) missing.push("PAYMENT_WEBHOOK_SECRET");
   if (value(env, "NOTIFICATION_DELIVERY") !== "webhook") missing.push("NOTIFICATION_DELIVERY=webhook");
-  if (!validHttpsEndpoint(value(env, "NOTIFICATION_WEBHOOK_URL"))) missing.push("NOTIFICATION_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
+  if (!isSecureHttpsEndpoint(value(env, "NOTIFICATION_WEBHOOK_URL"))) missing.push("NOTIFICATION_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
   if (!value(env, "NOTIFICATION_WEBHOOK_SECRET")) missing.push("NOTIFICATION_WEBHOOK_SECRET");
   const staffProvider = value(env, "STAFF_AUTH_PROVIDER").toLowerCase();
   const staffProviders = staffProvider === "both" ? ["oidc", "saml"] : [staffProvider];
   if (!staffProvider) missing.push("STAFF_AUTH_PROVIDER");
   else if (!staffProviders.every((provider) => provider === "oidc" || provider === "saml")) missing.push("STAFF_AUTH_PROVIDER=oidc, saml, or both");
   if (staffProviders.includes("oidc")) {
-    if (!validHttpsEndpoint(value(env, "STAFF_OIDC_ISSUER"))) missing.push("STAFF_OIDC_ISSUER (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "STAFF_OIDC_ISSUER"))) missing.push("STAFF_OIDC_ISSUER (must be an https:// URL without credentials or fragments)");
     if (!value(env, "STAFF_OIDC_CLIENT_ID")) missing.push("STAFF_OIDC_CLIENT_ID");
     if (!value(env, "STAFF_OIDC_CLIENT_SECRET")) missing.push("STAFF_OIDC_CLIENT_SECRET");
-    if (!validHttpsEndpoint(value(env, "STAFF_OIDC_REDIRECT_URI"))) missing.push("STAFF_OIDC_REDIRECT_URI (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "STAFF_OIDC_REDIRECT_URI"))) missing.push("STAFF_OIDC_REDIRECT_URI (must be an https:// URL without credentials or fragments)");
     if (!value(env, "STAFF_OIDC_MFA_ACR") && !value(env, "STAFF_OIDC_MFA_AMR")) missing.push("STAFF_OIDC_MFA_ACR or STAFF_OIDC_MFA_AMR");
   }
   if (staffProviders.includes("saml")) {
     if (!value(env, "STAFF_SAML_ENTITY_ID")) missing.push("STAFF_SAML_ENTITY_ID");
-    if (!validHttpsEndpoint(value(env, "STAFF_SAML_METADATA_URL"))) missing.push("STAFF_SAML_METADATA_URL (must be an https:// URL without credentials or fragments)");
-    if (!validHttpsEndpoint(value(env, "STAFF_SAML_ENTRY_POINT"))) missing.push("STAFF_SAML_ENTRY_POINT (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "STAFF_SAML_METADATA_URL"))) missing.push("STAFF_SAML_METADATA_URL (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "STAFF_SAML_ENTRY_POINT"))) missing.push("STAFF_SAML_ENTRY_POINT (must be an https:// URL without credentials or fragments)");
     if (!value(env, "STAFF_SAML_IDP_CERT")) missing.push("STAFF_SAML_IDP_CERT");
-    if (!validHttpsEndpoint(value(env, "STAFF_SAML_CALLBACK_URI"))) missing.push("STAFF_SAML_CALLBACK_URI (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "STAFF_SAML_CALLBACK_URI"))) missing.push("STAFF_SAML_CALLBACK_URI (must be an https:// URL without credentials or fragments)");
     if (!value(env, "STAFF_SAML_MFA_ACR")) missing.push("STAFF_SAML_MFA_ACR");
   }
   return { environment, ok: missing.length === 0, missing: [...new Set(missing)], warnings };
