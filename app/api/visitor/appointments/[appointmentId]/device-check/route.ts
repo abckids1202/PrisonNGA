@@ -61,6 +61,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
       if (raced?.appointment_id === appointmentId && raced.visitor_user_id === visitor.userId) return securityResponse({ deviceCheck: raced, idempotent: true }, 200, context.requestId);
       throw new SecurityError("VISIT_NOT_ELIGIBLE_FOR_DEVICE_CHECK", 409);
     }
+    if (!result.every((entry) => entry?.meta.changes === 1)) throw new SecurityError("DEVICE_CHECK_PERSISTENCE_INCOMPLETE", 503);
     return securityResponse({ deviceCheck: { id: deviceCheckId, appointmentId, cameraResult, microphoneResult, networkResult, latencyMs, createdAt: now, correlationId } }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

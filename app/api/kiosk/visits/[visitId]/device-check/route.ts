@@ -60,7 +60,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
         .bind(crypto.randomUUID(), visitId, kiosk.facilityId, JSON.stringify({ appointmentId: visitId, resourceId: kiosk.resourceId, cameraResult: body.cameraResult, microphoneResult: body.microphoneResult, networkResult: body.networkResult }), correlationId, now),
     ];
     const result = await d1.batch(statements);
-    if (!result[0]?.meta.changes || !result[1]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+    if (!result.every((entry) => entry?.meta.changes === 1)) throw new SecurityError("KIOSK_DEVICE_CHECK_INCOMPLETE", 503);
     return securityResponse({ deviceCheck: { id: checkId, appointmentId: visitId, resourceId: kiosk.resourceId, cameraResult: body.cameraResult, microphoneResult: body.microphoneResult, networkResult: body.networkResult, latencyMs, createdAt: now, correlationId }, idempotent: false }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

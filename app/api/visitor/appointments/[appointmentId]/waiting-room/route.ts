@@ -69,7 +69,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         SELECT ?, 'VISITOR_WAITING_ROOM_CHECKED_IN', 'appointment', ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), appointmentId, current.facility_id, JSON.stringify({ appointmentId, state: nextState }), correlationId, now),
     ]);
-    if (!result[1]?.meta.changes || !result[2]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+    if (!result.every((entry) => entry?.meta.changes === 1)) throw new SecurityError("WAITING_ROOM_CHECK_IN_INCOMPLETE", 503);
     return securityResponse({ checkIn: { id: checkInId, appointmentId, state: nextState, visitorPresence: "present", prisonerPresence: current.prisoner_presence || "waiting", version: nextVersion, correlationId }, idempotent: false }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
