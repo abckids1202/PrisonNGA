@@ -2,7 +2,7 @@ import { getD1 } from "../../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../lib/server/idempotency";
 import { getPaymentProvider } from "../../../../../lib/server/payments/provider";
-import { safeOperationalErrorMessage } from "../../../../../lib/server/observability";
+import { operationalLog, safeOperationalErrorMessage } from "../../../../../lib/server/observability";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 
 export async function POST(request: Request) {
@@ -49,13 +49,13 @@ export async function POST(request: Request) {
           .bind(refundRequestId, authorization.facilityId, paymentIntentId, authorization.userId, intent.provider, intent.amount_minor, intent.currency, refundReason, idempotencyKey, now, now),
         ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "PAYMENT_REFUND_REQUESTED", entityType: "payment_refund_request", entityId: refundRequestId, reason: refundReason, newValues: { paymentIntentId, amountMinor: intent.amount_minor, currency: intent.currency, status: "REQUESTED" }, requestId: context.requestId, correlationId, eventType: "PAYMENT_REFUND_REQUESTED", payload: { refundRequestId, paymentIntentId, amountMinor: intent.amount_minor, currency: intent.currency } }),
       ]);
-      if (!created[0]?.meta.changes) throw new SecurityError("PAYMENT_REFUND_REQUEST_CONFLICT", 409);
+      if (!created.every((result) => result?.meta?.changes === 1)) throw new SecurityError("PAYMENT_REFUND_REQUEST_CONFLICT", 409);
     } else if (existing.status === "FAILED") {
       const retried = await d1.batch([
         d1.prepare("UPDATE payment_refund_requests SET status = 'REQUESTED', updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'FAILED'").bind(now, refundRequestId, authorization.facilityId),
         ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "PAYMENT_REFUND_RETRY_REQUESTED", entityType: "payment_refund_request", entityId: refundRequestId, reason: refundReason, oldValues: { status: "FAILED" }, newValues: { status: "REQUESTED" }, requestId: context.requestId, correlationId, eventType: "PAYMENT_REFUND_RETRY_REQUESTED", payload: { refundRequestId, paymentIntentId } }, { sql: "EXISTS (SELECT 1 FROM payment_refund_requests WHERE id = ? AND status = 'REQUESTED')", values: [refundRequestId] }),
       ]);
-      if (!retried[0]?.meta.changes) throw new SecurityError("PAYMENT_REFUND_REQUEST_CONFLICT", 409);
+      if (!retried.every((result) => result?.meta?.changes === 1)) throw new SecurityError("PAYMENT_REFUND_REQUEST_CONFLICT", 409);
     }
 
     let providerRefund;
@@ -63,10 +63,11 @@ export async function POST(request: Request) {
       providerRefund = await provider.requestRefund({ paymentIntentId, providerReference: intent.provider_reference, amountMinor: intent.amount_minor, currency: intent.currency, reason: refundReason });
     } catch (error) {
       const message = safeOperationalErrorMessage(error, "PAYMENT_REFUND_REQUEST_FAILED");
-      await d1.batch([
+      const failed = await d1.batch([
         d1.prepare("UPDATE payment_refund_requests SET status = 'FAILED', updated_at = ? WHERE id = ? AND status = 'REQUESTED'").bind(new Date().toISOString(), refundRequestId),
         ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "PAYMENT_REFUND_FAILED", entityType: "payment_refund_request", entityId: refundRequestId, reason: "Payment provider refund request failed.", oldValues: { status: "REQUESTED" }, newValues: { status: "FAILED", error: message }, requestId: context.requestId, correlationId, eventType: "PAYMENT_REFUND_FAILED", payload: { refundRequestId, paymentIntentId, error: message } }, { sql: "EXISTS (SELECT 1 FROM payment_refund_requests WHERE id = ? AND status = 'FAILED')", values: [refundRequestId] }),
       ]);
+      if (!failed.every((result) => result?.meta?.changes === 1)) operationalLog("error", { event: "PAYMENT_REFUND_FAILURE_AUDIT_INCOMPLETE", paymentIntentId, refundRequestId, correlationId });
       await releaseIdempotencyClaim(d1, idempotency);
       idempotency = null;
       throw error;
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "PAYMENT_REFUND_PROVIDER_ACCEPTED", entityType: "payment_refund_request", entityId: refundRequestId, reason: "Payment provider accepted the refund request; settlement remains webhook-driven.", newValues: { status: "REQUESTED", providerReference: providerRefund.providerReference }, requestId: context.requestId, correlationId, eventType: "PAYMENT_REFUND_PROVIDER_ACCEPTED", payload: { refundRequestId, paymentIntentId, providerReference: providerRefund.providerReference } }, { sql: "EXISTS (SELECT 1 FROM payment_refund_requests WHERE id = ? AND status = 'REQUESTED')", values: [refundRequestId] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 202, body: { refundRequestId, paymentIntentId, status: "REQUESTED", providerReference: providerRefund.providerReference, correlationId }, guard: { sql: "EXISTS (SELECT 1 FROM payment_refund_requests WHERE id = ? AND status = 'REQUESTED')", values: [refundRequestId] } }),
     ]);
-    if (!accepted[0]?.meta.changes || !accepted[accepted.length - 1]?.meta.changes) {
+    if (!accepted.every((result) => result?.meta?.changes === 1)) {
       const current = await d1.prepare("SELECT status, provider_reference FROM payment_refund_requests WHERE id = ? AND facility_id = ?").bind(refundRequestId, authorization.facilityId).first<{ status: string; provider_reference: string | null }>();
       if (current?.status === "COMPLETED") {
         idempotency = null;
