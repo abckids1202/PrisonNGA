@@ -13,7 +13,7 @@ type AppointmentCommand = typeof commands[number];
 
 async function getAssignedResources(d1: D1Database, facilityId: string, appointmentId: string): Promise<Allocation | null> {
   const result = await d1.prepare(`SELECT rr.resource_type, rr.resource_id, r.display_name
-    FROM resource_reservations rr INNER JOIN resources r ON r.id = rr.resource_id
+    FROM resource_reservations rr INNER JOIN resources r ON r.id = rr.resource_id AND r.facility_id = rr.facility_id
     WHERE rr.facility_id = ? AND rr.appointment_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')`)
     .bind(facilityId, appointmentId).all<{ resource_type: string; resource_id: string; display_name: string }>();
   const room = result.results.find((item) => item.resource_type === "ROOM");
