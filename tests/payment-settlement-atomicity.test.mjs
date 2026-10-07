@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event.ts";
 
@@ -192,4 +193,11 @@ test("stale failure events are ignored after a payment has succeeded", async () 
   assert.equal(d1.sqlite.prepare("SELECT status FROM payment_provider_events WHERE event_key = 'failed-1'").get().status, "IGNORED");
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 1);
+});
+
+test("payment webhook status reads and mutations retain facility and visitor scope", async () => {
+  const source = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
+  assert.match(source, /SELECT status FROM payment_intents WHERE id = \? AND facility_id = \? AND user_id = \?/);
+  assert.match(source, /WHERE id = \? AND facility_id = \? AND user_id = \? AND status IN \('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED'\)/);
+  assert.match(source, /pi\.facility_id = \? AND pi\.user_id = \?/);
 });

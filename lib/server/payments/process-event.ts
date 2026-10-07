@@ -104,7 +104,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
     const nextStatus = payload.eventType.includes("REFUND") || payload.status === "REFUNDED" ? "REFUNDED" : payload.eventType.includes("DISPUT") || payload.status === "DISPUTED" ? "DISPUTED" : payload.eventType.includes("EXPIRED") || payload.status === "EXPIRED" ? "EXPIRED" : "FAILED";
     if (nextStatus === "REFUNDED" || nextStatus === "DISPUTED") {
       const allowedPriorStatuses = nextStatus === "REFUNDED" ? "('PENDING', 'CHECKOUT_CREATED', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'REFUNDED', 'DISPUTED')" : "('PENDING', 'CHECKOUT_CREATED', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'DISPUTED')";
-      const current = await d1.prepare("SELECT status FROM payment_intents WHERE id = ?").bind(intent.id).first<{ status: string }>();
+      const current = await d1.prepare("SELECT status FROM payment_intents WHERE id = ? AND facility_id = ? AND user_id = ?").bind(intent.id, intent.facility_id, intent.user_id).first<{ status: string }>();
       if (!current) throw new SecurityError("PAYMENT_INTENT_STATE_UNAVAILABLE", 503);
       let refundStatements: D1PreparedStatement[] = [];
       let refundAccountId: string | null = null;
@@ -132,7 +132,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
         ...(alreadyTerminal ? [] : [d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ${allowedPriorStatuses}`).bind(provider, nextStatus, now, intent.id, intent.facility_id, intent.user_id)]),
         ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
         ...refundStatements,
-        d1.prepare("UPDATE payment_refund_requests SET status = 'COMPLETED', provider_reference = COALESCE(?, provider_reference), updated_at = ? WHERE payment_intent_id = ? AND status = 'REQUESTED'").bind(payload.providerReference || null, now, intent.id),
+        d1.prepare("UPDATE payment_refund_requests SET status = 'COMPLETED', provider_reference = COALESCE(?, provider_reference), updated_at = ? WHERE payment_intent_id = ? AND status = 'REQUESTED' AND EXISTS (SELECT 1 FROM payment_intents pi WHERE pi.id = payment_refund_requests.payment_intent_id AND pi.facility_id = ? AND pi.user_id = ?)").bind(payload.providerReference || null, now, intent.id, intent.facility_id, intent.user_id),
         d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ? AND ${evidenceGuard.sql}`).bind(now, provider, eventKey, ...evidenceGuard.values),
       ]);
       const statusWriteIndex = alreadyTerminal ? null : 0;
@@ -156,7 +156,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
     }
     const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId });
     const results = await d1.batch([
-      d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED')`).bind(provider, nextStatus, now, intent.id),
+      d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED')`).bind(provider, nextStatus, now, intent.id, intent.facility_id, intent.user_id),
       ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
       d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ? AND ${evidenceGuard.sql}`).bind(now, provider, eventKey, ...evidenceGuard.values),
     ]);
