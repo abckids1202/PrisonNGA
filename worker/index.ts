@@ -508,19 +508,25 @@ const worker = {
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const suppliedRequestId = request.headers.get("x-request-id")?.trim() || "";
+    const requestId = /^[A-Za-z0-9._:-]{1,128}$/.test(suppliedRequestId) ? suppliedRequestId : crypto.randomUUID();
+    const routedHeaders = new Headers(request.headers);
+    routedHeaders.set("x-request-id", requestId);
+    const routedRequest = new Request(request, { headers: routedHeaders });
 
     const environmentCheck = validateEnvironment(env);
     if (environmentCheck.environment === "invalid" || (!environmentCheck.ok && environmentCheck.environment !== "development")) {
-      operationalLog("error", { event: "ENVIRONMENT_VALIDATION_FAILED", requestId: request.headers.get("x-request-id") || crypto.randomUUID(), missing: environmentCheck.missing });
+      operationalLog("error", { event: "ENVIRONMENT_VALIDATION_FAILED", requestId, correlationId: requestId, missing: environmentCheck.missing });
       const response = Response.json({ error: "SERVICE_NOT_READY" }, { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
-      applyTransportSecurityHeader(response, request, environmentCheck.environment);
+      response.headers.set("X-Request-Id", requestId);
+      applyTransportSecurityHeader(response, routedRequest, environmentCheck.environment);
       return response;
     }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      return handleImageOptimization(request, {
-        fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
+      return handleImageOptimization(routedRequest, {
+        fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, routedRequest.url))),
         transformImage: async (body, { width, format, quality }) => {
           const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
           return result.response();
@@ -528,23 +534,24 @@ const worker = {
       }, allowedWidths);
     }
 
-    if (!isSameOriginMutation(request)) {
+    if (!isSameOriginMutation(routedRequest)) {
       const response = Response.json({ error: "CSRF_ORIGIN_INVALID" }, { status: 403, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
       response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-      applyTransportSecurityHeader(response, request, environmentCheck.environment);
+      response.headers.set("X-Request-Id", requestId);
+      applyTransportSecurityHeader(response, routedRequest, environmentCheck.environment);
       return response;
     }
 
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && url.pathname.startsWith("/api/")) {
-      const contentType = request.headers.get("content-type")?.toLowerCase() || "";
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(routedRequest.method) && url.pathname.startsWith("/api/")) {
+      const contentType = routedRequest.headers.get("content-type")?.toLowerCase() || "";
       const maxBodyBytes = contentType.startsWith("multipart/form-data;") ? 12 * 1024 * 1024 : 256 * 1024;
       try {
-        await assertRequestBodyWithinLimit(request, maxBodyBytes);
+        await assertRequestBodyWithinLimit(routedRequest, maxBodyBytes);
       } catch (error) {
         if (error instanceof Error && error.name === "SecurityError") {
-          const response = Response.json({ error: error.message }, { status: 413, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+          const response = Response.json({ error: error.message, requestId }, { status: 413, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Request-Id": requestId } });
           response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-          applyTransportSecurityHeader(response, request, environmentCheck.environment);
+          applyTransportSecurityHeader(response, routedRequest, environmentCheck.environment);
           return response;
         }
         throw error;
@@ -553,9 +560,8 @@ const worker = {
 
     let response: Response;
     try {
-      response = await handler.fetch(request, env, ctx);
+      response = await handler.fetch(routedRequest, env, ctx);
     } catch (error) {
-      const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
       operationalLog("error", { event: "REQUEST_HANDLER_FAILED", requestId, correlationId: requestId, error });
       const failedResponse = Response.json({ error: "INTERNAL_ERROR", requestId }, { status: 500, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Request-Id": requestId } });
       failedResponse.headers.set("Content-Security-Policy", `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' ${liveKitConnectSources(env)}`);
@@ -563,7 +569,7 @@ const worker = {
       failedResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
       failedResponse.headers.set("X-Frame-Options", "DENY");
       failedResponse.headers.set("X-XSS-Protection", "0");
-      applyTransportSecurityHeader(failedResponse, request, environmentCheck.environment);
+      applyTransportSecurityHeader(failedResponse, routedRequest, environmentCheck.environment);
       return failedResponse;
     }
     const securedResponse = new Response(response.body, response);
@@ -574,7 +580,7 @@ const worker = {
     securedResponse.headers.set("X-Frame-Options", "DENY");
     securedResponse.headers.set("X-XSS-Protection", "0");
     applyTransportSecurityHeader(securedResponse, request, environmentCheck.environment);
-    if (request.method !== "GET" || new URL(request.url).pathname.startsWith("/api/")) securedResponse.headers.set("Cache-Control", "no-store");
+    if (routedRequest.method !== "GET" || new URL(routedRequest.url).pathname.startsWith("/api/")) securedResponse.headers.set("Cache-Control", "no-store");
     return securedResponse;
   },
 };
