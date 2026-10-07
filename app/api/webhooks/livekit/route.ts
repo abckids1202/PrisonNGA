@@ -102,7 +102,7 @@ export async function POST(request: Request) {
         requestId: context.requestId,
         correlationId,
         now,
-        reason: staffTerminationReason || (terminating ? "LiveKit room ended before the visit started." : "LiveKit room completed."),
+        reason: staffTerminationReason || (terminating ? "LiveKit room ended before both visit participants connected." : "LiveKit room completed."),
         event: { id: eventId, eventType, source: "LIVEKIT_WEBHOOK", participantRole, metadata: eventMetadata },
       }));
       if (finalizationCommitted(finalized)) {

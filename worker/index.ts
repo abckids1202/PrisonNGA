@@ -72,7 +72,7 @@ function applyTransportSecurityHeader(response: Response, request: Request, envi
 }
 
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
-type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
+type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; visitor_joined: number; facility_joined: number; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
 type AbandonedPaymentIntent = { id: string; facility_id: string; user_id: string; credit_quantity: number; amount_minor: number; currency: string; version: number };
 
@@ -425,7 +425,10 @@ async function recordSessionProviderCloseFailure(env: Env, session: ExpiredSessi
 
 async function reconcileExpiredSessions(env: Env): Promise<void> {
     const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, vs.version, vs.status, vs.actual_started_at,
-      vs.termination_reason, vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
+      vs.termination_reason,
+      EXISTS (SELECT 1 FROM visit_session_participants vsp WHERE vsp.session_id = vs.id AND vsp.participant_role = 'VISITOR' AND vsp.status IN ('CONNECTED', 'DISCONNECTED', 'RECONNECTING')) AS visitor_joined,
+      EXISTS (SELECT 1 FROM visit_session_participants vsp WHERE vsp.session_id = vs.id AND vsp.participant_role = 'FACILITY' AND vsp.status IN ('CONNECTED', 'DISCONNECTED', 'RECONNECTING')) AS facility_joined,
+      vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
     LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
     WHERE a.status = 'IN_PROGRESS' AND (

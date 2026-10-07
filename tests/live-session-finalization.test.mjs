@@ -101,8 +101,16 @@ test("an expired room created without participant presence releases its reserved
     finalAppointmentStatus: "TECHNICAL_FAILURE",
     creditOutcome: "RELEASE",
     eventType: "SESSION_ABANDONED",
-    reason: "Live-session window expired before the visit started.",
+    reason: "Live-session window expired before both visit participants connected.",
   });
+});
+
+test("scheduled expiry releases credit when only one required participant joined", () => {
+  const disposition = getExpiredSessionDisposition({ actual_started_at: "2026-09-22T12:00:00.000Z", termination_reason: null, visitor_joined: true, facility_joined: false });
+  assert.equal(disposition.finalSessionStatus, "TERMINATED");
+  assert.equal(disposition.finalAppointmentStatus, "TECHNICAL_FAILURE");
+  assert.equal(disposition.creditOutcome, "RELEASE");
+  assert.match(disposition.reason, /both visit participants/);
 });
 
 test("scheduled reconciliation preserves a staff termination reason and releases the credit", () => {
@@ -116,8 +124,8 @@ test("scheduled reconciliation preserves a staff termination reason and releases
   });
 });
 
-test("an actually started room expiring normally completes and consumes the reserved credit", () => {
-  const disposition = getExpiredSessionDisposition({ actual_started_at: "2026-09-22T12:00:00.000Z", termination_reason: null });
+test("an actually started room with both participants expiring normally completes and consumes the reserved credit", () => {
+  const disposition = getExpiredSessionDisposition({ actual_started_at: "2026-09-22T12:00:00.000Z", termination_reason: null, visitor_joined: true, facility_joined: true });
   assert.equal(disposition.finalSessionStatus, "ENDED");
   assert.equal(disposition.finalAppointmentStatus, "COMPLETED");
   assert.equal(disposition.creditOutcome, "CONSUME");

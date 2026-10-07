@@ -54,17 +54,20 @@ export function finalizationCommitted(results: Array<{ meta?: { changes?: number
   return [1, 2, 4, 5, 6, 7].every((index) => results[index]?.meta?.changes === 1);
 }
 
-export function getExpiredSessionDisposition(input: { actual_started_at: string | null; termination_reason: string | null }) {
+export function getExpiredSessionDisposition(input: { actual_started_at: string | null; termination_reason: string | null; visitor_joined?: boolean | number | null; facility_joined?: boolean | number | null }) {
   const terminationRequested = input.termination_reason?.startsWith("STAFF_TERMINATE:") || false;
   const terminationReason = terminationRequested ? input.termination_reason!.slice("STAFF_TERMINATE:".length) : null;
-  if (terminationRequested || !input.actual_started_at) {
+  const bothParticipantsJoined = input.visitor_joined === true || input.visitor_joined === 1
+    ? input.facility_joined === true || input.facility_joined === 1
+    : false;
+  if (terminationRequested || !input.actual_started_at || !bothParticipantsJoined) {
     return {
       terminationRequested,
       finalSessionStatus: "TERMINATED" as const,
       finalAppointmentStatus: "TECHNICAL_FAILURE" as const,
       creditOutcome: "RELEASE" as const,
       eventType: terminationRequested ? "SESSION_TERMINATED" as const : "SESSION_ABANDONED" as const,
-      reason: terminationReason || "Live-session window expired before the visit started.",
+      reason: terminationReason || "Live-session window expired before both visit participants connected.",
     };
   }
   return {
