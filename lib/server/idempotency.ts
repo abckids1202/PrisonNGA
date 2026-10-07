@@ -13,6 +13,16 @@ function parseStoredReplay(responseBody: string): unknown {
   }
 }
 
+function serializeReplayBody(body: unknown): string {
+  try {
+    const serialized = JSON.stringify(body);
+    if (typeof serialized !== "string") throw new Error("IDEMPOTENCY_RESPONSE_UNSERIALIZABLE");
+    return serialized;
+  } catch {
+    throw new SecurityError("IDEMPOTENCY_RESPONSE_INVALID", 500);
+  }
+}
+
 export async function hashIdempotencyPayload(value: unknown): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -53,7 +63,7 @@ export async function claimIdempotency(d1: D1Database, input: { scope: string; k
 export function completeIdempotencyStatement(d1: D1Database, input: { claimId: string; scope: string; key: string; status: number; body: unknown; guard?: { sql: string; values: unknown[] } }): D1PreparedStatement {
   const guard = input.guard ? ` AND ${input.guard.sql}` : "";
   return d1.prepare(`UPDATE idempotency_records SET status = 'COMPLETED', processing_started_at = NULL, response_status = ?, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'${guard}`)
-    .bind(input.status, JSON.stringify(input.body), new Date().toISOString(), input.claimId, input.scope, input.key, ...(input.guard?.values || []));
+    .bind(input.status, serializeReplayBody(input.body), new Date().toISOString(), input.claimId, input.scope, input.key, ...(input.guard?.values || []));
 }
 
 export async function releaseIdempotencyClaim(d1: D1Database, input: { claimId: string; scope: string; key: string }): Promise<void> {

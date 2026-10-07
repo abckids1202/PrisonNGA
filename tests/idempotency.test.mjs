@@ -134,6 +134,18 @@ test("idempotency returns a controlled service error when a completed replay is 
   );
 });
 
+test("idempotency refuses to complete a claim with an unserializable response", async () => {
+  const database = new IdempotencyDatabase();
+  const claim = await claimIdempotency(database, request);
+  assert.ok("claimId" in claim);
+
+  await assert.rejects(
+    Promise.resolve().then(() => completeIdempotencyStatement(database, { ...request, claimId: claim.claimId, status: 200, body: undefined })),
+    (error) => error.code === "IDEMPOTENCY_RESPONSE_INVALID" && error.statusCode === 500,
+  );
+  assert.equal(database.records.get(`${request.scope}:${request.key}`).status, "PROCESSING");
+});
+
 test("a fresh in-progress claim is protected from concurrent duplicate work", async () => {
   const database = new IdempotencyDatabase();
   await claimIdempotency(database, request);
