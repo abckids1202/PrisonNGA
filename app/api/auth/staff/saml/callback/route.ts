@@ -52,12 +52,14 @@ export async function POST(request: Request) {
     if (!consumed.meta.changes) throw new SecurityError("STAFF_SAML_STATE_REPLAYED", 401);
     const externalId = `saml:${profile.issuer}:${nameId}`;
     const displayName = String(profile.displayName || profile.name || email).trim().slice(0, 160);
-    let user = await d1.prepare("SELECT id, email, display_name, status FROM users WHERE external_id = ? AND user_type = 'STAFF'").bind(externalId).first<{ id: string; email: string; display_name: string; status: string }>();
+    let user = await d1.prepare("SELECT id, email, display_name, external_id, status FROM users WHERE external_id = ? AND user_type = 'STAFF'").bind(externalId).first<{ id: string; email: string; display_name: string; external_id: string | null; status: string }>();
     if (!user) {
-      user = await d1.prepare("SELECT id, email, display_name, status FROM users WHERE lower(email) = lower(?) AND user_type = 'STAFF'").bind(email).first<{ id: string; email: string; display_name: string; status: string }>();
-      if (user) await d1.prepare("UPDATE users SET external_id = ?, display_name = ?, last_login_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND user_type = 'STAFF'").bind(externalId, displayName, new Date().toISOString(), new Date().toISOString(), user.id).run();
+      user = await d1.prepare("SELECT id, email, display_name, external_id, status FROM users WHERE lower(email) = lower(?) AND user_type = 'STAFF'").bind(email).first<{ id: string; email: string; display_name: string; external_id: string | null; status: string }>();
     }
     if (!user || user.status !== "ACTIVE") throw new SecurityError("STAFF_ACCOUNT_NOT_PROVISIONED", 403);
+    if (user.external_id !== externalId) {
+      await d1.prepare("UPDATE users SET external_id = ?, display_name = ?, last_login_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE'").bind(externalId, displayName, new Date().toISOString(), new Date().toISOString(), user.id).run();
+    }
     const profileScope = await d1.prepare("SELECT facility_id FROM staff_profiles WHERE user_id = ?").bind(user.id).first<{ facility_id: string }>();
     if (!profileScope) throw new SecurityError("STAFF_FACILITY_SCOPE_MISSING", 403);
     const token = crypto.randomUUID() + crypto.randomUUID();
