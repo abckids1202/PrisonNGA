@@ -10,6 +10,8 @@ test("federation provider responses are time-limited and size-bounded", () => {
   assert.match(helper, /AbortController/);
   assert.match(helper, /setTimeout/);
   assert.match(helper, /REMOTE_RESPONSE_TOO_LARGE/);
+  assert.match(helper, /FEDERATION_PROVIDER_UNAVAILABLE/);
+  assert.match(helper, /reader\.cancel/);
   assert.match(helper, /maxBytes/);
   assert.equal((oidc.match(/fetchBoundedText\(/g) || []).length, 3);
   assert.match(saml, /fetchBoundedText\(/);
