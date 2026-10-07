@@ -301,7 +301,10 @@ export default function DeviceCheckPage() {
     setStep("intro");
   }
 
-  const overallReady = cameraStatus !== "failed" && microphoneStatus !== "failed" && Boolean(network);
+  // Match the staff-side admission contract: warnings and an unknown network
+  // result may be saved for troubleshooting, but they must not be presented as
+  // a successful readiness result to the visitor.
+  const overallReady = cameraStatus === "ready" && microphoneStatus === "ready" && Boolean(network && ["stable", "fair"].includes(network.rating));
 
   if (appointmentLoading) return <main className="sv11-auth-shell"><section className="sv11-auth-card"><h1>Checking your visit</h1><p>We’re confirming this appointment before opening device preparation.</p></section></main>;
   if (!appointment || appointmentError) return <main className="sv11-auth-shell"><section className="sv11-auth-card"><h1>Device check unavailable</h1><p role="alert">{appointmentError || "This visit is not available in your account."}</p><Link className="sv4-button sv4-button-primary" href="/visitor/visits">Back to My Visits</Link></section></main>;
