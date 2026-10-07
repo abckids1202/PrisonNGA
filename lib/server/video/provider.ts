@@ -52,7 +52,10 @@ class LiveKitVideoProvider implements VideoProvider {
   constructor(config: VideoConfig) {
     this.config = config;
     const serviceUrl = config.url!.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
-    this.service = new RoomServiceClient(serviceUrl, config.apiKey!, config.apiSecret!);
+    // Keep provider outages bounded so session state can transition to an
+    // explicit retry/reconciliation path instead of holding a Worker request
+    // until the platform deadline.
+    this.service = new RoomServiceClient(serviceUrl, config.apiKey!, config.apiSecret!, { requestTimeout: 8, failover: true });
   }
 
   async createSession(roomName: string) {
