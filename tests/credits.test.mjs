@@ -137,6 +137,8 @@ test("a success webhook cannot mint credits after its payment intent was refunde
       .run("payment-refund-after-purchase");
     assert.deepEqual(await refundPurchasedCredits(d1, {
       paymentIntentId: "payment-refund-after-purchase",
+      facilityId: "facility-1",
+      userId: "visitor-refund-after-purchase",
       actorUserId: "system:payment-webhook",
       reason: "Refund event arrived after success.",
     }), { refunded: true });
@@ -148,13 +150,22 @@ test("refund reversal is atomic, idempotent, and refuses to overdraw a credit ac
   const d1 = new SQLiteD1();
   try {
     await settlePaymentPurchase(d1, { paymentIntentId: "payment-3", facilityId: "facility-1", userId: "visitor-3", amount: 2, reason: "Payment event paid." });
-    assert.deepEqual(await refundPurchasedCredits(d1, { paymentIntentId: "payment-3", actorUserId: "system", reason: "Provider refund." }), { refunded: true });
-    assert.deepEqual(await refundPurchasedCredits(d1, { paymentIntentId: "payment-3", actorUserId: "system", reason: "Provider refund replay." }), { refunded: false, idempotent: true });
+    assert.deepEqual(await refundPurchasedCredits(d1, { paymentIntentId: "payment-3", facilityId: "facility-1", userId: "visitor-3", actorUserId: "system", reason: "Provider refund." }), { refunded: true });
+    assert.deepEqual(await refundPurchasedCredits(d1, { paymentIntentId: "payment-3", facilityId: "facility-1", userId: "visitor-3", actorUserId: "system", reason: "Provider refund replay." }), { refunded: false, idempotent: true });
     assert.equal(d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE user_id = ?").get("visitor-3").available_credits, 0);
     await settlePaymentPurchase(d1, { paymentIntentId: "payment-4", facilityId: "facility-1", userId: "visitor-4", amount: 1, reason: "Payment event paid." });
     d1.sqlite.prepare("UPDATE credit_accounts SET available_credits = 0 WHERE user_id = ?").run("visitor-4");
-    await assert.rejects(refundPurchasedCredits(d1, { paymentIntentId: "payment-4", actorUserId: "system", reason: "Late refund." }), /CREDIT_REVERSAL_REQUIRES_REVIEW/);
+    await assert.rejects(refundPurchasedCredits(d1, { paymentIntentId: "payment-4", facilityId: "facility-1", userId: "visitor-4", actorUserId: "system", reason: "Late refund." }), /CREDIT_REVERSAL_REQUIRES_REVIEW/);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 1);
+  } finally { d1.close(); }
+});
+
+test("direct refund helper cannot resolve another visitor's purchase", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    d1.sqlite.exec("INSERT INTO credit_accounts VALUES ('account-other', 'facility-2', 'visitor-other', 2, 0, 1, 'before', 'before'); INSERT INTO credit_ledger_entries VALUES ('purchase-other', 'account-other', NULL, 'PURCHASE', 2, 'payment:payment-cross-scope:purchase', 'paid', 'system', 'before');");
+    assert.deepEqual(await refundPurchasedCredits(d1, { paymentIntentId: "payment-cross-scope", facilityId: "facility-1", userId: "visitor-1", actorUserId: "system", reason: "Cross-scope refund." }), { refunded: false, pending: true });
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 0);
   } finally { d1.close(); }
 });
 

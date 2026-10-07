@@ -161,12 +161,20 @@ export function consumeVisitCreditStatements(
 
 export async function refundPurchasedCredits(
   d1: D1Database,
-  input: { paymentIntentId: string; actorUserId: string; reason: string },
+  input: { paymentIntentId: string; facilityId: string; userId: string; actorUserId: string; reason: string },
 ) {
   const refundKey = `payment:${input.paymentIntentId}:refund`;
-  const existing = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ?").bind(`payment:${input.paymentIntentId}:refund`).first<{ id: string }>();
+  const existing = await d1.prepare(`SELECT cle.id FROM credit_ledger_entries cle
+    INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id
+      AND ca.facility_id = ? AND ca.user_id = ?
+    WHERE cle.idempotency_key = ?`).bind(input.facilityId, input.userId, refundKey).first<{ id: string }>();
   if (existing) return { refunded: false, idempotent: true };
-  const purchase = await d1.prepare(`SELECT cle.credit_account_id, cle.amount FROM credit_ledger_entries cle WHERE cle.idempotency_key = ? AND cle.entry_type = 'PURCHASE' LIMIT 1`).bind(`payment:${input.paymentIntentId}:purchase`).first<{ credit_account_id: string; amount: number }>();
+  const purchase = await d1.prepare(`SELECT cle.credit_account_id, cle.amount FROM credit_ledger_entries cle
+    INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id
+      AND ca.facility_id = ? AND ca.user_id = ?
+    WHERE cle.idempotency_key = ? AND cle.entry_type = 'PURCHASE' LIMIT 1`)
+    .bind(input.facilityId, input.userId, `payment:${input.paymentIntentId}:purchase`)
+    .first<{ credit_account_id: string; amount: number }>();
   if (!purchase) return { refunded: false, pending: true };
   const results = await d1.batch(refundPurchasedCreditsStatements(d1, { paymentIntentId: input.paymentIntentId, accountId: purchase.credit_account_id, amount: purchase.amount, actorUserId: input.actorUserId, reason: input.reason, now: new Date().toISOString() }));
   if (results[0]?.meta.changes) {
