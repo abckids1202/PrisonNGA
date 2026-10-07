@@ -47,6 +47,10 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(kioskDeviceCheck, /WHERE idempotency_key = \? AND facility_id = \?/);
   assert.match(visitorDeviceCheck, /WHERE idempotency_key = \? AND facility_id = \?/g);
   assert.match(visitorDeviceCheck, /storedIdempotencyKey = `\$\{visitor\.userId\}:\$\{eligible\.facility_id\}:\$\{appointmentId\}:/);
+  assert.match(visitorWaitingRoom, /WHERE a\.id = \? AND a\.visitor_user_id = \?/);
+  assert.match(visitorWaitingRoom, /const existingKey = `\$\{visitor\.userId\}:\$\{current\.facility_id\}:\$\{appointmentId\}:\$\{idempotencyKey\}`/);
+  assert.match(visitorWaitingRoom, /FROM visitor_waiting_room_checkins WHERE idempotency_key = \? AND facility_id = \?/);
+  assert.match(visitorWaitingRoom, /visitor-waiting-room:\$\{visitor\.userId\}:\$\{current\.facility_id\}:\$\{appointmentId\}/);
   const videoSession = await readFile(new URL("../lib/server/video/session.ts", import.meta.url), "utf8");
   assert.match(videoSession, /a\.id = vs\.appointment_id AND a\.facility_id = vs\.facility_id/);
   assert.match(incidents, /reporter\.id = i\.reporter_user_id AND reporter\.user_type = 'STAFF'/);

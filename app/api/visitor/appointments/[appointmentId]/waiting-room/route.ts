@@ -13,12 +13,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     if (!/^[A-Za-z0-9._:-]{8,128}$/u.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
 
     const d1 = await getD1();
-    const existingKey = `${visitor.userId}:${appointmentId}:${idempotencyKey}`;
-    const existing = await d1.prepare(`SELECT id, appointment_id, version, state
-      FROM visitor_waiting_room_checkins WHERE idempotency_key = ?`).bind(existingKey).first<Record<string, string | number | null>>();
-    if (existing) return securityResponse({ checkIn: existing, idempotent: true }, 200, context.requestId);
-
-    await enforceRateLimit(d1, { key: `visitor-waiting-room:${visitor.userId}:${appointmentId}`, limit: 12, windowSeconds: 60 * 60 });
     const now = new Date().toISOString();
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.status AS appointment_status, a.version AS appointment_version,
         f.current_state AS facility_state, p.status AS prisoner_status, p.visitation_status,
@@ -35,6 +29,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
       )
       WHERE a.id = ? AND a.visitor_user_id = ?`).bind(appointmentId, visitor.userId).first<Record<string, string | number | null>>();
     if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
+
+    // Bind the idempotency record to the authorized facility after the
+    // appointment ownership check. This prevents an unscoped replay lookup
+    // from becoming a cross-facility workflow primitive.
+    const existingKey = `${visitor.userId}:${current.facility_id}:${appointmentId}:${idempotencyKey}`;
+    const existing = await d1.prepare(`SELECT id, appointment_id, facility_id, version, state
+      FROM visitor_waiting_room_checkins WHERE idempotency_key = ? AND facility_id = ?`).bind(existingKey, current.facility_id).first<Record<string, string | number | null>>();
+    if (existing) return securityResponse({ checkIn: existing, idempotent: true }, 200, context.requestId);
+
+    await enforceRateLimit(d1, { key: `visitor-waiting-room:${visitor.userId}:${current.facility_id}:${appointmentId}`, limit: 12, windowSeconds: 60 * 60 });
     if (!["APPROVED", "WAITING"].includes(String(current.appointment_status))) throw new SecurityError("VISIT_NOT_READY_FOR_WAITING_ROOM", 409);
     if (current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (current.prisoner_status !== "ACTIVE" || current.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
