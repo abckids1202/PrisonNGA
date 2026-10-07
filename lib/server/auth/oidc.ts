@@ -3,7 +3,7 @@ import { isSecureHttpsEndpoint } from "../endpoint";
 import { fetchBoundedText } from "./remote-fetch";
 
 type Discovery = { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string };
-export type OidcClaims = { iss: string; sub: string; aud: string | string[]; exp: number; nonce?: string; email?: string; email_verified?: boolean; name?: string; preferred_username?: string; acr?: string; amr?: string[] };
+export type OidcClaims = { iss: string; sub: string; aud: string | string[]; exp: number; azp?: string; nonce?: string; email?: string; email_verified?: boolean; name?: string; preferred_username?: string; acr?: string; amr?: string[] };
 
 export function hasValidOidcClaimShape(claims: Partial<OidcClaims>): claims is OidcClaims {
   const audiences = typeof claims.aud === "string" ? [claims.aud] : claims.aud;
@@ -89,7 +89,9 @@ async function verifyIdToken(token: string, discovery: Discovery, clientId: stri
   const header = parseJson<{ alg?: string; kid?: string }>(parts[0]);
   const claims = parseJson<OidcClaims>(parts[1]);
   const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-  if (header.alg !== "RS256" || !header.kid || !hasValidOidcClaimShape(claims) || claims.iss !== discovery.issuer || claims.exp * 1000 <= Date.now() || !audiences.includes(clientId) || (expectedAudience && !audiences.includes(expectedAudience))) throw new SecurityError("STAFF_OIDC_ID_TOKEN_INVALID", 401);
+  const authorizedPartyValid = !claims.azp || claims.azp === clientId;
+  const multipleAudienceValid = audiences.length <= 1 || claims.azp === clientId;
+  if (header.alg !== "RS256" || !header.kid || !hasValidOidcClaimShape(claims) || claims.iss !== discovery.issuer || claims.exp * 1000 <= Date.now() || !audiences.includes(clientId) || (expectedAudience && !audiences.includes(expectedAudience)) || !authorizedPartyValid || !multipleAudienceValid) throw new SecurityError("STAFF_OIDC_ID_TOKEN_INVALID", 401);
   const { response: jwksResponse, text: jwksText } = await fetchBoundedText(discovery.jwks_uri, { headers: { accept: "application/json" } });
   if (!jwksResponse.ok) throw new SecurityError("STAFF_OIDC_KEYS_UNAVAILABLE", 503);
   let jwks: { keys?: Array<JsonWebKey & { kid?: string; alg?: string; kty?: string }> };

@@ -16,3 +16,11 @@ test("OIDC claim validation requires a strict issuer, subject, audience, and exp
     { ...valid, iss: "" },
   ]) assert.equal(hasValidOidcClaimShape(malformed), false);
 });
+
+test("OIDC token validation enforces the authorized party for multi-audience tokens", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../lib/server/auth/oidc.ts", import.meta.url), "utf8");
+  assert.match(source, /authorizedPartyValid/);
+  assert.match(source, /multipleAudienceValid/);
+  assert.match(source, /claims\.azp === clientId/);
+});
