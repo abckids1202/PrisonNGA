@@ -75,7 +75,8 @@ test("payment webhook processing binds events to the configured provider", async
   const processor = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
   assert.match(route, /configuredProvider/);
   assert.match(route, /PAYMENT_WEBHOOK_PROVIDER_MISMATCH/);
-  assert.match(processor, /WHERE provider = \? AND \(id = \? OR provider_reference = \?\)/);
+  assert.match(processor, /const lookupField = payload\.paymentIntentId \? "id" : "provider_reference"/);
+  assert.match(processor, /WHERE provider = \? AND \$\{lookupField\} = \?/);
 });
 
 test("payment webhook processing verifies provider reference and settlement amount", async () => {

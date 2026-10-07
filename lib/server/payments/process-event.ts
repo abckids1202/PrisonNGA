@@ -26,7 +26,12 @@ function paymentEventTrail(d1: D1Database, input: { intentId: string; facilityId
 export async function processPaymentProviderEvent(d1: D1Database, input: { provider: string; eventKey: string; payload: PaymentWebhook }): Promise<{ status: string; paymentIntentId?: string; ignored?: string }> {
   const { provider, eventKey, payload } = input;
   const correlationId = crypto.randomUUID();
-  const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, provider_reference, credit_quantity, amount_minor, currency, status, version FROM payment_intents WHERE provider = ? AND (id = ? OR provider_reference = ?) LIMIT 1`).bind(provider, payload.paymentIntentId || "", payload.providerReference || "").first<{ id: string; facility_id: string; user_id: string; provider: string; provider_reference: string | null; credit_quantity: number; amount_minor: number; currency: string; status: string; version: number }>();
+  // Prefer the immutable SecureVisit payment-intent ID when the adapter
+  // supplies it. An OR lookup could select a different intent when a
+  // malformed payload contained identifiers belonging to two records.
+  const lookupField = payload.paymentIntentId ? "id" : "provider_reference";
+  const lookupValue = payload.paymentIntentId || payload.providerReference || "";
+  const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, provider_reference, credit_quantity, amount_minor, currency, status, version FROM payment_intents WHERE provider = ? AND ${lookupField} = ? LIMIT 1`).bind(provider, lookupValue).first<{ id: string; facility_id: string; user_id: string; provider: string; provider_reference: string | null; credit_quantity: number; amount_minor: number; currency: string; status: string; version: number }>();
   const now = new Date().toISOString();
   if (!intent) {
     await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
