@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const d1 = await getD1();
-    const kiosk = await authenticateKiosk(d1, request);
+    const kiosk = await authenticateKiosk(d1, request, { requireHealthy: false });
     if (!kiosk) throw new SecurityError("KIOSK_AUTHENTICATION_REQUIRED", 401);
     await enforceRateLimit(d1, { key: `kiosk-heartbeat:${kiosk.resourceId}`, limit: 30, windowSeconds: 60 });
     const now = new Date().toISOString();

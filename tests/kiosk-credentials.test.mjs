@@ -24,7 +24,7 @@ class SQLiteD1 {
 async function seedCredential(database, { resourceId = "kiosk-02", status = "ONLINE", credentialStatus = "ACTIVE" } = {}) {
   database.sqlite.exec(`
     CREATE TABLE IF NOT EXISTS resources (
-      id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, status TEXT NOT NULL
+      id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY'
     );
     CREATE TABLE IF NOT EXISTS kiosk_credentials (
       id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_id TEXT NOT NULL,
@@ -32,7 +32,7 @@ async function seedCredential(database, { resourceId = "kiosk-02", status = "ONL
     );
   `);
   const secret = createKioskCredentialSecret();
-  database.sqlite.prepare("INSERT OR REPLACE INTO resources VALUES (?, 'facility-1', 'DEVICE', ?)").run(resourceId, status);
+  database.sqlite.prepare("INSERT OR REPLACE INTO resources (id, facility_id, resource_type, status) VALUES (?, 'facility-1', 'DEVICE', ?)").run(resourceId, status);
   database.sqlite.prepare("INSERT INTO kiosk_credentials (id, facility_id, resource_id, credential_hash, status) VALUES ('credential-1', 'facility-1', ?, ?, ?)")
     .run(resourceId, await hashKioskCredential(secret), credentialStatus);
   return secret;
@@ -101,6 +101,16 @@ test("kiosk ID alone, a wrong token, a revoked token, and an offline kiosk are r
     try { const secret = await seedCredential(database, { status: "OFFLINE" }); assert.equal(await authenticateKiosk(database, kioskRequest("kiosk-02", secret)), null); }
     finally { database.close(); }
   });
+});
+
+test("failed kiosks cannot perform operational actions, but may authenticate for heartbeat recovery", async () => {
+  const database = new SQLiteD1();
+  try {
+    const secret = await seedCredential(database);
+    database.sqlite.prepare("UPDATE resources SET health_state = 'FAILED' WHERE id = 'kiosk-02'").run();
+    assert.equal(await authenticateKiosk(database, kioskRequest("kiosk-02", secret)), null);
+    assert.deepEqual(await authenticateKiosk(database, kioskRequest("kiosk-02", secret), { requireHealthy: false }), { resourceId: "kiosk-02", facilityId: "facility-1" });
+  } finally { database.close(); }
 });
 
 test("a credential cannot be replayed as another kiosk identity", async () => {

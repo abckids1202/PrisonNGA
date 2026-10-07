@@ -17,7 +17,7 @@ export async function hashKioskCredential(secret: string): Promise<string> {
 export async function authenticateKiosk(
   database: KioskCredentialDatabase,
   request: Request,
-  options: { touchLastUsed?: boolean } = {},
+  options: { touchLastUsed?: boolean; requireHealthy?: boolean } = {},
 ): Promise<AuthenticatedKiosk | null> {
   const resourceId = request.headers.get("x-securevisit-kiosk-id")?.trim() || "";
   const secret = request.headers.get("x-securevisit-kiosk-token")?.trim() || "";
@@ -26,11 +26,12 @@ export async function authenticateKiosk(
   }
 
   const credentialHash = await hashKioskCredential(secret);
+  const healthPredicate = options.requireHealthy === false ? "" : " AND r.health_state = 'HEALTHY'";
   const credential = await database.prepare(`SELECT kc.resource_id, kc.facility_id, kc.id
     FROM kiosk_credentials kc
     INNER JOIN resources r ON r.id = kc.resource_id AND r.facility_id = kc.facility_id
     WHERE kc.resource_id = ? AND kc.credential_hash = ? AND kc.status = 'ACTIVE'
-      AND r.resource_type = 'DEVICE' AND r.status = 'ONLINE'`)
+      AND r.resource_type = 'DEVICE' AND r.status = 'ONLINE'${healthPredicate}`)
     .bind(resourceId, credentialHash)
     .first<{ id: string; resource_id: string; facility_id: string }>();
 
