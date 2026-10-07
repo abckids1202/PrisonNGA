@@ -37,7 +37,7 @@ export async function POST(request: Request, context: RouteContext) {
       return securityResponse(responseBody, status, requestContext.requestId);
     };
     const appointment = await d1.prepare(`SELECT a.status, a.version, a.visitor_user_id, ca.id AS credit_account_id
-      FROM appointments a LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
+      FROM appointments a INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR' LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
       WHERE a.id = ? AND a.facility_id = ?`).bind(session.appointment_id, authorization.facilityId)
       .first<{ status: string; version: number; visitor_user_id: string; credit_account_id: string | null }>();
     if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
