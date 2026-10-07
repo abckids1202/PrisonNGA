@@ -64,6 +64,12 @@ function liveKitConnectSources(env: Env): string {
   return [...sources].join(" ");
 }
 
+function applyTransportSecurityHeader(response: Response, request: Request, environment: string): void {
+  if (environment !== "development" && new URL(request.url).protocol === "https:") {
+    response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+}
+
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
@@ -505,7 +511,9 @@ const worker = {
     const environmentCheck = validateEnvironment(env);
     if (environmentCheck.environment === "invalid" || (!environmentCheck.ok && environmentCheck.environment !== "development")) {
       operationalLog("error", { event: "ENVIRONMENT_VALIDATION_FAILED", requestId: request.headers.get("x-request-id") || crypto.randomUUID(), missing: environmentCheck.missing });
-      return Response.json({ error: "SERVICE_NOT_READY" }, { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+      const response = Response.json({ error: "SERVICE_NOT_READY" }, { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+      applyTransportSecurityHeader(response, request, environmentCheck.environment);
+      return response;
     }
 
     if (url.pathname === "/_vinext/image") {
@@ -522,6 +530,7 @@ const worker = {
     if (!isSameOriginMutation(request)) {
       const response = Response.json({ error: "CSRF_ORIGIN_INVALID" }, { status: 403, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
       response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+      applyTransportSecurityHeader(response, request, environmentCheck.environment);
       return response;
     }
 
@@ -533,6 +542,7 @@ const worker = {
     securedResponse.headers.set("X-Content-Type-Options", "nosniff");
     securedResponse.headers.set("X-Frame-Options", "DENY");
     securedResponse.headers.set("X-XSS-Protection", "0");
+    applyTransportSecurityHeader(securedResponse, request, environmentCheck.environment);
     if (request.method !== "GET" || new URL(request.url).pathname.startsWith("/api/")) securedResponse.headers.set("Cache-Control", "no-store");
     return securedResponse;
   },
