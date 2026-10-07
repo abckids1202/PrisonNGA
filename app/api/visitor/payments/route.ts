@@ -42,7 +42,10 @@ export async function POST(request: Request) {
     if (existing && ["CHECKOUT_CREATED", "SUCCEEDED", "REFUNDED", "DISPUTED"].includes(String(existing.status))) {
       return securityResponse({ paymentIntent: existing, idempotent: true }, 200, context.requestId);
     }
-    const facility = existing ? { id: facilityId } : await d1.prepare("SELECT id FROM facilities WHERE id = ? AND current_state = 'NORMAL_OPERATIONS'").bind(facilityId).first<{ id: string }>();
+    // Revalidate operational state on retries as well as first checkout. A
+    // pending or failed intent must not become payable after the facility has
+    // entered lockdown or another restricted state.
+    const facility = await d1.prepare("SELECT id FROM facilities WHERE id = ? AND current_state = 'NORMAL_OPERATIONS'").bind(facilityId).first<{ id: string }>();
     if (!facility) throw new SecurityError("FACILITY_NOT_AVAILABLE", 409);
     const provider = await getPaymentProvider();
     if (!provider) throw new SecurityError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
