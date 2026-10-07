@@ -27,6 +27,14 @@ For a faster test pass that skips the production build, run `npm run test:quick`
 
 For one repeatable local release gate, run `npm run verify:release`. It runs the disposable migration check, typecheck, lint, build/server tests, browser tests, and a production-only dependency audit. It does not deploy or mutate a remote database; staging still requires the acceptance runbook and external-provider evidence.
 
+To verify the Cloudflare Worker packaging without deploying or changing a remote service, run:
+
+```bash
+npm run deploy:dry-run
+```
+
+This builds the Worker and asks Wrangler to resolve the generated bindings and upload manifest in dry-run mode. A successful dry run does not prove that Cloudflare resources, secrets, domains, or provider credentials are configured; use the staging runbook and `/api/health/readiness` before deployment.
+
 ### Local D1 database
 
 Apply the checked-in SQL migrations before exercising persisted workflows:

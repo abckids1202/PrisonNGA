@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "deploy:dry-run": "npm run build && wrangler deploy --dry-run",
     "start": "vinext start",
     "test": "npm run build && node --import tsx --test",
     "test:quick": "node --import tsx --test \"tests/*.test.mjs\"",
