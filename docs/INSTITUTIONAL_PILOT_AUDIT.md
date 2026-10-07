@@ -64,7 +64,7 @@ The current repository already includes:
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 390 server tests and 16 browser tests passing in the local development suite; the release verifier also performs a fresh migration/seed check and production dependency audit.
+- Automated server tests and browser smoke tests. Current validation baseline is 392 server tests and 16 browser tests passing in the local development suite; the release verifier also performs a fresh migration/seed check and production dependency audit.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
