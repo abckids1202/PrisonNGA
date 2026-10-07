@@ -90,7 +90,7 @@ export async function POST(request: Request) {
       }, { sql: "changes() > 0", values: [] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM prisoners WHERE id = ? AND facility_id = ? AND version = 1)", values: [id, authorization.facilityId] } }),
     ]);
-    if (!statements[0]?.meta.changes || !statements[statements.length - 1]?.meta.changes) throw new SecurityError("PRISONER_CREATE_FAILED", 409);
+    if (!statements.every((statement) => Boolean(statement?.meta.changes))) throw new SecurityError("PRISONER_CREATE_FAILED", 409);
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
     if (d1 && idempotency) {
@@ -102,6 +102,8 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("prisoner.manage");
     const body = await request.json() as Record<string, unknown>;
@@ -110,15 +112,23 @@ export async function PATCH(request: Request) {
     if (!id || !Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) throw new SecurityError("PRISONER_VERSION_REQUIRED", 400);
     const prisoner = validateRecord(body);
     const reason = assertReason(body.reason);
-    const d1 = await getD1();
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    d1 = await getD1();
     const current = await d1.prepare(`SELECT id, prisoner_number, display_name, housing_unit, status, visitation_status, version
       FROM prisoners WHERE id = ? AND facility_id = ?`).bind(id, authorization.facilityId)
       .first<{ id: string; prisoner_number: string; display_name: string; housing_unit: string | null; status: string; visitation_status: string; version: number }>();
     if (!current) throw new SecurityError("PRISONER_NOT_FOUND", 404);
     if (current.version !== expectedVersion) throw new SecurityError("STALE_PRISONER_RECORD", 409);
+    const idempotencyScope = `prisoner-update:${authorization.facilityId}:${id}`;
+    const requestHash = await hashIdempotencyPayload({ id, expectedVersion, prisoner, reason });
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope: idempotencyScope, key: idempotencyKey };
     const nextVersion = current.version + 1;
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
+    const responseBody = { prisoner: { id, facilityId: authorization.facilityId, ...prisoner, version: nextVersion, updatedAt: now }, correlationId };
     const statements = await d1.batch([
       d1.prepare(`UPDATE prisoners SET prisoner_number = ?, display_name = ?, housing_unit = ?, status = ?, visitation_status = ?,
         version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?`)
@@ -138,10 +148,15 @@ export async function PATCH(request: Request) {
         eventType: "PRISONER_UPDATED",
         payload: { prisonerId: id, status: prisoner.status, visitationStatus: prisoner.visitationStatus, version: nextVersion },
       }, { sql: "changes() > 0", values: [] }),
+      completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM prisoners WHERE id = ? AND facility_id = ? AND version = ?)", values: [id, authorization.facilityId, nextVersion] } }),
     ]);
-    if (!statements[0]?.meta.changes) throw new SecurityError("STALE_PRISONER_RECORD", 409);
-    return securityResponse({ prisoner: { id, facilityId: authorization.facilityId, ...prisoner, version: nextVersion, updatedAt: now }, correlationId }, 200, context.requestId);
+    if (!statements.every((statement) => Boolean(statement?.meta.changes))) throw new SecurityError("STALE_PRISONER_RECORD", 409);
+    idempotency = null;
+    return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {
+    if (d1 && idempotency) {
+      try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original prisoner update error. */ }
+    }
     return securityErrorResponse(error, context.requestId);
   }
 }

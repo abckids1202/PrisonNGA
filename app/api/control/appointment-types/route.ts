@@ -58,7 +58,7 @@ export async function PUT(request: Request) {
       ...auditAndOutboxStatements(database, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "APPOINTMENT_TYPE_UPDATED", entityType: "appointment_type", entityId: id, reason, oldValues: current, newValues: snapshot, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_TYPE_UPDATED", payload: { appointmentTypeId: id, code: current.code, status } }, guard),
       completeIdempotencyStatement(database, { ...idempotency, status: 200, body: responseBody, guard }),
     ]);
-    if (!results[0]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("STALE_APPOINTMENT_TYPE", 409);
+    if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("STALE_APPOINTMENT_TYPE", 409);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {

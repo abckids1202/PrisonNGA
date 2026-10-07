@@ -50,7 +50,8 @@ export async function POST(request: Request) {
     });
     if (current.currentState === body.state) {
       const responseBody = { facility: current, changed: false };
-      await d1.batch([completeIdempotencyStatement(d1, { ...stateClaim, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM facilities WHERE id = ? AND version = ?)", values: [authorization.facilityId, current.version] } })]);
+      const completed = await d1.batch([completeIdempotencyStatement(d1, { ...stateClaim, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM facilities WHERE id = ? AND version = ?)", values: [authorization.facilityId, current.version] } })]);
+      if (!completed[0]?.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
       stateClaim = null;
       return securityResponse(responseBody, 200, context.requestId);
     }
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
         .bind(crypto.randomUUID(), body.state === "LOCKDOWN" ? "LOCKDOWN_STARTED" : "FACILITY_STATE_CHANGED", "facility", authorization.facilityId, authorization.facilityId, JSON.stringify({ previousState: current.currentState, nextState: body.state, reason }), correlationId, changedAt),
       completeIdempotencyStatement(d1, { ...stateClaim, status: 200, body: { facility: { ...current, currentState: body.state, stateReason: reason, version: nextVersion }, changed: true, correlationId }, guard: { sql: "EXISTS (SELECT 1 FROM facilities WHERE id = ? AND version = ?)", values: [authorization.facilityId, nextVersion] } }),
     ]);
-    if (!results[0]?.meta.changes) throw new SecurityError("STALE_FACILITY_STATE", 409);
+    if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("STALE_FACILITY_STATE", 409);
     stateClaim = null;
     const [facility] = await db.select().from(facilities).where(eq(facilities.id, authorization.facilityId)).limit(1);
     return securityResponse({ facility, changed: true, correlationId }, 200, context.requestId);
