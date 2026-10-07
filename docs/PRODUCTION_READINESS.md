@@ -13,11 +13,11 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 - Development OTP delivery and development simulation controls are environment-gated and are not pilot capabilities.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, and dependency audit must pass before every pushed phase.
 
-### Baseline verification — 2026-09-25
+### Baseline verification — 2026-10-07
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm test`: 326 tests passed.
+- `npm test`: 363 tests passed.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
