@@ -183,12 +183,17 @@ export async function POST(request: Request) {
     const currentPrisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at), Date.parse(now));
     const nextVisitorPresence = command === "admit_visitor" ? "present" : currentVisitorPresent ? "present" : "waiting";
     const nextPrisonerPresence = command === "confirm_prisoner_presence" ? "present" : currentPrisonerPresent ? "present" : "waiting";
+    // Staff actions are authoritative presence signals. They must refresh the
+    // heartbeat timestamp, otherwise a newly admitted participant can still be
+    // considered stale by the readiness evaluator immediately after the write.
+    const nextVisitorPresenceAt = command === "admit_visitor" ? now : currentVisitorPresent ? current.visitor_presence_at || null : null;
+    const nextPrisonerPresenceAt = command === "confirm_prisoner_presence" ? now : currentPrisonerPresent ? current.prisoner_presence_at || null : null;
     const readiness = command === "run_preflight" || command === "retry_device" || command === "start_visit"
       ? evaluateWaitingRoomReadiness({
         visitorPresence: nextVisitorPresence,
-        visitorPresenceAt: current.visitor_presence_at === null ? null : String(current.visitor_presence_at),
+        visitorPresenceAt: nextVisitorPresenceAt === null ? null : String(nextVisitorPresenceAt),
         prisonerPresence: nextPrisonerPresence,
-        prisonerPresenceAt: current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at),
+        prisonerPresenceAt: nextPrisonerPresenceAt === null ? null : String(nextPrisonerPresenceAt),
           relationshipStatus: current.relationship_status === null ? null : String(current.relationship_status),
           prisonerStatus: String(current.prisoner_status || ""),
           visitationStatus: String(current.visitation_status || ""),
@@ -276,7 +281,7 @@ export async function POST(request: Request) {
       d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0
         ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = excluded.visitor_presence, visitor_presence_at = excluded.visitor_presence_at, prisoner_presence = excluded.prisoner_presence, prisoner_presence_at = excluded.prisoner_presence_at, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, room_state = excluded.room_state, kiosk_state = excluded.kiosk_state, restriction_state = excluded.restriction_state, assigned_room_id = COALESCE(excluded.assigned_room_id, waiting_room_sessions.assigned_room_id), assigned_kiosk_id = COALESCE(excluded.assigned_kiosk_id, waiting_room_sessions.assigned_kiosk_id), staff_notes = COALESCE(excluded.staff_notes, waiting_room_sessions.staff_notes), version = excluded.version, last_checked_at = excluded.last_checked_at, updated_at = excluded.updated_at`)
-        .bind(body.appointmentId, authorization.facilityId, nextState, visitorPresence, command === "admit_visitor" ? now : current.visitor_presence_at || null, prisonerPresence, command === "confirm_prisoner_presence" ? now : current.prisoner_presence_at || null, identityState, cameraState, microphoneState, networkState, roomState, kioskState, restrictionState, String(current.assigned_room_id || "") || null, String(current.assigned_kiosk_id || "") || null, body.staffNotes?.trim().slice(0, 500) || null, nextVersion, now, now, now),
+        .bind(body.appointmentId, authorization.facilityId, nextState, visitorPresence, nextVisitorPresenceAt, prisonerPresence, nextPrisonerPresenceAt, identityState, cameraState, microphoneState, networkState, roomState, kioskState, restrictionState, String(current.assigned_room_id || "") || null, String(current.assigned_kiosk_id || "") || null, body.staffNotes?.trim().slice(0, 500) || null, nextVersion, now, now, now),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, `WAITING_ROOM_${command.toUpperCase()}`, "waiting_room", body.appointmentId, reason, JSON.stringify({ state: current.state || "NOT_ARRIVED", version: currentVersion }), JSON.stringify({ state: nextState, version: nextVersion, checks: readiness?.checks || undefined }), correlationId, context.requestId, now),
