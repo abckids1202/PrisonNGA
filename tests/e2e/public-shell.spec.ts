@@ -408,6 +408,15 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     expect(decisionBody.allocation?.deviceId).toBeTruthy();
     expect(decisionBody.allocation?.deviceId).toBe("kiosk-02");
 
+    // Staff explicitly opens the operational waiting-room record before the
+    // scheduled window. This mirrors the real workflow: the visitor may only
+    // enter early when the facility has deliberately opened the visit.
+    const openWaitingRoom = await staff.request.post("/api/control/waiting-room", {
+      headers: { origin: testOrigin, "Idempotency-Key": `waiting-room-open-${Date.now()}-e2e` },
+      data: { appointmentId: approvedAppointmentId, command: "contact_visitor", reason: "Open the approved visit record for arrival coordination." },
+    });
+    expect(openWaitingRoom.status(), await openWaitingRoom.text()).toBe(200);
+
     const deviceCheck = await page.request.post(`/api/visitor/appointments/${approvedAppointmentId}/device-check`, {
       headers: { origin: testOrigin, "Idempotency-Key": `visitor-device-check-${Date.now()}-e2e` },
       data: { cameraResult: "ready", microphoneResult: "ready", networkResult: "stable", latencyMs: 84 },
