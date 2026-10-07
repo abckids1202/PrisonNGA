@@ -5,6 +5,7 @@ import { validateEnvironment } from "../../../../lib/server/config";
 import { getPaymentProvider } from "../../../../lib/server/payments/provider";
 import { getVideoConfig } from "../../../../lib/server/video/provider";
 import { getNotificationDelivery } from "../../../../lib/server/notifications/provider";
+import { isSecureHttpsEndpoint } from "../../../../lib/server/endpoint";
 
 const requiredTables = [
   "users", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "roles", "permissions", "user_roles", "role_permissions",
@@ -80,14 +81,13 @@ export async function GET() {
       ...configurationKeys.map((key) => getRuntimeValue(key)),
     ]);
     const environmentConfig = validateEnvironment({ DB: d1, EVIDENCE_BUCKET: evidenceBucket, ...Object.fromEntries(configurationKeys.map((key, index) => [key, configurationValues[index]])) });
-    const isHttps = (value: string | null) => typeof value === "string" && /^https:\/\//i.test(value);
-    const webhookConfigured = (url: string | null, secret: string | null) => isHttps(url) && Boolean(secret);
+    const webhookConfigured = (url: string | null, secret: string | null) => Boolean(url && isSecureHttpsEndpoint(url)) && Boolean(secret);
     const visitorAuth = visitorAuthDelivery === "webhook" && webhookConfigured(visitorAuthWebhookUrl, visitorAuthWebhookSecret);
     const evidenceScanning = evidenceScanProvider === "webhook" && webhookConfigured(evidenceScanWebhookUrl, evidenceScanWebhookSecret);
     const paymentWebhook = Boolean(paymentProvider) && Boolean(paymentWebhookSecret);
-    const oidcReady = isHttps(staffOidcIssuer) && Boolean(staffOidcClientId) && Boolean(staffOidcClientSecret) && isHttps(staffOidcRedirectUri)
+    const oidcReady = Boolean(staffOidcIssuer && isSecureHttpsEndpoint(staffOidcIssuer)) && Boolean(staffOidcClientId) && Boolean(staffOidcClientSecret) && Boolean(staffOidcRedirectUri && isSecureHttpsEndpoint(staffOidcRedirectUri))
       && Boolean((await getRuntimeValue("STAFF_OIDC_MFA_ACR")) || (await getRuntimeValue("STAFF_OIDC_MFA_AMR")));
-    const samlReady = Boolean(staffSamlEntityId) && isHttps(staffSamlMetadataUrl) && isHttps(staffSamlEntryPoint) && Boolean(staffSamlIdpCert) && isHttps(staffSamlCallbackUri)
+    const samlReady = Boolean(staffSamlEntityId) && Boolean(staffSamlMetadataUrl && isSecureHttpsEndpoint(staffSamlMetadataUrl)) && Boolean(staffSamlEntryPoint && isSecureHttpsEndpoint(staffSamlEntryPoint)) && Boolean(staffSamlIdpCert) && Boolean(staffSamlCallbackUri && isSecureHttpsEndpoint(staffSamlCallbackUri))
       && Boolean(await getRuntimeValue("STAFF_SAML_MFA_ACR"));
     const staffIdentity = staffAuthProvider === "both"
       ? oidcReady && samlReady
