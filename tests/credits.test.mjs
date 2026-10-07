@@ -193,6 +193,21 @@ test("visit credit reservation is atomic and duplicate approval cannot debit twi
   } finally { d1.close(); }
 });
 
+test("credit reservation cannot cross the appointment visitor boundary", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("account-other", "facility-1", "visitor-other", 3, 0, 1, "before", "before");
+    await assert.rejects(reserveVisitCredit(d1, {
+      accountId: "account-other",
+      appointmentId: "visit-1",
+      actorUserId: "staff-1",
+      reason: "Cross-visitor reservation.",
+    }), /INSUFFICIENT_VISIT_CREDITS/);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+  } finally { d1.close(); }
+});
+
 test("reservation release and consumption keep the account and append-only ledger atomic", async () => {
   const d1 = new SQLiteD1();
   const now = new Date().toISOString();
