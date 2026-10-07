@@ -94,6 +94,17 @@ test("payment success commits provider status, credit purchase, event, audit, an
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 1);
 });
 
+test("payment success replay under a new provider event key is acknowledged without double crediting", async () => {
+  const d1 = new D1();
+  await processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-1", payload: event });
+  d1.sqlite.exec("INSERT INTO payment_provider_events VALUES ('event-row-2', 'webhook', 'event-2', 'PROCESSING', NULL, NULL);");
+  const replay = await processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-2", payload: { ...event, eventId: "event-2" } });
+  assert.deepEqual(replay, { status: "SUCCEEDED", paymentIntentId: "payment-1" });
+  assert.equal(d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE user_id = 'visitor-1'").get().available_credits, 2);
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'PURCHASE'").get().count, 1);
+  assert.equal(d1.sqlite.prepare("SELECT status FROM payment_provider_events WHERE event_key = 'event-2'").get().status, "PROCESSED");
+});
+
 test("payment success rolls back credits and status when audit persistence fails", async () => {
   const d1 = new D1();
   d1.sqlite.exec("CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END;");

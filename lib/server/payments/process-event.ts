@@ -74,15 +74,28 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
       return { status: "IGNORED", paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_TERMINAL" };
     }
     const accountId = await ensureCreditAccount(d1, { facilityId: intent.facility_id, userId: intent.user_id });
+    const purchaseKey = `payment:${intent.id}:purchase`;
+    const existingPurchase = await d1.prepare(`SELECT id FROM credit_ledger_entries
+      WHERE credit_account_id = ? AND entry_type = 'PURCHASE' AND idempotency_key = ? LIMIT 1`)
+      .bind(accountId, purchaseKey).first<{ id: string }>();
+    // A provider can retry the same settlement with a new event ID. The
+    // purchase ledger key is authoritative, so acknowledge the new event
+    // without attempting a second balance mutation or version bump.
+    const alreadySettled = intent.status === "SUCCEEDED" && Boolean(existingPurchase);
     const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, facilityId: intent.facility_id, userId: intent.user_id, ledgerKey: `payment:${intent.id}:purchase`, accountId });
+    const settlementStatements = alreadySettled ? [] : settlePaymentPurchaseStatements(d1, { paymentIntentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, accountId, amount: intent.credit_quantity, reason: `Payment ${eventKey} settled.`, now, requireSucceeded: true });
     const results = await d1.batch([
-      d1.prepare("UPDATE payment_intents SET provider = ?, status = 'SUCCEEDED', provider_reference = COALESCE(?, provider_reference), version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED', 'SUCCEEDED')").bind(provider, payload.providerReference || null, now, intent.id, intent.facility_id, intent.user_id),
+      ...(alreadySettled ? [] : [d1.prepare("UPDATE payment_intents SET provider = ?, status = 'SUCCEEDED', provider_reference = COALESCE(?, provider_reference), version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED', 'SUCCEEDED')").bind(provider, payload.providerReference || null, now, intent.id, intent.facility_id, intent.user_id)]),
       ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: "SUCCEEDED", eventType: payload.eventType, correlationId }),
-      ...settlePaymentPurchaseStatements(d1, { paymentIntentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, accountId, amount: intent.credit_quantity, reason: `Payment ${eventKey} settled.`, now, requireSucceeded: true }),
+      ...settlementStatements,
       d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ? AND ${evidenceGuard.sql}`).bind(now, provider, eventKey, ...evidenceGuard.values),
     ]);
-    if (!results[0]?.meta.changes) throw new SecurityError("PAYMENT_INTENT_STATE_CHANGED", 409);
-    if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes || !results[4]?.meta.changes || !results[5]?.meta.changes) {
+    const statusWriteIndex = alreadySettled ? null : 0;
+    const trailIndex = alreadySettled ? 0 : 1;
+    const settlementStartIndex = trailIndex + 1;
+    const processedIndex = results.length - 1;
+    if (statusWriteIndex !== null && !results[statusWriteIndex]?.meta.changes) throw new SecurityError("PAYMENT_INTENT_STATE_CHANGED", 409);
+    if (!results[trailIndex]?.meta.changes || !settlementStatements.every((_, index) => Boolean(results[settlementStartIndex + index]?.meta.changes)) || !results[processedIndex]?.meta.changes) {
       throw new SecurityError("PAYMENT_SETTLEMENT_INCOMPLETE", 503);
     }
     return { status: "SUCCEEDED", paymentIntentId: intent.id };
