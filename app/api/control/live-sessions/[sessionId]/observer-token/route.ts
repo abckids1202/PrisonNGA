@@ -24,7 +24,7 @@ export async function POST(request: Request, context: RouteContext) {
     const token = await provider.createParticipantToken({ roomName: session.provider_room_name, identity: `observer:${authorization.userId}`, name: authorization.displayName, role: "STAFF_OBSERVER", ttlSeconds: expiresInSeconds });
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
-    await d1.batch([
+    const auditResults = await d1.batch([
       d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
         .bind(crypto.randomUUID(), sessionId, "MONITORING_TOKEN_ISSUED", "STAFF", "STAFF_OBSERVER", JSON.stringify({ reason, tokenTtlSeconds: expiresInSeconds }), correlationId, now),
@@ -32,6 +32,9 @@ export async function POST(request: Request, context: RouteContext) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, "SESSION_MONITORING_TOKEN_ISSUED", "visit_session", sessionId, reason, null, JSON.stringify({ participantRole: "STAFF_OBSERVER", tokenTtlSeconds: expiresInSeconds }), correlationId, requestContext.requestId, now),
     ]);
+    if (!auditResults[0]?.meta.changes || !auditResults[1]?.meta.changes) {
+      throw new SecurityError("SESSION_MONITORING_AUDIT_FAILED", 503);
+    }
     return securityResponse({ token, serverUrl: config.url, session: toSessionPayload(session), participantRole: "STAFF_OBSERVER", expiresInSeconds }, 200, requestContext.requestId);
   } catch (error) {
     return securityErrorResponse(error, requestContext.requestId);
