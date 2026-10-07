@@ -138,7 +138,21 @@ export function securityResponse(body: unknown, status = 200, requestId?: string
 
 export function securityErrorResponse(error: unknown, requestId?: string): Response {
   const securityError = error instanceof SecurityError ? error : null;
-  return securityResponse(securityError ? { error: securityError.code, requestId } : { error: "INTERNAL_ERROR", requestId }, securityError?.statusCode || 500, requestId);
+  const response = securityResponse(securityError ? { error: securityError.code, requestId } : { error: "INTERNAL_ERROR", requestId }, securityError?.statusCode || 500, requestId);
+  const retryAfter = securityError ? retryAfterSeconds(securityError) : null;
+  if (retryAfter !== null) response.headers.set("Retry-After", String(retryAfter));
+  return response;
+}
+
+function retryAfterSeconds(error: SecurityError): number | null {
+  if (error.statusCode !== 429) return null;
+  switch (error.code) {
+    case "AUTH_RETRY_TOO_SOON": return 60;
+    case "AUTH_CODE_LOCKED": return 600;
+    case "AUTH_RATE_LIMITED": return 900;
+    case "RATE_LIMITED": return 60;
+    default: return 60;
+  }
 }
 
 export function applySecurityHeaders(response: Response, requestId?: string): void {
