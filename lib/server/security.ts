@@ -85,8 +85,17 @@ export async function getRequestContext(): Promise<RequestContext> {
   const requestHeaders = await headers();
   const suppliedRequestId = requestHeaders.get("x-request-id")?.trim() || "";
   const requestId = /^[A-Za-z0-9._:-]{1,128}$/.test(suppliedRequestId) ? suppliedRequestId : crypto.randomUUID();
-  const forwardedFor = requestHeaders.get("cf-connecting-ip") || requestHeaders.get("x-forwarded-for");
-  return { requestId, ipAddress: forwardedFor?.split(",")[0]?.trim() || null, userAgent: requestHeaders.get("user-agent") };
+  const cloudflareIp = requestHeaders.get("cf-connecting-ip")?.trim() || "";
+  // In the Cloudflare deployment model this header is supplied by the edge.
+  // Do not trust a client-provided X-Forwarded-For value in staging or
+  // production: rotating that header would bypass IP-based abuse controls.
+  // Local development keeps the fallback so browser tests and local reverse
+  // proxies can still identify their requests.
+  const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
+  const developmentForwardedIp = environment === "development"
+    ? requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || ""
+    : "";
+  return { requestId, ipAddress: cloudflareIp || developmentForwardedIp || null, userAgent: requestHeaders.get("user-agent") };
 }
 
 export async function requirePermission(permissionKey: string, facilityId?: string): Promise<AuthorizationContext> {
