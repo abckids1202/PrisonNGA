@@ -31,3 +31,10 @@ test("a terminated or failed session is never described as a completed visit", (
   assert.equal(getVisitorVisitViewState({ status: "IN_PROGRESS", session_status: "FAILED", waiting_room_state: null }), "issue");
 });
 
+test("visitor details keeps waiting-room entry available when the prisoner arrives first", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../app/visitor/VisitDetailsClient.tsx", import.meta.url), "utf8");
+  assert.match(source, /visitorAlreadyWaiting = appointment\.visitor_presence === "present"/);
+  assert.match(source, /\["APPROVED", "WAITING"\]\.includes\(appointment\.status\)/);
+});
+

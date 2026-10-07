@@ -213,8 +213,11 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
 
   const credit = appointment.visit_credit_status;
   const historyRows = history;
-  const visitorAlreadyWaiting = appointment.visitor_presence === "present" || ["WAITING", "IN_PROGRESS"].includes(appointment.status);
-  const canEnterWaitingRoom = deviceCheckComplete && appointment.status === "APPROVED" && !visitorAlreadyWaiting;
+  // The appointment may already be WAITING because the prisoner/kiosk arrived
+  // first. Visitor entry must depend on this visitor's persisted presence,
+  // not on the appointment-wide status transition.
+  const visitorAlreadyWaiting = appointment.visitor_presence === "present";
+  const canEnterWaitingRoom = deviceCheckComplete && ["APPROVED", "WAITING"].includes(appointment.status) && !visitorAlreadyWaiting;
   const action = canEnterWaitingRoom ? enterWaitingRoom : presentation.action === "Check this device" ? openDeviceCheck : openLiveVisit;
   const actionLabel = canEnterWaitingRoom ? "Enter waiting room" : presentation.action;
 
