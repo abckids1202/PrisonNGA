@@ -17,3 +17,7 @@ test("refund provider acceptance remains webhook-driven and replay-safe", () => 
   assert.match(source, /completeIdempotencyStatement\(d1/);
   assert.match(source, /status: "REQUESTED"/);
 });
+
+test("refund lookup is restricted to visitor-owned payment intents", () => {
+  assert.match(source, /u\.id = pi\.user_id AND u\.user_type = 'VISITOR'/);
+});

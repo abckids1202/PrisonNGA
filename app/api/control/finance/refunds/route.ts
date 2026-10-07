@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
 
     d1 = await getD1();
-    const intent = await d1.prepare("SELECT id, facility_id, provider, provider_reference, amount_minor, currency, status FROM payment_intents WHERE id = ? AND facility_id = ? LIMIT 1")
+    const intent = await d1.prepare("SELECT pi.id, pi.facility_id, pi.provider, pi.provider_reference, pi.amount_minor, pi.currency, pi.status FROM payment_intents pi INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR' WHERE pi.id = ? AND pi.facility_id = ? LIMIT 1")
       .bind(paymentIntentId, authorization.facilityId)
       .first<{ id: string; facility_id: string; provider: string; provider_reference: string | null; amount_minor: number; currency: string; status: string }>();
     if (!intent) throw new SecurityError("PAYMENT_INTENT_NOT_FOUND", 404);
