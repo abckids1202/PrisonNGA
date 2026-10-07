@@ -14,6 +14,7 @@ import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStateme
 import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
+import { assertRequestBodyWithinLimit } from "../lib/server/request-body";
 
 interface Env {
   ASSETS: Fetcher;
@@ -532,6 +533,22 @@ const worker = {
       response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
       applyTransportSecurityHeader(response, request, environmentCheck.environment);
       return response;
+    }
+
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && url.pathname.startsWith("/api/")) {
+      const contentType = request.headers.get("content-type")?.toLowerCase() || "";
+      const maxBodyBytes = contentType.startsWith("multipart/form-data;") ? 12 * 1024 * 1024 : 256 * 1024;
+      try {
+        await assertRequestBodyWithinLimit(request, maxBodyBytes);
+      } catch (error) {
+        if (error instanceof Error && error.name === "SecurityError") {
+          const response = Response.json({ error: error.message }, { status: 413, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+          response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+          applyTransportSecurityHeader(response, request, environmentCheck.environment);
+          return response;
+        }
+        throw error;
+      }
     }
 
     const response = await handler.fetch(request, env, ctx);
