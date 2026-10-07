@@ -119,6 +119,7 @@ The current repository already includes:
 - Live-session join validation now rejects participant tokens before the authorized start window, with a one-minute clock-skew grace, in addition to the existing expiry and recording-policy checks.
 - Administration now exposes the protected deployment-readiness API, including database, schema, provider, storage, visitor-auth, staff-identity and notification checks without returning secret values.
 - Audit export manifests can now be retrieved through an authorized, facility-scoped verification endpoint. Break-glass requests and supervisor decisions are now persisted with time-bound grants, step-up checks, optimistic concurrency, audit events, and outbox events; staging access-review and policy validation remain release gates.
+- Audit export creation now commits the immutable manifest and its audit/outbox evidence in one D1 batch; a manifest is not acknowledged if the evidence writes do not commit, and a regression test protects that boundary.
 - Data retention and deletion need scheduled-job evidence, exception handling, legal-hold behavior and restore/rollback procedures.
 - The dramatic spin is a product interaction plan, not a completed business feature. The server must decide and persist the result before animation; the animation must never decide the outcome. The deterministic component also honors reduced-motion for both its completion timer and CSS transition.
 
