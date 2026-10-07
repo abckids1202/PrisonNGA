@@ -134,6 +134,31 @@ test("payment refund rolls back the refund ledger and intent status when audit p
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 0);
 });
 
+test("payment refund replay under a new provider event key is acknowledged without double refunding", async () => {
+  const d1 = new D1();
+  d1.sqlite.exec(`
+    UPDATE payment_intents SET status = 'SUCCEEDED', version = 2;
+    INSERT INTO credit_accounts VALUES ('account-1', 'facility-1', 'visitor-1', 2, 0, 2, 'before', 'before');
+    INSERT INTO credit_ledger_entries VALUES ('purchase-1', 'account-1', NULL, 'PURCHASE', 2, 'payment:payment-1:purchase', 'paid', 'system:payment-webhook', 'before');
+    UPDATE payment_provider_events SET event_key = 'refund-1', status = 'PROCESSING';
+  `);
+  await processPaymentProviderEvent(d1, {
+    provider: "webhook",
+    eventKey: "refund-1",
+    payload: { eventType: "PAYMENT_REFUNDED", eventId: "refund-1", paymentIntentId: "payment-1", providerReference: "provider-1", status: "REFUNDED" },
+  });
+  d1.sqlite.exec("INSERT INTO payment_provider_events VALUES ('refund-row-2', 'webhook', 'refund-2', 'PROCESSING', NULL, NULL);");
+  const replay = await processPaymentProviderEvent(d1, {
+    provider: "webhook",
+    eventKey: "refund-2",
+    payload: { eventType: "PAYMENT_REFUNDED", eventId: "refund-2", paymentIntentId: "payment-1", providerReference: "provider-1", status: "REFUNDED" },
+  });
+  assert.deepEqual(replay, { status: "REFUNDED", paymentIntentId: "payment-1" });
+  assert.equal(d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE id = 'account-1'").get().available_credits, 0);
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 1);
+  assert.equal(d1.sqlite.prepare("SELECT status FROM payment_provider_events WHERE event_key = 'refund-2'").get().status, "PROCESSED");
+});
+
 test("payment refund refuses a purchase ledger entry from another visitor or facility", async () => {
   const d1 = new D1();
   d1.sqlite.exec(`

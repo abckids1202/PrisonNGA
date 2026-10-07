@@ -108,6 +108,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
       if (!current) throw new SecurityError("PAYMENT_INTENT_STATE_UNAVAILABLE", 503);
       let refundStatements: D1PreparedStatement[] = [];
       let refundAccountId: string | null = null;
+      let alreadyTerminal = current.status === nextStatus;
       if (nextStatus === "REFUNDED") {
         const purchase = await d1.prepare(`SELECT cle.credit_account_id, cle.amount
           FROM credit_ledger_entries cle
@@ -118,28 +119,37 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
           .first<{ credit_account_id: string; amount: number }>();
         if (!purchase) throw new SecurityError("PAYMENT_REFUND_PENDING", 503);
         refundAccountId = purchase.credit_account_id;
-        refundStatements = refundPurchasedCreditsStatements(d1, { paymentIntentId: intent.id, accountId: purchase.credit_account_id, amount: purchase.amount, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.`, now });
+        const existingRefund = await d1.prepare(`SELECT id FROM credit_ledger_entries
+          WHERE credit_account_id = ? AND entry_type = 'REFUND' AND idempotency_key = ? LIMIT 1`)
+          .bind(purchase.credit_account_id, `payment:${intent.id}:refund`).first<{ id: string }>();
+        alreadyTerminal = current.status === "REFUNDED" && Boolean(existingRefund);
+        if (!alreadyTerminal) {
+          refundStatements = refundPurchasedCreditsStatements(d1, { paymentIntentId: intent.id, accountId: purchase.credit_account_id, amount: purchase.amount, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.`, now });
+        }
       }
       const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, facilityId: intent.facility_id, userId: intent.user_id, ledgerKey: nextStatus === "REFUNDED" ? `payment:${intent.id}:refund` : undefined, accountId: refundAccountId || undefined });
       const results = await d1.batch([
-        d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ${allowedPriorStatuses}`).bind(provider, nextStatus, now, intent.id, intent.facility_id, intent.user_id),
+        ...(alreadyTerminal ? [] : [d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ${allowedPriorStatuses}`).bind(provider, nextStatus, now, intent.id, intent.facility_id, intent.user_id)]),
         ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
         ...refundStatements,
         d1.prepare("UPDATE payment_refund_requests SET status = 'COMPLETED', provider_reference = COALESCE(?, provider_reference), updated_at = ? WHERE payment_intent_id = ? AND status = 'REQUESTED'").bind(payload.providerReference || null, now, intent.id),
         d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ? AND ${evidenceGuard.sql}`).bind(now, provider, eventKey, ...evidenceGuard.values),
       ]);
-      if (!results[0]?.meta.changes) {
+      const statusWriteIndex = alreadyTerminal ? null : 0;
+      const trailIndex = alreadyTerminal ? 0 : 1;
+      const refundStartIndex = trailIndex + 1;
+      const refundEndIndex = refundStartIndex + refundStatements.length;
+      const processedIndex = results.length - 1;
+      if (statusWriteIndex !== null && !results[statusWriteIndex]?.meta.changes) {
         await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
         return { status: current.status, paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_STATE_CHANGED" };
       }
-      const refundWritesStart = 3;
-      const refundWritesEnd = refundWritesStart + refundStatements.length;
-      const refundWritesCommitted = results.slice(refundWritesStart, refundWritesEnd).every((result) => Boolean(result?.meta.changes));
+      const refundWritesCommitted = results.slice(refundStartIndex, refundEndIndex).every((result) => Boolean(result?.meta.changes));
       // A provider may refund a payment without a pre-existing SecureVisit
       // refund request, so the local request-status update is optional. The
       // payment transition, audit/outbox trail, every credit ledger/balance
       // write, and provider-event acknowledgement are not optional.
-      if (!results[1]?.meta.changes || !results[2]?.meta.changes || !refundWritesCommitted || !results[results.length - 1]?.meta.changes) {
+      if (!results[trailIndex]?.meta.changes || !refundWritesCommitted || !results[processedIndex]?.meta.changes) {
         throw new SecurityError("PAYMENT_SETTLEMENT_INCOMPLETE", 503);
       }
       return { status: nextStatus, paymentIntentId: intent.id };
