@@ -12,7 +12,7 @@ async function currentUser() {
   const identity = await getWorkspaceIdentity();
   if (!identity) throw new SecurityError("AUTHENTICATION_REQUIRED", 401);
   const db = await getDb();
-  const [user] = await db.select({ id: users.id }).from(users).where(and(eq(users.externalId, identity.externalId), eq(users.status, "ACTIVE"))).limit(1);
+  const [user] = await db.select({ id: users.id }).from(users).where(and(eq(users.externalId, identity.externalId), eq(users.userType, "STAFF"), eq(users.status, "ACTIVE"))).limit(1);
   if (!user) throw new SecurityError("ACCOUNT_NOT_PROVISIONED", 403);
   return { id: user.id, tokenHash: null };
 }
