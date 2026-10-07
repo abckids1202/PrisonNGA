@@ -7,5 +7,6 @@ test("visitor payment receipts are restricted to the authenticated visitor's set
   assert.match(source, /pi\.user_id = \?/);
   assert.match(source, /pi\.status = 'SUCCEEDED'/);
   assert.match(source, /cle\.entry_type = 'PURCHASE'/);
+  assert.match(source, /ca\.facility_id = pi\.facility_id AND ca\.user_id = pi\.user_id/);
   assert.match(source, /PAYMENT_RECEIPT_NOT_FOUND/);
 });

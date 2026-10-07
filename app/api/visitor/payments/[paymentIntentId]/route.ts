@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pay
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `payment-status:${visitor.userId}`, limit: 120, windowSeconds: 60 * 10 });
     const payment = await d1.prepare(`SELECT pi.id, pi.facility_id, pi.provider, pi.provider_reference, pi.credit_quantity, pi.amount_minor, pi.currency, pi.status, pi.checkout_url, pi.created_at, pi.updated_at,
-      EXISTS (SELECT 1 FROM credit_ledger_entries cle WHERE cle.idempotency_key = 'payment:' || pi.id || ':purchase' AND cle.entry_type = 'PURCHASE') AS settled
+      EXISTS (SELECT 1 FROM credit_ledger_entries cle INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id AND ca.facility_id = pi.facility_id AND ca.user_id = pi.user_id WHERE cle.idempotency_key = 'payment:' || pi.id || ':purchase' AND cle.entry_type = 'PURCHASE') AS settled
       FROM payment_intents pi WHERE pi.id = ? AND pi.user_id = ? LIMIT 1`).bind(paymentIntentId, visitor.userId).first<Record<string, string | number | null>>();
     if (!payment) throw new SecurityError("PAYMENT_NOT_FOUND", 404);
     return securityResponse({ paymentIntent: {
