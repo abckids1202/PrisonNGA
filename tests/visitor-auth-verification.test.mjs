@@ -19,6 +19,8 @@ test("visitor authentication supports both email and SMS challenge channels", as
   assert.match(requestSource, /channel === "EMAIL"/);
   assert.match(requestSource, /VALID_PHONE_REQUIRED/);
   assert.match(requestSource, /\+\[1-9\]\\d\{7,14\}/);
+  assert.match(requestSource, /0x1_0000_0000/);
+  assert.match(requestSource, /bytes\[0\] >= limit/);
   assert.match(deliverySource, /channel: "EMAIL" \| "SMS"/);
 });
 

@@ -21,8 +21,14 @@ function maskPhone(phone: string): string {
 }
 
 function generateCode(): string {
+  // Reject the small remainder above the largest evenly divisible range so
+  // every six-digit code has the same probability. A direct modulo of a
+  // 32-bit random value would otherwise introduce a small distribution bias.
+  const limit = Math.floor(0x1_0000_0000 / 1_000_000) * 1_000_000;
   const bytes = new Uint32Array(1);
-  crypto.getRandomValues(bytes);
+  do {
+    crypto.getRandomValues(bytes);
+  } while (bytes[0] >= limit);
   return String(bytes[0] % 1_000_000).padStart(6, "0");
 }
 
