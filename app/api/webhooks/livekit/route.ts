@@ -4,6 +4,7 @@ import { finalizeLiveSessionStatements } from "@/lib/server/live-session-finaliz
 import { getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { getVideoConfig } from "@/lib/server/video/provider";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
+import { readTextBodyWithinLimit } from "@/lib/server/request-body";
 
 function roleForParticipant(identity: string | undefined): "VISITOR" | "FACILITY" | "STAFF_OBSERVER" | null {
   if (identity?.startsWith("visitor:")) return "VISITOR";
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
   try {
     const config = await getVideoConfig();
     if (!config.configured || !config.apiKey || !config.apiSecret) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
-    const body = await request.text();
+    const body = await readTextBodyWithinLimit(request, 256 * 1024);
     const event = await new WebhookReceiver(config.apiKey, config.apiSecret).receive(body, request.headers.get("Authorization") || undefined);
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `livekit-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });

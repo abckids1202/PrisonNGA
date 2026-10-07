@@ -3,6 +3,7 @@ import { getRuntimeValue, getRequestContext, securityErrorResponse, securityResp
 import { serializePaymentWebhookSnapshot, verifyPaymentWebhookSignature, type PaymentWebhook } from "../../../../lib/server/payments/provider";
 import { processPaymentProviderEvent } from "../../../../lib/server/payments/process-event";
 import { enforceRateLimit } from "../../../../lib/server/rate-limit";
+import { readTextBodyWithinLimit } from "../../../../lib/server/request-body";
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     const secret = await getRuntimeValue("PAYMENT_WEBHOOK_SECRET");
     const configuredProvider = (await getRuntimeValue("PAYMENT_PROVIDER") || "").toLowerCase();
     if (!secret || !configuredProvider || configuredProvider === "none" || configuredProvider === "console") throw new SecurityError("PAYMENT_WEBHOOK_NOT_CONFIGURED", 503);
-    const rawBody = await request.text();
+    const rawBody = await readTextBodyWithinLimit(request, 256 * 1024);
     const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
     const timestampHeader = request.headers.get("x-securevisit-timestamp");
     if (environment !== "development" && !timestampHeader) throw new SecurityError("PAYMENT_WEBHOOK_TIMESTAMP_REQUIRED", 401);
