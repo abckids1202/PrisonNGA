@@ -27,6 +27,52 @@ export type AppointmentDecisionInput = {
   };
 };
 
+export async function appointmentDecisionCommitted(
+  d1: D1Database,
+  input: {
+    appointmentId: string;
+    facilityId: string;
+    toStatus: string;
+    expectedVersion: number;
+    command: string;
+    correlationId?: string;
+    requiresCreditRelease: boolean;
+  },
+): Promise<boolean> {
+  const appointment = await d1.prepare("SELECT status, version FROM appointments WHERE id = ? AND facility_id = ?")
+    .bind(input.appointmentId, input.facilityId)
+    .first<{ status: string; version: number }>();
+  if (!appointment || appointment.status !== input.toStatus || appointment.version !== input.expectedVersion + 1) return false;
+
+  if (input.correlationId) {
+    const evidence = await d1.prepare(`SELECT
+      EXISTS (SELECT 1 FROM appointment_status_events WHERE appointment_id = ? AND correlation_id = ? AND to_status = ?) AS status_event,
+      EXISTS (SELECT 1 FROM audit_events WHERE entity_type = 'appointment' AND entity_id = ? AND correlation_id = ?) AS audit_event,
+      EXISTS (SELECT 1 FROM outbox_events WHERE aggregate_type = 'appointment' AND aggregate_id = ? AND correlation_id = ?) AS outbox_event`)
+      .bind(input.appointmentId, input.correlationId, input.toStatus, input.appointmentId, input.correlationId, input.appointmentId, input.correlationId)
+      .first<{ status_event: number; audit_event: number; outbox_event: number }>();
+    if (!evidence || !evidence.status_event || !evidence.audit_event || !evidence.outbox_event) return false;
+  }
+
+  const state = await d1.prepare(`SELECT
+    (SELECT COUNT(*) FROM resource_reservations WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')) AS active_resources,
+    EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION'
+      AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = ? AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))) AS active_credit_reservation,
+    EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION_RELEASE') AS released_credit,
+    (SELECT COALESCE(SUM(cle.amount), 0) FROM credit_ledger_entries cle WHERE cle.credit_account_id = (SELECT credit_account_id FROM credit_ledger_entries WHERE appointment_id = ? LIMIT 1)) =
+      (SELECT COALESCE(available_credits, 0) FROM credit_accounts WHERE id = (SELECT credit_account_id FROM credit_ledger_entries WHERE appointment_id = ? LIMIT 1)) AS balance_consistent`)
+    .bind(input.appointmentId, input.facilityId, input.appointmentId, input.appointmentId, input.appointmentId, input.appointmentId, input.appointmentId)
+    .first<{ active_resources: number; active_credit_reservation: number; released_credit: number; balance_consistent: number }>();
+  if (!state) return false;
+
+  if (input.command === "approve") {
+    return Number(state.active_resources) >= 2 && Boolean(state.active_credit_reservation) && Boolean(state.balance_consistent);
+  }
+  if (input.requiresCreditRelease && (!state.released_credit || state.active_credit_reservation || !state.balance_consistent)) return false;
+  if (["cancel", "reject", "no_show"].includes(input.command) && Number(state.active_resources) !== 0) return false;
+  return true;
+}
+
 export function appointmentDecisionStatements(d1: D1Database, input: AppointmentDecisionInput): D1PreparedStatement[] {
   const guard = {
     sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND status = ? AND version = ? AND last_transition_id = ?)",

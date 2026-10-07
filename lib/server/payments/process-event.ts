@@ -35,7 +35,7 @@ function paymentEventEvidenceGuard(input: { intentId: string; correlationId: str
     // The ledger and denormalized balance must agree before the provider event
     // can become terminal. This catches a silent balance-write omission even
     // when the ledger insert itself succeeded.
-    clauses.push("(SELECT COALESCE(SUM(amount), 0) FROM credit_ledger_entries WHERE credit_account_id = ?) = (SELECT available_credits + reserved_credits FROM credit_accounts WHERE id = ?)");
+    clauses.push("(SELECT COALESCE(SUM(amount), 0) FROM credit_ledger_entries WHERE credit_account_id = ?) = (SELECT available_credits FROM credit_accounts WHERE id = ?)");
     values.push(input.accountId, input.accountId);
   }
   return { sql: clauses.join(" AND "), values };

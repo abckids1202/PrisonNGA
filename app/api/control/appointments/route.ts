@@ -2,7 +2,7 @@ import { getD1 } from "../../../../db/runtime";
 import { controlAppointmentsStatement } from "../../../../lib/server/control-appointments";
 import { releaseVisitCredit } from "../../../../lib/server/credits";
 import { releaseVisitResources, type Allocation } from "../../../../lib/server/resources";
-import { appointmentDecisionStatements } from "../../../../lib/server/appointment-decisions";
+import { appointmentDecisionCommitted, appointmentDecisionStatements } from "../../../../lib/server/appointment-decisions";
 import { claimIdempotency, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { canTransitionAppointment } from "../../../../lib/server/workflow";
@@ -130,6 +130,15 @@ export async function POST(request: Request) {
         }
         : undefined,
     }));
+    const decisionCommitted = await appointmentDecisionCommitted(d1, {
+      appointmentId,
+      facilityId: authorization.facilityId,
+      toStatus: nextStatus,
+      expectedVersion: current.version,
+      command,
+      correlationId,
+      requiresCreditRelease: Boolean(current.active_credit_reservation),
+    });
     if (!results[0]?.meta.changes) {
       const latest = await d1.prepare(`SELECT a.status, a.version, a.requested_start, a.requested_end, p.status AS prisoner_status, p.visitation_status, f.current_state AS facility_state, f.timezone AS facility_timezone, vp.version AS policy_version, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time, ca.available_credits, ca.reserved_credits,
         CASE WHEN EXISTS (SELECT 1 FROM visitor_relationships vr WHERE vr.facility_id = a.facility_id AND vr.prisoner_id = a.prisoner_id AND vr.visitor_user_id = a.visitor_user_id AND vr.status = 'APPROVED') THEN 1 ELSE 0 END AS relationship_approved,
@@ -169,6 +178,7 @@ export async function POST(request: Request) {
       }
       throw new SecurityError("STALE_APPOINTMENT", 409);
     }
+    if (!decisionCommitted) throw new SecurityError("APPOINTMENT_DECISION_INCOMPLETE", 503);
     const allocation = command === "approve" ? await getAssignedResources(d1, authorization.facilityId, appointmentId) : null;
     if (command === "approve" && !allocation) throw new SecurityError("APPOINTMENT_RESOURCE_ASSIGNMENT_INCOMPLETE", 500);
     const assignedResources = allocation ? { roomId: allocation.roomId, roomName: allocation.roomName, deviceId: allocation.deviceId, deviceName: allocation.deviceName } : null;

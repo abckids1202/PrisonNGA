@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { appointmentDecisionStatements } from "../lib/server/appointment-decisions.ts";
+import { appointmentDecisionCommitted, appointmentDecisionStatements } from "../lib/server/appointment-decisions.ts";
 
 class SQLiteD1Statement {
   values = [];
   constructor(database, sql) { this.database = database; this.sql = sql; }
   bind(...values) { this.values = values; return this; }
+  async first() { return this.database.sqlite.prepare(this.sql).get(...this.values) || null; }
   async run() {
     const result = this.database.sqlite.prepare(this.sql).run(...this.values);
     return { meta: { changes: Number(result.changes) } };
@@ -85,6 +86,8 @@ const input = {
 test("appointment decision, status history, audit, and outbox commit together", async () => {
   const d1 = new SQLiteD1();
   try {
+    d1.sqlite.prepare("INSERT INTO credit_ledger_entries VALUES (?, ?, NULL, 'MANUAL_ADJUSTMENT', ?, ?, ?, ?, ?)")
+      .run("credit-grant-1", "credit-1", 2, "grant:credit-1", "Pilot credit grant", "system", "before");
     const results = await d1.batch(appointmentDecisionStatements(d1, input));
     assert.deepEqual(results.map((result) => result.meta.changes), [1, 1, 1, 1, 1, 1, 1, 1]);
     const appointment = d1.sqlite.prepare("SELECT status, version FROM appointments WHERE id = 'visit-1'").get();
@@ -97,6 +100,25 @@ test("appointment decision, status history, audit, and outbox commit together", 
     assert.equal(d1.sqlite.prepare("SELECT reserved_credits FROM credit_accounts WHERE id = 'credit-1'").get().reserved_credits, 1);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE appointment_id = 'visit-1' AND entry_type = 'RESERVATION'").get().count, 1);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations WHERE appointment_id = 'visit-1'").get().count, 2);
+    assert.equal(await appointmentDecisionCommitted(d1, {
+      appointmentId: "visit-1",
+      facilityId: "facility-1",
+      toStatus: "APPROVED",
+      expectedVersion: 3,
+      command: "approve",
+      correlationId: "correlation-1",
+      requiresCreditRelease: false,
+    }), true);
+    d1.sqlite.prepare("DELETE FROM audit_events WHERE correlation_id = 'correlation-1'").run();
+    assert.equal(await appointmentDecisionCommitted(d1, {
+      appointmentId: "visit-1",
+      facilityId: "facility-1",
+      toStatus: "APPROVED",
+      expectedVersion: 3,
+      command: "approve",
+      correlationId: "correlation-1",
+      requiresCreditRelease: false,
+    }), false);
   } finally { d1.close(); }
 });
 
