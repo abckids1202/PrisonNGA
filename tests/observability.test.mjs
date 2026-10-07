@@ -59,5 +59,7 @@ test("provider error persistence uses a safe fallback for credentials and contac
   assert.equal(safeOperationalErrorMessage(new Error("upstream returned 502"), "PROVIDER_FAILED"), "upstream returned 502");
   assert.equal(safeOperationalErrorMessage(new Error("request failed for token=secret"), "PROVIDER_FAILED"), "PROVIDER_FAILED");
   assert.equal(safeOperationalErrorMessage(new Error("delivery failed for private@example.test"), "PROVIDER_FAILED"), "PROVIDER_FAILED");
+  assert.equal(safeOperationalErrorMessage(new Error("provider returned eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature-value-long"), "PROVIDER_FAILED"), "PROVIDER_FAILED");
+  assert.equal(safeOperationalErrorMessage(new Error("payment key xnd_live_example-secret-value"), "PROVIDER_FAILED"), "PROVIDER_FAILED");
   assert.equal(safeOperationalErrorMessage("not an Error", "PROVIDER_FAILED"), "PROVIDER_FAILED");
 });

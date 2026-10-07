@@ -12,7 +12,7 @@ export type OperationalLogContext = {
 
 const SENSITIVE_KEY = /(authorization|cookie|password|secret|token|otp|nonce|signature|payload|body|evidence|document|credential|private.?key|email|phone|mobile|destination|provider.?reference)/i;
 
-const SENSITIVE_ERROR_TEXT = /(bearer\s+|basic\s+|token\s*[=:]|secret\s*[=:]|password\s*[=:]|otp\s*[=:]|nonce\s*[=:]|signature\s*[=:]|whsec_[a-z0-9_-]+|sk_(?:live|test)_[a-z0-9_-]+|https?:\/\/[^\s/@]+:[^\s/@]+@|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\+\d[\d\s().-]{7,})/i;
+const SENSITIVE_ERROR_TEXT = /(bearer\s+|basic\s+|token\s*[=:]|secret\s*[=:]|password\s*[=:]|otp\s*[=:]|nonce\s*[=:]|signature\s*[=:]|whsec_[a-z0-9_-]+|(?:sk|rk)_(?:live|test)_[a-z0-9_-]+|xnd_[a-z0-9_-]+|SB-Mid-server-[a-z0-9_-]+|eyJ[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}|https?:\/\/[^\s/@]+:[^\s/@]+@|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\+\d[\d\s().-]{7,})/i;
 
 /** Returns a bounded provider/runtime error safe to persist in operational records. */
 export function safeOperationalErrorMessage(error: unknown, fallback: string, maxLength = 240): string {
