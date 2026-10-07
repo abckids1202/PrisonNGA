@@ -7,8 +7,10 @@ test("visitor verification keeps account and session creation in one guarded bat
   assert.match(source, /await d1\.batch\(\[/);
   assert.match(source, /UPDATE auth_challenges SET consumed_at/);
   assert.match(source, /INSERT INTO auth_sessions/);
-  assert.match(source, /NOT EXISTS \(SELECT 1 FROM users WHERE \$\{contactColumn\} = \? AND user_type <> 'VISITOR'\)/);
+  assert.match(source, /NOT EXISTS \(SELECT 1 FROM users WHERE \$\{contactColumn\} = \? AND \(user_type <> 'VISITOR' OR status <> 'ACTIVE'\)\)/);
   assert.match(source, /users\.status = 'ACTIVE'/);
+  assert.match(source, /EXISTS \(SELECT 1 FROM auth_challenges WHERE id = \? AND consumed_at = \?\)/);
+  assert.match(source, /user_type <> 'VISITOR' OR status <> 'ACTIVE'/);
 });
 
 test("visitor authentication supports both email and SMS challenge channels", async () => {

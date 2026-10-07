@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       : null;
     const suspiciousLogin = Boolean(existingAccount?.id && userAgentHash && !knownDevice);
     const results = await d1.batch([
-      d1.prepare(`UPDATE auth_challenges SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND attempt_count < max_attempts AND expires_at > ? AND NOT EXISTS (SELECT 1 FROM users WHERE ${contactColumn} = ? AND user_type <> 'VISITOR')`)
+      d1.prepare(`UPDATE auth_challenges SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND attempt_count < max_attempts AND expires_at > ? AND NOT EXISTS (SELECT 1 FROM users WHERE ${contactColumn} = ? AND (user_type <> 'VISITOR' OR status <> 'ACTIVE'))`)
         .bind(now, challengeId, now, challenge.destination),
       d1.prepare(`INSERT INTO users (id, external_id, email, phone, display_name, user_type, status, email_verified_at, phone_verified_at, version, created_at, updated_at)
         SELECT ?, ?, ?, ?, ?, 'VISITOR', 'ACTIVE', ?, ?, 1, ?, ?
@@ -67,20 +67,24 @@ export async function POST(request: Request) {
         .bind(userId, `visitor:${challenge.destination_hash}`, internalEmail, challenge.channel === "SMS" ? challenge.destination : null, displayName, challenge.channel === "EMAIL" ? now : null, challenge.channel === "SMS" ? now : null, now, now, challengeId, now, challengeId, now),
       d1.prepare(`INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, user_agent_hash, ip_hash)
         SELECT ?, id, ?, ?, ?, ?, ? FROM users
-        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'`)
-        .bind(sessionId, tokenHash, sessionExpiresAt, now, userAgentHash, ipHash, challenge.destination),
+        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'
+          AND EXISTS (SELECT 1 FROM auth_challenges WHERE id = ? AND consumed_at = ?)`)
+        .bind(sessionId, tokenHash, sessionExpiresAt, now, userAgentHash, ipHash, challenge.destination, challengeId, now),
       d1.prepare(`INSERT INTO security_events (id, user_id, event_type, severity, request_id, ip_hash, user_agent_hash, metadata, created_at)
         SELECT ?, id, 'VISITOR_LOGIN', 'INFO', ?, ?, ?, ?, ? FROM users
-        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'`)
-        .bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel }), now, challenge.destination),
+        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'
+          AND EXISTS (SELECT 1 FROM auth_challenges WHERE id = ? AND consumed_at = ?)`)
+        .bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel }), now, challenge.destination, challengeId, now),
       d1.prepare(`INSERT INTO security_events (id, user_id, event_type, severity, request_id, ip_hash, user_agent_hash, metadata, created_at)
         SELECT ?, id, 'VISITOR_SUSPICIOUS_LOGIN', 'WARNING', ?, ?, ?, ?, ? FROM users
-        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE' AND ? = 1`)
-        .bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel, reason: "NEW_DEVICE" }), now, challenge.destination, suspiciousLogin ? 1 : 0),
+        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'
+          AND EXISTS (SELECT 1 FROM auth_challenges WHERE id = ? AND consumed_at = ?) AND ? = 1`)
+        .bind(crypto.randomUUID(), context.requestId, ipHash, userAgentHash, JSON.stringify({ channel: challenge.channel, reason: "NEW_DEVICE" }), now, challenge.destination, challengeId, now, suspiciousLogin ? 1 : 0),
       d1.prepare(`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
         SELECT ?, 'VISITOR_SUSPICIOUS_LOGIN', 'visitor_account', id, NULL, ?, ?, ? FROM users
-        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE' AND ? = 1`)
-        .bind(crypto.randomUUID(), JSON.stringify({ visitorUserId: existingAccount?.id || null, channel: challenge.channel, reason: "NEW_DEVICE" }), context.requestId, now, challenge.destination, suspiciousLogin ? 1 : 0),
+        WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'
+          AND EXISTS (SELECT 1 FROM auth_challenges WHERE id = ? AND consumed_at = ?) AND ? = 1`)
+        .bind(crypto.randomUUID(), JSON.stringify({ visitorUserId: existingAccount?.id || null, channel: challenge.channel, reason: "NEW_DEVICE" }), context.requestId, now, challenge.destination, challengeId, now, suspiciousLogin ? 1 : 0),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("AUTH_CODE_ALREADY_USED", 409);
     if (!results[2]?.meta.changes) throw new SecurityError("VISITOR_SESSION_NOT_CREATED", 500);
