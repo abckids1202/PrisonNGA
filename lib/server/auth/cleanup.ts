@@ -7,6 +7,26 @@ export async function purgeExpiredAuthArtifacts(db: Pick<D1Database, "prepare" |
   ]);
 }
 
+/**
+ * A delivery request can outlive the Worker invocation that started it. Do
+ * not leave an ambiguous challenge active forever: expire both the stale
+ * attempt and its challenge so the visitor can request a fresh code.
+ */
+export async function reconcileStaleAuthDeliveryAttempts(db: Pick<D1Database, "prepare" | "batch">): Promise<void> {
+  await db.batch([
+    db.prepare(`UPDATE auth_challenge_delivery_attempts
+      SET status = 'FAILED', error_code = 'AUTH_DELIVERY_ATTEMPT_STALE', completed_at = CURRENT_TIMESTAMP
+      WHERE status = 'PENDING' AND julianday(started_at) <= julianday('now', '-5 minutes')`),
+    db.prepare(`UPDATE auth_challenges
+      SET expires_at = CURRENT_TIMESTAMP
+      WHERE consumed_at IS NULL AND julianday(expires_at) > julianday('now')
+        AND id IN (
+          SELECT challenge_id FROM auth_challenge_delivery_attempts
+          WHERE status = 'FAILED' AND error_code = 'AUTH_DELIVERY_ATTEMPT_STALE'
+        )`),
+  ]);
+}
+
 /** Keep revoked session history available for a bounded period, but do not
  * retain expired authentication tokens indefinitely. Token hashes are not
  * useful after expiry and the session table is operational security data. */

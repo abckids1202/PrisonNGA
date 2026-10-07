@@ -6,7 +6,7 @@ import { finalizeLiveSessionStatements, getExpiredSessionDisposition } from "../
 import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
-import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions } from "../lib/server/auth/cleanup";
+import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions, reconcileStaleAuthDeliveryAttempts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { isSameOriginMutation } from "../lib/server/csrf";
@@ -492,7 +492,7 @@ const worker = {
         return processOutbox(env);
       })
       : processOutbox(env);
-    ctx.waitUntil(Promise.all([outboxWork, reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), purgeExpiredAuthArtifacts(env.DB), purgeExpiredAuthSessions(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([outboxWork, reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), reconcileStaleAuthDeliveryAttempts(env.DB), purgeExpiredAuthArtifacts(env.DB), purgeExpiredAuthSessions(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
   },
   async queue(batch: NotificationQueueBatch, env: Env): Promise<void> {
     // Claiming remains inside processOutbox, so duplicate queue deliveries
