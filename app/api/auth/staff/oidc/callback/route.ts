@@ -54,21 +54,22 @@ export async function GET(request: Request) {
       user = await d1.prepare("SELECT id, email, display_name, external_id, status FROM users WHERE lower(email) = lower(?) AND user_type = 'STAFF'").bind(claims.email).first<{ id: string; email: string; display_name: string; external_id: string | null; status: string }>();
     }
     if (!user || user.status !== "ACTIVE") throw new SecurityError("STAFF_ACCOUNT_NOT_PROVISIONED", 403);
-    if (user.external_id !== externalId) {
-      const rebound = await d1.prepare("UPDATE users SET external_id = ?, display_name = ?, last_login_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND (external_id IS NULL OR external_id = ?)").bind(externalId, displayName, new Date().toISOString(), new Date().toISOString(), user.id, user.external_id).run();
-      if (!rebound.meta.changes) throw new SecurityError("STAFF_IDENTITY_BINDING_CONFLICT", 409);
-    }
     const profile = await d1.prepare("SELECT facility_id FROM staff_profiles WHERE user_id = ?").bind(user.id).first<{ facility_id: string }>();
     if (!profile) throw new SecurityError("STAFF_FACILITY_SCOPE_MISSING", 403);
     const token = crypto.randomUUID() + crypto.randomUUID();
     const now = new Date().toISOString();
     const salt = await getSecuritySalt();
     const sessionResults = await d1.batch([
-      d1.prepare("INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, user_agent_hash, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), user.id, await hashIdentifier(token, salt), new Date(Date.now() + 8 * 60 * 60_000).toISOString(), now, context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null),
-      d1.prepare("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?").bind(now, now, user.id),
-      d1.prepare("INSERT INTO security_events (id, user_id, facility_id, event_type, severity, request_id, metadata, created_at) VALUES (?, ?, ?, 'STAFF_OIDC_LOGIN', 'INFO', ?, ?, ?)").bind(crypto.randomUUID(), user.id, profile.facility_id, context.requestId, JSON.stringify({ issuer: claims.iss }), now),
+      // Keep identity binding, login timestamp, session creation, and the
+      // audit event in one facility-scoped transaction. The conditional
+      // predicate prevents a concurrent first-login from rebinding the
+      // provisioned staff record after it was read above.
+      d1.prepare("UPDATE users SET external_id = ?, display_name = ?, last_login_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND (external_id IS NULL OR external_id = ?)").bind(externalId, displayName, now, now, user.id, user.external_id),
+      d1.prepare("INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, user_agent_hash, ip_hash) SELECT ?, id, ?, ?, ?, ?, ? FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND external_id = ?").bind(crypto.randomUUID(), await hashIdentifier(token, salt), new Date(Date.now() + 8 * 60 * 60_000).toISOString(), now, context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null, user.id, externalId),
+      d1.prepare("INSERT INTO security_events (id, user_id, facility_id, event_type, severity, request_id, metadata, created_at) SELECT ?, id, ?, 'STAFF_OIDC_LOGIN', 'INFO', ?, ?, ? FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND external_id = ?").bind(crypto.randomUUID(), profile.facility_id, context.requestId, JSON.stringify({ issuer: claims.iss }), now, user.id, externalId),
     ]);
-    if (!sessionResults[0]?.meta.changes || !sessionResults[2]?.meta.changes) throw new SecurityError("STAFF_FEDERATION_AUDIT_FAILED", 503);
+    if (!sessionResults[0]?.meta.changes) throw new SecurityError("STAFF_IDENTITY_BINDING_CONFLICT", 409);
+    if (!sessionResults[1]?.meta.changes || !sessionResults[2]?.meta.changes) throw new SecurityError("STAFF_FEDERATION_AUDIT_FAILED", 503);
     const response = Response.redirect("/", 303);
     response.headers.set("Set-Cookie", await staffCookie(token));
     applySecurityHeaders(response, context.requestId);
