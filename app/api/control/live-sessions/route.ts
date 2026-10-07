@@ -18,7 +18,7 @@ export async function GET() {
           ORDER BY rr.created_at DESC LIMIT 1) AND r.facility_id = a.facility_id) AS kiosk_name
       FROM visit_sessions vs
       INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
-      INNER JOIN users u ON u.id = a.visitor_user_id
+      INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       WHERE vs.facility_id = ? AND (
         vs.status IN ('CONNECTING', 'ACTIVE', 'RECONNECTING', 'ENDING') OR
