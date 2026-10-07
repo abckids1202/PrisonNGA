@@ -114,7 +114,14 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
         await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
         return { status: current.status, paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_STATE_CHANGED" };
       }
-      if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[results.length - 1]?.meta.changes) {
+      const refundWritesStart = 3;
+      const refundWritesEnd = refundWritesStart + refundStatements.length;
+      const refundWritesCommitted = results.slice(refundWritesStart, refundWritesEnd).every((result) => Boolean(result?.meta.changes));
+      // A provider may refund a payment without a pre-existing SecureVisit
+      // refund request, so the local request-status update is optional. The
+      // payment transition, audit/outbox trail, every credit ledger/balance
+      // write, and provider-event acknowledgement are not optional.
+      if (!results[1]?.meta.changes || !results[2]?.meta.changes || !refundWritesCommitted || !results[results.length - 1]?.meta.changes) {
         throw new SecurityError("PAYMENT_SETTLEMENT_INCOMPLETE", 503);
       }
       return { status: nextStatus, paymentIntentId: intent.id };
