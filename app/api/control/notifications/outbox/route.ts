@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "OUTBOX_EVENT_REPLAYED", entityType: "outbox_event", entityId: outboxEventId, reason, oldValues: { status: event.status, attemptCount: event.attempt_count }, newValues: { status: "PENDING", attemptCount: 0 }, requestId: context.requestId, correlationId, eventType: "OUTBOX_EVENT_REPLAYED", payload: { replayedEventId: outboxEventId, eventType: event.event_type } }, guard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: { outboxEventId, status: "PENDING", correlationId }, guard }),
     ]);
-    if (!results[0]?.meta?.changes || !results[results.length - 1]?.meta?.changes) throw new SecurityError("OUTBOX_EVENT_REPLAY_RACE", 409);
+    if (!results.every((result) => result?.meta?.changes === 1)) throw new SecurityError("OUTBOX_EVENT_REPLAY_INCOMPLETE", 503);
     idempotency = null;
     return securityResponse({ outboxEventId, status: "PENDING", correlationId }, 200, context.requestId);
   } catch (error) {

@@ -54,7 +54,7 @@ export async function PATCH(request: Request) {
       }),
       completeIdempotencyStatement(database, { ...idempotency, status: 200, body: responseBody }),
     ]);
-    if (!results[results.length - 1]?.meta.changes) throw new SecurityError("NOTIFICATION_UPDATE_CONFLICT", 409);
+    if (!results.slice(ids.length).every((result) => result?.meta?.changes === 1)) throw new SecurityError("NOTIFICATION_UPDATE_INCOMPLETE", 503);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {
