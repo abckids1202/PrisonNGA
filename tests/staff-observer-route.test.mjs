@@ -18,3 +18,11 @@ test("staff observer authorization requires the appointment to remain in progres
   assert.match(session, /record\.appointment_status !== "IN_PROGRESS"/);
   assert.match(session, /SESSION_NOT_AVAILABLE/);
 });
+
+test("staff observer token refreshes are audited as token issuance, not repeated session starts", async () => {
+  const source = await readFile(new URL("../app/api/control/live-sessions/[sessionId]/observer-token/route.ts", import.meta.url), "utf8");
+  assert.match(source, /MONITORING_TOKEN_ISSUED/);
+  assert.match(source, /SESSION_MONITORING_TOKEN_ISSUED/);
+  assert.doesNotMatch(source, /MONITORING_STARTED/);
+  assert.doesNotMatch(source, /SESSION_MONITORING_STARTED/);
+});

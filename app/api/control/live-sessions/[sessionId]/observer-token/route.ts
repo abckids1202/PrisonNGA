@@ -27,10 +27,10 @@ export async function POST(request: Request, context: RouteContext) {
     await d1.batch([
       d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), sessionId, "MONITORING_STARTED", "STAFF", "STAFF_OBSERVER", JSON.stringify({ reason }), correlationId, now),
+        .bind(crypto.randomUUID(), sessionId, "MONITORING_TOKEN_ISSUED", "STAFF", "STAFF_OBSERVER", JSON.stringify({ reason, tokenTtlSeconds: expiresInSeconds }), correlationId, now),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, "SESSION_MONITORING_STARTED", "visit_session", sessionId, reason, null, JSON.stringify({ participantRole: "STAFF_OBSERVER" }), correlationId, requestContext.requestId, now),
+        .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, "SESSION_MONITORING_TOKEN_ISSUED", "visit_session", sessionId, reason, null, JSON.stringify({ participantRole: "STAFF_OBSERVER", tokenTtlSeconds: expiresInSeconds }), correlationId, requestContext.requestId, now),
     ]);
     return securityResponse({ token, serverUrl: config.url, session: toSessionPayload(session), participantRole: "STAFF_OBSERVER", expiresInSeconds }, 200, requestContext.requestId);
   } catch (error) {
