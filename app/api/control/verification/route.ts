@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       }
       throw new SecurityError("STALE_VERIFICATION_CASE", 409);
     }
-    if (!results[results.length - 1]?.meta.changes) throw new SecurityError("VERIFICATION_REVIEW_NOT_PERSISTED", 409);
+    if (!results.every((result) => result?.meta?.changes === 1)) throw new SecurityError("VERIFICATION_REVIEW_NOT_PERSISTED", 409);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {

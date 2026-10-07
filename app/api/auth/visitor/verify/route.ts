@@ -87,8 +87,10 @@ export async function POST(request: Request) {
         .bind(crypto.randomUUID(), JSON.stringify({ visitorUserId: existingAccount?.id || null, channel: challenge.channel, reason: "NEW_DEVICE" }), context.requestId, now, challenge.destination, challengeId, now, suspiciousLogin ? 1 : 0),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("AUTH_CODE_ALREADY_USED", 409);
+    if (!results[1]?.meta.changes) throw new SecurityError("VISITOR_ACCOUNT_NOT_CREATED", 500);
     if (!results[2]?.meta.changes) throw new SecurityError("VISITOR_SESSION_NOT_CREATED", 500);
     if (!results[3]?.meta.changes) throw new SecurityError("VISITOR_LOGIN_AUDIT_NOT_CREATED", 500);
+    if (suspiciousLogin && (!results[4]?.meta.changes || !results[5]?.meta.changes)) throw new SecurityError("VISITOR_SUSPICIOUS_LOGIN_NOT_RECORDED", 503);
     const user = await d1.prepare(`SELECT id, email, phone, display_name FROM users WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'`).bind(challenge.destination).first<{ id: string; email: string | null; phone: string | null; display_name: string }>();
     if (!user) throw new SecurityError("VISITOR_ACCOUNT_NOT_CREATED", 500);
     const response = securityResponse({ authenticated: true, visitor: { id: user.id, email: challenge.channel === "EMAIL" ? user.email : null, phone: user.phone, displayName: user.display_name }, expiresAt: sessionExpiresAt }, 200, context.requestId);

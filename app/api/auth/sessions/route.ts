@@ -57,7 +57,7 @@ export async function POST(request: Request) {
         d1.prepare("INSERT INTO security_events (id, user_id, event_type, severity, request_id, metadata, created_at) VALUES (?, ?, 'SESSION_REVOKED', 'WARNING', ?, ?, ?)").bind(crypto.randomUUID(), account.id, context.requestId, JSON.stringify({ revokeAll: true }), now),
         completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody }),
       ]);
-      if (!results[results.length - 1]?.meta.changes) throw new SecurityError("SESSION_REVOCATION_CONFLICT", 409);
+      if (!results.every((result) => result?.meta?.changes === 1)) throw new SecurityError("SESSION_REVOCATION_INCOMPLETE", 503);
     } else {
       const results = await d1.batch([
         d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL").bind(now, normalized.sessionId, account.id),
@@ -65,8 +65,8 @@ export async function POST(request: Request) {
           .bind(crypto.randomUUID(), account.id, context.requestId, JSON.stringify({ revokeAll: false, sessionId: normalized.sessionId }), now, normalized.sessionId, account.id, now),
         completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM auth_sessions WHERE id = ? AND user_id = ? AND revoked_at = ?)", values: [normalized.sessionId, account.id, now] } }),
       ]);
-      if (!results[1]?.meta.changes) throw new SecurityError("SESSION_NOT_FOUND", 404);
-      if (!results[results.length - 1]?.meta.changes) throw new SecurityError("SESSION_REVOCATION_CONFLICT", 409);
+      if (!results[0]?.meta?.changes) throw new SecurityError("SESSION_NOT_FOUND", 404);
+      if (!results[1]?.meta?.changes || !results[2]?.meta?.changes) throw new SecurityError("SESSION_REVOCATION_INCOMPLETE", 503);
     }
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
