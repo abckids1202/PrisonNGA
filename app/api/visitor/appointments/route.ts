@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       idempotency: activeClaim!,
       responseBody,
     }));
-    if (!created[0]?.meta.changes) {
+    if (!created.every((result) => result?.meta.changes === 1)) {
       const visitorOverlap = await d1.prepare(`SELECT id FROM appointments WHERE visitor_user_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(visitor.userId, ...activeStatuses, canonicalEnd, canonicalStart).first();
       if (visitorOverlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
       const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(relationship.facility_id, relationship.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first();
@@ -149,7 +149,7 @@ export async function PATCH(request: Request) {
         idempotency: activeClaim,
         responseBody,
       }));
-      if (!cancelled[0]?.meta.changes) throw new SecurityError("STALE_APPOINTMENT", 409);
+      if (!cancelled.every((result) => result?.meta.changes === 1)) throw new SecurityError("APPOINTMENT_CANCEL_INCOMPLETE", 503);
       activeClaim = null;
       return securityResponse(responseBody, 200, context.requestId);
     }
@@ -206,7 +206,7 @@ export async function PATCH(request: Request) {
       idempotency: activeClaim,
       responseBody,
     }));
-    if (!rescheduled[0]?.meta.changes) {
+    if (!rescheduled.every((result) => result?.meta.changes === 1)) {
       const current = await d1.prepare("SELECT status, version FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ?").bind(appointmentId, appointment.facility_id, visitor.userId).first<{ status: string; version: number }>();
       if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
       if (Number(current.version) !== Number(appointment.version)) throw new SecurityError("STALE_APPOINTMENT", 409);
