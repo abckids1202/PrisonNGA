@@ -568,7 +568,12 @@ const worker = {
     const routedRequest = new Request(request, { headers: routedHeaders });
 
     const environmentCheck = validateEnvironment(env);
-    if (environmentCheck.environment === "invalid" || (!environmentCheck.ok && environmentCheck.environment !== "development")) {
+    // Keep liveness reachable so the platform can distinguish a running
+    // Worker from an unready deployment. Readiness owns the detailed,
+    // permission-protected configuration report; every other route still
+    // fails closed before application code runs.
+    const isHealthProbe = request.method === "GET" && (url.pathname === "/api/health/live" || url.pathname === "/api/health/readiness");
+    if (!isHealthProbe && (environmentCheck.environment === "invalid" || (!environmentCheck.ok && environmentCheck.environment !== "development"))) {
       operationalLog("error", { event: "ENVIRONMENT_VALIDATION_FAILED", requestId, correlationId: requestId, missing: environmentCheck.missing });
       const response = Response.json({ error: "SERVICE_NOT_READY" }, { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
       response.headers.set("X-Request-Id", requestId);

@@ -10,3 +10,8 @@ test("production HTTPS responses opt into HSTS while local development remains H
   assert.match(worker, /Strict-Transport-Security.*max-age=31536000; includeSubDomains/);
   assert.match(worker, /applyTransportSecurityHeader\(securedResponse, request, environmentCheck\.environment\)/);
 });
+
+test("health probes remain routable while application traffic fails closed", () => {
+  assert.match(worker, /const isHealthProbe = request\.method === "GET" && \(url\.pathname === "\/api\/health\/live" \|\| url\.pathname === "\/api\/health\/readiness"\)/);
+  assert.match(worker, /if \(!isHealthProbe && \(environmentCheck\.environment === "invalid"/);
+});
