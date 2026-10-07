@@ -26,7 +26,7 @@ export async function allocateVisitResources(d1: D1Database, input: { facilityId
   } catch {
     throw new SecurityError("RESOURCE_RESERVATION_CONFLICT", 409);
   }
-  const reserved = await d1.prepare(`SELECT rr.resource_type, rr.resource_id, r.display_name FROM resource_reservations rr INNER JOIN resources r ON r.id = rr.resource_id
+  const reserved = await d1.prepare(`SELECT rr.resource_type, rr.resource_id, r.display_name FROM resource_reservations rr INNER JOIN resources r ON r.id = rr.resource_id AND r.facility_id = rr.facility_id
     WHERE rr.facility_id = ? AND rr.appointment_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')`).bind(input.facilityId, input.appointmentId).all<{ resource_type: string; resource_id: string; display_name: string }>();
   const room = reserved.results.find((item) => item.resource_type === "ROOM");
   const device = reserved.results.find((item) => item.resource_type === "DEVICE");
