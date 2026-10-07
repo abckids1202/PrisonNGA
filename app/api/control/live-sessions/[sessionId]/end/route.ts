@@ -85,7 +85,7 @@ export async function POST(request: Request, context: RouteContext) {
         reason,
         mode,
       }));
-      if (!requested[0]?.meta.changes) throw new SecurityError("STALE_SESSION_STATE", 409);
+      if (!requested.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("STALE_SESSION_STATE", 409);
     }
 
     try {

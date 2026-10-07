@@ -162,6 +162,7 @@ export async function POST(request: Request) {
     }
     const results = await d1.batch(statements);
     if (!results[0]?.meta.changes) return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
+    if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("LIVEKIT_EVENT_NOT_PERSISTED", 503);
     return securityResponse({ accepted: true, event: event.event, sessionId: session.id }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
