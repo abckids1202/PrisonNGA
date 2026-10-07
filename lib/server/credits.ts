@@ -56,6 +56,7 @@ export async function settlePaymentPurchase(
     }
     return { purchased: false, idempotent: true };
   }
+  if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_PURCHASE_BALANCE_WRITE_FAILED", 503);
   return { purchased: true, idempotent: false };
 }
 
@@ -73,7 +74,10 @@ export async function reserveVisitCredit(
     d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
       .bind(now, input.accountId),
   ]);
-  if (results[0]?.meta.changes) return { creditAccountId: input.accountId, appointmentId: input.appointmentId, created: true };
+  if (results[0]?.meta.changes) {
+    if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_RESERVATION_BALANCE_WRITE_FAILED", 503);
+    return { creditAccountId: input.accountId, appointmentId: input.appointmentId, created: true };
+  }
 
   const existing = await d1.prepare("SELECT credit_account_id FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION' LIMIT 1")
     .bind(input.appointmentId).first<{ credit_account_id: string }>();
@@ -90,7 +94,10 @@ export async function releaseVisitCredit(
 ) {
   const now = new Date().toISOString();
   const results = await d1.batch(releaseVisitCreditStatements(d1, { ...input, now }));
-  if (results[0]?.meta.changes) return { released: true };
+  if (results[0]?.meta.changes) {
+    if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_RELEASE_BALANCE_WRITE_FAILED", 503);
+    return { released: true };
+  }
 
   const existing = await d1.prepare("SELECT entry_type FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION', 'RESERVATION_RELEASE', 'CONSUMPTION') ORDER BY CASE entry_type WHEN 'CONSUMPTION' THEN 0 WHEN 'RESERVATION_RELEASE' THEN 1 ELSE 2 END LIMIT 1")
     .bind(input.appointmentId).first<{ entry_type: string }>();
@@ -105,7 +112,10 @@ export async function consumeVisitCredit(
 ) {
   const now = new Date().toISOString();
   const results = await d1.batch(consumeVisitCreditStatements(d1, { ...input, now }));
-  if (results[0]?.meta.changes) return { consumed: true };
+  if (results[0]?.meta.changes) {
+    if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_CONSUMPTION_BALANCE_WRITE_FAILED", 503);
+    return { consumed: true };
+  }
 
   const existing = await d1.prepare("SELECT entry_type FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION', 'RESERVATION_RELEASE', 'CONSUMPTION') ORDER BY CASE entry_type WHEN 'CONSUMPTION' THEN 0 WHEN 'RESERVATION_RELEASE' THEN 1 ELSE 2 END LIMIT 1")
     .bind(input.appointmentId).first<{ entry_type: string }>();
@@ -159,7 +169,10 @@ export async function refundPurchasedCredits(
   const purchase = await d1.prepare(`SELECT cle.credit_account_id, cle.amount FROM credit_ledger_entries cle WHERE cle.idempotency_key = ? AND cle.entry_type = 'PURCHASE' LIMIT 1`).bind(`payment:${input.paymentIntentId}:purchase`).first<{ credit_account_id: string; amount: number }>();
   if (!purchase) return { refunded: false, pending: true };
   const results = await d1.batch(refundPurchasedCreditsStatements(d1, { paymentIntentId: input.paymentIntentId, accountId: purchase.credit_account_id, amount: purchase.amount, actorUserId: input.actorUserId, reason: input.reason, now: new Date().toISOString() }));
-  if (results[0]?.meta.changes) return { refunded: true };
+  if (results[0]?.meta.changes) {
+    if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_REFUND_BALANCE_WRITE_FAILED", 503);
+    return { refunded: true };
+  }
   const raced = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ?").bind(refundKey).first();
   if (raced) return { refunded: false, idempotent: true };
   throw new SecurityError("CREDIT_REVERSAL_REQUIRES_REVIEW", 409);
