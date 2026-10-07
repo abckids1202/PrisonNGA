@@ -33,3 +33,12 @@ test("waiting-room late marking is blocked before the scheduled start", async ()
   assert.match(source, /Date\.parse\(String\(current\.requested_start \|\| ""\)\) > Date\.now\(\)/);
   assert.match(source, /VISIT_NOT_LATE_YET/);
 });
+
+test("waiting-room session start uses the same one-minute authorization window as token issuance", async () => {
+  const source = await readFile(new URL("../app/api/control/waiting-room/route.ts", import.meta.url), "utf8");
+  assert.match(source, /command === "start_visit"\)/);
+  assert.match(source, /nowMs < start - 60_000/);
+  assert.match(source, /VISIT_NOT_STARTED/);
+  assert.match(source, /nowMs > end \+ 60_000/);
+  assert.match(source, /VISIT_EXPIRED/);
+});

@@ -177,6 +177,14 @@ export async function POST(request: Request) {
     if (command === "confirm_prisoner_presence" && !["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(currentState)) throw new SecurityError("PRISONER_PRESENCE_CANNOT_BE_CONFIRMED", 409);
     if (command === "start_visit" && current.session_id && ["CONNECTING", "ACTIVE", "RECONNECTING"].includes(String(current.session_status))) return finish({ appointmentId: body.appointmentId, sessionId: String(current.session_id), state: "LIVE", version: currentVersion, idempotent: true });
     if (command === "start_visit" && currentState !== "READY_TO_START") throw new SecurityError("WAITING_ROOM_NOT_READY", 409);
+    if (command === "start_visit") {
+      const start = Date.parse(String(current.requested_start || ""));
+      const end = Date.parse(String(current.requested_end || ""));
+      const nowMs = Date.now();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new SecurityError("SESSION_INVALID_WINDOW", 409);
+      if (nowMs < start - 60_000) throw new SecurityError("VISIT_NOT_STARTED", 409);
+      if (nowMs > end + 60_000) throw new SecurityError("VISIT_EXPIRED", 409);
+    }
 
     const now = new Date().toISOString();
     const nextVersion = currentVersion + 1;
