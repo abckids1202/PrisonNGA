@@ -23,6 +23,8 @@ npm run validate:environment
 npm test
 ```
 
+For one repeatable local release gate, run `npm run verify:release`. It runs the disposable migration check, typecheck, lint, build/server tests, browser tests, and a production-only dependency audit. It does not deploy or mutate a remote database; staging still requires the acceptance runbook and external-provider evidence.
+
 ### Local D1 database
 
 Apply the checked-in SQL migrations before exercising persisted workflows:
