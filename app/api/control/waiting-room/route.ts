@@ -309,6 +309,18 @@ export async function POST(request: Request) {
     }
     const results = await d1.batch(statements);
     if (!results[0]?.meta.changes) throw new SecurityError("STALE_APPOINTMENT_STATE", 409);
+    const requiredResultIndexes = [0, 1, 2, 3];
+    let optionalWriteOffset = 4;
+    if (newSession) {
+      requiredResultIndexes.push(optionalWriteOffset, optionalWriteOffset + 1);
+      optionalWriteOffset += 2;
+    }
+    if (command === "cancel_visit" && Number(current.active_credit_reservation) === 1 && current.credit_account_id) {
+      requiredResultIndexes.push(optionalWriteOffset, optionalWriteOffset + 1);
+    }
+    if (requiredResultIndexes.some((index) => !results[index]?.meta.changes)) {
+      throw new SecurityError("WAITING_ROOM_COMMIT_INCOMPLETE", 503);
+    }
     roomCleanup = null;
     return finish({ appointmentId: body.appointmentId, sessionId: newSession?.id || current.session_id || null, state: nextState, version: nextVersion, correlationId });
   } catch (error) {
