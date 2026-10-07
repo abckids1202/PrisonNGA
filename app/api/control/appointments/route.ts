@@ -133,6 +133,7 @@ export async function POST(request: Request) {
     const decisionCommitted = await appointmentDecisionCommitted(d1, {
       appointmentId,
       facilityId: authorization.facilityId,
+      visitorUserId: current.visitor_user_id,
       toStatus: nextStatus,
       expectedVersion: current.version,
       command,

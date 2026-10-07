@@ -32,6 +32,7 @@ export async function appointmentDecisionCommitted(
   input: {
     appointmentId: string;
     facilityId: string;
+    visitorUserId: string;
     toStatus: string;
     expectedVersion: number;
     command: string;
@@ -39,8 +40,8 @@ export async function appointmentDecisionCommitted(
     requiresCreditRelease: boolean;
   },
 ): Promise<boolean> {
-  const appointment = await d1.prepare("SELECT status, version FROM appointments WHERE id = ? AND facility_id = ?")
-    .bind(input.appointmentId, input.facilityId)
+  const appointment = await d1.prepare("SELECT status, version FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ?")
+    .bind(input.appointmentId, input.facilityId, input.visitorUserId)
     .first<{ status: string; version: number }>();
   if (!appointment || appointment.status !== input.toStatus || appointment.version !== input.expectedVersion + 1) return false;
 
@@ -59,9 +60,9 @@ export async function appointmentDecisionCommitted(
     EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION'
       AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = ? AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))) AS active_credit_reservation,
     EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION_RELEASE') AS released_credit,
-    (SELECT COALESCE(SUM(cle.amount), 0) FROM credit_ledger_entries cle WHERE cle.credit_account_id = (SELECT credit_account_id FROM credit_ledger_entries WHERE appointment_id = ? LIMIT 1)) =
-      (SELECT COALESCE(available_credits, 0) FROM credit_accounts WHERE id = (SELECT credit_account_id FROM credit_ledger_entries WHERE appointment_id = ? LIMIT 1)) AS balance_consistent`)
-    .bind(input.appointmentId, input.facilityId, input.appointmentId, input.appointmentId, input.appointmentId, input.appointmentId, input.appointmentId)
+    (SELECT COALESCE(SUM(cle.amount), 0) FROM credit_ledger_entries cle WHERE cle.credit_account_id = (SELECT cle2.credit_account_id FROM credit_ledger_entries cle2 INNER JOIN credit_accounts ca2 ON ca2.id = cle2.credit_account_id AND ca2.facility_id = ? AND ca2.user_id = ? WHERE cle2.appointment_id = ? LIMIT 1)) =
+      (SELECT COALESCE(available_credits, 0) FROM credit_accounts WHERE id = (SELECT cle3.credit_account_id FROM credit_ledger_entries cle3 INNER JOIN credit_accounts ca3 ON ca3.id = cle3.credit_account_id AND ca3.facility_id = ? AND ca3.user_id = ? WHERE cle3.appointment_id = ? LIMIT 1)) AS balance_consistent`)
+    .bind(input.appointmentId, input.facilityId, input.appointmentId, input.appointmentId, input.appointmentId, input.facilityId, input.visitorUserId, input.appointmentId, input.facilityId, input.visitorUserId, input.appointmentId)
     .first<{ active_resources: number; active_credit_reservation: number; released_credit: number; balance_consistent: number }>();
   if (!state) return false;
 
@@ -83,9 +84,9 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
       AND (
         (EXISTS (SELECT 1 FROM credit_ledger_entries r WHERE r.appointment_id = ? AND r.credit_account_id = ? AND r.entry_type = 'RESERVATION'
           AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries t WHERE t.appointment_id = ? AND t.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION')))
-          AND EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.id = ? AND ca.reserved_credits >= 1))
+          AND EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.id = ? AND ca.facility_id = ? AND ca.user_id = ? AND ca.reserved_credits >= 1))
         OR (NOT EXISTS (SELECT 1 FROM credit_ledger_entries r WHERE r.appointment_id = ? AND r.entry_type = 'RESERVATION')
-          AND EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.id = ? AND ca.available_credits >= 1))
+          AND EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.id = ? AND ca.facility_id = ? AND ca.user_id = ? AND ca.available_credits >= 1))
       )
       AND (
         EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.appointment_id = ? AND rr.facility_id = ? AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE'))
@@ -121,8 +122,8 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
           AND conflicting.requested_end > appointments.requested_start)` : "";
   if (input.approval) {
     approvalValues.push(
-      input.appointmentId, input.approval.creditAccountId, input.appointmentId, input.approval.creditAccountId,
-      input.appointmentId, input.approval.creditAccountId,
+      input.appointmentId, input.approval.creditAccountId, input.appointmentId, input.approval.creditAccountId, input.facilityId, input.visitorUserId,
+      input.appointmentId, input.approval.creditAccountId, input.facilityId, input.visitorUserId,
       input.appointmentId, input.facilityId, input.facilityId, input.facilityId, input.appointmentId, input.approval.endsAt, input.approval.startsAt,
       input.appointmentId, input.facilityId, input.facilityId, input.facilityId, input.appointmentId, input.approval.endsAt, input.approval.startsAt,
       input.approval.policyVersion, input.approval.facilityTimezone, input.approval.durationMinutes,
@@ -143,8 +144,8 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
         SELECT ?, ?, ?, 'RESERVATION', -1, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)
           AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION')
-          AND EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND available_credits >= 1)`)
-        .bind(crypto.randomUUID(), creditAccountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, input.now, input.appointmentId, input.facilityId, input.correlationId, input.appointmentId, creditAccountId),
+          AND EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND facility_id = ? AND user_id = ? AND available_credits >= 1)`)
+        .bind(crypto.randomUUID(), creditAccountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, input.now, input.appointmentId, input.facilityId, input.correlationId, input.appointmentId, creditAccountId, input.facilityId, input.visitorUserId),
       d1.prepare(`UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1`)
         .bind(input.now, creditAccountId),
       reservationInsertStatement(d1, { facilityId: input.facilityId, appointmentId: input.appointmentId, resourceType: "ROOM", availableStatus: "AVAILABLE", startsAt, endsAt, now: input.now, correlationId: input.correlationId }),
@@ -155,11 +156,11 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
       d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
         SELECT ?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)
-          AND EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
+          AND EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND facility_id = ? AND user_id = ? AND reserved_credits >= 1)
           AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
           AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))`)
         .bind(crypto.randomUUID(), input.creditAccountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, input.now,
-          input.appointmentId, input.facilityId, input.correlationId, input.creditAccountId, input.appointmentId, input.creditAccountId, input.appointmentId),
+          input.appointmentId, input.facilityId, input.correlationId, input.creditAccountId, input.facilityId, input.visitorUserId, input.appointmentId, input.creditAccountId, input.appointmentId),
       d1.prepare(`UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ?
         WHERE id = ? AND changes() = 1`)
         .bind(input.now, input.creditAccountId),

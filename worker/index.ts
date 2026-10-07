@@ -160,6 +160,7 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
       const committed = await appointmentDecisionCommitted(env.DB, {
         appointmentId: row.id,
         facilityId: row.facility_id,
+        visitorUserId: row.visitor_user_id,
         toStatus: "NO_SHOW",
         expectedVersion: row.version,
         command: "no_show",
