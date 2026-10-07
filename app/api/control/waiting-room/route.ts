@@ -167,6 +167,7 @@ export async function POST(request: Request) {
     const facilityEligible = current.current_state === "NORMAL_OPERATIONS";
     if (command === "cancel_visit" && (currentState === "LIVE" || current.appointment_status === "IN_PROGRESS")) throw new SecurityError("LIVE_VISIT_MUST_BE_TERMINATED", 409);
     if (command === "cancel_visit" && Number(current.active_credit_reservation) === 1 && (!current.credit_account_id || Number(current.reserved_credits || 0) < 1)) throw new SecurityError("CREDIT_RESERVATION_NOT_SETTLEABLE", 409);
+    if (command === "admit_visitor" && !facilityEligible) throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (command === "start_visit" && !facilityEligible) throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (command === "start_visit" && !prisonerEligible) throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
     if (command === "run_preflight" || command === "retry_device") {

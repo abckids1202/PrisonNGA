@@ -20,3 +20,9 @@ test("waiting-room cancellation releases reserved credit and assigned resources"
   assert.match(source, /UPDATE resource_reservations SET status = 'RELEASED'/);
   assert.match(source, /last_transition_id = \?/);
 });
+
+test("waiting-room admission is blocked while the facility is restricted", async () => {
+  const source = await readFile(new URL("../app/api/control/waiting-room/route.ts", import.meta.url), "utf8");
+  assert.match(source, /command === "admit_visitor" && !facilityEligible/);
+  assert.match(source, /FACILITY_NOT_ACCEPTING_REQUESTS/);
+});
