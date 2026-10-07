@@ -68,9 +68,10 @@ export async function reserveVisitCredit(
   const results = await d1.batch([
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
       SELECT ?, ?, ?, 'RESERVATION', -1, ?, ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND available_credits >= 1)
+      WHERE EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.id = ? AND ca.available_credits >= 1
+        AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ca.facility_id AND a.visitor_user_id = ca.user_id))
         AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION')`)
-      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId),
+      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId, input.appointmentId),
     d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
       .bind(now, input.accountId),
   ]);
@@ -130,12 +131,13 @@ export function releaseVisitCreditStatements(
   return [
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
       SELECT ?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
+      WHERE EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.id = ? AND ca.reserved_credits >= 1
+        AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ca.facility_id AND a.visitor_user_id = ca.user_id))
         AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
         AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))
         AND (${input.guard?.sql || "1 = 1"})`)
       .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, input.now,
-        input.accountId, input.appointmentId, input.accountId, input.appointmentId, ...(input.guard?.values || [])),
+        input.accountId, input.appointmentId, input.appointmentId, input.accountId, input.appointmentId, ...(input.guard?.values || [])),
     d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
       .bind(input.now, input.accountId),
   ];
@@ -148,12 +150,13 @@ export function consumeVisitCreditStatements(
   return [
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
       SELECT ?, ?, ?, 'CONSUMPTION', 0, ?, ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND reserved_credits >= 1)
+      WHERE EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.id = ? AND ca.reserved_credits >= 1
+        AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ca.facility_id AND a.visitor_user_id = ca.user_id))
         AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
         AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))
         AND (${input.guard?.sql || "1 = 1"})`)
       .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:consumption`, input.reason, input.actorUserId, input.now,
-        input.accountId, input.appointmentId, input.accountId, input.appointmentId, ...(input.guard?.values || [])),
+        input.accountId, input.appointmentId, input.appointmentId, input.accountId, input.appointmentId, ...(input.guard?.values || [])),
     d1.prepare("UPDATE credit_accounts SET reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
       .bind(input.now, input.accountId),
   ];

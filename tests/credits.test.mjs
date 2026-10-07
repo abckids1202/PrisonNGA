@@ -34,6 +34,14 @@ class SQLiteD1 {
       CREATE TABLE payment_intents (
         id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, user_id TEXT NOT NULL, status TEXT NOT NULL
       );
+      CREATE TABLE appointments (
+        id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL
+      );
+      INSERT INTO appointments VALUES
+        ('visit-1', 'facility-1', 'visitor-1'),
+        ('visit-2', 'facility-1', 'visitor-1'),
+        ('visit-release', 'facility-1', 'visitor-2'),
+        ('visit-consume', 'facility-1', 'visitor-2');
     `);
   }
 

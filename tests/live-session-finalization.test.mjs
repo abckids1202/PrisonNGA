@@ -18,8 +18,8 @@ class SQLiteD1 {
   constructor() {
     this.sqlite.exec(`
       CREATE TABLE visit_sessions (id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL, facility_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, actual_ended_at TEXT, termination_reason TEXT, updated_at TEXT NOT NULL);
-      CREATE TABLE appointments (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
-      CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE appointments (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, user_id TEXT NOT NULL, available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT NOT NULL, appointment_id TEXT, entry_type TEXT NOT NULL, amount INTEGER NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, reason TEXT, created_by TEXT, created_at TEXT NOT NULL);
       CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL, status TEXT NOT NULL);
       CREATE TABLE waiting_room_sessions (id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL, facility_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
@@ -27,8 +27,8 @@ class SQLiteD1 {
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
       INSERT INTO visit_sessions VALUES ('session-1', 'visit-1', 'facility-1', 'ACTIVE', 3, NULL, NULL, 'before');
-      INSERT INTO appointments VALUES ('visit-1', 'facility-1', 'IN_PROGRESS', 5, 'before');
-      INSERT INTO credit_accounts VALUES ('account-1', 'facility-1', 0, 1, 2, 'before');
+      INSERT INTO appointments VALUES ('visit-1', 'facility-1', 'visitor-1', 'IN_PROGRESS', 5, 'before');
+      INSERT INTO credit_accounts VALUES ('account-1', 'facility-1', 'visitor-1', 0, 1, 2, 'before');
       INSERT INTO credit_ledger_entries VALUES ('reservation-1', 'account-1', 'visit-1', 'RESERVATION', -1, 'visit-1:reservation', 'reserved', 'staff-1', 'before');
       INSERT INTO resource_reservations VALUES ('room-1', 'facility-1', 'visit-1', 'ACTIVE');
       INSERT INTO resource_reservations VALUES ('device-1', 'facility-1', 'visit-1', 'RESERVED');
