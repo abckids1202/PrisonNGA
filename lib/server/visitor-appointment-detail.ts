@@ -14,7 +14,7 @@ export function visitorAppointmentDetailStatement(
       vr.relationship_type,
       a.status, a.requested_start, a.requested_end, a.timezone,
       a.appointment_type, a.version, a.created_at, a.updated_at,
-      wr.state AS waiting_room_state, wr.visitor_presence, wr.prisoner_presence,
+      wr.state AS waiting_room_state, wr.version AS waiting_room_version, wr.visitor_presence, wr.prisoner_presence,
       wr.identity_state, wr.camera_state, wr.microphone_state, wr.network_state,
       wr.room_state, wr.kiosk_state, wr.restriction_state, wr.last_checked_at AS staff_preflight_at,
       vs.id AS session_id, vs.status AS session_status, vs.authorized_start_at,

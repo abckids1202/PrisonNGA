@@ -2,6 +2,7 @@ import { getD1 } from "../../../../../../db/runtime";
 import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
 import { isRecentDeviceCheck, isRecentPresence } from "../../../../../../lib/server/waiting-room-readiness";
+import { isWaitingRoomOpen } from "../../../../../../lib/server/waiting-room-window";
 
 export async function POST(request: Request, { params }: { params: Promise<{ appointmentId: string }> }) {
   const context = await getRequestContext();
@@ -15,6 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     const d1 = await getD1();
     const now = new Date().toISOString();
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.status AS appointment_status, a.version AS appointment_version,
+        a.requested_start, a.requested_end,
         f.current_state AS facility_state, p.status AS prisoner_status, p.visitation_status,
         wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.visitor_presence_at, wr.prisoner_presence, wr.prisoner_presence_at,
         dc.id AS device_check_id, dc.camera_result, dc.microphone_result, dc.network_result, dc.created_at AS device_checked_at
@@ -44,6 +46,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     if (current.prisoner_status !== "ACTIVE" || current.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
     if (!current.device_check_id || !isRecentDeviceCheck(String(current.device_checked_at || ""))) throw new SecurityError("RECENT_DEVICE_CHECK_REQUIRED", 409);
     if ([current.camera_result, current.microphone_result].some((result) => result === "failed") || current.network_result === "poor") throw new SecurityError("DEVICE_CHECK_NOT_READY", 409);
+    const facilityAlreadyOpenedRoom = current.waiting_version !== null;
+    if (!facilityAlreadyOpenedRoom && !isWaitingRoomOpen(String(current.requested_start), String(current.requested_end), Date.parse(now))) {
+      throw new SecurityError("WAITING_ROOM_NOT_OPEN", 409);
+    }
     const visitorPresent = current.visitor_presence === "present" && isRecentPresence(current.visitor_presence_at === null ? null : String(current.visitor_presence_at));
     if (visitorPresent && current.state !== "NOT_ARRIVED") {
       return securityResponse({ checkIn: { appointmentId, version: Number(current.waiting_version || 1), state: current.state, visitorPresence: "present", prisonerPresence: current.prisoner_presence || "waiting" }, idempotent: true }, 200, context.requestId);

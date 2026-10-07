@@ -42,5 +42,7 @@ test("visitor details keeps waiting-room entry available when the prisoner arriv
   const source = await readFile(new URL("../app/visitor/VisitDetailsClient.tsx", import.meta.url), "utf8");
   assert.match(source, /visitorAlreadyWaiting = appointment\.visitor_presence === "present"/);
   assert.match(source, /\["APPROVED", "WAITING"\]\.includes\(appointment\.status\)/);
+  assert.match(source, /waiting_room_version !== null/);
+  assert.match(source, /waitingRoomOpensLater/);
 });
 
