@@ -53,6 +53,7 @@ export async function POST(request: Request) {
         if (existing.request_hash !== requestHash) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
         return securityResponse({ incidentId: existing.id, status: existing.status, version: existing.version, idempotent: true }, 200, context.requestId);
       }
+      if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("INCIDENT_CREATE_NOT_PERSISTED", 409);
       return securityResponse({ incidentId: id, status: "OPEN", version: 1, correlationId }, 201, context.requestId);
     }
     if (!command || !commands.includes(command)) throw new SecurityError("INVALID_INCIDENT_COMMAND", 400);
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
       ...transitionIncidentStatements(d1, { incidentId: incident.id, facilityId: authorization.facilityId, expectedVersion: incident.version, nextStatus, nextAssignee, resolution, actorUserId: authorization.userId, command, details, now, correlationId }, event),
       completeIdempotencyStatement(d1, { ...transitionClaim, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM incidents WHERE id = ? AND facility_id = ? AND version = ?)", values: [incident.id, authorization.facilityId, incident.version + 1] } }),
     ]);
-    if (!results[0]?.meta.changes) throw new SecurityError("STALE_INCIDENT", 409);
+    if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("STALE_INCIDENT", 409);
     transitionClaim = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {

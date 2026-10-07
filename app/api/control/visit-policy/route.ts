@@ -117,7 +117,7 @@ export async function PUT(request: Request) {
       }, writeGuard),
       completeIdempotencyStatement(database, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM visit_policies WHERE facility_id = ? AND version = ?)", values: [authorization.facilityId, nextVersion] } }),
     ]);
-    if (!statements[0]?.meta.changes || !statements[statements.length - 1]?.meta.changes) throw new SecurityError("STALE_POLICY", 409);
+    if (!statements.every((statement) => Boolean(statement?.meta.changes))) throw new SecurityError("STALE_POLICY", 409);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {

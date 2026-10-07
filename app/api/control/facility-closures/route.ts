@@ -60,7 +60,8 @@ export async function POST(request: Request) {
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "FACILITY_CLOSURE_CREATED", entityType: "facility_closure", entityId: id, reason, newValues: responseBody.closure, requestId: context.requestId, correlationId, eventType: "FACILITY_CLOSURE_CREATED", payload: { closureId: id, facilityId: authorization.facilityId } }, guard),
       completeIdempotencyStatement(d1, { claimId: claimed.claimId, scope, key: idempotencyKey, status: 201, body: responseBody, guard }),
     ]);
-    if (!results[0]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("CLOSURE_OVERLAPS_EXISTING", 409);
+    if (!results[0]?.meta.changes) throw new SecurityError("CLOSURE_OVERLAPS_EXISTING", 409);
+    if (!results.slice(1).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("CLOSURE_AUDIT_FAILED", 500);
     idempotency = null;
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
@@ -98,7 +99,7 @@ export async function DELETE(request: Request) {
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard }),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("STALE_CLOSURE", 409);
-    if (!results[results.length - 1]?.meta.changes) throw new SecurityError("CLOSURE_AUDIT_FAILED", 500);
+    if (!results.slice(1).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("CLOSURE_AUDIT_FAILED", 500);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {

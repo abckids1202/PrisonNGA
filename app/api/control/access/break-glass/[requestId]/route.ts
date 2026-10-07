@@ -44,7 +44,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ req
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: `BREAK_GLASS_${action}`, entityType: "break_glass_request", entityId: requestId, reason, oldValues: { status: current.status, version: current.version }, newValues: { status: nextStatus, expiresAt, version: current.version + 1 }, requestId: context.requestId, correlationId, eventType: `BREAK_GLASS_${action}`, payload: { requestId, targetType: current.target_type, targetId: current.target_id, status: nextStatus } }, { sql: "EXISTS (SELECT 1 FROM break_glass_requests WHERE id = ? AND status = ? AND version = ?)", values: [requestId, nextStatus, current.version + 1] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM break_glass_requests WHERE id = ? AND status = ? AND version = ?)", values: [requestId, nextStatus, current.version + 1] } }),
     ]);
-    if (!updated[0]?.meta.changes || !updated.at(-1)?.meta.changes) throw new SecurityError("BREAK_GLASS_DECISION_NOT_PERSISTED", 409);
+    if (!updated.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("BREAK_GLASS_DECISION_NOT_PERSISTED", 409);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {
