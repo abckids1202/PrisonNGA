@@ -101,7 +101,7 @@ export async function getRequestContext(): Promise<RequestContext> {
 export async function requirePermission(permissionKey: string, facilityId?: string): Promise<AuthorizationContext> {
   const identity = await requireWorkspaceIdentity();
   const db = await getDb();
-  const [user] = await db.select().from(users).where(eq(users.externalId, identity.externalId)).limit(1);
+  const [user] = await db.select().from(users).where(and(eq(users.externalId, identity.externalId), eq(users.userType, "STAFF"))).limit(1);
   if (!user || user.status !== "ACTIVE") throw new SecurityError("ACCOUNT_NOT_PROVISIONED", 403);
 
   const [profile] = await db.select({ facilityId: staffProfiles.facilityId }).from(staffProfiles).where(eq(staffProfiles.userId, user.id)).limit(1);
