@@ -118,6 +118,12 @@ export async function POST(request: Request) {
         if (duplicate) return securityResponse({ evidenceId: duplicate.id, status: "AVAILABLE", retentionUntil: duplicate.retention_until, idempotent: true }, 200, context.requestId);
         throw new SecurityError("EVIDENCE_UPLOAD_NOT_PERSISTED", 409);
       }
+      // The evidence row, audit event, outbox event, and idempotency record
+      // are one logical commit. Do not report success when only the domain
+      // row was written and the operational evidence is missing.
+      if (!inserted.slice(0, 3).every((result) => Boolean(result?.meta.changes))) {
+        throw new SecurityError("EVIDENCE_UPLOAD_NOT_PERSISTED", 409);
+      }
       if (!inserted[inserted.length - 1]?.meta.changes) throw new SecurityError("EVIDENCE_IDEMPOTENCY_CONFLICT", 409);
       idempotency = null;
     } catch (error) {

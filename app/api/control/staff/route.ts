@@ -56,7 +56,9 @@ export async function POST(request: Request) {
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "STAFF_PROVISIONED", entityType: "staff_user", entityId: userId, reason, newValues: { email, displayName, employeeReference, jobTitle, department, role: role.name, status: "ACTIVE" }, requestId: context.requestId, correlationId, eventType: "STAFF_PROVISIONED", payload: { userId, email } }, auditGuard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: auditGuard }),
     ]);
-    if (!results[0]?.meta.changes || !results[3]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("STAFF_PROVISIONING_FAILED", 409);
+    // A staff account is not usable unless its facility profile, role,
+    // audit/outbox evidence, and idempotency completion all commit together.
+    if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("STAFF_PROVISIONING_FAILED", 409);
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
     if (d1 && idempotency) {
@@ -107,7 +109,12 @@ export async function PATCH(request: Request) {
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: `STAFF_${status}`, entityType: "staff_user", entityId: userId, reason, oldValues: { status: current.status }, newValues: { status, sessionsRevoked: status === "ACTIVE" ? 0 : "all active sessions" }, requestId: context.requestId, correlationId, eventType: `STAFF_${status}`, payload: { userId, status } }, auditGuard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: auditGuard }),
     ]);
-    if (!results[0]?.meta.changes) throw new SecurityError("STALE_STAFF_RECORD", 409);
+    // Session revocation may legitimately affect zero rows when the staff
+    // member has no active sessions, so validate the state transition and its
+    // operational evidence explicitly while allowing result 1 to be zero.
+    if (!results[0]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes || !results[4]?.meta.changes) {
+      throw new SecurityError("STALE_STAFF_RECORD", 409);
+    }
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {

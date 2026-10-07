@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Staff", facilityId: authorization.facilityId, actionType: "BREAK_GLASS_REQUESTED", entityType: "break_glass_request", entityId: requestId, reason, newValues: { targetType, targetId, status: "PENDING", durationMinutes }, requestId: context.requestId, correlationId, eventType: "BREAK_GLASS_REQUESTED", payload: { requestId, targetType, targetId } }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 202, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM break_glass_requests WHERE id = ? AND status = 'PENDING')", values: [requestId] } }),
     ]);
-    if (!inserted[0]?.meta.changes || !inserted.at(-1)?.meta.changes) throw new SecurityError("BREAK_GLASS_REQUEST_NOT_PERSISTED", 409);
+    if (!inserted.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("BREAK_GLASS_REQUEST_NOT_PERSISTED", 409);
     idempotency = null;
     return securityResponse(responseBody, 202, context.requestId);
   } catch (error) {
