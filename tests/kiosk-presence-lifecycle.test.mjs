@@ -29,5 +29,11 @@ test("terminal kiosk view exposes an explicit reset to the credential boundary",
 test("kiosk presence updates preserve staff escalations", () => {
   assert.match(presenceRoute, /const derivedState =/);
   assert.match(presenceRoute, /\["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"\]\.includes/);
-  assert.match(presenceRoute, /: String\(current\.state \|\| "NOT_ARRIVED"\)/);
+  assert.match(presenceRoute, /: currentState/);
+});
+
+test("kiosk presence heartbeats refresh freshness without bumping the workflow version", () => {
+  assert.match(presenceRoute, /SET prisoner_presence_at = \?, last_checked_at = \?, updated_at = \?/);
+  assert.match(presenceRoute, /version = \? AND state = \?/);
+  assert.match(presenceRoute, /idempotent: true/);
 });

@@ -29,19 +29,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     if (terminalPresenceClear) {
       return securityResponse({ visitId, state: current.state || "COMPLETED", prisonerPresence: body.presence, visitorPresence: current.visitor_presence || "absent", version: Number(current.waiting_version || 0), idempotent: true }, 200, context.requestId);
     }
-    const stableStates = ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT", "TECHNICAL_ISSUE", "STAFF_REVIEW", "READY_TO_START", "LATE", "LIVE"];
-    if (String(current.prisoner_presence || "absent") === body.presence && stableStates.includes(String(current.state || "NOT_ARRIVED"))) {
-      return securityResponse({ visitId, state: current.state || "NOT_ARRIVED", prisonerPresence: body.presence, visitorPresence: current.visitor_presence || "absent", version: Number(current.waiting_version || 0), idempotent: true }, 200, context.requestId);
-    }
     const now = new Date().toISOString();
+    const currentState = String(current.state || "NOT_ARRIVED");
+    const stableStates = ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT", "TECHNICAL_ISSUE", "STAFF_REVIEW", "READY_TO_START", "LATE", "LIVE"];
+    if (String(current.prisoner_presence || "absent") === body.presence && stableStates.includes(currentState)) {
+      const refreshed = await d1.prepare(`UPDATE waiting_room_sessions
+        SET prisoner_presence_at = ?, last_checked_at = ?, updated_at = ?
+        WHERE appointment_id = ? AND facility_id = ? AND version = ? AND state = ?`)
+        .bind(now, now, now, visitId, kiosk.facilityId, Number(current.waiting_version || 0), currentState).run();
+      if (!refreshed.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+      return securityResponse({ visitId, state: currentState, prisonerPresence: body.presence, visitorPresence: current.visitor_presence || "absent", version: Number(current.waiting_version || 0), idempotent: true }, 200, context.requestId);
+    }
     const nextVisitorPresence = String(current.visitor_presence || "absent");
     const derivedState = body.presence === "present"
       ? nextVisitorPresence === "present" ? "BOTH_PRESENT" : "PRISONER_WAITING"
       : nextVisitorPresence === "present" ? "VISITOR_WAITING" : "NOT_ARRIVED";
-    const nextState = terminalPresenceClear ? String(current.state || "COMPLETED") : current.state === "LIVE" ? "LIVE"
-      : ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(String(current.state || "NOT_ARRIVED"))
+    const nextState = terminalPresenceClear ? currentState : currentState === "LIVE" ? "LIVE"
+      : ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(currentState)
         ? derivedState
-        : String(current.state || "NOT_ARRIVED");
+        : currentState;
     const currentVersion = Number(current.waiting_version || 0);
     const nextVersion = currentVersion + 1;
     const correlationId = crypto.randomUUID();
