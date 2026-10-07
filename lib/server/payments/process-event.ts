@@ -49,7 +49,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
   // malformed payload contained identifiers belonging to two records.
   const lookupField = payload.paymentIntentId ? "id" : "provider_reference";
   const lookupValue = payload.paymentIntentId || payload.providerReference || "";
-  const intent = await d1.prepare(`SELECT id, facility_id, user_id, provider, provider_reference, credit_quantity, amount_minor, currency, status, version FROM payment_intents WHERE provider = ? AND ${lookupField} = ? LIMIT 1`).bind(provider, lookupValue).first<{ id: string; facility_id: string; user_id: string; provider: string; provider_reference: string | null; credit_quantity: number; amount_minor: number; currency: string; status: string; version: number }>();
+  const intent = await d1.prepare(`SELECT pi.id, pi.facility_id, pi.user_id, pi.provider, pi.provider_reference, pi.credit_quantity, pi.amount_minor, pi.currency, pi.status, pi.version FROM payment_intents pi INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR' WHERE pi.provider = ? AND pi.${lookupField} = ? LIMIT 1`).bind(provider, lookupValue).first<{ id: string; facility_id: string; user_id: string; provider: string; provider_reference: string | null; credit_quantity: number; amount_minor: number; currency: string; status: string; version: number }>();
   const now = new Date().toISOString();
   if (!intent) {
     await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
