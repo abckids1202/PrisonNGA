@@ -19,14 +19,14 @@ class D1 {
 function seeded() {
   const d1 = new D1();
   d1.database.exec(`
-    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, user_type TEXT NOT NULL);
     CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, reserved_credits INTEGER);
     CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, reason TEXT, created_at TEXT);
     CREATE TABLE payment_intents (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, provider TEXT, credit_quantity INTEGER, amount_minor INTEGER, currency TEXT, status TEXT, provider_reference TEXT, created_at TEXT, updated_at TEXT);
-    INSERT INTO users VALUES ('visitor-a', 'Alya Pratama'), ('visitor-b', 'Other Facility');
-    INSERT INTO credit_accounts VALUES ('credits-a', 'facility-a', 'visitor-a', 1), ('credits-b', 'facility-b', 'visitor-b', 4);
-    INSERT INTO credit_ledger_entries VALUES ('entry-1', 'credits-a', NULL, 'PURCHASE', 3, 'Payment settled', '2026-09-23T01:00:00.000Z'), ('entry-2', 'credits-a', 'visit-a', 'RESERVATION', -1, 'Appointment approved', '2026-09-23T02:00:00.000Z'), ('entry-3', 'credits-a', 'visit-old', 'CONSUMPTION', 0, 'Visit completed', '2026-09-22T02:00:00.000Z'), ('entry-4', 'credits-b', NULL, 'PURCHASE', 99, 'Other facility', '2026-09-23T03:00:00.000Z');
-    INSERT INTO payment_intents VALUES ('payment-1', 'facility-a', 'visitor-a', 'sandbox', 3, 150000, 'IDR', 'SUCCEEDED', 'provider-1', '2026-09-23T01:00:00.000Z', '2026-09-23T01:00:00.000Z'), ('payment-2', 'facility-a', 'visitor-a', 'sandbox', 1, 50000, 'IDR', 'REFUNDED', 'provider-2', '2026-09-22T01:00:00.000Z', '2026-09-22T01:00:00.000Z'), ('payment-3', 'facility-b', 'visitor-b', 'sandbox', 99, 1, 'IDR', 'SUCCEEDED', 'provider-3', '2026-09-23T04:00:00.000Z', '2026-09-23T04:00:00.000Z');
+    INSERT INTO users VALUES ('visitor-a', 'Alya Pratama', 'VISITOR'), ('visitor-b', 'Other Facility', 'VISITOR'), ('staff-a', 'Facility Staff', 'STAFF');
+    INSERT INTO credit_accounts VALUES ('credits-a', 'facility-a', 'visitor-a', 1), ('credits-b', 'facility-b', 'visitor-b', 4), ('credits-staff', 'facility-a', 'staff-a', 99);
+    INSERT INTO credit_ledger_entries VALUES ('entry-1', 'credits-a', NULL, 'PURCHASE', 3, 'Payment settled', '2026-09-23T01:00:00.000Z'), ('entry-2', 'credits-a', 'visit-a', 'RESERVATION', -1, 'Appointment approved', '2026-09-23T02:00:00.000Z'), ('entry-3', 'credits-a', 'visit-old', 'CONSUMPTION', 0, 'Visit completed', '2026-09-22T02:00:00.000Z'), ('entry-4', 'credits-b', NULL, 'PURCHASE', 99, 'Other facility', '2026-09-23T03:00:00.000Z'), ('entry-staff', 'credits-staff', NULL, 'PURCHASE', 99, 'Invalid staff account', '2026-09-23T05:00:00.000Z');
+    INSERT INTO payment_intents VALUES ('payment-1', 'facility-a', 'visitor-a', 'sandbox', 3, 150000, 'IDR', 'SUCCEEDED', 'provider-1', '2026-09-23T01:00:00.000Z', '2026-09-23T01:00:00.000Z'), ('payment-2', 'facility-a', 'visitor-a', 'sandbox', 1, 50000, 'IDR', 'REFUNDED', 'provider-2', '2026-09-22T01:00:00.000Z', '2026-09-22T01:00:00.000Z'), ('payment-3', 'facility-b', 'visitor-b', 'sandbox', 99, 1, 'IDR', 'SUCCEEDED', 'provider-3', '2026-09-23T04:00:00.000Z', '2026-09-23T04:00:00.000Z'), ('payment-staff', 'facility-a', 'staff-a', 'sandbox', 99, 1, 'IDR', 'SUCCEEDED', 'provider-staff', '2026-09-23T05:00:00.000Z', '2026-09-23T05:00:00.000Z');
   `);
   return d1;
 }
