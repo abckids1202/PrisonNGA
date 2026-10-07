@@ -14,3 +14,12 @@ test("Control workspace refreshes appointments and facility state from protected
   assert.match(source, /facilityState === "UNKNOWN" \|\| backendStatus !== "connected"/);
   assert.match(source, /The facility state cannot change until the protected facility record is available/);
 });
+
+test("lockdown preserves authoritative live-session and appointment state for staff review", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /const activeSessions = liveSessions;/);
+  assert.doesNotMatch(source, /const activeSessions = lockdown \? \[\] : liveSessions;/);
+  assert.doesNotMatch(source, /const status = lockdown \? "BLOCKED"/);
+  assert.match(source, /remain visible for controlled termination/);
+});
