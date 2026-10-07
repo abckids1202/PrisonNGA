@@ -3,6 +3,7 @@ import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { getPaymentProvider } from "../../../../lib/server/payments/provider";
 import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../lib/server/rate-limit";
+import { safeOperationalErrorMessage } from "../../../../lib/server/observability";
 
 const DEMO_CREDIT_PRICE_MINOR = 50000;
 
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       const now = new Date().toISOString();
-      const message = error instanceof Error ? error.message.slice(0, 240) : "PAYMENT_CHECKOUT_FAILED";
+      const message = safeOperationalErrorMessage(error, "PAYMENT_CHECKOUT_FAILED");
       await d1.batch([
         d1.prepare("UPDATE payment_intents SET status = 'FAILED', updated_at = ?, version = version + 1 WHERE id = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED')").bind(now, paymentIntentId),
         ...auditAndOutboxStatements(d1, { actorUserId: visitor.userId, actorRole: "Visitor", facilityId, actionType: "PAYMENT_CHECKOUT_FAILED", entityType: "payment_intent", entityId: paymentIntentId, reason: "Payment checkout provider failed.", oldValues: { status: "PENDING", creditQuantity, amountMinor, currency: "IDR" }, newValues: { status: "FAILED", error: message }, requestId: context.requestId, eventType: "PAYMENT_CHECKOUT_FAILED", payload: { paymentIntentId, creditQuantity, amountMinor, currency: "IDR", error: message } }, { sql: "EXISTS (SELECT 1 FROM payment_intents WHERE id = ? AND status = 'FAILED')", values: [paymentIntentId] }),

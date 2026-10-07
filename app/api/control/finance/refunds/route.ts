@@ -2,6 +2,7 @@ import { getD1 } from "../../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../lib/server/idempotency";
 import { getPaymentProvider } from "../../../../../lib/server/payments/provider";
+import { safeOperationalErrorMessage } from "../../../../../lib/server/observability";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 
 export async function POST(request: Request) {
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
     try {
       providerRefund = await provider.requestRefund({ paymentIntentId, providerReference: intent.provider_reference, amountMinor: intent.amount_minor, currency: intent.currency, reason: refundReason });
     } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 240) : "PAYMENT_REFUND_REQUEST_FAILED";
+      const message = safeOperationalErrorMessage(error, "PAYMENT_REFUND_REQUEST_FAILED");
       await d1.batch([
         d1.prepare("UPDATE payment_refund_requests SET status = 'FAILED', updated_at = ? WHERE id = ? AND status = 'REQUESTED'").bind(new Date().toISOString(), refundRequestId),
         ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "PAYMENT_REFUND_FAILED", entityType: "payment_refund_request", entityId: refundRequestId, reason: "Payment provider refund request failed.", oldValues: { status: "REQUESTED" }, newValues: { status: "FAILED", error: message }, requestId: context.requestId, correlationId, eventType: "PAYMENT_REFUND_FAILED", payload: { refundRequestId, paymentIntentId, error: message } }, { sql: "EXISTS (SELECT 1 FROM payment_refund_requests WHERE id = ? AND status = 'FAILED')", values: [refundRequestId] }),

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { operationalLog } from "../lib/server/observability.ts";
+import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability.ts";
 
 test("operational logs carry searchable context and redact sensitive fields", () => {
   const original = console.error;
@@ -53,4 +53,11 @@ test("operational logs redact sensitive error text and nested contact fields", (
   assert.deepEqual(record.error, { name: "Error", message: "[REDACTED]" });
   assert.deepEqual(record.contact, { email: "[REDACTED]", phone: "[REDACTED]" });
   assert.equal(record.providerReference, "[REDACTED]");
+});
+
+test("provider error persistence uses a safe fallback for credentials and contact data", () => {
+  assert.equal(safeOperationalErrorMessage(new Error("upstream returned 502"), "PROVIDER_FAILED"), "upstream returned 502");
+  assert.equal(safeOperationalErrorMessage(new Error("request failed for token=secret"), "PROVIDER_FAILED"), "PROVIDER_FAILED");
+  assert.equal(safeOperationalErrorMessage(new Error("delivery failed for private@example.test"), "PROVIDER_FAILED"), "PROVIDER_FAILED");
+  assert.equal(safeOperationalErrorMessage("not an Error", "PROVIDER_FAILED"), "PROVIDER_FAILED");
 });

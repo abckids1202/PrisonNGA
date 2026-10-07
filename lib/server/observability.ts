@@ -14,11 +14,17 @@ const SENSITIVE_KEY = /(authorization|cookie|password|secret|token|otp|nonce|sig
 
 const SENSITIVE_ERROR_TEXT = /(bearer\s+|basic\s+|token\s*[=:]|secret\s*[=:]|password\s*[=:]|otp\s*[=:]|nonce\s*[=:]|signature\s*[=:]|whsec_[a-z0-9_-]+|sk_(?:live|test)_[a-z0-9_-]+|https?:\/\/[^\s/@]+:[^\s/@]+@|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\+\d[\d\s().-]{7,})/i;
 
+/** Returns a bounded provider/runtime error safe to persist in operational records. */
+export function safeOperationalErrorMessage(error: unknown, fallback: string, maxLength = 240): string {
+  if (!(error instanceof Error)) return fallback;
+  const message = error.message.trim().slice(0, Math.max(1, maxLength));
+  return message && !SENSITIVE_ERROR_TEXT.test(message) ? message : fallback;
+}
+
 function redactError(error: Error): { name: string; message: string } {
-  const message = error.message.slice(0, 256);
   return {
     name: error.name,
-    message: SENSITIVE_ERROR_TEXT.test(message) ? "[REDACTED]" : message,
+    message: safeOperationalErrorMessage(error, "[REDACTED]", 256),
   };
 }
 

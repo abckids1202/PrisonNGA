@@ -11,7 +11,7 @@ import { processPaymentProviderEvent } from "../lib/server/payments/process-even
 import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
-import { operationalLog } from "../lib/server/observability";
+import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
 
@@ -147,7 +147,7 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
       const attempt = row.attempt_count + 1;
       const delaySeconds = Math.min(3600, 30 * (2 ** Math.max(0, attempt - 1)));
       const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
-      const message = error instanceof Error ? error.message.slice(0, 500) : "PAYMENT_EVENT_RECONCILIATION_FAILED";
+      const message = safeOperationalErrorMessage(error, "PAYMENT_EVENT_RECONCILIATION_FAILED", 500);
       await env.DB.prepare("UPDATE payment_provider_events SET status = CASE WHEN attempt_count >= 8 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, processing_started_at = NULL, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
       operationalLog("error", { event: "PAYMENT_EVENT_RECONCILIATION_FAILED", eventId: row.id, provider: row.provider, attempt, correlationId: row.event_key, error: message });
     }
@@ -258,7 +258,7 @@ async function processOutbox(env: Env): Promise<void> {
       }
       await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSED', processing_started_at = NULL, processed_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, row.id).run();
     } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 500) : "OUTBOX_PROCESSING_FAILED";
+      const message = safeOperationalErrorMessage(error, "OUTBOX_PROCESSING_FAILED", 500);
       const attempt = row.attempt_count + 1;
       const delaySeconds = Math.min(3600, 30 * (2 ** Math.max(0, attempt - 1)));
       const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();

@@ -4,6 +4,7 @@ import { serializePaymentWebhookSnapshot, verifyPaymentWebhookSignature, type Pa
 import { processPaymentProviderEvent } from "../../../../lib/server/payments/process-event";
 import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 import { readTextBodyWithinLimit } from "../../../../lib/server/request-body";
+import { safeOperationalErrorMessage } from "../../../../lib/server/observability";
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
       const result = await processPaymentProviderEvent(d1, { provider, eventKey, payload: payload as PaymentWebhook });
       return securityResponse({ accepted: true, paymentIntentId: result.paymentIntentId, status: result.status, ignored: result.ignored, eventKey }, 200, context.requestId);
     } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 500) : "PAYMENT_WEBHOOK_PROCESSING_FAILED";
+      const message = safeOperationalErrorMessage(error, "PAYMENT_WEBHOOK_PROCESSING_FAILED", 500);
       await d1.prepare("UPDATE payment_provider_events SET status = 'FAILED', available_at = datetime('now', '+30 seconds'), processing_started_at = NULL, last_error = ? WHERE provider = ? AND event_key = ? AND status = 'PROCESSING'").bind(message, provider, eventKey).run();
       throw error;
     }
