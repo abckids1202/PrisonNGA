@@ -1,10 +1,11 @@
 import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
+import { buildSessionCookie } from "../../../../../lib/server/auth/session-cookie";
 
 async function sessionCookie(token: string): Promise<string> {
   const secure = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development";
-  return `securevisit_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${secure ? "; Secure" : ""}`;
+  return buildSessionCookie("securevisit_session", token, 604800, secure);
 }
 
 export async function POST(request: Request) {

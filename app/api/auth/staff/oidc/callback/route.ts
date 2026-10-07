@@ -1,8 +1,9 @@
 import { getD1 } from "../../../../../../db/runtime";
 import { discover, exchangeCode, getOidcConfig, getStaffMfaRequirement, hasRequiredStaffMfa, hasVerifiedStaffEmail, hashFederationState } from "../../../../../../lib/server/auth/oidc";
 import { applySecurityHeaders, getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
+import { buildSessionCookie } from "../../../../../../lib/server/auth/session-cookie";
 
-async function staffCookie(token: string): Promise<string> { return `securevisit_staff_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${(await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development" ? "; Secure" : ""}`; }
+async function staffCookie(token: string): Promise<string> { return buildSessionCookie("securevisit_staff_session", token, 28800, (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development"); }
 
 async function recordFederationFailure(context: Awaited<ReturnType<typeof getRequestContext>>, error: unknown): Promise<void> {
   try {
