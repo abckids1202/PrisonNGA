@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const preparation = fs.readFileSync("app/kiosk/visits/[visitId]/KioskPreparationClient.tsx", "utf8");
 const live = fs.readFileSync("app/features/live-session/LiveSessionClient.tsx", "utf8");
+const presenceRoute = fs.readFileSync("app/api/kiosk/visits/[visitId]/presence/route.ts", "utf8");
 
 test("kiosk preparation clears prisoner presence when the page is hidden or unmounted", () => {
   assert.match(preparation, /window\.addEventListener\("pagehide", onPageHide\)/);
@@ -23,4 +24,10 @@ test("terminal kiosk view exposes an explicit reset to the credential boundary",
   assert.match(live, /Return kiosk to ready state/);
   assert.match(live, /router\.push\(`\/kiosk\/visits\/\$\{encodeURIComponent\(visitId\)\}`\)/);
   assert.match(live, /previous visit credentials and media session will be cleared/);
+});
+
+test("kiosk presence updates preserve staff escalations", () => {
+  assert.match(presenceRoute, /const derivedState =/);
+  assert.match(presenceRoute, /\["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"\]\.includes/);
+  assert.match(presenceRoute, /: String\(current\.state \|\| "NOT_ARRIVED"\)/);
 });

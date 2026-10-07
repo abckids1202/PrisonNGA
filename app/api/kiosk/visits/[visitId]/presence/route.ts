@@ -34,9 +34,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     }
     const now = new Date().toISOString();
     const nextVisitorPresence = String(current.visitor_presence || "absent");
-    const nextState = terminalPresenceClear ? String(current.state || "COMPLETED") : current.state === "LIVE" ? "LIVE" : body.presence === "present"
+    const derivedState = body.presence === "present"
       ? nextVisitorPresence === "present" ? "BOTH_PRESENT" : "PRISONER_WAITING"
       : nextVisitorPresence === "present" ? "VISITOR_WAITING" : "NOT_ARRIVED";
+    const nextState = terminalPresenceClear ? String(current.state || "COMPLETED") : current.state === "LIVE" ? "LIVE"
+      : ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(String(current.state || "NOT_ARRIVED"))
+        ? derivedState
+        : String(current.state || "NOT_ARRIVED");
     const currentVersion = Number(current.waiting_version || 0);
     const nextVersion = currentVersion + 1;
     const correlationId = crypto.randomUUID();
