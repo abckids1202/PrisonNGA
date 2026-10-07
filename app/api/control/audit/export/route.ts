@@ -1,11 +1,7 @@
 import { getD1 } from "../../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { applySecurityHeaders, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, SecurityError } from "../../../../../lib/server/security";
-
-function csvCell(value: unknown): string {
-  const text = value == null ? "" : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
-}
+import { csvCell } from "../../../../../lib/server/csv";
 
 export async function GET(request: Request) {
   const context = await getRequestContext();
