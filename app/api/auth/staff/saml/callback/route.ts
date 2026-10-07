@@ -63,11 +63,12 @@ export async function POST(request: Request) {
     const token = crypto.randomUUID() + crypto.randomUUID();
     const now = new Date().toISOString();
     const salt = await getSecuritySalt();
-    await d1.batch([
+    const sessionResults = await d1.batch([
       d1.prepare("INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, user_agent_hash, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), user.id, await hashIdentifier(token, salt), new Date(Date.now() + 8 * 60 * 60_000).toISOString(), now, context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null),
       d1.prepare("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?").bind(now, now, user.id),
       d1.prepare("INSERT INTO security_events (id, user_id, facility_id, event_type, severity, request_id, metadata, created_at) VALUES (?, ?, ?, 'STAFF_SAML_LOGIN', 'INFO', ?, ?, ?)").bind(crypto.randomUUID(), user.id, profileScope.facility_id, context.requestId, JSON.stringify({ issuer: profile.issuer }), now),
     ]);
+    if (!sessionResults[0]?.meta.changes || !sessionResults[2]?.meta.changes) throw new SecurityError("STAFF_FEDERATION_AUDIT_FAILED", 503);
     const response = Response.redirect("/", 303);
     response.headers.set("Set-Cookie", await staffCookie(token));
     applySecurityHeaders(response, context.requestId);
