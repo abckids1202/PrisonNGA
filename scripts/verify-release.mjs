@@ -18,7 +18,10 @@ for (const [label, args] of checks) {
   // Windows exposes npm as a command script rather than a native executable.
   // The arguments are fixed above, so enabling the platform shell here only
   // handles command resolution and does not interpolate user input.
-  const result = spawnSync(npmCommand, args, { stdio: "inherit", shell: process.platform === "win32", env: process.env });
+  const environment = label === "browser tests"
+    ? { ...process.env, SECUREVISIT_E2E_ISOLATED: "true" }
+    : process.env;
+  const result = spawnSync(npmCommand, args, { stdio: "inherit", shell: process.platform === "win32", env: environment });
   if (result.error) {
     console.error(`✖ ${label}: ${result.error.message}`);
     process.exit(1);

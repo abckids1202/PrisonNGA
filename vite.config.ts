@@ -82,6 +82,9 @@ export default defineConfig(async () => {
       sites(),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
+        persistState: process.env.SECUREVISIT_LOCAL_D1_STATE_DIR
+          ? { path: process.env.SECUREVISIT_LOCAL_D1_STATE_DIR }
+          : true,
         config: localBindingConfig,
       }),
     ],

@@ -5,7 +5,13 @@ const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER === "true";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  // The suite shares one persisted local D1 database and a Cloudflare Worker
+  // process. Parallel browser workers multiply Miniflare/Chromium memory and
+  // can make the release gate fail from host pressure rather than a product
+  // regression. Keep the gate deterministic; scale out only with an explicit
+  // isolated test-environment strategy.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: "line",
