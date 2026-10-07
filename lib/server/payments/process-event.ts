@@ -23,20 +23,20 @@ function paymentEventTrail(d1: D1Database, input: { intentId: string; facilityId
   }, { sql: "changes() > 0", values: [] });
 }
 
-function paymentEventEvidenceGuard(input: { intentId: string; correlationId: string; ledgerKey?: string; accountId?: string }) {
+function paymentEventEvidenceGuard(input: { intentId: string; correlationId: string; facilityId?: string; userId?: string; ledgerKey?: string; accountId?: string }) {
   const clauses = [
     "EXISTS (SELECT 1 FROM audit_events WHERE correlation_id = ? AND action_type = 'PAYMENT_STATUS_UPDATED' AND entity_type = 'payment_intent' AND entity_id = ?)",
     "EXISTS (SELECT 1 FROM outbox_events WHERE correlation_id = ? AND event_type = 'PAYMENT_STATUS_UPDATED' AND aggregate_type = 'payment_intent' AND aggregate_id = ?)",
   ];
   const values: unknown[] = [input.correlationId, input.intentId, input.correlationId, input.intentId];
-  if (input.ledgerKey && input.accountId) {
-    clauses.push("EXISTS (SELECT 1 FROM credit_ledger_entries WHERE idempotency_key = ?)");
-    values.push(input.ledgerKey);
+  if (input.ledgerKey && input.accountId && input.facilityId && input.userId) {
+    clauses.push("EXISTS (SELECT 1 FROM credit_ledger_entries cle INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id AND ca.id = ? AND ca.facility_id = ? AND ca.user_id = ? WHERE cle.idempotency_key = ?)");
+    values.push(input.accountId, input.facilityId, input.userId, input.ledgerKey);
     // The ledger and denormalized balance must agree before the provider event
     // can become terminal. This catches a silent balance-write omission even
     // when the ledger insert itself succeeded.
-    clauses.push("(SELECT COALESCE(SUM(amount), 0) FROM credit_ledger_entries WHERE credit_account_id = ?) = (SELECT available_credits FROM credit_accounts WHERE id = ?)");
-    values.push(input.accountId, input.accountId);
+    clauses.push("(SELECT COALESCE(SUM(cle.amount), 0) FROM credit_ledger_entries cle INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id AND ca.id = ? AND ca.facility_id = ? AND ca.user_id = ?) = (SELECT available_credits FROM credit_accounts WHERE id = ? AND facility_id = ? AND user_id = ?)");
+    values.push(input.accountId, input.facilityId, input.userId, input.accountId, input.facilityId, input.userId);
   }
   return { sql: clauses.join(" AND "), values };
 }
@@ -74,7 +74,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
       return { status: "IGNORED", paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_TERMINAL" };
     }
     const accountId = await ensureCreditAccount(d1, { facilityId: intent.facility_id, userId: intent.user_id });
-    const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, ledgerKey: `payment:${intent.id}:purchase`, accountId });
+    const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, facilityId: intent.facility_id, userId: intent.user_id, ledgerKey: `payment:${intent.id}:purchase`, accountId });
     const results = await d1.batch([
       d1.prepare("UPDATE payment_intents SET provider = ?, status = 'SUCCEEDED', provider_reference = COALESCE(?, provider_reference), version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED', 'SUCCEEDED')").bind(provider, payload.providerReference || null, now, intent.id, intent.facility_id, intent.user_id),
       ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: "SUCCEEDED", eventType: payload.eventType, correlationId }),
@@ -107,7 +107,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
         refundAccountId = purchase.credit_account_id;
         refundStatements = refundPurchasedCreditsStatements(d1, { paymentIntentId: intent.id, accountId: purchase.credit_account_id, amount: purchase.amount, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.`, now });
       }
-      const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, ledgerKey: nextStatus === "REFUNDED" ? `payment:${intent.id}:refund` : undefined, accountId: refundAccountId || undefined });
+      const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, facilityId: intent.facility_id, userId: intent.user_id, ledgerKey: nextStatus === "REFUNDED" ? `payment:${intent.id}:refund` : undefined, accountId: refundAccountId || undefined });
       const results = await d1.batch([
         d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ${allowedPriorStatuses}`).bind(provider, nextStatus, now, intent.id, intent.facility_id, intent.user_id),
         ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
