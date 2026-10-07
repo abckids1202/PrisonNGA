@@ -57,7 +57,10 @@ export async function POST(request: Request) {
         d1.prepare("INSERT INTO security_events (id, user_id, event_type, severity, request_id, metadata, created_at) VALUES (?, ?, 'SESSION_REVOKED', 'WARNING', ?, ?, ?)").bind(crypto.randomUUID(), account.id, context.requestId, JSON.stringify({ revokeAll: true }), now),
         completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody }),
       ]);
-      if (!results.every((result) => result?.meta?.changes === 1)) throw new SecurityError("SESSION_REVOCATION_INCOMPLETE", 503);
+      // Revoking all sessions is intentionally idempotent: there may be no
+      // active sessions left to update after a previous request. The audit
+      // event and idempotency completion must still be committed.
+      if (!results[1]?.meta?.changes || !results[2]?.meta?.changes) throw new SecurityError("SESSION_REVOCATION_INCOMPLETE", 503);
     } else {
       const results = await d1.batch([
         d1.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL").bind(now, normalized.sessionId, account.id),

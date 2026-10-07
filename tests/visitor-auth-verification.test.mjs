@@ -76,3 +76,9 @@ test("session revocation requires idempotency and stores a replay response", asy
   assert.match(source, /completeIdempotencyStatement\(d1/);
   assert.match(source, /releaseIdempotencyClaim/);
 });
+
+test("revoke-all allows an already-empty active-session set", async () => {
+  const source = await readFile(new URL("../app/api/auth/sessions/route.ts", import.meta.url), "utf8");
+  assert.match(source, /if \(!results\[1\]\?\.meta\?\.changes \|\| !results\[2\]\?\.meta\?\.changes\)/);
+  assert.match(source, /Revoking all sessions is intentionally idempotent/);
+});
