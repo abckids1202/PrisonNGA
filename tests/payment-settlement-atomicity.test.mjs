@@ -123,6 +123,24 @@ test("payment refund rolls back the refund ledger and intent status when audit p
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 0);
 });
 
+test("payment refund refuses a purchase ledger entry from another visitor or facility", async () => {
+  const d1 = new D1();
+  d1.sqlite.exec(`
+    UPDATE payment_intents SET status = 'SUCCEEDED', version = 2;
+    INSERT INTO credit_accounts VALUES ('account-other', 'facility-2', 'visitor-other', 2, 0, 1, 'before', 'before');
+    INSERT INTO credit_ledger_entries VALUES ('purchase-other', 'account-other', NULL, 'PURCHASE', 2, 'payment:payment-1:purchase', 'paid', 'system:payment-webhook', 'before');
+    UPDATE payment_provider_events SET event_key = 'refund-cross-scope', status = 'PROCESSING';
+  `);
+  await assert.rejects(processPaymentProviderEvent(d1, {
+    provider: "webhook",
+    eventKey: "refund-cross-scope",
+    payload: { eventType: "PAYMENT_REFUNDED", eventId: "refund-cross-scope", paymentIntentId: "payment-1", providerReference: "provider-1", status: "REFUNDED" },
+  }), /PAYMENT_REFUND_PENDING/);
+  assert.equal(d1.sqlite.prepare("SELECT status FROM payment_intents WHERE id = 'payment-1'").get().status, "SUCCEEDED");
+  assert.equal(d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE id = 'account-other'").get().available_credits, 2);
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 0);
+});
+
 test("stale failure events are ignored after a payment has succeeded", async () => {
   const d1 = new D1();
   await processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-1", payload: event });

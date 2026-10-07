@@ -96,11 +96,16 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
       let refundStatements: D1PreparedStatement[] = [];
       let refundAccountId: string | null = null;
       if (nextStatus === "REFUNDED") {
-        const accountId = await d1.prepare("SELECT cle.credit_account_id FROM credit_ledger_entries cle WHERE cle.idempotency_key = ? AND cle.entry_type = 'PURCHASE' LIMIT 1").bind(`payment:${intent.id}:purchase`).first<{ credit_account_id: string }>();
-        const purchase = await d1.prepare("SELECT amount FROM credit_ledger_entries WHERE idempotency_key = ? AND entry_type = 'PURCHASE' LIMIT 1").bind(`payment:${intent.id}:purchase`).first<{ amount: number }>();
-        if (!accountId || !purchase) throw new SecurityError("PAYMENT_REFUND_PENDING", 503);
-        refundAccountId = accountId.credit_account_id;
-        refundStatements = refundPurchasedCreditsStatements(d1, { paymentIntentId: intent.id, accountId: accountId.credit_account_id, amount: purchase.amount, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.`, now });
+        const purchase = await d1.prepare(`SELECT cle.credit_account_id, cle.amount
+          FROM credit_ledger_entries cle
+          INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id
+            AND ca.facility_id = ? AND ca.user_id = ?
+          WHERE cle.idempotency_key = ? AND cle.entry_type = 'PURCHASE' LIMIT 1`)
+          .bind(intent.facility_id, intent.user_id, `payment:${intent.id}:purchase`)
+          .first<{ credit_account_id: string; amount: number }>();
+        if (!purchase) throw new SecurityError("PAYMENT_REFUND_PENDING", 503);
+        refundAccountId = purchase.credit_account_id;
+        refundStatements = refundPurchasedCreditsStatements(d1, { paymentIntentId: intent.id, accountId: purchase.credit_account_id, amount: purchase.amount, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.`, now });
       }
       const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, ledgerKey: nextStatus === "REFUNDED" ? `payment:${intent.id}:refund` : undefined, accountId: refundAccountId || undefined });
       const results = await d1.batch([

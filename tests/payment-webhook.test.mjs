@@ -98,7 +98,7 @@ test("refund webhooks remain retryable until reserved credits can be released", 
   const source = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
   assert.match(source, /refundPurchasedCreditsStatements/);
   assert.match(source, /PAYMENT_REFUND_PENDING/);
-  assert.match(source, /if \(!accountId \|\| !purchase\) throw/);
+  assert.match(source, /if \(!purchase\) throw/);
 });
 
 test("payment reconciliation recovers stale processing claims", async () => {
