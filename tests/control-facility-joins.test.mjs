@@ -16,6 +16,7 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(appointmentDecisions, /p\.id = a\.prisoner_id AND p\.facility_id = a\.facility_id/);
   assert.match(waitingRoom, /p\.id = a\.prisoner_id AND p\.facility_id = a\.facility_id/);
   assert.match(verification, /vr\.id = vc\.relationship_id AND vr\.facility_id = vc\.facility_id/);
+  assert.match(verification, /u\.id = vr\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(verification, /p\.id = vr\.prisoner_id AND p\.facility_id = vr\.facility_id/);
   assert.match(evidence, /vc\.id = ed\.verification_case_id AND vc\.facility_id = ed\.facility_id/);
   assert.match(liveKit, /a\.id = vs\.appointment_id AND a\.facility_id = vs\.facility_id/);
