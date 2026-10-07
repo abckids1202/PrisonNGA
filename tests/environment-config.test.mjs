@@ -54,3 +54,34 @@ test("staging and production require protected R2 evidence storage", () => {
   const configured = validateEnvironment({ ...base, EVIDENCE_STORAGE_PROVIDER: "r2" });
   assert.ok(!configured.missing.includes("EVIDENCE_STORAGE_PROVIDER=r2"));
 });
+
+test("production endpoints reject embedded credentials, fragments, and non-HTTPS URLs", () => {
+  const base = {
+    DB: {},
+    SECUREVISIT_ENVIRONMENT: "staging",
+    VISITOR_AUTH_DELIVERY: "webhook",
+    VISITOR_AUTH_WEBHOOK_URL: "https://user:pass@auth.example.test/send",
+    EVIDENCE_SCAN_PROVIDER: "webhook",
+    EVIDENCE_SCAN_WEBHOOK_URL: "https://scan.example.test/scan#fragment",
+    PAYMENT_PROVIDER: "webhook",
+    PAYMENT_CHECKOUT_URL: "http://payments.example.test/checkout",
+    PAYMENT_REFUND_URL: "https://payments.example.test/refund",
+    NOTIFICATION_DELIVERY: "webhook",
+    NOTIFICATION_WEBHOOK_URL: "https://notify.example.test/send",
+    VIDEO_PROVIDER: "livekit",
+    LIVEKIT_URL: "wss://securevisit.livekit.cloud",
+    LIVEKIT_API_KEY: "key",
+    LIVEKIT_API_SECRET: "secret",
+    EVIDENCE_STORAGE_PROVIDER: "r2",
+    EVIDENCE_BUCKET: {},
+    VISIT_CREDIT_PRICE_MINOR: "50000",
+    SECUREVISIT_HASH_SALT: "x".repeat(32),
+    STAFF_STEP_UP_SECRET: "y".repeat(32),
+  };
+  const result = validateEnvironment(base);
+  assert.ok(result.missing.some((item) => item.startsWith("VISITOR_AUTH_WEBHOOK_URL")));
+  assert.ok(result.missing.some((item) => item.startsWith("EVIDENCE_SCAN_WEBHOOK_URL")));
+  assert.ok(result.missing.some((item) => item.startsWith("PAYMENT_CHECKOUT_URL")));
+  assert.equal(result.missing.some((item) => item.startsWith("PAYMENT_REFUND_URL")), false);
+  assert.equal(result.missing.some((item) => item.startsWith("NOTIFICATION_WEBHOOK_URL")), false);
+});
