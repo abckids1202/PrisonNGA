@@ -551,7 +551,21 @@ const worker = {
       }
     }
 
-    const response = await handler.fetch(request, env, ctx);
+    let response: Response;
+    try {
+      response = await handler.fetch(request, env, ctx);
+    } catch (error) {
+      const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
+      operationalLog("error", { event: "REQUEST_HANDLER_FAILED", requestId, correlationId: requestId, error });
+      const failedResponse = Response.json({ error: "INTERNAL_ERROR", requestId }, { status: 500, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Request-Id": requestId } });
+      failedResponse.headers.set("Content-Security-Policy", `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' ${liveKitConnectSources(env)}`);
+      failedResponse.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
+      failedResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+      failedResponse.headers.set("X-Frame-Options", "DENY");
+      failedResponse.headers.set("X-XSS-Protection", "0");
+      applyTransportSecurityHeader(failedResponse, request, environmentCheck.environment);
+      return failedResponse;
+    }
     const securedResponse = new Response(response.body, response);
     securedResponse.headers.set("Content-Security-Policy", `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' ${liveKitConnectSources(env)}`);
     securedResponse.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
