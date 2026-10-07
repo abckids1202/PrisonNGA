@@ -1,5 +1,5 @@
 import { cookies, headers } from "next/headers";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../db";
 import { getD1 } from "../../db/runtime";
 import { authSessions, permissions, rolePermissions, roles, staffProfiles, userRoles, users } from "../../db/schema";
@@ -46,7 +46,7 @@ export async function getStaffSessionIdentity(): Promise<WorkspaceIdentity | nul
   const [sessionUser] = await db.select({ externalId: users.externalId, email: users.email, displayName: users.displayName, status: users.status, userType: users.userType })
     .from(authSessions)
     .innerJoin(users, eq(authSessions.userId, users.id))
-    .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "STAFF"), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, new Date().toISOString())))
+    .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "STAFF"), isNull(authSessions.revokedAt), sql`julianday(${authSessions.expiresAt}) > julianday(${new Date().toISOString()})`))
     .limit(1);
   if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
   await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
@@ -74,7 +74,7 @@ export async function getVisitorSessionIdentity(): Promise<VisitorAuthorizationC
   const [sessionUser] = await db.select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, phone: users.phone, phoneVerifiedAt: users.phoneVerifiedAt, displayName: users.displayName, userType: users.userType, status: users.status })
     .from(authSessions)
     .innerJoin(users, eq(authSessions.userId, users.id))
-    .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "VISITOR"), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, new Date().toISOString())))
+    .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "VISITOR"), isNull(authSessions.revokedAt), sql`julianday(${authSessions.expiresAt}) > julianday(${new Date().toISOString()})`))
     .limit(1);
   if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
   await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
