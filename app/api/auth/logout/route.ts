@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { getDb } from "../../../../db";
 import { authSessions, securityEvents, users } from "../../../../db/schema";
@@ -16,7 +16,7 @@ export async function POST() {
     const salt = await getSecuritySalt();
     let user: { id: string } | undefined;
     let shouldAuditLogout = Boolean(identity);
-    if (identity) [user] = await db.select({ id: users.id }).from(users).where(eq(users.externalId, identity.externalId)).limit(1);
+    if (identity) [user] = await db.select({ id: users.id }).from(users).where(and(eq(users.externalId, identity.externalId), eq(users.userType, "STAFF"))).limit(1);
     if (sessionToken) {
       const tokenHash = await hashIdentifier(sessionToken, salt);
       const [sessionUser] = await db.select({ id: users.id, revokedAt: authSessions.revokedAt }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).where(eq(authSessions.tokenHash, tokenHash)).limit(1);
