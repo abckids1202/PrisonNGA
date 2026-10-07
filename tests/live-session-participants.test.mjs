@@ -33,6 +33,13 @@ test("LiveKit participant transitions are written to the facility audit trail wi
   assert.doesNotMatch(source, /auditAction[\s\S]*auditAndOutboxStatements/);
 });
 
+test("LiveKit completion requires both visitor and facility participants before consuming credit", async () => {
+  const source = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
+  assert.match(source, /participant_role = 'VISITOR'/);
+  assert.match(source, /participant_role = 'FACILITY'/);
+  assert.match(source, /const terminating = Boolean\(staffTerminationReason\) \|\| !session\.actual_started_at \|\| !session\.visitor_joined \|\| !session\.facility_joined/);
+});
+
 test("staff observer and room events cannot start credit-consuming sessions", async () => {
   const source = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
 
