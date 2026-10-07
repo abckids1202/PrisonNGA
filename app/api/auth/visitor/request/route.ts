@@ -69,7 +69,15 @@ export async function POST(request: Request) {
     const delivery = (await getRuntimeValue("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
     const deliveryAttemptId = crypto.randomUUID();
     const startedAt = new Date().toISOString();
-    await d1.prepare("INSERT INTO auth_challenge_delivery_attempts (id, challenge_id, channel, provider, status, attempt_count, started_at) VALUES (?, ?, ?, ?, 'PENDING', 1, ?)").bind(deliveryAttemptId, challengeId, channel, delivery || "unconfigured", startedAt).run();
+    try {
+      const attempt = await d1.prepare("INSERT INTO auth_challenge_delivery_attempts (id, challenge_id, channel, provider, status, attempt_count, started_at) VALUES (?, ?, ?, ?, 'PENDING', 1, ?)").bind(deliveryAttemptId, challengeId, channel, delivery || "unconfigured", startedAt).run();
+      if (!attempt.meta.changes) throw new Error("delivery attempt was not persisted");
+    } catch {
+      // Never leave a live OTP without a durable delivery record. A later
+      // retry must create a fresh challenge with auditable delivery state.
+      await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
+      throw new SecurityError("AUTH_DELIVERY_ATTEMPT_NOT_PERSISTED", 503);
+    }
     if (delivery === "console" && environment === "development") {
       responseBody.devCode = code;
       await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
