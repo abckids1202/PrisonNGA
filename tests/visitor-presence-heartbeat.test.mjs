@@ -10,3 +10,8 @@ test("repeat visitor waiting-room heartbeats refresh freshness without version c
   assert.match(source, /AND version = \? AND visitor_presence = 'present'/);
   assert.match(source, /idempotent: true/);
 });
+
+test("visitor heartbeat response preserves authoritative escalated states", () => {
+  assert.match(source, /const persistedState = \["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"\]/);
+  assert.match(source, /state: persistedState/);
+});

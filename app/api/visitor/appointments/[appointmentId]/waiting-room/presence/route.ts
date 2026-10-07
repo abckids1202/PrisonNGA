@@ -26,6 +26,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
     const now = new Date().toISOString();
     const prisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at));
     const nextState = prisonerPresent ? "BOTH_PRESENT" : "VISITOR_WAITING";
+    const persistedState = ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(String(current.state || "NOT_ARRIVED"))
+      ? nextState
+      : String(current.state || "NOT_ARRIVED");
     if (current.visitor_presence === "present" && current.state !== "NOT_ARRIVED") {
       const refreshed = await d1.prepare(`UPDATE waiting_room_sessions
         SET visitor_presence_at = ?, last_checked_at = ?, updated_at = ?
@@ -45,7 +48,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
         .bind(now, appointmentId, current.facility_id, Number(current.appointment_version)),
     ]);
     if (!result[0]?.meta.changes || !result[1]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
-    return securityResponse({ presence: "present", state: nextState, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : "waiting", prisonerPresenceAt: prisonerPresent ? current.prisoner_presence_at || null : null, version: nextVersion }, 200, context.requestId);
+    return securityResponse({ presence: "present", state: persistedState, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : "waiting", prisonerPresenceAt: prisonerPresent ? current.prisoner_presence_at || null : null, version: nextVersion }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }
