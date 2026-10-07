@@ -92,7 +92,7 @@ export async function PUT(request: Request) {
       }, { sql: current ? "changes() > 0" : "EXISTS (SELECT 1 FROM visitor_profiles WHERE user_id = ? AND version = 1 AND profile_status = 'ACTIVE')", values: current ? [] : [visitor.userId] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: { ...responseBody, correlationId }, guard: { sql: "EXISTS (SELECT 1 FROM visitor_profiles WHERE user_id = ? AND version = ? AND profile_status = 'ACTIVE')", values: [visitor.userId, nextVersion] } }),
     ]);
-    if (!results[0]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("PROFILE_UPDATE_CONFLICT", 409);
+    if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("PROFILE_UPDATE_CONFLICT", 409);
     idempotency = null;
     return securityResponse({ ...responseBody, correlationId }, 200, context.requestId);
   } catch (error) {

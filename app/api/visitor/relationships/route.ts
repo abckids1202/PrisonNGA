@@ -67,6 +67,7 @@ export async function POST(request: Request) {
       }
       throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
     }
+    if (!created.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("RELATIONSHIP_CREATE_NOT_PERSISTED", 409);
     return securityResponse({ relationshipId, verificationId, status: "PENDING", correlationId }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

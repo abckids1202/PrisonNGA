@@ -82,10 +82,11 @@ export async function POST(request: Request) {
     } catch (error) {
       const now = new Date().toISOString();
       const message = safeOperationalErrorMessage(error, "PAYMENT_CHECKOUT_FAILED");
-      await d1.batch([
+      const failureWrites = await d1.batch([
         d1.prepare("UPDATE payment_intents SET status = 'FAILED', updated_at = ?, version = version + 1 WHERE id = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED')").bind(now, paymentIntentId),
         ...auditAndOutboxStatements(d1, { actorUserId: visitor.userId, actorRole: "Visitor", facilityId, actionType: "PAYMENT_CHECKOUT_FAILED", entityType: "payment_intent", entityId: paymentIntentId, reason: "Payment checkout provider failed.", oldValues: { status: "PENDING", creditQuantity, amountMinor, currency: "IDR" }, newValues: { status: "FAILED", error: message }, requestId: context.requestId, eventType: "PAYMENT_CHECKOUT_FAILED", payload: { paymentIntentId, creditQuantity, amountMinor, currency: "IDR", error: message } }, { sql: "EXISTS (SELECT 1 FROM payment_intents WHERE id = ? AND status = 'FAILED')", values: [paymentIntentId] }),
       ]);
+      if (!failureWrites.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("PAYMENT_CHECKOUT_FAILURE_NOT_PERSISTED", 503);
       throw error;
     }
     const now = new Date().toISOString();
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
       d1.prepare("UPDATE payment_intents SET provider = ?, provider_reference = ?, checkout_url = ?, status = 'CHECKOUT_CREATED', updated_at = ?, version = version + 1 WHERE id = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED')").bind(checkout.provider, checkout.providerReference, checkout.checkoutUrl, now, paymentIntentId),
       ...auditAndOutboxStatements(d1, { actorUserId: visitor.userId, actorRole: "Visitor", facilityId, actionType: "PAYMENT_CHECKOUT_CREATED", entityType: "payment_intent", entityId: paymentIntentId, reason: "Visitor started a visit credit checkout.", oldValues: { status: "PENDING", creditQuantity, amountMinor, currency: "IDR" }, newValues: { status: "CHECKOUT_CREATED", provider: checkout.provider, providerReference: checkout.providerReference }, requestId: context.requestId, correlationId, eventType: "PAYMENT_CHECKOUT_CREATED", payload: { paymentIntentId, provider: checkout.provider, providerReference: checkout.providerReference, creditQuantity, amountMinor, currency: "IDR" } }, { sql: "EXISTS (SELECT 1 FROM payment_intents WHERE id = ? AND status = 'CHECKOUT_CREATED' AND provider_reference = ?)", values: [paymentIntentId, checkout.providerReference] }),
     ]);
-    if (!updated[0]?.meta.changes || !updated[1]?.meta.changes || !updated[2]?.meta.changes) {
+    if (!updated.every((result) => Boolean(result?.meta.changes))) {
       const current = await d1.prepare("SELECT id, status, provider, checkout_url, amount_minor, credit_quantity, currency FROM payment_intents WHERE id = ? AND user_id = ?").bind(paymentIntentId, visitor.userId).first<Record<string, string | number | null>>();
       if (!current) throw new SecurityError("PAYMENT_INTENT_NOT_FOUND", 503);
       return securityResponse({ paymentIntent: current, idempotent: true }, 200, context.requestId);
