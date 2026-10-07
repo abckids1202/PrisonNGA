@@ -114,6 +114,26 @@ test("idempotency rejects key reuse with a different request hash", async () => 
   );
 });
 
+test("idempotency returns a controlled service error when a completed replay is corrupt", async () => {
+  const database = new IdempotencyDatabase();
+  database.records.set(`${request.scope}:${request.key}`, {
+    id: "completed-corrupt",
+    scope: request.scope,
+    key: request.key,
+    request_hash: request.requestHash,
+    status: "COMPLETED",
+    response_status: 201,
+    response_body: "{not-json",
+    processing_started_at: null,
+    created_at: new Date().toISOString(),
+  });
+
+  await assert.rejects(
+    claimIdempotency(database, request),
+    (error) => error.code === "IDEMPOTENCY_RECORD_INVALID" && error.statusCode === 503,
+  );
+});
+
 test("a fresh in-progress claim is protected from concurrent duplicate work", async () => {
   const database = new IdempotencyDatabase();
   await claimIdempotency(database, request);

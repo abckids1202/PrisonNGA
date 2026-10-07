@@ -3,6 +3,16 @@ import { SecurityError } from "./security";
 export type IdempotencyReplay = { status: number; body: unknown };
 export type IdempotencyClaim = { claimId: string } | { replay: IdempotencyReplay };
 
+function parseStoredReplay(responseBody: string): unknown {
+  try {
+    return JSON.parse(responseBody) as unknown;
+  } catch {
+    // A completed record with a corrupted response cannot be replayed safely.
+    // Return a controlled service error instead of leaking a parser exception.
+    throw new SecurityError("IDEMPOTENCY_RECORD_INVALID", 503);
+  }
+}
+
 export async function hashIdempotencyPayload(value: unknown): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -20,7 +30,7 @@ export async function claimIdempotency(d1: D1Database, input: { scope: string; k
   if (existing.request_hash !== input.requestHash) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
   if (existing.status === "COMPLETED") {
     if (existing.response_status == null || existing.response_body == null) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
-    return { replay: { status: existing.response_status, body: JSON.parse(existing.response_body) } };
+    return { replay: { status: existing.response_status, body: parseStoredReplay(existing.response_body) } };
   }
   if (existing.status !== "PROCESSING") throw new SecurityError("IDEMPOTENCY_IN_PROGRESS", 409);
 
@@ -35,7 +45,7 @@ export async function claimIdempotency(d1: D1Database, input: { scope: string; k
   const latest = await d1.prepare("SELECT id, request_hash, status, response_status, response_body FROM idempotency_records WHERE scope = ? AND idempotency_key = ?")
     .bind(input.scope, input.key).first<{ request_hash: string; status: string; response_status: number | null; response_body: string | null }>();
   if (latest?.request_hash === input.requestHash && latest.status === "COMPLETED" && latest.response_status != null && latest.response_body != null) {
-    return { replay: { status: latest.response_status, body: JSON.parse(latest.response_body) } };
+    return { replay: { status: latest.response_status, body: parseStoredReplay(latest.response_body) } };
   }
   throw new SecurityError("IDEMPOTENCY_IN_PROGRESS", 409);
 }
