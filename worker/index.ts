@@ -2,13 +2,13 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { validateEnvironment } from "../lib/server/config";
+import { appointmentDecisionCommitted, appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { finalizeLiveSessionStatements, finalizationCommitted, getExpiredSessionDisposition } from "../lib/server/live-session-finalization";
 import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
 import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions, reconcileStaleAuthDeliveryAttempts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
-import { appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
 import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
@@ -119,7 +119,9 @@ async function reconcileStaleKioskHealth(env: Env): Promise<void> {
 
 async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
   const rows = await env.DB.prepare(`SELECT a.id, a.facility_id, a.visitor_user_id, a.status, a.version, a.requested_end,
-      ca.id AS credit_account_id
+      ca.id AS credit_account_id,
+      EXISTS (SELECT 1 FROM credit_ledger_entries r WHERE r.appointment_id = a.id AND r.credit_account_id = ca.id AND r.entry_type = 'RESERVATION'
+        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = a.id AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))) AS active_credit_reservation
     FROM appointments a
     LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
     LEFT JOIN visit_sessions vs ON vs.appointment_id = a.id AND vs.facility_id = a.facility_id
@@ -132,7 +134,7 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
       -- Otherwise a disconnected browser or kiosk could block no-show cleanup forever.
       AND NOT (w.visitor_presence = 'present' AND julianday(w.visitor_presence_at) >= julianday('now', '-3 minutes'))
       AND NOT (w.prisoner_presence = 'present' AND julianday(w.prisoner_presence_at) >= julianday('now', '-3 minutes'))
-    ORDER BY a.requested_end ASC LIMIT 25`).all<{ id: string; facility_id: string; visitor_user_id: string; status: string; version: number; requested_end: string; credit_account_id: string | null }>();
+    ORDER BY a.requested_end ASC LIMIT 25`).all<{ id: string; facility_id: string; visitor_user_id: string; status: string; version: number; requested_end: string; credit_account_id: string | null; active_credit_reservation: number }>();
 
   for (const row of rows.results) {
     const now = new Date().toISOString();
@@ -155,6 +157,16 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
         creditAccountId: row.credit_account_id || undefined,
       }));
       if (!results[0]?.meta.changes) continue;
+      const committed = await appointmentDecisionCommitted(env.DB, {
+        appointmentId: row.id,
+        facilityId: row.facility_id,
+        toStatus: "NO_SHOW",
+        expectedVersion: row.version,
+        command: "no_show",
+        correlationId,
+        requiresCreditRelease: Boolean(row.active_credit_reservation),
+      });
+      if (!committed) operationalLog("error", { event: "WAITING_ROOM_NO_SHOW_INCOMPLETE", appointmentId: row.id, facilityId: row.facility_id, correlationId });
     } catch (error) {
       operationalLog("error", { event: "WAITING_ROOM_NO_SHOW_RECONCILIATION_FAILED", appointmentId: row.id, facilityId: row.facility_id, correlationId, error });
     }
