@@ -41,6 +41,14 @@ export async function POST(request: Request) {
       const appointmentId = typeof body.appointmentId === "string" ? body.appointmentId.trim() : null;
       const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : null;
       const resourceId = typeof body.resourceId === "string" ? body.resourceId.trim() : null;
+      const [appointment, session, resource] = await Promise.all([
+        appointmentId ? d1.prepare("SELECT id FROM appointments WHERE id = ? AND facility_id = ?").bind(appointmentId, authorization.facilityId).first<{ id: string }>() : null,
+        sessionId ? d1.prepare("SELECT id FROM visit_sessions WHERE id = ? AND facility_id = ?").bind(sessionId, authorization.facilityId).first<{ id: string }>() : null,
+        resourceId ? d1.prepare("SELECT id FROM resources WHERE id = ? AND facility_id = ?").bind(resourceId, authorization.facilityId).first<{ id: string }>() : null,
+      ]);
+      if (appointmentId && !appointment) throw new SecurityError("INCIDENT_APPOINTMENT_NOT_FOUND", 404);
+      if (sessionId && !session) throw new SecurityError("INCIDENT_SESSION_NOT_FOUND", 404);
+      if (resourceId && !resource) throw new SecurityError("INCIDENT_RESOURCE_NOT_FOUND", 404);
       const salt = await getSecuritySalt();
       const idempotencyKeyHash = await hashIdentifier(`incident-create:${authorization.facilityId}:${authorization.userId}:${idempotencyKey}`, salt);
       const requestHash = await hashIdentifier(JSON.stringify({ incidentType, severity: body.severity, title, description, appointmentId, sessionId, resourceId }), salt);

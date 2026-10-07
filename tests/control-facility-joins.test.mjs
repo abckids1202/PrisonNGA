@@ -37,4 +37,7 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(videoSession, /a\.id = vs\.appointment_id AND a\.facility_id = vs\.facility_id/);
   assert.match(incidents, /reporter\.id = i\.reporter_user_id AND reporter\.user_type = 'STAFF'/);
   assert.match(incidents, /assignee\.id = i\.assigned_user_id AND assignee\.user_type = 'STAFF'/);
+  assert.match(incidents, /FROM appointments WHERE id = \? AND facility_id = \?/);
+  assert.match(incidents, /FROM visit_sessions WHERE id = \? AND facility_id = \?/);
+  assert.match(incidents, /FROM resources WHERE id = \? AND facility_id = \?/);
 });
