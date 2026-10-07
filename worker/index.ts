@@ -76,6 +76,47 @@ type ExpiredSession = { id: string; appointment_id: string; facility_id: string;
 type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
 type AbandonedPaymentIntent = { id: string; facility_id: string; user_id: string; credit_quantity: number; amount_minor: number; currency: string; version: number };
 
+async function reconcileStaleKioskHealth(env: Env): Promise<void> {
+  const stale = await env.DB.prepare(`SELECT id, facility_id, display_name, version, last_heartbeat_at
+    FROM resources
+    WHERE resource_type = 'DEVICE' AND status = 'ONLINE' AND health_state = 'HEALTHY'
+      AND (last_heartbeat_at IS NULL OR julianday(last_heartbeat_at) < julianday('now', '-3 minutes'))
+    ORDER BY updated_at ASC LIMIT 25`).all<{ id: string; facility_id: string; display_name: string; version: number; last_heartbeat_at: string | null }>();
+
+  for (const resource of stale.results) {
+    const now = new Date().toISOString();
+    const correlationId = crypto.randomUUID();
+    try {
+      const results = await env.DB.batch([
+        env.DB.prepare(`UPDATE resources SET health_state = 'FAILED', version = version + 1, updated_at = ?
+          WHERE id = ? AND facility_id = ? AND resource_type = 'DEVICE' AND status = 'ONLINE' AND health_state = 'HEALTHY' AND version = ?
+            AND (last_heartbeat_at IS NULL OR julianday(last_heartbeat_at) < julianday('now', '-3 minutes'))`)
+          .bind(now, resource.id, resource.facility_id, resource.version),
+        ...auditAndOutboxStatements(env.DB, {
+          actorUserId: 'system:scheduler',
+          actorRole: 'SYSTEM',
+          facilityId: resource.facility_id,
+          actionType: 'KIOSK_HEALTH_FAILED',
+          entityType: 'resource',
+          entityId: resource.id,
+          reason: 'Kiosk heartbeat exceeded the three-minute freshness window.',
+          oldValues: { healthState: 'HEALTHY', version: resource.version, lastHeartbeatAt: resource.last_heartbeat_at },
+          newValues: { healthState: 'FAILED', version: resource.version + 1, interventionRequired: true },
+          requestId: correlationId,
+          correlationId,
+          eventType: 'KIOSK_HEALTH_FAILED',
+          payload: { resourceId: resource.id, resourceName: resource.display_name, lastHeartbeatAt: resource.last_heartbeat_at, interventionRequired: true },
+        }, { sql: "EXISTS (SELECT 1 FROM resources WHERE id = ? AND facility_id = ? AND health_state = 'FAILED' AND version = ?)", values: [resource.id, resource.facility_id, resource.version + 1] }),
+      ]);
+      if (!results[0]?.meta.changes || !results[1]?.meta.changes || !results[2]?.meta.changes) {
+        operationalLog('error', { event: 'STALE_KIOSK_HEALTH_AUDIT_FAILED', resourceId: resource.id, facilityId: resource.facility_id, correlationId });
+      }
+    } catch (error) {
+      operationalLog('error', { event: 'STALE_KIOSK_HEALTH_RECONCILIATION_FAILED', resourceId: resource.id, facilityId: resource.facility_id, correlationId, error });
+    }
+  }
+}
+
 async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
   const rows = await env.DB.prepare(`SELECT a.id, a.facility_id, a.visitor_user_id, a.status, a.version, a.requested_end,
       ca.id AS credit_account_id
@@ -492,7 +533,7 @@ const worker = {
         return processOutbox(env);
       })
       : processOutbox(env);
-    ctx.waitUntil(Promise.all([outboxWork, reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), reconcileStaleAuthDeliveryAttempts(env.DB), purgeExpiredAuthArtifacts(env.DB), purgeExpiredAuthSessions(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([outboxWork, reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileStaleKioskHealth(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), reconcileStaleAuthDeliveryAttempts(env.DB), purgeExpiredAuthArtifacts(env.DB), purgeExpiredAuthSessions(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
   },
   async queue(batch: NotificationQueueBatch, env: Env): Promise<void> {
     // Claiming remains inside processOutbox, so duplicate queue deliveries
