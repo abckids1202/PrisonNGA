@@ -13,7 +13,9 @@ type LiveSessionClientProps = { visitId: string; role: LiveRole; kioskId?: strin
 function apiError(body: Record<string, unknown>, fallback: string) {
   const code = typeof body.error === "string" ? body.error : "";
   if (code === "VIDEO_PROVIDER_NOT_CONFIGURED") return "Video provider is not configured for this environment yet.";
-  if (code === "SESSION_NOT_READY" || code === "SESSION_ENDED" || code === "SESSION_EXPIRED") return "This visit is not currently available to join.";
+  if (code === "FACILITY_NOT_ACCEPTING_REQUESTS") return "The facility has temporarily paused new visits. Please return to Visit Details for the latest update.";
+  if (code === "PRISONER_NOT_AVAILABLE") return "The person you are visiting is not currently available. Please return to Visit Details for the latest update.";
+  if (code === "APPOINTMENT_NOT_IN_PROGRESS" || code === "SESSION_NOT_READY" || code === "SESSION_NOT_STARTED" || code === "SESSION_ENDED" || code === "SESSION_EXPIRED") return "This visit is not currently available to join.";
   if (code === "KIOSK_AUTHENTICATION_REQUIRED" || code === "KIOSK_NOT_ASSIGNED_TO_VISIT") return "This facility device is not authorized for this visit.";
   return fallback;
 }
