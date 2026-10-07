@@ -7,6 +7,8 @@ test("staff and provider joins preserve facility integrity", async () => {
   const controlAppointmentRoute = await readFile(new URL("../app/api/control/appointments/route.ts", import.meta.url), "utf8");
   const appointmentDecisions = await readFile(new URL("../lib/server/appointment-decisions.ts", import.meta.url), "utf8");
   const waitingRoom = await readFile(new URL("../app/api/control/waiting-room/route.ts", import.meta.url), "utf8");
+  const visitorWaitingRoom = await readFile(new URL("../app/api/visitor/appointments/[appointmentId]/waiting-room/route.ts", import.meta.url), "utf8");
+  const visitorAppointmentDetail = await readFile(new URL("../lib/server/visitor-appointment-detail.ts", import.meta.url), "utf8");
   const verification = await readFile(new URL("../app/api/control/verification/route.ts", import.meta.url), "utf8");
   const evidence = await readFile(new URL("../app/api/control/verification/evidence/[documentId]/route.ts", import.meta.url), "utf8");
   const controlLiveSessions = await readFile(new URL("../app/api/control/live-sessions/route.ts", import.meta.url), "utf8");
@@ -21,6 +23,9 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(controlAppointmentRoute, /p\.id = a\.prisoner_id AND p\.facility_id = a\.facility_id/);
   assert.match(appointmentDecisions, /p\.id = a\.prisoner_id AND p\.facility_id = a\.facility_id/);
   assert.match(waitingRoom, /p\.id = a\.prisoner_id AND p\.facility_id = a\.facility_id/);
+  assert.match(waitingRoom, /dc\.appointment_id = a\.id AND dc\.facility_id = a\.facility_id/);
+  assert.match(visitorWaitingRoom, /latest\.appointment_id = a\.id AND latest\.facility_id = a\.facility_id/);
+  assert.match(visitorAppointmentDetail, /latest\.appointment_id = a\.id AND latest\.facility_id = a\.facility_id/);
   assert.match(verification, /vr\.id = vc\.relationship_id AND vr\.facility_id = vc\.facility_id/);
   assert.match(verification, /u\.id = vr\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(verification, /p\.id = vr\.prisoner_id AND p\.facility_id = vr\.facility_id/);

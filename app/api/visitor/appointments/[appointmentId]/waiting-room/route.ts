@@ -30,7 +30,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
       LEFT JOIN waiting_room_sessions wr ON wr.appointment_id = a.id AND wr.facility_id = a.facility_id
       LEFT JOIN visitor_device_check_attempts dc ON dc.id = (
         SELECT latest.id FROM visitor_device_check_attempts latest
-        WHERE latest.appointment_id = a.id AND latest.visitor_user_id = a.visitor_user_id
+        WHERE latest.appointment_id = a.id AND latest.facility_id = a.facility_id AND latest.visitor_user_id = a.visitor_user_id
         ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1
       )
       WHERE a.id = ? AND a.visitor_user_id = ?`).bind(appointmentId, visitor.userId).first<Record<string, string | number | null>>();
