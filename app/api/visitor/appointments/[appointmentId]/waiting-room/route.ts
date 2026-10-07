@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../../../db/runtime";
 import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
-import { isRecentDeviceCheck } from "../../../../../../lib/server/waiting-room-readiness";
+import { isRecentDeviceCheck, isRecentPresence } from "../../../../../../lib/server/waiting-room-readiness";
 
 export async function POST(request: Request, { params }: { params: Promise<{ appointmentId: string }> }) {
   const context = await getRequestContext();
@@ -46,7 +46,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
 
     const waitingVersion = Number(current.waiting_version || 0);
     const nextVersion = waitingVersion + 1;
-    const nextState = current.prisoner_presence === "present" ? "BOTH_PRESENT" : "VISITOR_WAITING";
+    const prisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at));
+    const nextState = prisonerPresent ? "BOTH_PRESENT" : "VISITOR_WAITING";
+    const nextPrisonerPresence = prisonerPresent ? "present" : "waiting";
     const correlationId = crypto.randomUUID();
     const checkInId = crypto.randomUUID();
     const result = await d1.batch([
@@ -58,7 +60,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         WHERE changes() > 0
         ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = 'present', visitor_presence_at = excluded.visitor_presence_at, prisoner_presence = excluded.prisoner_presence, prisoner_presence_at = excluded.prisoner_presence_at, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, last_checked_at = excluded.last_checked_at, version = excluded.version, updated_at = excluded.updated_at
         WHERE waiting_room_sessions.version = ?`)
-        .bind(appointmentId, current.facility_id, nextState, now, String(current.prisoner_presence || "waiting"), current.prisoner_presence === "present" ? (current.prisoner_presence_at || now) : null, String(current.camera_result) === "ready" ? "pass" : "warning", String(current.microphone_result) === "ready" ? "pass" : "warning", String(current.network_result) === "stable" || String(current.network_result) === "fair" ? "pass" : "warning", nextVersion, now, now, now, waitingVersion),
+        .bind(appointmentId, current.facility_id, nextState, now, nextPrisonerPresence, prisonerPresent ? (current.prisoner_presence_at || now) : null, String(current.camera_result) === "ready" ? "pass" : "warning", String(current.microphone_result) === "ready" ? "pass" : "warning", String(current.network_result) === "stable" || String(current.network_result) === "fair" ? "pass" : "warning", nextVersion, now, now, now, waitingVersion),
       d1.prepare(`INSERT INTO visitor_waiting_room_checkins (id, appointment_id, facility_id, visitor_user_id, idempotency_key, state, version, correlation_id, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(checkInId, appointmentId, current.facility_id, visitor.userId, existingKey, nextState, nextVersion, correlationId, now),
@@ -70,7 +72,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         .bind(crypto.randomUUID(), appointmentId, current.facility_id, JSON.stringify({ appointmentId, state: nextState }), correlationId, now),
     ]);
     if (!result.every((entry) => entry?.meta.changes === 1)) throw new SecurityError("WAITING_ROOM_CHECK_IN_INCOMPLETE", 503);
-    return securityResponse({ checkIn: { id: checkInId, appointmentId, state: nextState, visitorPresence: "present", prisonerPresence: current.prisoner_presence || "waiting", version: nextVersion, correlationId }, idempotent: false }, 201, context.requestId);
+    return securityResponse({ checkIn: { id: checkInId, appointmentId, state: nextState, visitorPresence: "present", prisonerPresence: nextPrisonerPresence, version: nextVersion, correlationId }, idempotent: false }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }
