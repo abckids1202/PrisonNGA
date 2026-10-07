@@ -1,6 +1,7 @@
 import { SAML, ValidateInResponseTo, type CacheItem, type CacheProvider, type Profile, type SamlConfig } from "@node-saml/node-saml";
 import { getRuntimeValue, SecurityError } from "../security";
 import { isSecureHttpsEndpoint } from "../endpoint";
+import { fetchBoundedText } from "./remote-fetch";
 
 export type SamlProfile = Profile & { email?: string; mail?: string; displayName?: string; name?: string };
 export const SAML_REQUEST_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -87,9 +88,8 @@ export function createSamlClientOptions(config: Awaited<ReturnType<typeof getSam
 }
 
 export async function createSamlClient(config: Awaited<ReturnType<typeof getSamlConfig>>, database: D1Database, stateHash: string): Promise<SAML> {
-  const metadata = await fetch(config.metadataUrl, { headers: { accept: "application/xml,text/xml" } });
+  const { response: metadata, text: metadataXml } = await fetchBoundedText(config.metadataUrl, { headers: { accept: "application/xml,text/xml" } }, { maxBytes: 2 * 1024 * 1024 });
   if (!metadata.ok) throw new SecurityError("STAFF_SAML_METADATA_UNAVAILABLE", 503);
-  const metadataXml = await metadata.text();
   if (!metadataXml.includes("EntityDescriptor") || !metadataXml.includes(config.entityId)) throw new SecurityError("STAFF_SAML_METADATA_INVALID", 503);
   return new SAML(createSamlClientOptions(config, database, stateHash, await getSamlMfaRequirement()));
 }
