@@ -76,7 +76,7 @@ test("payment webhook processing binds events to the configured provider", async
   assert.match(route, /configuredProvider/);
   assert.match(route, /PAYMENT_WEBHOOK_PROVIDER_MISMATCH/);
   assert.match(processor, /const lookupField = payload\.paymentIntentId \? "id" : "provider_reference"/);
-  assert.match(processor, /WHERE provider = \? AND \$\{lookupField\} = \?/);
+  assert.match(processor, /WHERE pi\.provider = \? AND pi\.\$\{lookupField\} = \?/);
 });
 
 test("payment webhook processing verifies provider reference and settlement amount", async () => {
@@ -84,7 +84,7 @@ test("payment webhook processing verifies provider reference and settlement amou
   assert.match(processor, /PAYMENT_PROVIDER_REFERENCE_MISMATCH/);
   assert.match(processor, /PAYMENT_AMOUNT_MISMATCH/);
   assert.match(processor, /PAYMENT_CURRENCY_MISMATCH/);
-  assert.match(processor, /provider_reference, credit_quantity, amount_minor, currency/);
+  assert.match(processor, /pi\.provider_reference, pi\.credit_quantity, pi\.amount_minor, pi\.currency/);
 });
 
 test("direct webhook delivery claims an event before settlement and releases failed claims", async () => {

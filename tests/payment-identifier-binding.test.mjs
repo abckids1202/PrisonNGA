@@ -6,7 +6,7 @@ const source = await readFile(new URL("../lib/server/payments/process-event.ts",
 
 test("payment webhooks bind to the intent ID before validating provider reference", () => {
   assert.match(source, /const lookupField = payload\.paymentIntentId \? "id" : "provider_reference"/);
-  assert.match(source, /WHERE provider = \? AND \$\{lookupField\} = \?/);
+  assert.match(source, /WHERE pi\.provider = \? AND pi\.\$\{lookupField\} = \?/);
   assert.match(source, /PAYMENT_PROVIDER_REFERENCE_MISMATCH/);
   assert.doesNotMatch(source, /WHERE provider = \? AND \(id = \? OR provider_reference = \?\)/);
 });

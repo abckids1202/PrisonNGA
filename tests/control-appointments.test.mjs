@@ -20,7 +20,7 @@ function createDatabase() {
   const d1 = new SqliteD1();
   d1.database.exec(`
     CREATE TABLE appointments (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, prisoner_id TEXT NOT NULL, status TEXT NOT NULL, requested_start TEXT NOT NULL, requested_end TEXT NOT NULL, timezone TEXT NOT NULL, appointment_type TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, user_type TEXT NOT NULL);
     CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, prisoner_number TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, visitation_status TEXT NOT NULL);
     CREATE TABLE facilities (id TEXT PRIMARY KEY, current_state TEXT NOT NULL);
     CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, facility_id TEXT NOT NULL, available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL);
@@ -30,7 +30,7 @@ function createDatabase() {
     CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
 
     INSERT INTO facilities VALUES ('facility-a', 'NORMAL_OPERATIONS'), ('facility-b', 'LOCKDOWN');
-    INSERT INTO users VALUES ('visitor-a', 'Alya Pratama'), ('visitor-b', 'Bima Santoso');
+    INSERT INTO users VALUES ('visitor-a', 'Alya Pratama', 'VISITOR'), ('visitor-b', 'Bima Santoso', 'VISITOR');
     INSERT INTO prisoners VALUES ('prisoner-a', 'facility-a', 'P-100', 'D. Pratama', 'ACTIVE', 'APPROVED'), ('prisoner-b', 'facility-b', 'P-200', 'R. Santoso', 'ACTIVE', 'APPROVED');
     INSERT INTO credit_accounts VALUES ('credits-a', 'visitor-a', 'facility-a', 2, 1), ('credits-b', 'visitor-b', 'facility-b', 5, 0);
     INSERT INTO appointments VALUES ('visit-a', 'facility-a', 'visitor-a', 'prisoner-a', 'APPROVED', '2026-10-01T02:00:00.000Z', '2026-10-01T02:30:00.000Z', 'Asia/Jakarta', 'FAMILY', 4, 'created', 'updated'), ('visit-b', 'facility-b', 'visitor-b', 'prisoner-b', 'SUBMITTED', '2026-10-01T03:00:00.000Z', '2026-10-01T03:30:00.000Z', 'Asia/Jakarta', 'LEGAL', 2, 'created', 'updated');
