@@ -26,3 +26,10 @@ test("waiting-room admission is blocked while the facility is restricted", async
   assert.match(source, /command === "admit_visitor" && !facilityEligible/);
   assert.match(source, /FACILITY_NOT_ACCEPTING_REQUESTS/);
 });
+
+test("waiting-room late marking is blocked before the scheduled start", async () => {
+  const source = await readFile(new URL("../app/api/control/waiting-room/route.ts", import.meta.url), "utf8");
+  assert.match(source, /command === "mark_late"/);
+  assert.match(source, /Date\.parse\(String\(current\.requested_start \|\| ""\)\) > Date\.now\(\)/);
+  assert.match(source, /VISIT_NOT_LATE_YET/);
+});

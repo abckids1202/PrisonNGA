@@ -170,6 +170,7 @@ export async function POST(request: Request) {
     if (command === "admit_visitor" && !facilityEligible) throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (command === "start_visit" && !facilityEligible) throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (command === "start_visit" && !prisonerEligible) throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
+    if (command === "mark_late" && Date.parse(String(current.requested_start || "")) > Date.now()) throw new SecurityError("VISIT_NOT_LATE_YET", 409);
     if (command === "run_preflight" || command === "retry_device") {
       if (current.visitor_presence !== "present" || current.prisoner_presence !== "present") throw new SecurityError("BOTH_PARTICIPANTS_NOT_PRESENT", 409);
     }
