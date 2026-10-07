@@ -23,6 +23,24 @@ function paymentEventTrail(d1: D1Database, input: { intentId: string; facilityId
   }, { sql: "changes() > 0", values: [] });
 }
 
+function paymentEventEvidenceGuard(input: { intentId: string; correlationId: string; ledgerKey?: string; accountId?: string }) {
+  const clauses = [
+    "EXISTS (SELECT 1 FROM audit_events WHERE correlation_id = ? AND action_type = 'PAYMENT_STATUS_UPDATED' AND entity_type = 'payment_intent' AND entity_id = ?)",
+    "EXISTS (SELECT 1 FROM outbox_events WHERE correlation_id = ? AND event_type = 'PAYMENT_STATUS_UPDATED' AND aggregate_type = 'payment_intent' AND aggregate_id = ?)",
+  ];
+  const values: unknown[] = [input.correlationId, input.intentId, input.correlationId, input.intentId];
+  if (input.ledgerKey && input.accountId) {
+    clauses.push("EXISTS (SELECT 1 FROM credit_ledger_entries WHERE idempotency_key = ?)");
+    values.push(input.ledgerKey);
+    // The ledger and denormalized balance must agree before the provider event
+    // can become terminal. This catches a silent balance-write omission even
+    // when the ledger insert itself succeeded.
+    clauses.push("(SELECT COALESCE(SUM(amount), 0) FROM credit_ledger_entries WHERE credit_account_id = ?) = (SELECT available_credits + reserved_credits FROM credit_accounts WHERE id = ?)");
+    values.push(input.accountId, input.accountId);
+  }
+  return { sql: clauses.join(" AND "), values };
+}
+
 export async function processPaymentProviderEvent(d1: D1Database, input: { provider: string; eventKey: string; payload: PaymentWebhook }): Promise<{ status: string; paymentIntentId?: string; ignored?: string }> {
   const { provider, eventKey, payload } = input;
   const correlationId = crypto.randomUUID();
@@ -56,13 +74,17 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
       return { status: "IGNORED", paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_TERMINAL" };
     }
     const accountId = await ensureCreditAccount(d1, { facilityId: intent.facility_id, userId: intent.user_id });
+    const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, ledgerKey: `payment:${intent.id}:purchase`, accountId });
     const results = await d1.batch([
       d1.prepare("UPDATE payment_intents SET provider = ?, status = 'SUCCEEDED', provider_reference = COALESCE(?, provider_reference), version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED', 'SUCCEEDED')").bind(provider, payload.providerReference || null, now, intent.id, intent.facility_id, intent.user_id),
       ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: "SUCCEEDED", eventType: payload.eventType, correlationId }),
       ...settlePaymentPurchaseStatements(d1, { paymentIntentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, accountId, amount: intent.credit_quantity, reason: `Payment ${eventKey} settled.`, now, requireSucceeded: true }),
-      d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
+      d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ? AND ${evidenceGuard.sql}`).bind(now, provider, eventKey, ...evidenceGuard.values),
     ]);
     if (!results[0]?.meta.changes) throw new SecurityError("PAYMENT_INTENT_STATE_CHANGED", 409);
+    if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes || !results[4]?.meta.changes || !results[5]?.meta.changes) {
+      throw new SecurityError("PAYMENT_SETTLEMENT_INCOMPLETE", 503);
+    }
     return { status: "SUCCEEDED", paymentIntentId: intent.id };
   }
   if (failedEvents.has(payload.eventType) || ["FAILED", "EXPIRED", "REFUNDED", "DISPUTED"].includes(payload.status || "")) {
@@ -72,34 +94,43 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
       const current = await d1.prepare("SELECT status FROM payment_intents WHERE id = ?").bind(intent.id).first<{ status: string }>();
       if (!current) throw new SecurityError("PAYMENT_INTENT_STATE_UNAVAILABLE", 503);
       let refundStatements: D1PreparedStatement[] = [];
+      let refundAccountId: string | null = null;
       if (nextStatus === "REFUNDED") {
         const accountId = await d1.prepare("SELECT cle.credit_account_id FROM credit_ledger_entries cle WHERE cle.idempotency_key = ? AND cle.entry_type = 'PURCHASE' LIMIT 1").bind(`payment:${intent.id}:purchase`).first<{ credit_account_id: string }>();
         const purchase = await d1.prepare("SELECT amount FROM credit_ledger_entries WHERE idempotency_key = ? AND entry_type = 'PURCHASE' LIMIT 1").bind(`payment:${intent.id}:purchase`).first<{ amount: number }>();
         if (!accountId || !purchase) throw new SecurityError("PAYMENT_REFUND_PENDING", 503);
+        refundAccountId = accountId.credit_account_id;
         refundStatements = refundPurchasedCreditsStatements(d1, { paymentIntentId: intent.id, accountId: accountId.credit_account_id, amount: purchase.amount, actorUserId: "system:payment-webhook", reason: `Provider refund event ${eventKey}.`, now });
       }
+      const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId, ledgerKey: nextStatus === "REFUNDED" ? `payment:${intent.id}:refund` : undefined, accountId: refundAccountId || undefined });
       const results = await d1.batch([
         d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND user_id = ? AND status IN ${allowedPriorStatuses}`).bind(provider, nextStatus, now, intent.id, intent.facility_id, intent.user_id),
         ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
         ...refundStatements,
         d1.prepare("UPDATE payment_refund_requests SET status = 'COMPLETED', provider_reference = COALESCE(?, provider_reference), updated_at = ? WHERE payment_intent_id = ? AND status = 'REQUESTED'").bind(payload.providerReference || null, now, intent.id),
-        d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
+        d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ? AND ${evidenceGuard.sql}`).bind(now, provider, eventKey, ...evidenceGuard.values),
       ]);
       if (!results[0]?.meta.changes) {
         await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
         return { status: current.status, paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_STATE_CHANGED" };
       }
+      if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[results.length - 1]?.meta.changes) {
+        throw new SecurityError("PAYMENT_SETTLEMENT_INCOMPLETE", 503);
+      }
       return { status: nextStatus, paymentIntentId: intent.id };
     }
+    const evidenceGuard = paymentEventEvidenceGuard({ intentId: intent.id, correlationId });
     const results = await d1.batch([
       d1.prepare(`UPDATE payment_intents SET provider = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND status IN ('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED')`).bind(provider, nextStatus, now, intent.id),
       ...paymentEventTrail(d1, { intentId: intent.id, facilityId: intent.facility_id, userId: intent.user_id, eventKey, status: nextStatus, eventType: payload.eventType, correlationId }),
-      d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
+      d1.prepare(`UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ? AND ${evidenceGuard.sql}`).bind(now, provider, eventKey, ...evidenceGuard.values),
     ]);
     if (!results[0]?.meta.changes) {
+      if (results[1]?.meta.changes || results[2]?.meta.changes) throw new SecurityError("PAYMENT_SETTLEMENT_INCOMPLETE", 503);
       await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
       return { status: intent.status, paymentIntentId: intent.id, ignored: "PAYMENT_INTENT_STATE_CHANGED" };
     }
+    if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes) throw new SecurityError("PAYMENT_SETTLEMENT_INCOMPLETE", 503);
     return { status: nextStatus, paymentIntentId: intent.id };
   }
   await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
