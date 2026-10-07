@@ -24,7 +24,7 @@ class SQLiteD1 {
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT NOT NULL, appointment_id TEXT, entry_type TEXT NOT NULL, amount INTEGER NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, reason TEXT, created_by TEXT, created_at TEXT NOT NULL);
-      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL);
+      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY', last_heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, status TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, last_checked_at TEXT, updated_at TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, current_state TEXT NOT NULL, timezone TEXT NOT NULL);
@@ -33,8 +33,8 @@ class SQLiteD1 {
       CREATE TABLE visitor_relationships (facility_id TEXT NOT NULL, prisoner_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, status TEXT NOT NULL);
       INSERT INTO appointments VALUES ('visit-1', 'facility-1', 'visitor-1', 'prisoner-1', 'UNDER_REVIEW', 3, '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'Asia/Jakarta', 1, 30, 'before', NULL);
       INSERT INTO credit_accounts VALUES ('credit-1', 2, 0, 1, 'before');
-      INSERT INTO resources VALUES ('room-1', 'facility-1', 'ROOM', 'Room 01', 'AVAILABLE');
-      INSERT INTO resources VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE');
+      INSERT INTO resources (id, facility_id, resource_type, display_name, status) VALUES ('room-1', 'facility-1', 'ROOM', 'Room 01', 'AVAILABLE');
+      INSERT INTO resources (id, facility_id, resource_type, display_name, status) VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE');
       INSERT INTO facilities VALUES ('facility-1', 'NORMAL_OPERATIONS', 'Asia/Jakarta');
       INSERT INTO visit_policies VALUES ('facility-1', 1, 15, 30, 60, 30, '08:00', '17:00');
       INSERT INTO prisoners VALUES ('prisoner-1', 'facility-1', 'ACTIVE', 'APPROVED');
@@ -177,6 +177,20 @@ test("approval does not reserve a credit when the account has no available credi
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations").get().count, 0);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 0);
+  } finally { d1.close(); }
+});
+
+test("approval refuses an unhealthy kiosk before reserving credit or resources", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    d1.sqlite.prepare("UPDATE resources SET health_state = 'FAILED' WHERE id = 'device-1'").run();
+    d1.sqlite.prepare("INSERT INTO credit_ledger_entries VALUES (?, ?, NULL, 'MANUAL_ADJUSTMENT', ?, ?, ?, ?, ?)")
+      .run("credit-grant-1", "credit-1", 2, "grant:credit-1", "Pilot credit grant", "system", "before");
+    const results = await d1.batch(appointmentDecisionStatements(d1, input));
+    assert.equal(results[0].meta.changes, 0);
+    assert.equal(d1.sqlite.prepare("SELECT status FROM appointments WHERE id = 'visit-1'").get().status, "UNDER_REVIEW");
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations").get().count, 0);
+    assert.equal(d1.sqlite.prepare("SELECT reserved_credits FROM credit_accounts WHERE id = 'credit-1'").get().reserved_credits, 0);
   } finally { d1.close(); }
 });
 

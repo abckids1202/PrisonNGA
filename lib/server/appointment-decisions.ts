@@ -89,12 +89,13 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
       )
       AND (
         EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.appointment_id = ? AND rr.facility_id = ? AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE'))
-        OR EXISTS (SELECT 1 FROM resources r WHERE r.facility_id = ? AND r.resource_type = 'ROOM' AND r.status = 'AVAILABLE'
+        OR EXISTS (SELECT 1 FROM resources r WHERE r.facility_id = ? AND r.resource_type = 'ROOM' AND r.status = 'AVAILABLE' AND r.health_state = 'HEALTHY'
           AND NOT EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.resource_id = r.id AND rr.facility_id = ? AND rr.appointment_id <> ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.starts_at < ? AND rr.ends_at > ?))
       )
       AND (
         EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.appointment_id = ? AND rr.facility_id = ? AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE'))
-        OR EXISTS (SELECT 1 FROM resources r WHERE r.facility_id = ? AND r.resource_type = 'DEVICE' AND r.status = 'ONLINE'
+        OR EXISTS (SELECT 1 FROM resources r WHERE r.facility_id = ? AND r.resource_type = 'DEVICE' AND r.status = 'ONLINE' AND r.health_state = 'HEALTHY'
+          AND r.last_heartbeat_at IS NOT NULL AND julianday(r.last_heartbeat_at) >= julianday('now', '-3 minutes')
           AND NOT EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.resource_id = r.id AND rr.facility_id = ? AND rr.appointment_id <> ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.starts_at < ? AND rr.ends_at > ?))
       )
       AND EXISTS (SELECT 1 FROM appointments a
@@ -208,7 +209,8 @@ function reservationInsertStatement(
   input: { facilityId: string; appointmentId: string; resourceType: "ROOM" | "DEVICE"; availableStatus: "AVAILABLE" | "ONLINE"; startsAt: string; endsAt: string; now: string; correlationId: string },
 ): D1PreparedStatement {
   return d1.prepare(`INSERT INTO resource_reservations (id, facility_id, appointment_id, resource_type, resource_id, status, starts_at, ends_at, created_at)
-    SELECT ?, ?, ?, ?, (SELECT r.id FROM resources r WHERE r.facility_id = ? AND r.resource_type = ? AND r.status = ?
+    SELECT ?, ?, ?, ?, (SELECT r.id FROM resources r WHERE r.facility_id = ? AND r.resource_type = ? AND r.status = ? AND r.health_state = 'HEALTHY'
+      AND (r.resource_type = 'ROOM' OR (r.last_heartbeat_at IS NOT NULL AND julianday(r.last_heartbeat_at) >= julianday('now', '-3 minutes')))
       AND NOT EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.resource_id = r.id AND rr.facility_id = ? AND rr.appointment_id <> ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.starts_at < ? AND rr.ends_at > ?)
       ORDER BY r.display_name ASC LIMIT 1), 'RESERVED', ?, ?, ?
     WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)
