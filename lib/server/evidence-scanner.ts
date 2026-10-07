@@ -1,5 +1,6 @@
 import { getRuntimeValue } from "./security";
 import { isSecureHttpsEndpoint } from "./endpoint";
+import { readBoundedResponseText } from "./bounded-response";
 
 export type EvidenceScanVerdict = "CLEAN" | "INFECTED";
 
@@ -61,7 +62,7 @@ export async function scanEvidence(input: EvidenceScanInput): Promise<EvidenceSc
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`EVIDENCE_SCAN_FAILED_${response.status}`);
-    const result = await response.json() as { verdict?: unknown };
+    const result = JSON.parse(await readBoundedResponseText(response)) as { verdict?: unknown };
     if (result.verdict === "clean") return "CLEAN";
     if (result.verdict === "infected") return "INFECTED";
     throw new Error("EVIDENCE_SCAN_INVALID_RESPONSE");
