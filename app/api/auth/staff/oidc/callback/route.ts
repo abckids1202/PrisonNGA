@@ -2,6 +2,7 @@ import { getD1 } from "../../../../../../db/runtime";
 import { discover, exchangeCode, getOidcConfig, getStaffMfaRequirement, hasRequiredStaffMfa, hasVerifiedStaffEmail, hashFederationState } from "../../../../../../lib/server/auth/oidc";
 import { applySecurityHeaders, getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
 import { buildSessionCookie } from "../../../../../../lib/server/auth/session-cookie";
+import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 
 async function staffCookie(token: string): Promise<string> { return buildSessionCookie("securevisit_staff_session", token, 28800, (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development"); }
 
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
     if (search.get("error") || !code || !state) throw new SecurityError("STAFF_OIDC_CALLBACK_INVALID", 400);
     const config = await getOidcConfig();
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `staff-federation:oidc-callback:${context.ipAddress || "unknown"}`, limit: 30, windowSeconds: 15 * 60 });
     const stateHash = await hashFederationState(state);
     const pending = await d1.prepare("SELECT id, nonce, code_verifier, redirect_uri, expires_at, consumed_at FROM auth_federation_states WHERE state_hash = ? AND provider = 'oidc'").bind(stateHash).first<{ id: string; nonce: string; code_verifier: string; redirect_uri: string; expires_at: string; consumed_at: string | null }>();
     if (!pending || pending.consumed_at || Date.parse(pending.expires_at) <= Date.now() || pending.redirect_uri !== config.redirectUri) throw new SecurityError("STAFF_OIDC_STATE_INVALID", 401);

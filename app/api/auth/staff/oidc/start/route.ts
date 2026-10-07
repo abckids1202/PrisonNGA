@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../../../db/runtime";
 import { createPkcePair, discover, getOidcConfig, hashFederationState } from "../../../../../../lib/server/auth/oidc";
 import { applySecurityHeaders, getRequestContext, securityErrorResponse } from "../../../../../../lib/server/security";
+import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 
 export async function GET() {
   const context = await getRequestContext();
@@ -11,6 +12,7 @@ export async function GET() {
     const challenge = await pair.challenge;
     const now = new Date();
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `staff-federation:oidc:${context.ipAddress || "unknown"}`, limit: 20, windowSeconds: 15 * 60 });
     await d1.prepare("INSERT INTO auth_federation_states (id, provider, state_hash, nonce, code_verifier, redirect_uri, expires_at, created_at) VALUES (?, 'oidc', ?, ?, ?, ?, ?, ?)")
       .bind(crypto.randomUUID(), await hashFederationState(pair.state), pair.nonce, pair.verifier, config.redirectUri, new Date(now.getTime() + 10 * 60_000).toISOString(), now.toISOString()).run();
     const url = new URL(discovery.authorization_endpoint);

@@ -2,12 +2,14 @@ import { getD1 } from "../../../../../../db/runtime";
 import { createSamlClient, getSamlConfig, samlAuthorize } from "../../../../../../lib/server/auth/saml";
 import { hashFederationState } from "../../../../../../lib/server/auth/oidc";
 import { applySecurityHeaders, getRequestContext, securityErrorResponse } from "../../../../../../lib/server/security";
+import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 
 export async function GET() {
   const context = await getRequestContext();
   try {
     const config = await getSamlConfig();
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `staff-federation:saml:${context.ipAddress || "unknown"}`, limit: 20, windowSeconds: 15 * 60 });
     const relayState = crypto.randomUUID() + crypto.randomUUID();
     const stateHash = await hashFederationState(relayState);
     const client = await createSamlClient(config, d1, stateHash);

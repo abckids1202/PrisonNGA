@@ -3,6 +3,7 @@ import { createSamlClient, getSamlConfig, getSamlMfaRequirement, hasRequiredSaml
 import { hashFederationState } from "../../../../../../lib/server/auth/oidc";
 import { applySecurityHeaders, getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
 import { buildSessionCookie } from "../../../../../../lib/server/auth/session-cookie";
+import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 
 async function staffCookie(token: string): Promise<string> { return buildSessionCookie("securevisit_staff_session", token, 28800, (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development"); }
 
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
     if (typeof samlResponse !== "string" || samlResponse.length > 250_000 || typeof relayState !== "string" || !relayState) throw new SecurityError("STAFF_SAML_CALLBACK_INVALID", 400);
     const config = await getSamlConfig();
     const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `staff-federation:saml-callback:${context.ipAddress || "unknown"}`, limit: 30, windowSeconds: 15 * 60 });
     const stateHash = await hashFederationState(relayState);
     const client = await createSamlClient(config, d1, stateHash);
     const pending = await d1.prepare("SELECT id, expires_at, consumed_at, redirect_uri FROM auth_federation_states WHERE state_hash = ? AND provider = 'saml'").bind(stateHash).first<{ id: string; expires_at: string; consumed_at: string | null; redirect_uri: string }>();
