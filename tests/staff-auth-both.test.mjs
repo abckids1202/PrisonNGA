@@ -5,6 +5,7 @@ import { validateEnvironment } from "../lib/server/config.ts";
 const base = {
   DB: {},
   SECUREVISIT_ENVIRONMENT: "staging",
+  PUBLIC_APP_URL: "https://securevisit.example.test",
   STAFF_AUTH_PROVIDER: "both",
   STAFF_STEP_UP_SECRET: "x".repeat(32),
   SECUREVISIT_HASH_SALT: "y".repeat(32),

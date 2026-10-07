@@ -4,8 +4,17 @@ import { getPaymentProvider } from "../../../../lib/server/payments/provider";
 import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 import { safeOperationalErrorMessage } from "../../../../lib/server/observability";
+import { isSecureHttpsEndpoint } from "../../../../lib/server/endpoint";
 
 const DEMO_CREDIT_PRICE_MINOR = 50000;
+
+async function getPublicAppOrigin(request: Request): Promise<string> {
+  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
+  if (environment === "development") return new URL(request.url).origin;
+  const configured = (await getRuntimeValue("PUBLIC_APP_URL") || "").trim();
+  if (!isSecureHttpsEndpoint(configured)) throw new SecurityError("PUBLIC_APP_URL_NOT_CONFIGURED", 503);
+  return new URL(configured).origin;
+}
 
 async function getCreditPricing() {
   const configured = Number(await getRuntimeValue("VISIT_CREDIT_PRICE_MINOR"));
@@ -37,6 +46,7 @@ export async function POST(request: Request) {
     if (!facility) throw new SecurityError("FACILITY_NOT_AVAILABLE", 409);
     const provider = await getPaymentProvider();
     if (!provider) throw new SecurityError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
+    const publicAppOrigin = await getPublicAppOrigin(request);
     let paymentIntentId = String(existing?.id || crypto.randomUUID());
     const pricing = existing ? null : await getCreditPricing();
     let amountMinor = Number(existing?.amount_minor || creditQuantity * (pricing?.perCreditMinor || 0));
@@ -68,7 +78,6 @@ export async function POST(request: Request) {
     }
     let checkout;
     try {
-      const origin = new URL(request.url).origin;
       checkout = await provider.createCheckout({
         paymentIntentId,
         email: visitor.email,
@@ -76,8 +85,8 @@ export async function POST(request: Request) {
         creditQuantity,
         amountMinor,
         currency: "IDR",
-        successUrl: `${origin}/visitor/payment/${encodeURIComponent(paymentIntentId)}?result=success`,
-        cancelUrl: `${origin}/visitor/payment/${encodeURIComponent(paymentIntentId)}?result=cancelled`,
+        successUrl: `${publicAppOrigin}/visitor/payment/${encodeURIComponent(paymentIntentId)}?result=success`,
+        cancelUrl: `${publicAppOrigin}/visitor/payment/${encodeURIComponent(paymentIntentId)}?result=cancelled`,
       });
     } catch (error) {
       const now = new Date().toISOString();
