@@ -15,6 +15,7 @@ test("staff and provider joins preserve facility integrity", async () => {
   const kioskLiveSession = await readFile(new URL("../app/api/kiosk/visits/[visitId]/live-session/route.ts", import.meta.url), "utf8");
   const kioskPresence = await readFile(new URL("../app/api/kiosk/visits/[visitId]/presence/route.ts", import.meta.url), "utf8");
   const kioskDeviceCheck = await readFile(new URL("../app/api/kiosk/visits/[visitId]/device-check/route.ts", import.meta.url), "utf8");
+  const visitorDeviceCheck = await readFile(new URL("../app/api/visitor/appointments/[appointmentId]/device-check/route.ts", import.meta.url), "utf8");
   const incidents = await readFile(new URL("../app/api/control/incidents/route.ts", import.meta.url), "utf8");
   const liveKit = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
   const resources = await readFile(new URL("../lib/server/resources.ts", import.meta.url), "utf8");
@@ -43,6 +44,9 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(kioskLiveSession, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(kioskPresence, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(kioskDeviceCheck, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
+  assert.match(kioskDeviceCheck, /WHERE idempotency_key = \? AND facility_id = \?/);
+  assert.match(visitorDeviceCheck, /WHERE idempotency_key = \? AND facility_id = \?/g);
+  assert.match(visitorDeviceCheck, /storedIdempotencyKey = `\$\{visitor\.userId\}:\$\{eligible\.facility_id\}:\$\{appointmentId\}:/);
   const videoSession = await readFile(new URL("../lib/server/video/session.ts", import.meta.url), "utf8");
   assert.match(videoSession, /a\.id = vs\.appointment_id AND a\.facility_id = vs\.facility_id/);
   assert.match(incidents, /reporter\.id = i\.reporter_user_id AND reporter\.user_type = 'STAFF'/);

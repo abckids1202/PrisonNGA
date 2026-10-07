@@ -24,16 +24,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     if (latencyMs !== null && (!Number.isSafeInteger(latencyMs) || latencyMs < 0 || latencyMs > 60000)) throw new SecurityError("INVALID_DEVICE_CHECK", 400);
 
     const d1 = await getD1();
-    const storedIdempotencyKey = `${visitor.userId}:${idempotencyKey}`;
-    const existing = await d1.prepare(`SELECT id, appointment_id, visitor_user_id, camera_result, microphone_result, network_result, latency_ms, created_at
-      FROM visitor_device_check_attempts WHERE idempotency_key = ?`).bind(storedIdempotencyKey).first<Record<string, string | number | null>>();
-    if (existing) {
-      if (existing.appointment_id !== appointmentId || existing.visitor_user_id !== visitor.userId) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
-      if (existing.camera_result !== cameraResult || existing.microphone_result !== microphoneResult || existing.network_result !== networkResult || (existing.latency_ms ?? null) !== latencyMs) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
-      return securityResponse({ deviceCheck: existing, idempotent: true }, 200, context.requestId);
-    }
-
-    await enforceRateLimit(d1, { key: `visitor-device-check:${visitor.userId}:${appointmentId}`, limit: 10, windowSeconds: 60 * 60 });
     const eligible = await d1.prepare(`SELECT a.facility_id FROM appointments a
       INNER JOIN facilities f ON f.id = a.facility_id
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
@@ -42,6 +32,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         AND p.status = 'ACTIVE' AND p.visitation_status = 'APPROVED'`)
       .bind(appointmentId, visitor.userId, new Date().toISOString()).first<{ facility_id: string }>();
     if (!eligible) throw new SecurityError("VISIT_NOT_ELIGIBLE_FOR_DEVICE_CHECK", 409);
+
+    const storedIdempotencyKey = `${visitor.userId}:${eligible.facility_id}:${appointmentId}:${idempotencyKey}`;
+    const existing = await d1.prepare(`SELECT id, facility_id, appointment_id, visitor_user_id, camera_result, microphone_result, network_result, latency_ms, created_at
+      FROM visitor_device_check_attempts WHERE idempotency_key = ? AND facility_id = ?`).bind(storedIdempotencyKey, eligible.facility_id).first<Record<string, string | number | null>>();
+    if (existing) {
+      if (existing.facility_id !== eligible.facility_id || existing.appointment_id !== appointmentId || existing.visitor_user_id !== visitor.userId) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
+      if (existing.camera_result !== cameraResult || existing.microphone_result !== microphoneResult || existing.network_result !== networkResult || (existing.latency_ms ?? null) !== latencyMs) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
+      return securityResponse({ deviceCheck: existing, idempotent: true }, 200, context.requestId);
+    }
+
+    await enforceRateLimit(d1, { key: `visitor-device-check:${visitor.userId}:${appointmentId}`, limit: 10, windowSeconds: 60 * 60 });
 
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
@@ -56,9 +57,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     });
     const result = await d1.batch(statements);
     if (!result[0]?.meta.changes) {
-      const raced = await d1.prepare(`SELECT id, appointment_id, visitor_user_id, camera_result, microphone_result, network_result, latency_ms, created_at
-        FROM visitor_device_check_attempts WHERE idempotency_key = ?`).bind(storedIdempotencyKey).first<Record<string, string | number | null>>();
-      if (raced?.appointment_id === appointmentId && raced.visitor_user_id === visitor.userId) return securityResponse({ deviceCheck: raced, idempotent: true }, 200, context.requestId);
+      const raced = await d1.prepare(`SELECT id, facility_id, appointment_id, visitor_user_id, camera_result, microphone_result, network_result, latency_ms, created_at
+        FROM visitor_device_check_attempts WHERE idempotency_key = ? AND facility_id = ?`).bind(storedIdempotencyKey, eligible.facility_id).first<Record<string, string | number | null>>();
+      if (raced?.facility_id === eligible.facility_id && raced.appointment_id === appointmentId && raced.visitor_user_id === visitor.userId) return securityResponse({ deviceCheck: raced, idempotent: true }, 200, context.requestId);
       throw new SecurityError("VISIT_NOT_ELIGIBLE_FOR_DEVICE_CHECK", 409);
     }
     if (!result.every((entry) => entry?.meta.changes === 1)) throw new SecurityError("DEVICE_CHECK_PERSISTENCE_INCOMPLETE", 503);

@@ -22,10 +22,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     const kiosk = await authenticateKiosk(d1, request);
     if (!kiosk) throw new SecurityError("KIOSK_AUTHENTICATION_REQUIRED", 401);
     const storedKey = `${kiosk.facilityId}:${kiosk.resourceId}:${visitId}:${idempotencyKey}`;
-    const existing = await d1.prepare(`SELECT id, appointment_id, resource_id, camera_result, microphone_result, network_result, latency_ms, created_at
-      FROM kiosk_device_check_attempts WHERE idempotency_key = ?`).bind(storedKey).first<Record<string, string | number | null>>();
+    const existing = await d1.prepare(`SELECT id, facility_id, appointment_id, resource_id, camera_result, microphone_result, network_result, latency_ms, created_at
+      FROM kiosk_device_check_attempts WHERE idempotency_key = ? AND facility_id = ?`).bind(storedKey, kiosk.facilityId).first<Record<string, string | number | null>>();
     if (existing) {
-      if (existing.appointment_id !== visitId || existing.resource_id !== kiosk.resourceId || existing.camera_result !== body.cameraResult || existing.microphone_result !== body.microphoneResult || existing.network_result !== body.networkResult || (existing.latency_ms ?? null) !== latencyMs) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
+      if (existing.facility_id !== kiosk.facilityId || existing.appointment_id !== visitId || existing.resource_id !== kiosk.resourceId || existing.camera_result !== body.cameraResult || existing.microphone_result !== body.microphoneResult || existing.network_result !== body.networkResult || (existing.latency_ms ?? null) !== latencyMs) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
       return securityResponse({ deviceCheck: existing, idempotent: true }, 200, context.requestId);
     }
     await enforceRateLimit(d1, { key: `kiosk-device-check:${kiosk.facilityId}:${kiosk.resourceId}:${visitId}`, limit: 12, windowSeconds: 60 * 60 });
