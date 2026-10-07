@@ -1,6 +1,6 @@
 import { WebhookReceiver } from "livekit-server-sdk";
 import { getD1 } from "@/db/runtime";
-import { finalizeLiveSessionStatements } from "@/lib/server/live-session-finalization";
+import { finalizeLiveSessionStatements, finalizationCommitted } from "@/lib/server/live-session-finalization";
 import { getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { getVideoConfig } from "@/lib/server/video/provider";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
         reason: staffTerminationReason || (terminating ? "LiveKit room ended before the visit started." : "LiveKit room completed."),
         event: { id: eventId, eventType, source: "LIVEKIT_WEBHOOK", participantRole, metadata: eventMetadata },
       }));
-      if (finalized[1]?.meta.changes && finalized[2]?.meta.changes && finalized[4]?.meta.changes) {
+      if (finalizationCommitted(finalized)) {
         return securityResponse({ accepted: true, event: event.event, sessionId: session.id, sessionStatus: finalSessionStatus, appointmentStatus: finalAppointmentStatus, creditOutcome: terminating ? "RELEASE" : "CONSUME", correlationId }, 200, context.requestId);
       }
       const latest = await d1.prepare(`SELECT vs.status, a.status AS appointment_status

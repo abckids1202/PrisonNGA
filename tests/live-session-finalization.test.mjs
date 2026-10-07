@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { finalizeLiveSessionStatements, getExpiredSessionDisposition, requestLiveSessionEndStatements } from "../lib/server/live-session-finalization.ts";
+import { finalizeLiveSessionStatements, finalizationCommitted, getExpiredSessionDisposition, requestLiveSessionEndStatements } from "../lib/server/live-session-finalization.ts";
 
 class SQLiteD1Statement {
   values = [];
@@ -157,6 +157,7 @@ test("session end, appointment completion, resources, credit, audit, and outbox 
   try {
     const results = await d1.batch(finalizeLiveSessionStatements(d1, input));
     assert.deepEqual(results.map((result) => result.meta.changes), [1, 1, 1, 2, 1, 1, 1, 1, 1]);
+    assert.equal(finalizationCommitted(results), true);
     assert.equal(d1.sqlite.prepare("SELECT status, version FROM visit_sessions WHERE id = 'session-1'").get().status, "ENDED");
     assert.equal(d1.sqlite.prepare("SELECT status FROM appointments WHERE id = 'visit-1'").get().status, "COMPLETED");
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations WHERE status <> 'RELEASED'").get().count, 0);
@@ -168,6 +169,16 @@ test("session end, appointment completion, resources, credit, audit, and outbox 
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 1);
     assert.equal(d1.sqlite.prepare("SELECT state FROM waiting_room_sessions WHERE id = 'waiting-1'").get().state, "COMPLETED");
   } finally { d1.close(); }
+});
+
+test("finalization is not reported complete when account or evidence writes are missing", () => {
+  const complete = Array.from({ length: 9 }, () => ({ meta: { changes: 1 } }));
+  assert.equal(finalizationCommitted(complete), true);
+  for (const index of [1, 2, 4, 5, 6, 7]) {
+    const incomplete = complete.map((result) => ({ meta: { changes: result.meta.changes } }));
+    incomplete[index] = { meta: { changes: 0 } };
+    assert.equal(finalizationCommitted(incomplete), false);
+  }
 });
 
 test("audit failure rolls back provider event, session, appointment, resources, and credit", async () => {

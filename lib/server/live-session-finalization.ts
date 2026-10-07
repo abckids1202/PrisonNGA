@@ -44,6 +44,16 @@ export type RequestLiveSessionEndInput = {
   mode: "normal" | "terminate";
 };
 
+/**
+ * Finalization result positions are intentionally stable: event, session,
+ * appointment, resources, credit-ledger, account, audit, outbox, and
+ * waiting-room writes. A caller must not report completion unless the
+ * account balance and operational evidence committed too.
+ */
+export function finalizationCommitted(results: Array<{ meta?: { changes?: number } }>): boolean {
+  return [1, 2, 4, 5, 6, 7].every((index) => results[index]?.meta?.changes === 1);
+}
+
 export function getExpiredSessionDisposition(input: { actual_started_at: string | null; termination_reason: string | null }) {
   const terminationRequested = input.termination_reason?.startsWith("STAFF_TERMINATE:") || false;
   const terminationReason = terminationRequested ? input.termination_reason!.slice("STAFF_TERMINATE:".length) : null;

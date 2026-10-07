@@ -1,5 +1,5 @@
 import { getD1 } from "@/db/runtime";
-import { finalizeLiveSessionStatements, requestLiveSessionEndStatements } from "@/lib/server/live-session-finalization";
+import { finalizeLiveSessionStatements, finalizationCommitted, requestLiveSessionEndStatements } from "@/lib/server/live-session-finalization";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { getStaffSession } from "@/lib/server/video/session";
 import { createLiveKitProvider } from "@/lib/server/video/provider";
@@ -164,7 +164,7 @@ export async function POST(request: Request, context: RouteContext) {
         metadata: { reason, mode },
       },
     }));
-    if (!finalized[1]?.meta.changes || !finalized[2]?.meta.changes || !finalized[4]?.meta.changes) {
+    if (!finalizationCommitted(finalized)) {
       const raced = await d1.prepare(`SELECT vs.status, a.status AS appointment_status FROM visit_sessions vs
         INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
         WHERE vs.id = ? AND vs.facility_id = ?`).bind(sessionId, authorization.facilityId)

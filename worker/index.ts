@@ -2,7 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { validateEnvironment } from "../lib/server/config";
-import { finalizeLiveSessionStatements, getExpiredSessionDisposition } from "../lib/server/live-session-finalization";
+import { finalizeLiveSessionStatements, finalizationCommitted, getExpiredSessionDisposition } from "../lib/server/live-session-finalization";
 import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
@@ -474,7 +474,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
           metadata: { authorizedWindowExpired: true, terminationRequested: disposition.terminationRequested },
         },
       }));
-      if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[4]?.meta.changes) {
+      if (!finalizationCommitted(results)) {
         const latest = await env.DB.prepare("SELECT status FROM visit_sessions WHERE id = ? AND facility_id = ?")
           .bind(session.id, session.facility_id).first<{ status: string }>();
         if (latest && !["ENDED", "TERMINATED", "CANCELLED"].includes(latest.status)) {
