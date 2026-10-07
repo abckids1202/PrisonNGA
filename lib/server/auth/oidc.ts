@@ -1,4 +1,5 @@
 import { getRuntimeValue, SecurityError } from "../security";
+import { isSecureHttpsEndpoint } from "../endpoint";
 
 type Discovery = { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string };
 export type OidcClaims = { iss: string; sub: string; aud: string | string[]; exp: number; nonce?: string; email?: string; email_verified?: boolean; name?: string; preferred_username?: string; acr?: string; amr?: string[] };
@@ -47,9 +48,9 @@ export async function getOidcConfig(): Promise<{ issuer: string; clientId: strin
   const clientSecret = await getRuntimeValue("STAFF_OIDC_CLIENT_SECRET") || "";
   const redirectUri = await getRuntimeValue("STAFF_OIDC_REDIRECT_URI") || "";
   let validIssuer = false;
-  try { validIssuer = new URL(issuer).protocol === "https:"; } catch { validIssuer = false; }
+  validIssuer = isSecureHttpsEndpoint(issuer);
   if (!validIssuer || !clientId || !clientSecret || !redirectUri) throw new SecurityError("STAFF_OIDC_NOT_CONFIGURED", 503);
-  try { if (new URL(redirectUri).protocol !== "https:") throw new Error("redirect"); } catch { throw new SecurityError("STAFF_OIDC_REDIRECT_INVALID", 503); }
+  if (!isSecureHttpsEndpoint(redirectUri)) throw new SecurityError("STAFF_OIDC_REDIRECT_INVALID", 503);
   return { issuer, clientId, clientSecret, redirectUri };
 }
 
@@ -99,4 +100,4 @@ async function verifyIdToken(token: string, discovery: Discovery, clientId: stri
 
 function parseJson<T>(value: string): T { try { return JSON.parse(new TextDecoder().decode(decodeBase64Url(value))) as T; } catch { throw new SecurityError("STAFF_OIDC_ID_TOKEN_INVALID", 401); } }
 function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> { const padded = value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - value.length % 4) % 4); const binary = atob(padded); const bytes = new Uint8Array(binary.length); for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index); return bytes; }
-function isHttps(value: unknown): value is string { try { return typeof value === "string" && new URL(value).protocol === "https:"; } catch { return false; } }
+function isHttps(value: unknown): value is string { return typeof value === "string" && isSecureHttpsEndpoint(value); }

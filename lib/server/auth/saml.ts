@@ -1,5 +1,6 @@
 import { SAML, ValidateInResponseTo, type CacheItem, type CacheProvider, type Profile, type SamlConfig } from "@node-saml/node-saml";
 import { getRuntimeValue, SecurityError } from "../security";
+import { isSecureHttpsEndpoint } from "../endpoint";
 
 export type SamlProfile = Profile & { email?: string; mail?: string; displayName?: string; name?: string };
 export const SAML_REQUEST_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -63,7 +64,7 @@ export async function getSamlConfig(): Promise<{ entityId: string; metadataUrl: 
   const idpCert = await getRuntimeValue("STAFF_SAML_IDP_CERT");
   const callbackUri = await getRuntimeValue("STAFF_SAML_CALLBACK_URI");
   if (!entityId || !metadataUrl || !entryPoint || !idpCert || !callbackUri) throw new SecurityError("STAFF_SAML_NOT_CONFIGURED", 503);
-  for (const value of [metadataUrl, entryPoint, callbackUri]) { try { if (new URL(value).protocol !== "https:") throw new Error("https required"); } catch { throw new SecurityError("STAFF_SAML_ENDPOINT_INVALID", 503); } }
+  if (![metadataUrl, entryPoint, callbackUri].every(isSecureHttpsEndpoint)) throw new SecurityError("STAFF_SAML_ENDPOINT_INVALID", 503);
   return { entityId, metadataUrl, entryPoint, idpCert, callbackUri };
 }
 

@@ -1,4 +1,5 @@
 import { getRuntimeValue } from "../security";
+import { isSecureHttpsEndpoint } from "../endpoint";
 
 export type StaffFederationConfig = { provider: "none" | "oidc" | "saml" | "both"; configured: boolean; missing: string[]; providers?: Array<"oidc" | "saml">; issuer?: string; entityId?: string; metadataUrl?: string; redirectUri?: string };
 
@@ -29,10 +30,10 @@ async function oidcConfig(): Promise<{ missing: string[]; issuer?: string; redir
     const redirectUri = await getRuntimeValue("STAFF_OIDC_REDIRECT_URI");
     const missing = [!issuer ? "STAFF_OIDC_ISSUER" : "", !clientId ? "STAFF_OIDC_CLIENT_ID" : "", !clientSecret ? "STAFF_OIDC_CLIENT_SECRET" : "", !redirectUri ? "STAFF_OIDC_REDIRECT_URI" : ""].filter(Boolean);
     let validIssuer = false;
-    try { validIssuer = Boolean(issuer && new URL(issuer).protocol === "https:"); } catch { validIssuer = false; }
+    validIssuer = isSecureHttpsEndpoint(issuer || "");
     if (issuer && !validIssuer) missing.push("STAFF_OIDC_ISSUER_HTTPS");
     let validRedirect = false;
-    try { validRedirect = Boolean(redirectUri && new URL(redirectUri).protocol === "https:"); } catch { validRedirect = false; }
+    validRedirect = isSecureHttpsEndpoint(redirectUri || "");
     if (redirectUri && !validRedirect) missing.push("STAFF_OIDC_REDIRECT_HTTPS");
     if (!((await getRuntimeValue("STAFF_OIDC_MFA_ACR")) || (await getRuntimeValue("STAFF_OIDC_MFA_AMR")))) missing.push("STAFF_OIDC_MFA_ACR or STAFF_OIDC_MFA_AMR");
     return { missing, issuer: issuer || undefined, redirectUri: redirectUri || undefined };
@@ -43,7 +44,7 @@ async function samlConfig(): Promise<{ missing: string[]; entityId?: string; met
   const metadataUrl = await getRuntimeValue("STAFF_SAML_METADATA_URL");
   const missing = [!entityId ? "STAFF_SAML_ENTITY_ID" : "", !metadataUrl ? "STAFF_SAML_METADATA_URL" : ""].filter(Boolean);
   let validMetadata = false;
-  try { validMetadata = Boolean(metadataUrl && new URL(metadataUrl).protocol === "https:"); } catch { validMetadata = false; }
+  validMetadata = isSecureHttpsEndpoint(metadataUrl || "");
   if (metadataUrl && !validMetadata) missing.push("STAFF_SAML_METADATA_HTTPS");
     const entryPoint = await getRuntimeValue("STAFF_SAML_ENTRY_POINT");
     const idpCert = await getRuntimeValue("STAFF_SAML_IDP_CERT");
