@@ -51,6 +51,7 @@ test("visitor phone verification binds the challenge to the visitor and persists
   assert.match(route, /user_id = \?/);
   assert.match(route, /visitor-contact-verification:\$\{visitor\.userId\}:\$\{code\}/);
   assert.match(route, /UPDATE users SET phone = \?, phone_verified_at = \?/);
+  assert.doesNotMatch(route, /phone IS NULL OR phone =/);
   assert.match(route, /UPDATE visitor_profiles SET phone = \?, phone_verified_at = \?/);
   assert.match(route, /VISITOR_PHONE_VERIFIED/);
   assert.match(route, /auditAndOutboxStatements/);

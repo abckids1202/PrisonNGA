@@ -102,7 +102,10 @@ export async function PUT(request: Request) {
     const correlationId = crypto.randomUUID();
     const results = await database.batch([
       database.prepare("UPDATE auth_challenges SET consumed_at = ? WHERE id = ? AND user_id = ? AND consumed_at IS NULL AND expires_at > ? AND attempt_count < max_attempts").bind(now, challengeId, visitor.userId, now),
-      database.prepare("UPDATE users SET phone = ?, phone_verified_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE' AND (phone IS NULL OR phone = ?)").bind(challenge.destination, now, now, visitor.userId, challenge.destination),
+      // The ownership check happened when the challenge was issued. The
+      // authenticated visitor may be replacing an older verified number, so
+      // do not require the old value to be null or equal to the new one here.
+      database.prepare("UPDATE users SET phone = ?, phone_verified_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'").bind(challenge.destination, now, now, visitor.userId),
       database.prepare("UPDATE visitor_profiles SET phone = ?, phone_verified_at = ?, version = version + 1, updated_at = ? WHERE user_id = ? AND profile_status = 'ACTIVE'").bind(challenge.destination, now, now, visitor.userId),
       ...auditAndOutboxStatements(database, { actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: null, actionType: "VISITOR_PHONE_VERIFIED", entityType: "visitor_profile", entityId: visitor.userId, reason: "Visitor verified ownership of a phone contact.", oldValues: null, newValues: { phone: "[REDACTED]", phoneVerifiedAt: "[SET]" }, requestId: context.requestId, correlationId, eventType: "VISITOR_PHONE_VERIFIED", payload: { userId: visitor.userId, channel: "SMS" } }),
     ]);
