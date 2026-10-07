@@ -131,6 +131,7 @@ export const authSessions = sqliteTable("auth_sessions", {
 
 export const authChallenges = sqliteTable("auth_challenges", {
   id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id),
   channel: text("channel", { enum: ["EMAIL", "SMS"] }).notNull(),
   destination: text("destination").notNull(),
   destinationHash: text("destination_hash").notNull(),

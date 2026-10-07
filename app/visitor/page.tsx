@@ -763,6 +763,10 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
   const [sessionsError, setSessionsError] = useState("");
   const [error, setError] = useState("");
   const [signOutError, setSignOutError] = useState("");
+  const [phoneChallengeId, setPhoneChallengeId] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneVerificationBusy, setPhoneVerificationBusy] = useState(false);
+  const [phoneVerificationError, setPhoneVerificationError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -826,6 +830,38 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
     finally { setSigningOut(false); }
   }
 
+  async function requestPhoneVerification() {
+    setPhoneVerificationBusy(true);
+    setPhoneVerificationError("");
+    try {
+      const response = await fetch("/api/visitor/profile/phone-verification", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ phone }) });
+      const body = await response.json() as { challengeId?: string; alreadyVerified?: boolean; error?: string; devCode?: string };
+      if (!response.ok) throw new Error(body.error || "Could not send a verification code.");
+      if (body.alreadyVerified) { onAction("This phone number is already verified.", "success"); return; }
+      setPhoneChallengeId(body.challengeId || "");
+      if (body.devCode) setPhoneCode(body.devCode);
+      onAction("A verification code was sent to your phone.", "success");
+    } catch (reason) {
+      setPhoneVerificationError(reason instanceof Error ? reason.message : "Could not send a verification code.");
+    } finally { setPhoneVerificationBusy(false); }
+  }
+
+  async function verifyPhone() {
+    setPhoneVerificationBusy(true);
+    setPhoneVerificationError("");
+    try {
+      const response = await fetch("/api/visitor/profile/phone-verification", { method: "PUT", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ challengeId: phoneChallengeId, code: phoneCode }) });
+      const body = await response.json() as { phoneVerifiedAt?: string; error?: string };
+      if (!response.ok) throw new Error(body.error || "That code could not be verified.");
+      setPhoneChallengeId("");
+      setPhoneCode("");
+      setProfile((current) => current ? { ...current, phone, phoneVerifiedAt: body.phoneVerifiedAt || new Date().toISOString() } : current);
+      onAction("Your phone number is verified and can receive visit updates.", "success");
+    } catch (reason) {
+      setPhoneVerificationError(reason instanceof Error ? reason.message : "That code could not be verified.");
+    } finally { setPhoneVerificationBusy(false); }
+  }
+
   async function revokeSession(sessionId?: string, revokeAll = false) {
     setSessionsBusy(true);
     setSessionsError("");
@@ -849,10 +885,11 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
       <form onSubmit={(event) => void saveProfile(event)}>
         <label>Legal name<input autoComplete="name" required minLength={2} maxLength={160} value={legalName} onChange={(event) => setLegalName(event.target.value)} /></label>
         <label>Name you go by <span className="sv4-field-optional">Optional</span><input autoComplete="nickname" maxLength={120} value={preferredName} onChange={(event) => setPreferredName(event.target.value)} /></label>
-        <label>Mobile number<input autoComplete="tel" type="tel" maxLength={40} value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Add a number for visit updates" /><small>{profile?.phoneVerifiedAt ? "Verified contact" : "Not verified yet — saving a number does not verify ownership."}</small></label>
+        <label>Mobile number<input autoComplete="tel" type="tel" maxLength={40} value={phone} onChange={(event) => { setPhone(event.target.value); setPhoneChallengeId(""); setPhoneVerificationError(""); }} placeholder="Add a number for visit updates" /><small>{profile?.phoneVerifiedAt ? "Verified contact" : "Not verified yet — saving a number does not verify ownership."}</small></label>
         {error && <p className="sv4-request-error" role="alert">{error}</p>}
         <button className="sv4-button sv4-button-primary" disabled={loading || saving}>{saving ? "Saving…" : loading ? "Loading profile…" : "Save changes"}</button>
       </form>
+      {phone && !profile?.phoneVerifiedAt ? <div className="sv4-contact-verification"><div><strong>Verify this phone number</strong><p>Use a one-time SMS code before SecureVisit uses it for visit updates or recovery.</p></div>{!phoneChallengeId ? <button type="button" className="sv4-button" disabled={phoneVerificationBusy || saving} onClick={() => void requestPhoneVerification()}>{phoneVerificationBusy ? "Sending…" : "Send verification code"}</button> : <form onSubmit={(event) => { event.preventDefault(); void verifyPhone(); }}><input aria-label="Phone verification code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" required /><button type="submit" className="sv4-button sv4-button-primary" disabled={phoneVerificationBusy || phoneCode.length !== 6}>{phoneVerificationBusy ? "Checking…" : "Verify phone"}</button></form>}{phoneVerificationError && <p className="sv4-request-error" role="alert">{phoneVerificationError}</p>}</div> : null}
     </section>
     <section className="sv4-account-security"><div><p className="sv4-kicker">Security</p><h2>Active sessions</h2><p>Review browsers signed in to your visitor account and revoke anything you do not recognize.</p></div><button className="sv4-signout" onClick={() => void signOut()} disabled={signingOut || sessionsBusy}>{signingOut ? "Signing out…" : "Sign out"}</button>{sessionsError && <p className="sv4-request-error" role="alert">{sessionsError}</p>}<div className="sv4-session-list">{sessionsLoading ? <p className="sv4-session-muted">Loading active sessions…</p> : sessions.length ? sessions.map((session) => <div className="sv4-session-row" key={session.id}><span><strong>{session.deviceLabel}{session.current ? " · This device" : ""}</strong><small>Last active {new Date(session.lastSeenAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })} · Expires {new Date(session.expiresAt).toLocaleDateString("id-ID")}</small></span>{session.current ? <VisitorStatus tone="green">CURRENT</VisitorStatus> : <button type="button" disabled={sessionsBusy} onClick={() => void revokeSession(session.id)}>Revoke</button>}</div>) : <p className="sv4-session-muted">No active sessions were found.</p>}</div><button type="button" className="sv4-session-revoke-all" disabled={sessionsBusy || sessionsLoading || !sessions.length} onClick={() => void revokeSession(undefined, true)}>Sign out all sessions</button>{signOutError && <p className="sv4-request-error" role="alert">{signOutError}</p>}</section>
   </div>;
