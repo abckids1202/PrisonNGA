@@ -64,7 +64,7 @@ The current repository already includes:
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 363 server tests and 16 browser tests passing in the local development suite; the release verifier also performs a fresh migration/seed check and production dependency audit.
+- Automated server tests and browser smoke tests. Current validation baseline is 388 server tests and 16 browser tests passing in the local development suite; the release verifier also performs a fresh migration/seed check and production dependency audit.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -90,6 +90,7 @@ The current repository already includes:
 - Appointment Types now has a supervisor-protected update path with optimistic versioning, idempotency, history, audit, and outbox records; the management panel can activate or deactivate catalog entries without direct database access.
 - Visitor availability now reuses the same server-side visit-window validator as appointment creation and rescheduling, preventing the UI from advertising slots that the write path would reject.
 - Successful payment settlement webhooks now require provider reference, amount, and currency before any credit ledger entry can be created; missing settlement fields fail closed and remain retryable.
+- Payment settlement and refund replays under a new provider event key now acknowledge the existing ledger result without changing balances or leaving the provider event stuck in retry/dead-letter handling; regression coverage protects both success and refund replay paths.
 - Availability date/time parsing now rejects impossible calendar dates and malformed local times instead of allowing JavaScript date normalization to move a request onto another day.
 - Outbox processing now persists claim start time and stale-claim recovery uses claim age rather than event creation age, preventing long-queued events from being reclaimed while an active delivery is still running.
 - Outbox workers claim rows before parsing payloads, so malformed events enter bounded retry/dead-letter handling instead of remaining permanently `PENDING`.
