@@ -1,0 +1,126 @@
+# SecureVisit Current Project Audit
+
+Date: 2026-10-07
+
+This document is the current project-lead assessment of the repository. It distinguishes implemented code from provider or institutional evidence that cannot be proven locally.
+
+## Local development
+
+```powershell
+cd C:\Users\charl\OneDrive\Desktop\PrisonNGA
+npm install
+npm run db:migrate:local
+npm run db:seed:local
+npm run dev -- --port 5174
+```
+
+Open `/visitor`, `/control`, or `/kiosk` at `http://localhost:5174`. The application uses same-origin API routes; a second backend on port 8001 is not part of the current architecture.
+
+Validation commands:
+
+```powershell
+npm run typecheck
+npm run lint
+npm test
+npm run verify:release
+```
+
+## Current verdict
+
+SecureVisit is a substantial, production-structured prototype suitable for continued development and controlled staging. It is not yet an institutional production release.
+
+Approximate readiness:
+
+| Area | Assessment |
+| --- | --- |
+| Product and visual direction | Strong prototype |
+| Visitor workflow | Partially persisted; full journey not proven |
+| Control and operations | Substantial foundations; some management surfaces remain incomplete |
+| Database and domain model | Real local D1 foundation with migrations |
+| Authentication | Development visitor OTP; institutional federation not validated |
+| Payments | Provider-neutral adapter; no real provider evidence |
+| Live video | LiveKit foundations; three-party staging evidence missing |
+| Production operations | Release gates incomplete |
+
+## Implemented evidence
+
+- Local D1 migrations and seeded facility data.
+- Facility-scoped visitor, prisoner, relationship, verification, appointment, resource, waiting-room, session, credit, payment, incident, audit, retention, and notification records.
+- Idempotency and optimistic-concurrency protections across important mutations.
+- Visitor OTP development flow and protected visitor routes.
+- Staff appointment decisions, resource-health checks, waiting-room readiness, kiosk/device checks, and LiveKit session foundations.
+- Payment-intent, signed webhook, refund-request, dispute, and ledger foundations.
+- Durable outbox processing, retries/dead-letter handling, replay endpoint, and scheduled reconciliation hooks.
+- Fail-closed environment validation for staging and production.
+- Liveness and staff-authorized readiness checks.
+- Request IDs, correlation IDs, bounded provider responses, rate-limit retry guidance, and facility-state handling.
+- Automated server/unit tests and browser-level journey coverage for local adapters.
+
+## Not yet proven or still incomplete
+
+### External identity and communication
+
+- Real visitor email delivery and SMS delivery.
+- Visitor recovery, session/device management, and suspicious-login operations in a real provider environment.
+- OIDC and SAML integration with an institutional identity provider and enforced MFA.
+- Staff provisioning, deprovisioning, role mapping, and session revocation against real accounts.
+
+### Money and policy
+
+- Approved Indonesian tariff.
+- Approved cancellation/refund policy.
+- Real payment-provider sandbox checkout.
+- Provider webhook, refund, dispute, and reconciliation staging evidence.
+- Facility-effective pricing and policy versioning suitable for finance operations.
+
+### Files and privacy
+
+- Protected production R2 bucket.
+- Malware scanner deployment and quarantine workflow.
+- Signed evidence access and retention/deletion verification in production.
+- Backup and restore evidence for database and object storage.
+
+### Kiosk and live visit
+
+- Hardware kiosk enrollment, device identity, credential rotation, revocation, and recovery.
+- Visitor, kiosk, and staff observer joining the same LiveKit session in staging.
+- Network/camera/microphone failure recovery with real hardware.
+- Abandoned-room reconciliation and end-to-end credit settlement evidence.
+
+### Operations and governance
+
+- WAF and deployed rate-limit configuration.
+- Monitoring, alerting, secret rotation, and outage runbooks.
+- Independent security review.
+- Indonesian privacy and correctional-policy approval.
+- Staff training and a controlled-facility acceptance sign-off.
+
+## Critical product flaws to resolve before launch
+
+1. A screen must not be considered complete until its data is authoritative, facility-scoped, refresh-safe, and mutation-backed. Remaining static management content must be removed or clearly labeled as unavailable.
+2. Development adapters and fictional seed data must never be reachable in staging or production. Environment validation must remain fail-closed.
+3. Payment success must be webhook-confirmed; browser return pages must never mint credits.
+4. Appointment approval, credit reservation, room/device reservation, admission, session start, completion, and refund must remain one auditable state machine with strict legal transitions.
+5. Kiosk identity must be stronger than a URL or browser label. A lost or compromised device must be revocable without changing the appointment record.
+6. Recording must remain disabled until consent, access approval, encryption, retention, legal hold, and audit controls are separately approved.
+7. Provider failure must leave a visible recoverable state, never an implied success or silent cancellation.
+8. A green local test suite is not proof of institutional readiness. Provider, hardware, restore, security, and policy evidence are release gates.
+
+## Finish sequence
+
+1. Free local disk space and obtain a clean full-suite baseline.
+2. Remove remaining visitor demo-state dependencies and prove refresh-safe visitor verification, payment, appointment, waiting-room, live-session, and receipt behavior.
+3. Configure real email/SMS and institutional OIDC/SAML/MFA in staging.
+4. Select a payment provider, approve tariff/refund policy, and complete sandbox reconciliation tests.
+5. Deploy protected R2 and malware scanning; verify retention and deletion.
+6. Enroll and rotate real kiosk credentials; run the three-party LiveKit acceptance journey.
+7. Replace remaining static management data with authoritative APIs and finish notification/incident/audit operations.
+8. Run backup/restore, WAF/rate-limit, monitoring, secret-rotation, outage, and security-review exercises.
+9. Complete legal/privacy/correctional approvals and facility acceptance testing.
+10. Release only when the complete workflow survives refreshes, duplicate requests, delayed webhooks, provider outages, unauthorized access attempts, and recovery drills.
+
+## Release decision
+
+Current decision: **No-go for institutional production; continue development and controlled staging.**
+
+The project becomes pilot-ready only when the finish sequence has recorded evidence, not merely configuration placeholders or passing local tests.
