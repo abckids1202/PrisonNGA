@@ -58,7 +58,8 @@ export async function POST(request: Request) {
     }
     if (!user || user.status !== "ACTIVE") throw new SecurityError("STAFF_ACCOUNT_NOT_PROVISIONED", 403);
     if (user.external_id !== externalId) {
-      await d1.prepare("UPDATE users SET external_id = ?, display_name = ?, last_login_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE'").bind(externalId, displayName, new Date().toISOString(), new Date().toISOString(), user.id).run();
+      const rebound = await d1.prepare("UPDATE users SET external_id = ?, display_name = ?, last_login_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND (external_id IS NULL OR external_id = ?)").bind(externalId, displayName, new Date().toISOString(), new Date().toISOString(), user.id, user.external_id).run();
+      if (!rebound.meta.changes) throw new SecurityError("STAFF_IDENTITY_BINDING_CONFLICT", 409);
     }
     const profileScope = await d1.prepare("SELECT facility_id FROM staff_profiles WHERE user_id = ?").bind(user.id).first<{ facility_id: string }>();
     if (!profileScope) throw new SecurityError("STAFF_FACILITY_SCOPE_MISSING", 403);
