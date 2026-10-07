@@ -34,3 +34,23 @@ test("operational logs carry searchable context and redact sensitive fields", ()
   assert.equal(record.payload, "[REDACTED]");
   assert.ok(record.timestamp);
 });
+
+test("operational logs redact sensitive error text and nested contact fields", () => {
+  const original = console.warn;
+  let output = "";
+  console.warn = (value) => { output = String(value); };
+  try {
+    operationalLog("warn", {
+      event: "PROVIDER_FAILURE",
+      error: new Error("provider token=secret-value for private@example.test"),
+      contact: { email: "private@example.test", phone: "+628123456789" },
+      providerReference: "provider-secret-reference",
+    });
+  } finally {
+    console.warn = original;
+  }
+  const record = JSON.parse(output);
+  assert.deepEqual(record.error, { name: "Error", message: "[REDACTED]" });
+  assert.deepEqual(record.contact, { email: "[REDACTED]", phone: "[REDACTED]" });
+  assert.equal(record.providerReference, "[REDACTED]");
+});
