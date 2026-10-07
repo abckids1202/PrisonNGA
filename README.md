@@ -23,6 +23,8 @@ npm run validate:environment
 npm test
 ```
 
+For a faster test pass that skips the production build, run `npm run test:quick`. It uses the repository's `tsx` loader so tests that import TypeScript modules resolve consistently.
+
 For one repeatable local release gate, run `npm run verify:release`. It runs the disposable migration check, typecheck, lint, build/server tests, browser tests, and a production-only dependency audit. It does not deploy or mutate a remote database; staging still requires the acceptance runbook and external-provider evidence.
 
 ### Local D1 database
