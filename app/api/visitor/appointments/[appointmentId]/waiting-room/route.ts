@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../../../db/runtime";
 import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
+import { isRecentDeviceCheck } from "../../../../../../lib/server/waiting-room-readiness";
 
 export async function POST(request: Request, { params }: { params: Promise<{ appointmentId: string }> }) {
   const context = await getRequestContext();
@@ -37,8 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     if (!["APPROVED", "WAITING"].includes(String(current.appointment_status))) throw new SecurityError("VISIT_NOT_READY_FOR_WAITING_ROOM", 409);
     if (current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (current.prisoner_status !== "ACTIVE" || current.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
-    const deviceCheckedAt = Date.parse(String(current.device_checked_at || ""));
-    if (!current.device_check_id || !Number.isFinite(deviceCheckedAt) || Date.now() - deviceCheckedAt > 30 * 60 * 1000) throw new SecurityError("RECENT_DEVICE_CHECK_REQUIRED", 409);
+    if (!current.device_check_id || !isRecentDeviceCheck(String(current.device_checked_at || ""))) throw new SecurityError("RECENT_DEVICE_CHECK_REQUIRED", 409);
     if ([current.camera_result, current.microphone_result].some((result) => result === "failed") || current.network_result === "poor") throw new SecurityError("DEVICE_CHECK_NOT_READY", 409);
     if (current.visitor_presence === "present" && current.state !== "NOT_ARRIVED") {
       return securityResponse({ checkIn: { appointmentId, version: Number(current.waiting_version || 1), state: current.state, visitorPresence: "present", prisonerPresence: current.prisoner_presence || "waiting" }, idempotent: true }, 200, context.requestId);

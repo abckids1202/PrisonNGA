@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateWaitingRoomReadiness } from "../lib/server/waiting-room-readiness.ts";
+import { evaluateWaitingRoomReadiness, isRecentDeviceCheck } from "../lib/server/waiting-room-readiness.ts";
 
 const now = Date.parse("2026-09-22T10:00:00.000Z");
 const readyFacts = {
@@ -54,6 +54,12 @@ test("stale device checks, stale kiosk heartbeat, or absent kiosk credentials fa
   ]) {
     assert.equal(evaluateWaitingRoomReadiness(facts, now).readyToStart, false);
   }
+});
+
+test("device-check freshness uses one shared twenty-minute boundary", () => {
+  assert.equal(isRecentDeviceCheck("2026-09-22T09:40:00.000Z", now), true);
+  assert.equal(isRecentDeviceCheck("2026-09-22T09:39:59.999Z", now), false);
+  assert.equal(isRecentDeviceCheck("2026-09-22T10:01:00.000Z", now), false);
 });
 
 test("stale visitor or prisoner presence cannot make a visit ready", () => {
