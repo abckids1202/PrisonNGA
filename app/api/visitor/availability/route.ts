@@ -45,7 +45,8 @@ export async function GET(request: Request) {
       .bind(facilityId, dayEnd.toISOString(), dayStart.toISOString())
       .all<{ starts_at: string; ends_at: string }>();
     const resources = await d1.prepare(`SELECT id, resource_type, status, health_state FROM resources
-      WHERE facility_id = ? AND health_state = 'HEALTHY' AND status IN ('AVAILABLE', 'ONLINE')`)
+      WHERE facility_id = ? AND health_state = 'HEALTHY' AND status IN ('AVAILABLE', 'ONLINE')
+        AND (resource_type = 'ROOM' OR (last_heartbeat_at IS NOT NULL AND julianday(last_heartbeat_at) >= julianday('now', '-3 minutes')))`)
       .bind(facilityId)
       .all<{ id: string; resource_type: "ROOM" | "DEVICE"; status: string; health_state: string }>();
     const reservations = await d1.prepare(`SELECT resource_id, starts_at, ends_at FROM resource_reservations

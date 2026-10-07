@@ -19,7 +19,7 @@ class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
-      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY');
+      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY', last_heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE resource_reservations (
         id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL,
         resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, status TEXT NOT NULL,
@@ -88,8 +88,8 @@ test("resource allocation skips conflicting resources and uses another available
 test("resource allocation fails closed when a room or kiosk is unhealthy", async () => {
   const d1 = new SQLiteD1();
   try {
-    d1.sqlite.prepare("INSERT INTO resources VALUES ('room-1', 'facility-1', 'ROOM', 'Room 01', 'AVAILABLE', 'FAILED')").run();
-    d1.sqlite.prepare("INSERT INTO resources VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE', 'HEALTHY')").run();
+    d1.sqlite.prepare("INSERT INTO resources VALUES ('room-1', 'facility-1', 'ROOM', 'Room 01', 'AVAILABLE', 'FAILED', CURRENT_TIMESTAMP)").run();
+    d1.sqlite.prepare("INSERT INTO resources VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE', 'HEALTHY', CURRENT_TIMESTAMP)").run();
     await assert.rejects(allocateVisitResources(d1, { facilityId: "facility-1", appointmentId: "visit-1", startsAt: "2026-10-01T09:00:00.000Z", endsAt: "2026-10-01T09:30:00.000Z" }), /RESOURCES_UNAVAILABLE|RESOURCE_RESERVATION_CONFLICT/);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations").get().count, 0);
   } finally { d1.close(); }
