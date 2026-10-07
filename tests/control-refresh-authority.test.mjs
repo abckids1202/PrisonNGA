@@ -23,3 +23,11 @@ test("lockdown preserves authoritative live-session and appointment state for st
   assert.doesNotMatch(source, /const status = lockdown \? "BLOCKED"/);
   assert.match(source, /remain visible for controlled termination/);
 });
+
+test("every non-normal facility state is visible as an operational restriction", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /const facilityRestricted = facilityState !== "NORMAL_OPERATIONS" && facilityState !== "UNKNOWN"/);
+  assert.match(source, /facilityState\.replaceAll\("_", " "\)/);
+  assert.match(source, /New approvals and admissions are suspended/);
+});
