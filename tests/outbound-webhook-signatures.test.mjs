@@ -148,7 +148,7 @@ test("notification delivery can use the same verified direct email and SMS adapt
   });
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
-    return new Response(JSON.stringify({ id: "provider-message-1" }), { status: 200 });
+    return new Response(JSON.stringify(String(url).includes("api.twilio.com") ? { sid: "SMprovider-message-1" } : { id: "provider-message-1" }), { status: 200 });
   };
   try {
     await deliverNotification({ notificationId: "notification-email", email: "visitor@example.test", phone: null, template: "APPOINTMENT_APPROVED", title: "Visit approved", body: "Your visit is approved.", payload: {} });

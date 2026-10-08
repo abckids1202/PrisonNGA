@@ -35,6 +35,13 @@ export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS";
     clearTimeout(timeout);
   }
   if (!response.ok) throw new Error(`VISITOR_AUTH_DELIVERY_FAILED_${response.status}`);
-  const responseBody = await readBoundedResponseText(response).then((text) => JSON.parse(text) as { providerReference?: unknown; id?: unknown; sid?: unknown }).catch(() => null);
-  return { providerReference: typeof responseBody?.providerReference === "string" ? responseBody.providerReference : typeof responseBody?.id === "string" ? responseBody.id : typeof responseBody?.sid === "string" ? responseBody.sid : null };
+  let responseBody: { providerReference?: unknown; id?: unknown; sid?: unknown };
+  try {
+    responseBody = JSON.parse(await readBoundedResponseText(response)) as { providerReference?: unknown; id?: unknown; sid?: unknown };
+  } catch {
+    throw new Error("VISITOR_AUTH_DELIVERY_INVALID_RESPONSE");
+  }
+  const providerReference = typeof responseBody.providerReference === "string" ? responseBody.providerReference.trim() : typeof responseBody.id === "string" ? responseBody.id.trim() : typeof responseBody.sid === "string" ? responseBody.sid.trim() : "";
+  if (!providerReference) throw new Error("VISITOR_AUTH_DELIVERY_INVALID_RESPONSE");
+  return { providerReference };
 }

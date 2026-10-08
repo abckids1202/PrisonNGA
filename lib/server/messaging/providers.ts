@@ -3,6 +3,18 @@ import { readBoundedResponseText } from "../bounded-response";
 
 export type DeliveryReceipt = { providerReference: string | null };
 
+async function parseProviderReference(response: Response, errorCode: string, field: "id" | "sid"): Promise<string> {
+  let payload: { id?: unknown; sid?: unknown };
+  try {
+    payload = JSON.parse(await readBoundedResponseText(response)) as { id?: unknown; sid?: unknown };
+  } catch {
+    throw new Error(errorCode);
+  }
+  const reference = payload[field];
+  if (typeof reference !== "string" || !reference.trim()) throw new Error(errorCode);
+  return reference.trim();
+}
+
 async function requestWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
@@ -23,8 +35,7 @@ export async function sendEmailWithResend(input: { destination: string; subject:
     body: JSON.stringify({ from, to: [input.destination], subject: input.subject, text: input.text }),
   });
   if (!response.ok) throw new Error(`EMAIL_PROVIDER_FAILED_${response.status}`);
-  const payload = await readBoundedResponseText(response).then((text) => JSON.parse(text) as { id?: unknown }).catch(() => null);
-  return { providerReference: typeof payload?.id === "string" ? payload.id : null };
+  return { providerReference: await parseProviderReference(response, "EMAIL_PROVIDER_INVALID_RESPONSE", "id") };
 }
 
 export async function sendSmsWithTwilio(input: { destination: string; body: string; idempotencyKey: string }): Promise<DeliveryReceipt> {
@@ -43,6 +54,5 @@ export async function sendSmsWithTwilio(input: { destination: string; body: stri
     body: params.toString(),
   });
   if (!response.ok) throw new Error(`SMS_PROVIDER_FAILED_${response.status}`);
-  const payload = await readBoundedResponseText(response).then((text) => JSON.parse(text) as { sid?: unknown }).catch(() => null);
-  return { providerReference: typeof payload?.sid === "string" ? payload.sid : null };
+  return { providerReference: await parseProviderReference(response, "SMS_PROVIDER_INVALID_RESPONSE", "sid") };
 }

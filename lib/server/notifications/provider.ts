@@ -35,7 +35,14 @@ export async function deliverNotification(input: { notificationId: string; email
   try {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}`, "idempotency-key": `${input.notificationId}:${channel.toLowerCase()}` }, body: payload, signal: controller.signal });
     if (!response.ok) throw new Error(`NOTIFICATION_DELIVERY_FAILED_${response.status}`);
-    const responseBody = await readBoundedResponseText(response).then((text) => JSON.parse(text) as { providerReference?: unknown; id?: unknown; sid?: unknown }).catch(() => null);
-    return { providerReference: typeof responseBody?.providerReference === "string" ? responseBody.providerReference : typeof responseBody?.id === "string" ? responseBody.id : typeof responseBody?.sid === "string" ? responseBody.sid : null };
+    let responseBody: { providerReference?: unknown; id?: unknown; sid?: unknown };
+    try {
+      responseBody = JSON.parse(await readBoundedResponseText(response)) as { providerReference?: unknown; id?: unknown; sid?: unknown };
+    } catch {
+      throw new Error("NOTIFICATION_DELIVERY_INVALID_RESPONSE");
+    }
+    const providerReference = typeof responseBody.providerReference === "string" ? responseBody.providerReference.trim() : typeof responseBody.id === "string" ? responseBody.id.trim() : typeof responseBody.sid === "string" ? responseBody.sid.trim() : "";
+    if (!providerReference) throw new Error("NOTIFICATION_DELIVERY_INVALID_RESPONSE");
+    return { providerReference };
   } finally { clearTimeout(timeout); }
 }
