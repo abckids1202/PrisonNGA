@@ -17,7 +17,7 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run test:quick`: 428 application tests passed. `npm run verify:release` should report 429 total tests because it also counts the migration-verification subtest.
+- `npm run test:quick`: 429 application tests passed. `npm run verify:release` should report 430 total tests because it also counts the migration-verification subtest.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
@@ -61,7 +61,7 @@ The provider integration is not pilot-ready until sandbox tests prove:
 
 ### Notifications
 
-Configure `NOTIFICATION_DELIVERY=webhook` with an HTTPS adapter. Notification requests include a stable idempotency key based on the outbox event and destination channel. The adapter must deduplicate retries and return a failure when it cannot accept the message.
+Configure `NOTIFICATION_DELIVERY=webhook` with an HTTPS adapter, or use `NOTIFICATION_EMAIL_DELIVERY=resend` and/or `NOTIFICATION_SMS_DELIVERY=twilio` with the direct provider credentials. Notification requests include a stable idempotency key based on the outbox event and destination channel. The adapter must deduplicate retries and return a failure when it cannot accept the message.
 
 For staging and production, set `NOTIFICATION_QUEUE_NAME` to the provisioned Cloudflare Queue name to dispatch outbox draining through the queue consumer. The scheduled Worker remains a durable fallback for queue-dispatch failures; queue delivery must still be monitored for retry and dead-letter activity.
 

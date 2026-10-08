@@ -307,12 +307,12 @@ async function processOutbox(env: Env): Promise<void> {
       if (visitorUserId) {
         const copy = notificationCopy(row.event_type, payload);
         const notificationPayload = { aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload };
-        const notificationDelivery = await getNotificationDelivery();
-        if (notificationDelivery === "webhook") {
-          const visitor = await env.DB.prepare("SELECT email, phone, email_verified_at, phone_verified_at FROM users WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'").bind(visitorUserId).first<{ email: string | null; phone: string | null; email_verified_at: string | null; phone_verified_at: string | null }>();
-          if (!visitor) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
-          const channel = visitor.email_verified_at && visitor.email ? "EMAIL" : visitor.phone_verified_at && visitor.phone ? "SMS" : null;
-          if (!channel) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
+        const visitor = await env.DB.prepare("SELECT email, phone, email_verified_at, phone_verified_at FROM users WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'").bind(visitorUserId).first<{ email: string | null; phone: string | null; email_verified_at: string | null; phone_verified_at: string | null }>();
+        if (!visitor) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
+        const channel = visitor.email_verified_at && visitor.email ? "EMAIL" : visitor.phone_verified_at && visitor.phone ? "SMS" : null;
+        if (!channel) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
+        const notificationDelivery = await getNotificationDelivery(channel);
+        if (notificationDelivery !== "in_app") {
           const externalNotificationKey = `${row.id}:visitor:${channel.toLowerCase()}`;
           const alreadyDelivered = await env.DB.prepare("SELECT id FROM notifications WHERE idempotency_key = ? AND status = 'DELIVERED' LIMIT 1").bind(externalNotificationKey).first<{ id: string }>();
           if (!alreadyDelivered) {

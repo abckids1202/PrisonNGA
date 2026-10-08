@@ -130,3 +130,39 @@ test("direct visitor auth adapters send email through Resend and SMS through Twi
     Object.assign(process.env, previous);
   }
 });
+
+test("notification delivery can use the same verified direct email and SMS adapters", async () => {
+  const previous = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  Object.assign(process.env, {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    NOTIFICATION_DELIVERY: "",
+    NOTIFICATION_EMAIL_DELIVERY: "resend",
+    NOTIFICATION_SMS_DELIVERY: "twilio",
+    RESEND_API_KEY: "re_test_key",
+    VISITOR_EMAIL_FROM: "SecureVisit <no-reply@example.test>",
+    VISITOR_SMS_TWILIO_ACCOUNT_SID: "AC1234567890",
+    VISITOR_SMS_TWILIO_AUTH_TOKEN: "t".repeat(32),
+    VISITOR_SMS_TWILIO_FROM: "+15005550006",
+  });
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ id: "provider-message-1" }), { status: 200 });
+  };
+  try {
+    await deliverNotification({ notificationId: "notification-email", email: "visitor@example.test", phone: null, template: "APPOINTMENT_APPROVED", title: "Visit approved", body: "Your visit is approved.", payload: {} });
+    await deliverNotification({ notificationId: "notification-sms", email: null, phone: "+6281234567890", template: "VISIT_REMINDER", title: "Visit reminder", body: "Your visit starts soon.", payload: {} });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].url, "https://api.resend.com/emails");
+    assert.equal(new Headers(calls[0].init.headers).get("idempotency-key"), "notification-email:email");
+    assert.equal(calls[1].url.includes("api.twilio.com"), true);
+    assert.equal(new Headers(calls[1].init.headers).get("idempotency-key"), "notification-sms:sms");
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previous)) delete process.env[key];
+    }
+    Object.assign(process.env, previous);
+  }
+});

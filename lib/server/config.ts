@@ -87,9 +87,25 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (!isSecureHttpsEndpoint(value(env, "PAYMENT_REFUND_URL"))) missing.push("PAYMENT_REFUND_URL (must be an https:// URL without credentials or fragments)");
   if (!value(env, "PAYMENT_PROVIDER_SECRET")) missing.push("PAYMENT_PROVIDER_SECRET");
   requireSecret(env, "PAYMENT_WEBHOOK_SECRET", missing);
-  if (value(env, "NOTIFICATION_DELIVERY") !== "webhook") missing.push("NOTIFICATION_DELIVERY=webhook");
-  if (!isSecureHttpsEndpoint(value(env, "NOTIFICATION_WEBHOOK_URL"))) missing.push("NOTIFICATION_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
-  requireSecret(env, "NOTIFICATION_WEBHOOK_SECRET", missing);
+  const legacyNotificationDelivery = value(env, "NOTIFICATION_DELIVERY");
+  const notificationEmailDelivery = value(env, "NOTIFICATION_EMAIL_DELIVERY") || legacyNotificationDelivery;
+  const notificationSmsDelivery = value(env, "NOTIFICATION_SMS_DELIVERY") || legacyNotificationDelivery;
+  const notificationDeliveries = [notificationEmailDelivery, notificationSmsDelivery];
+  if (!legacyNotificationDelivery && !notificationEmailDelivery && !notificationSmsDelivery) missing.push("NOTIFICATION_DELIVERY=webhook");
+  else if (!notificationEmailDelivery || !notificationSmsDelivery || !notificationDeliveries.every((delivery) => ["webhook", "resend", "twilio"].includes(delivery)) || !["webhook", "resend"].includes(notificationEmailDelivery) || !["webhook", "twilio"].includes(notificationSmsDelivery)) missing.push("NOTIFICATION_DELIVERY=webhook, or configure NOTIFICATION_EMAIL_DELIVERY/NOTIFICATION_SMS_DELIVERY");
+  if (notificationDeliveries.includes("webhook")) {
+    if (!isSecureHttpsEndpoint(value(env, "NOTIFICATION_WEBHOOK_URL"))) missing.push("NOTIFICATION_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
+    requireSecret(env, "NOTIFICATION_WEBHOOK_SECRET", missing);
+  }
+  if (notificationEmailDelivery === "resend") {
+    if (!value(env, "RESEND_API_KEY")) missing.push("RESEND_API_KEY");
+    if (!value(env, "VISITOR_EMAIL_FROM")) missing.push("VISITOR_EMAIL_FROM");
+  }
+  if (notificationSmsDelivery === "twilio") {
+    if (!value(env, "VISITOR_SMS_TWILIO_ACCOUNT_SID")) missing.push("VISITOR_SMS_TWILIO_ACCOUNT_SID");
+    requireSecret(env, "VISITOR_SMS_TWILIO_AUTH_TOKEN", missing);
+    if (!value(env, "VISITOR_SMS_TWILIO_FROM") && !value(env, "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID")) missing.push("VISITOR_SMS_TWILIO_FROM or VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID");
+  }
   const staffProvider = value(env, "STAFF_AUTH_PROVIDER").toLowerCase();
   const staffProviders = staffProvider === "both" ? ["oidc", "saml"] : [staffProvider];
   if (!staffProvider) missing.push("STAFF_AUTH_PROVIDER");
