@@ -108,7 +108,11 @@ export default function VisitorPage({ initialTab = "Home" }: { initialTab?: Visi
       if (!active) return;
       setDataError(null);
       setVisitorData((current) => ({ ...current, appointments: appointments.appointments || [], relationships: relationships.relationships || [], credits: credits.accounts || [], unreadNotifications: (notifications.notifications || []).filter((item: { status?: string }) => item.status !== "READ").length, loading: false }));
-    }).catch(() => active && setDataError("We couldn’t load your visitor workspace. Your records have not been changed."));
+    }).catch(() => {
+      if (!active) return;
+      setDataError("We couldn’t load your visitor workspace. Your records have not been changed.");
+      setVisitorData((current) => ({ ...current, loading: false }));
+    });
     return () => { active = false; };
   }, [authState]);
 

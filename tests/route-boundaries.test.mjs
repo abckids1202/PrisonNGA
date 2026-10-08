@@ -18,6 +18,12 @@ test("visitor loading boundary does not invent visit state", async () => {
   assert.doesNotMatch(source, /approved|completed|ready|success/i);
 });
 
+test("visitor workspace clears its loading state when persisted data is unavailable", async () => {
+  const source = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /setDataError\("We couldn’t load your visitor workspace/);
+  assert.match(source, /setVisitorData\(\(current\) => \(\{ \.\.\.current, loading: false \}\)\)/);
+});
+
 test("not-found boundary gives a safe recovery path", async () => {
   const source = await readFile(new URL("app/not-found.tsx", root), "utf8");
   assert.match(source, /from "next\/link"/);
