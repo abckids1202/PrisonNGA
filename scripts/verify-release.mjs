@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const checks = [
+  ["working-tree patch validation", ["diff", "--check"], "git"],
   ["fresh local D1 migrations", ["run", "db:test:migrations:local"]],
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint"]],
@@ -18,10 +19,11 @@ for (const [label, args] of checks) {
   // Windows exposes npm as a command script rather than a native executable.
   // The arguments are fixed above, so enabling the platform shell here only
   // handles command resolution and does not interpolate user input.
+  const command = checks.find(([candidate]) => candidate === label)?.[2] === "git" ? "git" : npmCommand;
   const environment = label === "browser tests"
     ? { ...process.env, SECUREVISIT_E2E_ISOLATED: "true" }
     : process.env;
-  const result = spawnSync(npmCommand, args, { stdio: "inherit", shell: process.platform === "win32", env: environment });
+  const result = spawnSync(command, args, { stdio: "inherit", shell: process.platform === "win32", env: environment });
   if (result.error) {
     console.error(`✖ ${label}: ${result.error.message}`);
     process.exit(1);
