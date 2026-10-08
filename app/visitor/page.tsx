@@ -673,10 +673,8 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
   const [ledger, setLedger] = useState<VisitorCreditLedgerEntry[]>([]);
   const [payments, setPayments] = useState<VisitorPaymentIntent[]>([]);
   const [facilities, setFacilities] = useState<VisitorFacility[]>([]);
-  const [pricePerCredit, setPricePerCredit] = useState<number | null>(null);
-  const [demoPrice, setDemoPrice] = useState(false);
-  const [checkoutAvailable, setCheckoutAvailable] = useState(false);
-  const [checkoutUnavailableReason, setCheckoutUnavailableReason] = useState<string | null>(null);
+  const [paymentProviderAvailable, setPaymentProviderAvailable] = useState(false);
+  const [pricingByFacility, setPricingByFacility] = useState<Record<string, { perCreditMinor: number; currency: string; demo: boolean }>>({});
   const [facilityId, setFacilityId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -691,7 +689,7 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
     let active = true;
     Promise.all([
       fetch("/api/visitor/credits", { credentials: "include" }).then(async (response) => { const body = await response.json() as { accounts?: VisitorCreditAccount[]; ledger?: VisitorCreditLedgerEntry[]; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load your credit balance."); return body; }),
-      fetch("/api/visitor/payments", { credentials: "include" }).then(async (response) => { const body = await response.json() as { paymentIntents?: VisitorPaymentIntent[]; pricing?: { perCreditMinor: number; currency: string; demo: boolean } | null; checkoutAvailable?: boolean; checkoutUnavailableReason?: string | null; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load payment history."); return body; }),
+      fetch("/api/visitor/payments", { credentials: "include" }).then(async (response) => { const body = await response.json() as { paymentIntents?: VisitorPaymentIntent[]; pricing?: { perCreditMinor: number; currency: string; demo: boolean } | null; pricingByFacility?: Record<string, { perCreditMinor: number; currency: string; demo: boolean }>; checkoutAvailable?: boolean; checkoutUnavailableReason?: string | null; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load payment history."); return body; }),
       fetch("/api/visitor/facilities", { credentials: "include" }).then(async (response) => { const body = await response.json() as { facilities?: VisitorFacility[]; error?: string }; if (!response.ok) throw new Error(body.error || "Couldn’t load available facilities."); return body; }),
     ]).then(([creditBody, paymentBody, facilityBody]) => {
       if (!active) return;
@@ -700,10 +698,8 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
       setLedger(creditBody.ledger || []);
       onCreditsLoaded(nextAccounts);
       setPayments(paymentBody.paymentIntents || []);
-      setPricePerCredit(paymentBody.pricing?.perCreditMinor ?? null);
-      setDemoPrice(paymentBody.pricing?.demo ?? false);
-      setCheckoutAvailable(paymentBody.checkoutAvailable === true);
-      setCheckoutUnavailableReason(paymentBody.checkoutUnavailableReason || null);
+      setPricingByFacility(paymentBody.pricingByFacility || {});
+      setPaymentProviderAvailable(paymentBody.checkoutAvailable === true || Boolean(paymentBody.pricing));
       const nextFacilities = facilityBody.facilities || [];
       setFacilities(nextFacilities);
       setFacilityId((current) => current || nextFacilities[0]?.id || "");
@@ -712,6 +708,12 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [onCreditsLoaded, refreshTick]);
+
+  const selectedPricing = facilityId ? pricingByFacility[facilityId] : null;
+  const pricePerCredit = selectedPricing?.perCreditMinor ?? null;
+  const demoPrice = selectedPricing?.demo ?? false;
+  const checkoutAvailable = paymentProviderAvailable && Boolean(selectedPricing);
+  const checkoutUnavailableReason = selectedPricing ? null : "VISIT_CREDIT_PRICE_NOT_CONFIGURED";
 
   useEffect(() => {
     const hasPendingCheckout = payments.some((payment) => ["PENDING", "CHECKOUT_CREATED"].includes(payment.status));

@@ -2,8 +2,8 @@ INSERT INTO facilities (id, name, timezone, current_state)
 VALUES ('facility-central-001', 'Central Correctional Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS')
 ON CONFLICT(id) DO NOTHING;
 
-INSERT INTO visit_policies (id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, version)
-VALUES ('policy-central-default', 'facility-central-001', 15, 30, 60, 30, '08:00', '17:00', 1)
+INSERT INTO visit_policies (id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version)
+VALUES ('policy-central-default', 'facility-central-001', 15, 30, 60, 30, '08:00', '17:00', 50000, 'IDR', 1)
 ON CONFLICT(facility_id) DO NOTHING;
 
 INSERT INTO appointment_types (id, facility_id, code, display_name, description, duration_minutes, credit_cost, status, version)

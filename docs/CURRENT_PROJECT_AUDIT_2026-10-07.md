@@ -71,7 +71,7 @@ Approximate readiness:
 - Approved cancellation/refund policy.
 - Real payment-provider sandbox checkout.
 - Provider webhook, refund, dispute, and reconciliation staging evidence.
-- Facility-effective pricing and policy versioning suitable for finance operations.
+- Facility-effective pricing is now stored in the versioned Visit Policy and exposed to the checkout boundary; finance still must approve the tariff and refund policy before activation.
 
 ### Files and privacy
 

@@ -13,12 +13,14 @@ type PolicyRow = {
   max_advance_days: number;
   daily_start_time: string;
   daily_end_time: string;
+  credit_price_minor: number | null;
+  credit_currency: string;
   version: number;
   updated_at: string;
 };
 
 const selectPolicy = `SELECT id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes,
-  max_advance_days, daily_start_time, daily_end_time, version, updated_at FROM visit_policies WHERE facility_id = ?`;
+  max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version, updated_at FROM visit_policies WHERE facility_id = ?`;
 
 function toPublicPolicy(row: PolicyRow) {
   return {
@@ -30,6 +32,8 @@ function toPublicPolicy(row: PolicyRow) {
     maxAdvanceDays: row.max_advance_days,
     dailyStartTime: row.daily_start_time,
     dailyEndTime: row.daily_end_time,
+    creditPriceMinor: row.credit_price_minor,
+    creditCurrency: row.credit_currency,
     version: row.version,
     updatedAt: row.updated_at,
   };
@@ -93,9 +97,9 @@ export async function PUT(request: Request) {
     const statements = await database.batch([
       database.prepare(`UPDATE visit_policies SET min_duration_minutes = ?, max_duration_minutes = ?,
         min_advance_minutes = ?, max_advance_days = ?, daily_start_time = ?, daily_end_time = ?,
-        version = version + 1, updated_at = ? WHERE facility_id = ? AND version = ?`)
+        credit_price_minor = ?, credit_currency = ?, version = version + 1, updated_at = ? WHERE facility_id = ? AND version = ?`)
         .bind(policy.minDurationMinutes, policy.maxDurationMinutes, policy.minAdvanceMinutes, policy.maxAdvanceDays,
-          policy.dailyStartTime, policy.dailyEndTime, now, authorization.facilityId, current.version),
+          policy.dailyStartTime, policy.dailyEndTime, policy.creditPriceMinor, policy.creditCurrency, now, authorization.facilityId, current.version),
       database.prepare(`INSERT INTO visit_policy_history (id, facility_id, version, actor_user_id, reason, snapshot, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), authorization.facilityId, nextVersion, authorization.userId, reason,

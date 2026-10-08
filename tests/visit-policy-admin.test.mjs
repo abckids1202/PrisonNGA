@@ -9,6 +9,8 @@ const valid = {
   maxAdvanceDays: 90,
   dailyStartTime: "08:00",
   dailyEndTime: "17:00",
+  creditPriceMinor: 50000,
+  creditCurrency: "IDR",
 };
 
 test("visit policy admin accepts valid bounded facility configuration", () => {
@@ -29,6 +31,12 @@ test("visit policy admin rejects malformed booking horizon and operating hours",
   assert.equal(parseEditableVisitPolicy(null), null);
 });
 
+test("visit policy admin rejects unapproved or invalid credit pricing", () => {
+  assert.equal(parseEditableVisitPolicy({ ...valid, creditPriceMinor: 0 }), null);
+  assert.equal(parseEditableVisitPolicy({ ...valid, creditPriceMinor: 1.5 }), null);
+  assert.equal(parseEditableVisitPolicy({ ...valid, creditCurrency: "USD" }), null);
+});
+
 test("visit policy mutation is replay-safe and preserves the step-up boundary", async () => {
   const { readFile } = await import("node:fs/promises");
   const source = await readFile(new URL("../app/api/control/visit-policy/route.ts", import.meta.url), "utf8");
@@ -37,4 +45,6 @@ test("visit policy mutation is replay-safe and preserves the step-up boundary", 
   assert.match(source, /completeIdempotencyStatement\(database/);
   assert.match(source, /releaseIdempotencyClaim/);
   assert.match(source, /requireStepUp/);
+  assert.match(source, /credit_price_minor/);
+  assert.match(source, /creditPriceMinor/);
 });

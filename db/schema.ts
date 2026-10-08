@@ -48,6 +48,8 @@ export const visitPolicies = sqliteTable("visit_policies", {
   maxAdvanceDays: integer("max_advance_days").notNull().default(30),
   dailyStartTime: text("daily_start_time").notNull().default("08:00"),
   dailyEndTime: text("daily_end_time").notNull().default("17:00"),
+  creditPriceMinor: integer("credit_price_minor"),
+  creditCurrency: text("credit_currency").notNull().default("IDR"),
   version: integer("version").notNull().default(1),
   ...timestamps,
 }, (table) => ({ facilityIdx: uniqueIndex("visit_policies_facility_idx").on(table.facilityId) }));

@@ -11,6 +11,8 @@ type Policy = {
   maxAdvanceDays: number;
   dailyStartTime: string;
   dailyEndTime: string;
+  creditPriceMinor: number | null;
+  creditCurrency: string;
   version: number;
   updatedAt: string;
 };
@@ -72,6 +74,8 @@ export default function VisitPolicyEditor() {
             maxAdvanceDays: draft.maxAdvanceDays,
             dailyStartTime: draft.dailyStartTime,
             dailyEndTime: draft.dailyEndTime,
+            creditPriceMinor: draft.creditPriceMinor,
+            creditCurrency: draft.creditCurrency,
           },
         }),
       });
@@ -112,6 +116,8 @@ export default function VisitPolicyEditor() {
       <label>Booking horizon (days)<input type="number" min="1" max="365" value={draft.maxAdvanceDays} onChange={(event) => set("maxAdvanceDays", Number(event.target.value))} /></label>
       <label>Daily opening time<input type="time" value={draft.dailyStartTime} onChange={(event) => set("dailyStartTime", event.target.value)} /></label>
       <label>Daily closing time<input type="time" value={draft.dailyEndTime} onChange={(event) => set("dailyEndTime", event.target.value)} /></label>
+      <label>Visit Credit price (IDR)<input type="number" min="1" max="1000000000" step="1" value={draft.creditPriceMinor ?? ""} onChange={(event) => set("creditPriceMinor", event.target.value === "" ? null : Number(event.target.value))} /></label>
+      <label>Credit currency<input value={draft.creditCurrency} readOnly /></label>
       <label className="sv3-policy-reason">Reason for change<textarea value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="Explain why the facility rule needs to change (minimum 8 characters)." /></label>
     </div>
     {error ? <p role="alert" className="sv3-policy-feedback error">{error}</p> : null}

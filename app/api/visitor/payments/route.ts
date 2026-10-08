@@ -16,10 +16,19 @@ async function getPublicAppOrigin(request: Request): Promise<string> {
   return new URL(configured).origin;
 }
 
-async function getCreditPricing() {
+type CreditPricing = { perCreditMinor: number; currency: "IDR"; demo: boolean };
+
+async function getCreditPricing(d1: D1Database, facilityId: string): Promise<CreditPricing> {
+  const policy = await d1.prepare("SELECT credit_price_minor, credit_currency FROM visit_policies WHERE facility_id = ?").bind(facilityId).first<{ credit_price_minor: number | null; credit_currency: string }>();
+  if (policy && Number.isSafeInteger(policy.credit_price_minor) && Number(policy.credit_price_minor) > 0 && policy.credit_currency === "IDR") {
+    return { perCreditMinor: Number(policy.credit_price_minor), currency: "IDR", demo: false };
+  }
   const configured = Number(await getRuntimeValue("VISIT_CREDIT_PRICE_MINOR"));
   const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
-  if (Number.isSafeInteger(configured) && configured > 0) return { perCreditMinor: configured, currency: "IDR", demo: environment === "development" };
+  // Development fallback keeps an empty local database usable, but it is
+  // intentionally impossible outside development. Staging/production must
+  // configure the approved tariff on the facility policy record.
+  if (environment === "development" && Number.isSafeInteger(configured) && configured > 0) return { perCreditMinor: configured, currency: "IDR", demo: true };
   if (environment === "development") return { perCreditMinor: DEMO_CREDIT_PRICE_MINOR, currency: "IDR", demo: true };
   throw new SecurityError("VISIT_CREDIT_PRICE_NOT_CONFIGURED", 503);
 }
@@ -51,7 +60,7 @@ export async function POST(request: Request) {
     if (!provider) throw new SecurityError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
     const publicAppOrigin = await getPublicAppOrigin(request);
     let paymentIntentId = String(existing?.id || crypto.randomUUID());
-    const pricing = existing ? null : await getCreditPricing();
+    const pricing = existing ? null : await getCreditPricing(d1, facilityId);
     let amountMinor = Number(existing?.amount_minor || creditQuantity * (pricing?.perCreditMinor || 0));
     if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new SecurityError("CREDIT_PRICE_INVALID", 503);
     if (!existing) {
@@ -127,16 +136,17 @@ export async function GET() {
       d1.prepare(`SELECT id, facility_id, provider, credit_quantity, amount_minor, currency, status, provider_reference, checkout_url, version, created_at, updated_at FROM payment_intents WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`).bind(visitor.userId).all(),
       getPaymentProvider(),
     ]);
-    let pricing: Awaited<ReturnType<typeof getCreditPricing>> | null = null;
-    let checkoutUnavailableReason: string | null = null;
-    try {
-      pricing = await getCreditPricing();
-    } catch (error) {
-      if (!(error instanceof SecurityError) || error.code !== "VISIT_CREDIT_PRICE_NOT_CONFIGURED") throw error;
-      checkoutUnavailableReason = "VISIT_CREDIT_PRICE_NOT_CONFIGURED";
+    const pricingRows = await d1.prepare(`SELECT f.id AS facility_id, vp.credit_price_minor, vp.credit_currency
+      FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id
+      WHERE f.current_state = 'NORMAL_OPERATIONS'`).all<{ facility_id: string; credit_price_minor: number | null; credit_currency: string }>();
+    const pricingByFacility: Record<string, CreditPricing> = {};
+    for (const row of pricingRows.results) {
+      try { pricingByFacility[row.facility_id] = await getCreditPricing(d1, row.facility_id); } catch { /* Unpriced facilities remain unavailable. */ }
     }
+    const pricing = Object.values(pricingByFacility)[0] || null;
+    let checkoutUnavailableReason: string | null = pricing ? null : "VISIT_CREDIT_PRICE_NOT_CONFIGURED";
     if (!provider) checkoutUnavailableReason = "PAYMENT_PROVIDER_NOT_CONFIGURED";
-    return securityResponse({ paymentIntents: result.results, pricing, checkoutAvailable: Boolean(provider && pricing), checkoutUnavailableReason }, 200, context.requestId);
+    return securityResponse({ paymentIntents: result.results, pricing, pricingByFacility, checkoutAvailable: Boolean(provider && pricing), checkoutUnavailableReason }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }

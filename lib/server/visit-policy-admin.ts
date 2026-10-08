@@ -5,14 +5,17 @@ export type EditableVisitPolicy = {
   maxAdvanceDays: number;
   dailyStartTime: string;
   dailyEndTime: string;
+  creditPriceMinor: number;
+  creditCurrency: string;
 };
 
 export function parseEditableVisitPolicy(value: unknown): EditableVisitPolicy | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const body = value as Record<string, unknown>;
-  const fields = [body.minDurationMinutes, body.maxDurationMinutes, body.minAdvanceMinutes, body.maxAdvanceDays];
+  const fields = [body.minDurationMinutes, body.maxDurationMinutes, body.minAdvanceMinutes, body.maxAdvanceDays, body.creditPriceMinor];
   if (!fields.every((field) => typeof field === "number" && Number.isInteger(field))) return null;
-  const [minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays] = fields as number[];
+  const [minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays, creditPriceMinor] = fields as number[];
+  const creditCurrency = typeof body.creditCurrency === "string" ? body.creditCurrency.trim().toUpperCase() : "";
   const dailyStartTime = typeof body.dailyStartTime === "string" ? body.dailyStartTime : "";
   const dailyEndTime = typeof body.dailyEndTime === "string" ? body.dailyEndTime : "";
   const clock = (input: string) => {
@@ -27,7 +30,8 @@ export function parseEditableVisitPolicy(value: unknown): EditableVisitPolicy | 
     maxDurationMinutes < minDurationMinutes || maxDurationMinutes > 120 || maxDurationMinutes % 15 !== 0 ||
     minAdvanceMinutes < 0 || minAdvanceMinutes > 10080 ||
     maxAdvanceDays < 1 || maxAdvanceDays > 365 ||
-    start === null || end === null || start >= end
+    start === null || end === null || start >= end ||
+    creditPriceMinor < 1 || creditPriceMinor > 1_000_000_000 || creditCurrency !== "IDR"
   ) return null;
-  return { minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays, dailyStartTime, dailyEndTime };
+  return { minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays, dailyStartTime, dailyEndTime, creditPriceMinor, creditCurrency };
 }

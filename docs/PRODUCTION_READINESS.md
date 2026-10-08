@@ -42,7 +42,7 @@ The adapter must validate the timestamp within a five-minute replay window, veri
 
 ### Payment checkout and webhooks
 
-Configure a real provider adapter only after the institution approves the credit tariff and refund policy. Checkout requests use the payment intent ID as the idempotency key. Payment events must be signed, timestamp-bound, provider-bound, persisted before processing, and safe to replay.
+Configure a real provider adapter only after the institution approves the credit tariff and refund policy. The tariff is stored on the facility's versioned Visit Policy and must be explicitly configured before a non-development facility can accept checkout; `VISIT_CREDIT_PRICE_MINOR` is only a local development fallback. Checkout requests use the payment intent ID as the idempotency key. Payment events must be signed, timestamp-bound, provider-bound, persisted before processing, and safe to replay.
 
 Settlement events must also carry the provider reference, amount in minor currency units, and ISO currency. SecureVisit compares these against the persisted payment intent before posting credits; a signed event with mismatched settlement details is rejected and remains retryable for investigation.
 
