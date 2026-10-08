@@ -10,7 +10,7 @@ export async function GET() {
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT id, event_type, aggregate_type, aggregate_id, correlation_id, status, attempt_count, available_at, last_error, created_at FROM outbox_events WHERE facility_id = ? AND status IN ('FAILED', 'DEAD_LETTER') ORDER BY created_at DESC LIMIT 100`).bind(authorization.facilityId).all<{ id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; correlation_id: string; status: string; attempt_count: number; available_at: string; last_error: string | null; created_at: string }>();
     const events = await Promise.all(result.results.map(async (event) => {
-      const attempts = await d1.prepare(`SELECT id, notification_id, channel, attempt_number, status, error_message, started_at, finished_at FROM notification_delivery_attempts WHERE outbox_event_id = ? ORDER BY attempt_number DESC, channel ASC`).bind(event.id).all();
+      const attempts = await d1.prepare(`SELECT id, notification_id, channel, attempt_number, status, provider_reference, error_message, started_at, finished_at FROM notification_delivery_attempts WHERE outbox_event_id = ? ORDER BY attempt_number DESC, channel ASC`).bind(event.id).all();
       return { ...event, deliveryAttempts: attempts.results };
     }));
     return securityResponse({ events }, 200, context.requestId);

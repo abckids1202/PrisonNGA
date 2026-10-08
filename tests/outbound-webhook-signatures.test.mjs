@@ -107,11 +107,11 @@ test("direct visitor auth adapters send email through Resend and SMS through Twi
   });
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
-    return new Response(JSON.stringify({ id: "provider-message-1" }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify(String(url).includes("twilio") ? { sid: "SM-provider-message-1" } : { id: "provider-message-1" }), { status: 200, headers: { "content-type": "application/json" } });
   };
   try {
-    await deliverVisitorChallenge({ channel: "EMAIL", challengeId: "resend-challenge", destination: "visitor@example.test", code: "123456", expiresAt: "2026-09-24T12:00:00.000Z" });
-    await deliverVisitorChallenge({ channel: "SMS", challengeId: "twilio-challenge", destination: "+6281234567890", code: "654321", expiresAt: "2026-09-24T12:00:00.000Z" });
+    assert.deepEqual(await deliverVisitorChallenge({ channel: "EMAIL", challengeId: "resend-challenge", destination: "visitor@example.test", code: "123456", expiresAt: "2026-09-24T12:00:00.000Z" }), { providerReference: "provider-message-1" });
+    assert.deepEqual(await deliverVisitorChallenge({ channel: "SMS", challengeId: "twilio-challenge", destination: "+6281234567890", code: "654321", expiresAt: "2026-09-24T12:00:00.000Z" }), { providerReference: "SM-provider-message-1" });
     assert.equal(calls.length, 2);
     assert.equal(calls[0].url, "https://api.resend.com/emails");
     assert.equal(new Headers(calls[0].init.headers).get("idempotency-key"), "securevisit-auth:resend-challenge");

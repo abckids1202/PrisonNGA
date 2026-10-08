@@ -316,9 +316,10 @@ async function processOutbox(env: Env): Promise<void> {
           const externalNotificationKey = `${row.id}:visitor:${channel.toLowerCase()}`;
           const alreadyDelivered = await env.DB.prepare("SELECT id FROM notifications WHERE idempotency_key = ? AND status = 'DELIVERED' LIMIT 1").bind(externalNotificationKey).first<{ id: string }>();
           if (!alreadyDelivered) {
-            await deliverNotification({ notificationId: row.id, email: channel === "EMAIL" ? visitor.email : null, phone: channel === "SMS" ? visitor.phone : null, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
+            const deliveryReceipt = await deliverNotification({ notificationId: row.id, email: channel === "EMAIL" ? visitor.email : null, phone: channel === "SMS" ? visitor.phone : null, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
             await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:${channel.toLowerCase()}`, row.facility_id, visitorUserId, channel, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, externalNotificationKey, now).run();
+            await env.DB.prepare("UPDATE notification_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PROCESSING'").bind(deliveryReceipt.providerReference, externalAttemptId).run();
           }
           await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'DELIVERED', finished_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, externalAttemptId).run();
         } else {

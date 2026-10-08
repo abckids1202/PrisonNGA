@@ -1,6 +1,7 @@
 import { getRuntimeValue } from "../security";
 import { isSecureHttpsEndpoint } from "../endpoint";
 import { sendEmailWithResend, sendSmsWithTwilio } from "../messaging/providers";
+import type { DeliveryReceipt } from "../messaging/providers";
 
 export type NotificationDelivery = "in_app" | "webhook" | "resend" | "twilio";
 
@@ -12,7 +13,7 @@ export async function getNotificationDelivery(channel?: "EMAIL" | "SMS"): Promis
   return value === "webhook" || value === "resend" || value === "twilio" ? value : "in_app";
 }
 
-export async function deliverNotification(input: { notificationId: string; email: string | null; phone: string | null; template: string; title: string; body: string; payload: Record<string, unknown> }): Promise<void> {
+export async function deliverNotification(input: { notificationId: string; email: string | null; phone: string | null; template: string; title: string; body: string; payload: Record<string, unknown> }): Promise<DeliveryReceipt> {
   const channel = input.email ? "EMAIL" : input.phone ? "SMS" : null;
   const delivery = channel ? await getNotificationDelivery(channel) : "in_app";
   if (delivery === "resend" && channel === "EMAIL" && input.email) return sendEmailWithResend({ destination: input.email, subject: input.title, text: input.body, idempotencyKey: `${input.notificationId}:email` });
@@ -33,5 +34,7 @@ export async function deliverNotification(input: { notificationId: string; email
   try {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}`, "idempotency-key": `${input.notificationId}:${channel.toLowerCase()}` }, body: payload, signal: controller.signal });
     if (!response.ok) throw new Error(`NOTIFICATION_DELIVERY_FAILED_${response.status}`);
+    const responseBody = await response.json().catch(() => null) as { providerReference?: unknown; id?: unknown; sid?: unknown } | null;
+    return { providerReference: typeof responseBody?.providerReference === "string" ? responseBody.providerReference : typeof responseBody?.id === "string" ? responseBody.id : typeof responseBody?.sid === "string" ? responseBody.sid : null };
   } finally { clearTimeout(timeout); }
 }

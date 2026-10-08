@@ -83,7 +83,8 @@ export async function POST(request: Request) {
       await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
     } else if (delivery === "webhook" || delivery === "resend" || delivery === "twilio") {
       try {
-        await deliverVisitorChallenge({ channel: channel as "EMAIL" | "SMS", challengeId, destination, code, expiresAt });
+        const deliveryReceipt = await deliverVisitorChallenge({ channel: channel as "EMAIL" | "SMS", challengeId, destination, code, expiresAt });
+        await d1.prepare("UPDATE auth_challenge_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PENDING'").bind(deliveryReceipt.providerReference, deliveryAttemptId).run();
       } catch {
         await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'FAILED', error_code = 'AUTH_DELIVERY_UNAVAILABLE', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
         await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();

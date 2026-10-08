@@ -66,7 +66,8 @@ export async function POST(request: Request) {
       throw new SecurityError("AUTH_DELIVERY_NOT_CONFIGURED", 503);
     }
     try {
-      await deliverVisitorChallenge({ channel: "SMS", challengeId, destination: phone, code, expiresAt });
+      const deliveryReceipt = await deliverVisitorChallenge({ channel: "SMS", challengeId, destination: phone, code, expiresAt });
+      await d1.prepare("UPDATE auth_challenge_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PENDING'").bind(deliveryReceipt.providerReference, attemptId).run();
     } catch {
       await d1.batch([
         d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'FAILED', error_code = 'AUTH_DELIVERY_UNAVAILABLE', completed_at = ? WHERE id = ?").bind(new Date().toISOString(), attemptId),

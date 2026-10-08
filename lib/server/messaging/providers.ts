@@ -1,5 +1,7 @@
 import { getRuntimeValue } from "../security";
 
+export type DeliveryReceipt = { providerReference: string | null };
+
 async function requestWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
@@ -10,7 +12,7 @@ async function requestWithTimeout(input: RequestInfo | URL, init: RequestInit): 
   }
 }
 
-export async function sendEmailWithResend(input: { destination: string; subject: string; text: string; idempotencyKey: string }): Promise<void> {
+export async function sendEmailWithResend(input: { destination: string; subject: string; text: string; idempotencyKey: string }): Promise<DeliveryReceipt> {
   const apiKey = await getRuntimeValue("RESEND_API_KEY");
   const from = await getRuntimeValue("VISITOR_EMAIL_FROM");
   if (!apiKey || !from) throw new Error("EMAIL_PROVIDER_NOT_CONFIGURED");
@@ -20,9 +22,11 @@ export async function sendEmailWithResend(input: { destination: string; subject:
     body: JSON.stringify({ from, to: [input.destination], subject: input.subject, text: input.text }),
   });
   if (!response.ok) throw new Error(`EMAIL_PROVIDER_FAILED_${response.status}`);
+  const payload = await response.json().catch(() => null) as { id?: unknown } | null;
+  return { providerReference: typeof payload?.id === "string" ? payload.id : null };
 }
 
-export async function sendSmsWithTwilio(input: { destination: string; body: string; idempotencyKey: string }): Promise<void> {
+export async function sendSmsWithTwilio(input: { destination: string; body: string; idempotencyKey: string }): Promise<DeliveryReceipt> {
   const accountSid = await getRuntimeValue("VISITOR_SMS_TWILIO_ACCOUNT_SID");
   const authToken = await getRuntimeValue("VISITOR_SMS_TWILIO_AUTH_TOKEN");
   const from = await getRuntimeValue("VISITOR_SMS_TWILIO_FROM");
@@ -38,4 +42,6 @@ export async function sendSmsWithTwilio(input: { destination: string; body: stri
     body: params.toString(),
   });
   if (!response.ok) throw new Error(`SMS_PROVIDER_FAILED_${response.status}`);
+  const payload = await response.json().catch(() => null) as { sid?: unknown } | null;
+  return { providerReference: typeof payload?.sid === "string" ? payload.sid : null };
 }

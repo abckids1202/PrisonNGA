@@ -1,6 +1,7 @@
 import { getRuntimeValue } from "../security";
 import { isSecureHttpsEndpoint } from "../endpoint";
 import { sendEmailWithResend, sendSmsWithTwilio } from "../messaging/providers";
+import type { DeliveryReceipt } from "../messaging/providers";
 
 export type VisitorAuthDelivery = "console" | "webhook" | "resend" | "twilio" | "";
 
@@ -11,7 +12,7 @@ export async function getVisitorAuthDelivery(channel: "EMAIL" | "SMS"): Promise<
   return value === "console" || value === "webhook" || value === "resend" || value === "twilio" ? value : "";
 }
 
-export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS"; challengeId: string; destination: string; code: string; expiresAt: string }): Promise<void> {
+export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS"; challengeId: string; destination: string; code: string; expiresAt: string }): Promise<DeliveryReceipt> {
   const delivery = await getVisitorAuthDelivery(input.channel);
   if (delivery === "resend" && input.channel === "EMAIL") return sendEmailWithResend({ destination: input.destination, subject: "Your SecureVisit sign-in code", text: `Your SecureVisit code is ${input.code}. It expires in 10 minutes. If you did not request this code, you can ignore this message.`, idempotencyKey: `securevisit-auth:${input.challengeId}` });
   if (delivery === "twilio" && input.channel === "SMS") return sendSmsWithTwilio({ destination: input.destination, body: `Your SecureVisit code is ${input.code}. It expires in 10 minutes.`, idempotencyKey: `securevisit-auth:${input.challengeId}` });
@@ -33,4 +34,6 @@ export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS";
     clearTimeout(timeout);
   }
   if (!response.ok) throw new Error(`VISITOR_AUTH_DELIVERY_FAILED_${response.status}`);
+  const responseBody = await response.json().catch(() => null) as { providerReference?: unknown; id?: unknown; sid?: unknown } | null;
+  return { providerReference: typeof responseBody?.providerReference === "string" ? responseBody.providerReference : typeof responseBody?.id === "string" ? responseBody.id : typeof responseBody?.sid === "string" ? responseBody.sid : null };
 }
