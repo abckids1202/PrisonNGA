@@ -41,6 +41,7 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(appointmentRoute, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(waitingRoom, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(controlLiveSessions, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
+  assert.match(controlLiveSessions, /LIVE_SESSION_FINALIZATION_BLOCKED/);
   assert.match(kioskLiveSession, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(kioskPresence, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);
   assert.match(kioskDeviceCheck, /u\.id = a\.visitor_user_id AND u\.user_type = 'VISITOR'/);

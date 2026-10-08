@@ -15,7 +15,8 @@ export async function GET() {
           ORDER BY rr.created_at DESC LIMIT 1) AND r.facility_id = a.facility_id) AS room_name,
         (SELECT r.display_name FROM resources r WHERE r.id = (SELECT rr.resource_id FROM resource_reservations rr
           WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE'
-          ORDER BY rr.created_at DESC LIMIT 1) AND r.facility_id = a.facility_id) AS kiosk_name
+          ORDER BY rr.created_at DESC LIMIT 1) AND r.facility_id = a.facility_id) AS kiosk_name,
+        EXISTS (SELECT 1 FROM audit_events ae WHERE ae.facility_id = vs.facility_id AND ae.entity_type = 'visit_session' AND ae.entity_id = vs.id AND ae.action_type = 'LIVE_SESSION_FINALIZATION_BLOCKED') AS finalization_blocked
       FROM visit_sessions vs
       INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
       INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
