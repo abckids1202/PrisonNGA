@@ -17,7 +17,7 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run test:quick`: 403 tests passed.
+- `npm run test:quick`: 404 tests passed.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
