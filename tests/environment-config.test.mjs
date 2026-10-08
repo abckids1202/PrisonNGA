@@ -60,6 +60,23 @@ test("staging and production require protected R2 evidence storage", () => {
   assert.ok(!configured.missing.includes("EVIDENCE_STORAGE_PROVIDER=r2"));
 });
 
+test("notification-only direct providers still require their server credentials", () => {
+  const result = validateEnvironment({
+    ...withDatabase,
+    SECUREVISIT_ENVIRONMENT: "staging",
+    VISITOR_AUTH_DELIVERY: "webhook",
+    VISITOR_AUTH_WEBHOOK_URL: "https://auth.example.test/send",
+    VISITOR_AUTH_WEBHOOK_SECRET: "v".repeat(32),
+    NOTIFICATION_EMAIL_DELIVERY: "resend",
+    NOTIFICATION_SMS_DELIVERY: "twilio",
+  });
+  assert.ok(result.missing.includes("RESEND_API_KEY"));
+  assert.ok(result.missing.includes("VISITOR_EMAIL_FROM"));
+  assert.ok(result.missing.includes("VISITOR_SMS_TWILIO_ACCOUNT_SID"));
+  assert.ok(result.missing.includes("VISITOR_SMS_TWILIO_AUTH_TOKEN (must be at least 32 characters)"));
+  assert.ok(result.missing.includes("VISITOR_SMS_TWILIO_FROM or VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID"));
+});
+
 test("staging and production reject weak webhook signing secrets", () => {
   const base = {
     ...withDatabase,
