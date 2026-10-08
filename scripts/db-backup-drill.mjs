@@ -97,6 +97,8 @@ if (action === "backup") {
     const data = statements.filter((statement) => /^INSERT INTO\b/i.test(statement));
     const other = statements.filter((statement) => !/^CREATE TABLE\b/i.test(statement) && !/^INSERT INTO\b/i.test(statement) && !/^PRAGMA\b/i.test(statement));
     if (!tables.length || !data.length) fail("Backup does not contain both table definitions and data.");
+    const expectedTableNames = [...new Set(tables.map((statement) => statement.match(/^CREATE TABLE\s+(?:IF NOT EXISTS\s+)?[`\"]?([A-Za-z0-9_]+)[`\"]?/i)?.[1]).filter(Boolean))];
+    if (expectedTableNames.length !== tables.length) fail("Backup contains an unsupported or duplicate table definition.");
     await writeFile(restoreInput, `PRAGMA foreign_keys=OFF;\nPRAGMA defer_foreign_keys=ON;\n${[...tables, ...data, ...other].join("\n")}\n`);
     const restore = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--file", restoreInput, "--yes", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, stdio: "inherit" });
     if (restore.error || restore.status !== 0) fail("Restore import failed; the disposable database was removed without being promoted.");
@@ -106,7 +108,8 @@ if (action === "backup") {
     // D1 rejects the SQLite integrity_check pragma in the local adapter. Use
     // supported SQL checks that still prove the restored schema is populated
     // and its declared relationships can be evaluated.
-    const sqliteIntegrity = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", "SELECT CASE WHEN (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table') >= 38 THEN 'INTEGRITY_OK' ELSE 'INTEGRITY_INCOMPLETE' END AS integrity_status;", "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });
+    const tableList = expectedTableNames.map((name) => `'${name.replaceAll("'", "''")}'`).join(", ");
+    const sqliteIntegrity = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", `SELECT CASE WHEN (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (${tableList})) = ${expectedTableNames.length} THEN 'INTEGRITY_OK' ELSE 'INTEGRITY_INCOMPLETE' END AS integrity_status;`, "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });
     const sqliteIntegrityOutput = `${sqliteIntegrity.stdout || ""}\n${sqliteIntegrity.stderr || ""}`;
     if (sqliteIntegrity.error || sqliteIntegrity.status !== 0 || !/INTEGRITY_OK/i.test(sqliteIntegrityOutput)) fail(`Restore completed, but schema consistency verification did not return INTEGRITY_OK. Output: ${sqliteIntegrityOutput.slice(-500)}`);
     const foreignKeys = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", "SELECT COUNT(*) AS foreign_key_violations FROM pragma_foreign_key_check();", "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });

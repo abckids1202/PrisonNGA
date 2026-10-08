@@ -7,6 +7,7 @@ test("database backup drill refuses direct remote restore and reorders exports s
   assert.match(source, /Restore drills always target a disposable clean local database/);
   assert.match(source, /splitSqlStatements/);
   assert.match(source, /const tables = statements\.filter/);
+  assert.match(source, /expectedTableNames/);
   assert.match(source, /const data = statements\.filter/);
   assert.match(source, /RESTORE_OK/);
   assert.match(source, /INTEGRITY_OK/);
