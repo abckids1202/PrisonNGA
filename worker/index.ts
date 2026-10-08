@@ -265,6 +265,25 @@ async function processOutbox(env: Env): Promise<void> {
       // updates rows that have already entered PROCESSING.
       const claim = await env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('PENDING', 'FAILED') AND julianday(available_at) <= julianday('now')").bind(row.id).run();
       if (!claim.meta.changes) continue;
+      // A facility event has no single visitor recipient. Expand a lockdown
+      // into deterministic appointment-scoped notification events before the
+      // parent event is marked processed. INSERT OR IGNORE makes a retry safe
+      // if the Worker fails after fan-out but before the parent update.
+      if (row.event_type === "LOCKDOWN_STARTED" && row.aggregate_type === "facility" && row.facility_id) {
+        await env.DB.batch([
+          env.DB.prepare(`INSERT OR IGNORE INTO outbox_events
+            (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
+            SELECT 'lockdown:' || a.facility_id || ':' || ? || ':' || a.id,
+              'FACILITY_LOCKDOWN_APPOINTMENT', 'appointment', a.id, a.facility_id, '{}', ?, ?
+            FROM appointments a
+            WHERE a.facility_id = ?
+              AND a.status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS')`)
+            .bind(row.correlation_id, row.correlation_id, now, row.facility_id),
+          env.DB.prepare("UPDATE outbox_events SET status = 'PROCESSED', processing_started_at = NULL, processed_at = ? WHERE id = ? AND status = 'PROCESSING'")
+            .bind(now, row.id),
+        ]);
+        continue;
+      }
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
       const attemptNumber = row.attempt_count + 1;
       const attemptStartedAt = new Date().toISOString();
@@ -504,6 +523,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
 }
 
 function notificationCopy(eventType: string, payload: Record<string, unknown> = {}): { title: string; body: string } {
+  if (eventType === "FACILITY_LOCKDOWN_APPOINTMENT") return { title: "Your visit needs facility review", body: "The facility has temporarily restricted visitation operations. Your appointment and Visit Credit have not been silently cancelled; the facility team will review the next step and update you." };
   if (eventType === "VISITOR_SUSPICIOUS_LOGIN") return { title: "New sign-in detected", body: "A new browser signed in to your SecureVisit account. If this was not you, open Account and sign out all sessions, then contact the facility support team." };
   if (eventType === "LIVE_SESSION_START_FAILED") return { title: "Your visit is temporarily delayed", body: "The facility could not open the secure video room. Your visit has not started or consumed its credit; staff can retry when the video service is available." };
   if (eventType === "LIVE_SESSION_PROVIDER_CLOSE_FAILED") return { title: "Your visit needs facility attention", body: "The video service did not confirm that the visit room closed safely. The facility team has been alerted and will resolve the session before any credit settlement is finalized." };
