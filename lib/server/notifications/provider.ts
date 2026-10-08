@@ -1,6 +1,7 @@
 import { getRuntimeValue } from "../security";
 import { isSecureHttpsEndpoint } from "../endpoint";
 import { sendEmailWithResend, sendSmsWithTwilio } from "../messaging/providers";
+import { readBoundedResponseText } from "../bounded-response";
 import type { DeliveryReceipt } from "../messaging/providers";
 
 export type NotificationDelivery = "in_app" | "webhook" | "resend" | "twilio";
@@ -34,7 +35,7 @@ export async function deliverNotification(input: { notificationId: string; email
   try {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}`, "idempotency-key": `${input.notificationId}:${channel.toLowerCase()}` }, body: payload, signal: controller.signal });
     if (!response.ok) throw new Error(`NOTIFICATION_DELIVERY_FAILED_${response.status}`);
-    const responseBody = await response.json().catch(() => null) as { providerReference?: unknown; id?: unknown; sid?: unknown } | null;
+    const responseBody = await readBoundedResponseText(response).then((text) => JSON.parse(text) as { providerReference?: unknown; id?: unknown; sid?: unknown }).catch(() => null);
     return { providerReference: typeof responseBody?.providerReference === "string" ? responseBody.providerReference : typeof responseBody?.id === "string" ? responseBody.id : typeof responseBody?.sid === "string" ? responseBody.sid : null };
   } finally { clearTimeout(timeout); }
 }

@@ -1,4 +1,5 @@
 import { getRuntimeValue } from "../security";
+import { readBoundedResponseText } from "../bounded-response";
 
 export type DeliveryReceipt = { providerReference: string | null };
 
@@ -22,7 +23,7 @@ export async function sendEmailWithResend(input: { destination: string; subject:
     body: JSON.stringify({ from, to: [input.destination], subject: input.subject, text: input.text }),
   });
   if (!response.ok) throw new Error(`EMAIL_PROVIDER_FAILED_${response.status}`);
-  const payload = await response.json().catch(() => null) as { id?: unknown } | null;
+  const payload = await readBoundedResponseText(response).then((text) => JSON.parse(text) as { id?: unknown }).catch(() => null);
   return { providerReference: typeof payload?.id === "string" ? payload.id : null };
 }
 
@@ -42,6 +43,6 @@ export async function sendSmsWithTwilio(input: { destination: string; body: stri
     body: params.toString(),
   });
   if (!response.ok) throw new Error(`SMS_PROVIDER_FAILED_${response.status}`);
-  const payload = await response.json().catch(() => null) as { sid?: unknown } | null;
+  const payload = await readBoundedResponseText(response).then((text) => JSON.parse(text) as { sid?: unknown }).catch(() => null);
   return { providerReference: typeof payload?.sid === "string" ? payload.sid : null };
 }

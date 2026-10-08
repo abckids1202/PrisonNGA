@@ -1,6 +1,7 @@
 import { getRuntimeValue } from "../security";
 import { isSecureHttpsEndpoint } from "../endpoint";
 import { sendEmailWithResend, sendSmsWithTwilio } from "../messaging/providers";
+import { readBoundedResponseText } from "../bounded-response";
 import type { DeliveryReceipt } from "../messaging/providers";
 
 export type VisitorAuthDelivery = "console" | "webhook" | "resend" | "twilio" | "";
@@ -34,6 +35,6 @@ export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS";
     clearTimeout(timeout);
   }
   if (!response.ok) throw new Error(`VISITOR_AUTH_DELIVERY_FAILED_${response.status}`);
-  const responseBody = await response.json().catch(() => null) as { providerReference?: unknown; id?: unknown; sid?: unknown } | null;
+  const responseBody = await readBoundedResponseText(response).then((text) => JSON.parse(text) as { providerReference?: unknown; id?: unknown; sid?: unknown }).catch(() => null);
   return { providerReference: typeof responseBody?.providerReference === "string" ? responseBody.providerReference : typeof responseBody?.id === "string" ? responseBody.id : typeof responseBody?.sid === "string" ? responseBody.sid : null };
 }
