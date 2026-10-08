@@ -18,11 +18,21 @@ try {
     const result = spawnSync(process.execPath, [migrationRunner, action, "--local"], {
       cwd: projectRoot,
       env: { ...process.env, SECUREVISIT_LOCAL_D1_STATE_DIR: temporaryStateDir },
-      stdio: "inherit",
+      // Wrangler prints a complete migration table for every command. Keep
+      // the release gate readable on success, while preserving all output for
+      // a failing migration so the root cause is still actionable in CI.
+      stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
     if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(`${label} failed with exit code ${result.status ?? "unknown"}.`);
+    if (result.status !== 0) {
+      const diagnostics = [result.stdout, result.stderr]
+        .filter((output) => output?.length)
+        .map((output) => output.toString().trim())
+        .join("\n\n");
+      throw new Error(`${label} failed with exit code ${result.status ?? "unknown"}.\n${diagnostics}`);
+    }
+    console.log(`✓ ${label}`);
   }
 
   console.log("\nFresh local D1 migration and seed verification passed.");
