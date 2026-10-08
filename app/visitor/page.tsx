@@ -17,6 +17,7 @@ type VisitorSession = { id: string; createdAt: string; expiresAt: string; lastSe
 type VisitorFacility = { id: string; name: string; timezone: string; current_state: string };
 type VisitorProfile = { userId?: string; legalName: string; preferredName: string | null; phone: string | null; phoneVerifiedAt: string | null; profileStatus: string };
 type VisitorNotification = { id: string; channel: string; template: string; title: string; body: string; payload: string | Record<string, unknown> | null; status: string; created_at: string; read_at: string | null };
+type VisitorSupportCase = { id: string; title: string; description: string; status: string; severity: string; appointment_id: string | null; resolution: string | null; version: number; created_at: string; facility_name: string };
 type VisitorData = { appointments: VisitorAppointmentRecord[]; relationships: VisitorRelationshipRecord[]; credits: VisitorCreditAccount[]; unreadNotifications: number; loading: boolean; refreshAppointments: () => Promise<void> };
 
 const VisitorDataContext = createContext<VisitorData>({ appointments: [], relationships: [], credits: [], unreadNotifications: 0, loading: true, refreshAppointments: async () => undefined });
@@ -63,6 +64,7 @@ export default function VisitorPage({ initialTab = "Home" }: { initialTab?: Visi
   const [tab, setTab] = useState<Tab>(initialTab);
   const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const syncVisitorCredits = useCallback((credits: VisitorCreditAccount[]) => setVisitorData((current) => ({ ...current, credits })), []);
   const updateUnreadNotifications = useCallback((count: number) => setVisitorData((current) => ({ ...current, unreadNotifications: count })), []);
   const refreshAppointments = useCallback(async () => {
@@ -158,7 +160,7 @@ export default function VisitorPage({ initialTab = "Home" }: { initialTab?: Visi
       </header>
 
       <main className="sv4-main">
-        {dataError ? <section className="sv4-empty-state" role="alert"><span>!</span><h2>SecureVisit is temporarily unavailable</h2><p>{dataError}</p><button className="sv4-button sv4-button-primary" onClick={() => window.location.reload()}>Try again <span>↻</span></button></section> : <>{tab === "Home" && <VisitorHome visitorName={visitorName} onAction={action} onOpenVisit={() => navigate("Visits")} onNavigate={navigate} />}
+        {dataError ? <section className="sv4-empty-state" role="alert"><span>!</span><h2>SecureVisit is temporarily unavailable</h2><p>{dataError}</p><button className="sv4-button sv4-button-primary" onClick={() => window.location.reload()}>Try again <span>↻</span></button></section> : <>{tab === "Home" && <VisitorHome visitorName={visitorName} onAction={action} onOpenVisit={() => navigate("Visits")} onNavigate={navigate} onOpenSupport={() => setSupportOpen(true)} />}
         {tab === "Visits" && <VisitorVisits onAction={action} onNavigate={navigate} />}
         {tab === "Connections" && <VisitorConnections onAction={action} onRelationshipAdded={(relationship) => setVisitorData((current) => ({ ...current, relationships: [relationship, ...current.relationships.filter((item) => item.id !== relationship.id)] }))} />}
         {tab === "Credits" && <VisitorCredits onAction={action} onCreditsLoaded={syncVisitorCredits} />}
@@ -173,6 +175,7 @@ export default function VisitorPage({ initialTab = "Home" }: { initialTab?: Visi
         ))}
       </nav>
 
+      {supportOpen && <VisitorSupportDialog appointments={visitorData.appointments} onClose={() => setSupportOpen(false)} onAction={action} />}
       {notice && <div className={`sv4-toast sv4-toast-${notice.tone}`} role="status"><span>{notice.tone === "success" ? "✓" : "i"}</span>{notice.message}</div>}
     </div>
     </VisitorDataContext.Provider>
@@ -232,11 +235,13 @@ function VisitorHome({
   onAction,
   onOpenVisit,
   onNavigate,
+  onOpenSupport,
 }: {
   visitorName: string;
   onAction: (message: string, tone?: NoticeTone) => void;
   onOpenVisit: () => void;
   onNavigate: (tab: Tab) => void;
+  onOpenSupport: () => void;
 }) {
   const { appointments, relationships, credits, loading } = useContext(VisitorDataContext);
   const [slide, setSlide] = useState(0);
@@ -265,7 +270,7 @@ function VisitorHome({
     <div className="sv4-page">
       <section className="sv4-greeting">
         <div><p className="sv4-kicker">Your visitor account</p><h1>Hello, {visitorName}</h1><p className="sv4-lead">Here’s the latest from your visits and connections.</p></div>
-        <button className="sv4-help-link" onClick={() => onAction("Our visitor support team is here to help.", "info")}>Need a hand? <span>Visit support →</span></button>
+        <button className="sv4-help-link" onClick={onOpenSupport}>Need a hand? <span>Contact visitor support →</span></button>
       </section>
 
       <section className={`sv4-hero sv4-hero-${current.theme}`} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
@@ -280,7 +285,7 @@ function VisitorHome({
         <QuickAction icon="↔" title="My connections" copy="People you’re approved to see" onClick={() => onNavigate("Connections")} tone="sage" />
         <QuickAction icon="◇" title="Visit credits" copy="Check your available balance" onClick={() => onNavigate("Credits")} tone="lilac" />
         <QuickAction icon="⌁" title="Device check" copy="Make sure everything works" onClick={nextVisit ? onOpenVisit : () => onAction("Schedule a visit first, then you can run the device check from Visit Details.", "info")} tone="sand" />
-        <QuickAction icon="?" title="Help center" copy="Answers and visitor support" onClick={() => onAction("Our visitor support team is here to help.", "info")} tone="rose" />
+        <QuickAction icon="?" title="Help center" copy="Answers and visitor support" onClick={onOpenSupport} tone="rose" />
       </div></section>
 
       {nextVisit ? <section className="sv4-next-visit-card" aria-label={`NEXT VISIT with ${nextVisit.prisoner_name}`} onClick={onOpenVisit} role="button" tabIndex={0} onKeyDown={(event) => event.key === "Enter" && onOpenVisit()}>
@@ -297,6 +302,53 @@ function VisitorHome({
       <section className="sv4-section sv4-activity-section"><div className="sv4-section-heading"><div><p className="sv4-kicker">Your SecureVisit story</p><h2>Recent activity</h2></div></div><div className="sv4-activity-list">{recentActivity.length ? recentActivity.map((item) => <Activity key={item.id} icon={item.icon} title={item.title} time={item.time} tone={item.tone} />) : <div className="sv4-empty-inline">Your visit and connection updates will appear here.</div>}</div></section>
     </div>
   );
+}
+
+function VisitorSupportDialog({ appointments, onClose, onAction }: { appointments: VisitorAppointmentRecord[]; onClose: () => void; onAction: (message: string, tone?: NoticeTone) => void }) {
+  const [facilities, setFacilities] = useState<VisitorFacility[]>([]);
+  const [cases, setCases] = useState<VisitorSupportCase[]>([]);
+  const [category, setCategory] = useState<"PAYMENT" | "VERIFICATION" | "DEVICE" | "VISIT" | "OTHER">("VISIT");
+  const [facilityId, setFacilityId] = useState(appointments[0]?.facility_id || "");
+  const [appointmentId, setAppointmentId] = useState(appointments[0]?.id || "");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetch("/api/visitor/facilities", { credentials: "include" }).then(async (response) => { const body = await response.json() as { facilities?: VisitorFacility[]; error?: string }; if (!response.ok) throw new Error(body.error || "Facilities unavailable."); return body.facilities || []; }),
+      fetch("/api/visitor/support", { credentials: "include" }).then(async (response) => { const body = await response.json() as { cases?: VisitorSupportCase[]; error?: string }; if (!response.ok) throw new Error(body.error || "Support history unavailable."); return body.cases || []; }),
+    ]).then(([nextFacilities, nextCases]) => {
+      if (!active) return;
+      setFacilities(nextFacilities);
+      setCases(nextCases);
+      setFacilityId((current) => current || nextFacilities[0]?.id || "");
+      setLoading(false);
+    }).catch((reason: unknown) => { if (!active) return; setError(reason instanceof Error ? reason.message : "Support is temporarily unavailable."); setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/visitor/support", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visitor-support-${crypto.randomUUID()}` }, body: JSON.stringify({ category, facilityId, appointmentId: appointmentId || undefined, subject, message }) });
+      const body = await response.json() as { caseId?: string; error?: string };
+      if (!response.ok || !body.caseId) throw new Error(body.error || "Your support request could not be saved.");
+      setCases((current) => [{ id: body.caseId!, title: subject, description: `[${category}] ${message}`, status: "OPEN", severity: "LOW", appointment_id: appointmentId || null, resolution: null, version: 1, created_at: new Date().toISOString(), facility_name: facilities.find((facility) => facility.id === facilityId)?.name || "Facility" }, ...current]);
+      setSubject("");
+      setMessage("");
+      onAction("Your support request was sent to the facility team.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Your support request could not be saved.");
+    } finally { setBusy(false); }
+  }
+
+  return <div className="sv5-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><section className="sv5-info-dialog sv4-support-dialog" role="dialog" aria-modal="true" aria-labelledby="visitor-support-title"><button type="button" className="sv5-dialog-close" onClick={onClose} disabled={busy} aria-label="Close visitor support">×</button><p className="sv4-kicker">Visitor support</p><h2 id="visitor-support-title">Tell us what happened</h2><div className="sv5-dialog-body"><p>Send the facility team a clear message about a payment, verification, device, or visit problem. Your request is saved securely and linked to your account.</p>{loading ? <p>Loading support options…</p> : <form className="sv4-support-form" onSubmit={(event) => void submit(event)}><label>What do you need help with?<select value={category} onChange={(event) => setCategory(event.target.value as typeof category)}><option value="VISIT">Visit or schedule</option><option value="DEVICE">Camera, microphone, or connection</option><option value="VERIFICATION">Identity or connection review</option><option value="PAYMENT">Payment or Visit Credits</option><option value="OTHER">Something else</option></select></label><label>Facility<select value={facilityId} onChange={(event) => setFacilityId(event.target.value)} required>{facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}</select></label><label>Related visit <span>Optional</span><select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}><option value="">No specific visit</option>{appointments.map((appointment) => <option key={appointment.id} value={appointment.id}>{appointment.prisoner_name} · {new Date(appointment.requested_start).toLocaleDateString("id-ID")}</option>)}</select></label><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} minLength={4} maxLength={160} required placeholder="For example: My camera will not turn on" /></label><label>Message<textarea value={message} onChange={(event) => setMessage(event.target.value)} minLength={8} maxLength={2000} required placeholder="Tell the facility team what happened and what you need next." /></label>{error && <p className="sv4-request-error" role="alert">{error}</p>}<div className="sv5-dialog-actions"><button type="button" className="sv11-back-button" onClick={onClose} disabled={busy}>Cancel</button><button type="submit" className="sv4-button sv4-button-primary" disabled={busy || !facilityId}>{busy ? "Sending…" : "Send support request"}</button></div></form>}{cases.length > 0 && <div className="sv4-support-history"><strong>Your recent requests</strong>{cases.slice(0, 3).map((supportCase) => <div key={supportCase.id}><span><b>{supportCase.title}</b><small>{supportCase.facility_name} · {new Date(supportCase.created_at).toLocaleDateString("id-ID")}</small></span><VisitorStatus tone={supportCase.status === "RESOLVED" || supportCase.status === "CLOSED" ? "green" : "orange"}>{supportCase.status.replaceAll("_", " ")}</VisitorStatus></div>)}</div>}</div></section></div>;
 }
 
 function QuickAction({ icon, title, copy, onClick, tone }: { icon: string; title: string; copy: string; onClick: () => void; tone: string }) {

@@ -53,7 +53,8 @@ test("staff and provider joins preserve facility integrity", async () => {
   assert.match(visitorWaitingRoom, /visitor-waiting-room:\$\{visitor\.userId\}:\$\{current\.facility_id\}:\$\{appointmentId\}/);
   const videoSession = await readFile(new URL("../lib/server/video/session.ts", import.meta.url), "utf8");
   assert.match(videoSession, /a\.id = vs\.appointment_id AND a\.facility_id = vs\.facility_id/);
-  assert.match(incidents, /reporter\.id = i\.reporter_user_id AND reporter\.user_type = 'STAFF'/);
+  assert.match(incidents, /LEFT JOIN users reporter ON reporter\.id = i\.reporter_user_id/);
+  assert.match(incidents, /reporter\.user_type AS reporter_type/);
   assert.match(incidents, /assignee\.id = i\.assigned_user_id AND assignee\.user_type = 'STAFF'/);
   assert.match(incidents, /FROM appointments WHERE id = \? AND facility_id = \?/);
   assert.match(incidents, /FROM visit_sessions WHERE id = \? AND facility_id = \?/);

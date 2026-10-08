@@ -12,8 +12,8 @@ export async function GET(request: Request) {
     const status = new URL(request.url).searchParams.get("status")?.trim();
     const d1 = await getD1();
     const result = status
-      ? await d1.prepare(`SELECT i.*, reporter.display_name AS reporter_name, assignee.display_name AS assignee_name FROM incidents i INNER JOIN users reporter ON reporter.id = i.reporter_user_id AND reporter.user_type = 'STAFF' LEFT JOIN users assignee ON assignee.id = i.assigned_user_id AND assignee.user_type = 'STAFF' WHERE i.facility_id = ? AND i.status = ? ORDER BY i.created_at DESC`).bind(authorization.facilityId, status).all()
-      : await d1.prepare(`SELECT i.*, reporter.display_name AS reporter_name, assignee.display_name AS assignee_name FROM incidents i INNER JOIN users reporter ON reporter.id = i.reporter_user_id AND reporter.user_type = 'STAFF' LEFT JOIN users assignee ON assignee.id = i.assigned_user_id AND assignee.user_type = 'STAFF' WHERE i.facility_id = ? ORDER BY i.created_at DESC`).bind(authorization.facilityId).all();
+      ? await d1.prepare(`SELECT i.*, reporter.display_name AS reporter_name, reporter.user_type AS reporter_type, assignee.display_name AS assignee_name FROM incidents i LEFT JOIN users reporter ON reporter.id = i.reporter_user_id LEFT JOIN users assignee ON assignee.id = i.assigned_user_id AND assignee.user_type = 'STAFF' WHERE i.facility_id = ? AND i.status = ? ORDER BY i.created_at DESC`).bind(authorization.facilityId, status).all()
+      : await d1.prepare(`SELECT i.*, reporter.display_name AS reporter_name, reporter.user_type AS reporter_type, assignee.display_name AS assignee_name FROM incidents i LEFT JOIN users reporter ON reporter.id = i.reporter_user_id LEFT JOIN users assignee ON assignee.id = i.assigned_user_id AND assignee.user_type = 'STAFF' WHERE i.facility_id = ? ORDER BY i.created_at DESC`).bind(authorization.facilityId).all();
     return securityResponse({ incidents: result.results, facilityId: authorization.facilityId }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }

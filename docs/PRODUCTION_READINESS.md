@@ -17,7 +17,7 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run test:quick`: 417 application tests passed. `npm run verify:release` reports 418 total tests because it also counts the migration-verification subtest.
+- `npm run test:quick`: 419 application tests passed. `npm run verify:release` reports 420 total tests because it also counts the migration-verification subtest.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
