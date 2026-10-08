@@ -312,6 +312,7 @@ async function processOutbox(env: Env): Promise<void> {
         const channel = visitor.email_verified_at && visitor.email ? "EMAIL" : visitor.phone_verified_at && visitor.phone ? "SMS" : null;
         if (!channel) throw new Error("NOTIFICATION_RECIPIENT_NOT_FOUND");
         const notificationDelivery = await getNotificationDelivery(channel);
+        await env.DB.prepare("UPDATE notification_delivery_attempts SET provider = ? WHERE id = ? AND status = 'PROCESSING'").bind(notificationDelivery, externalAttemptId).run();
         if (notificationDelivery !== "in_app") {
           const externalNotificationKey = `${row.id}:visitor:${channel.toLowerCase()}`;
           const alreadyDelivered = await env.DB.prepare("SELECT id FROM notifications WHERE idempotency_key = ? AND status = 'DELIVERED' LIMIT 1").bind(externalNotificationKey).first<{ id: string }>();

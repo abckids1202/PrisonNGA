@@ -55,8 +55,8 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const notification = await d1.prepare(`SELECT nda.id, nda.status, oe.facility_id, oe.event_type
       FROM notification_delivery_attempts nda INNER JOIN outbox_events oe ON oe.id = nda.outbox_event_id
-      WHERE nda.provider_reference = ? ORDER BY nda.started_at DESC LIMIT 1`).bind(payload.providerReference).first<{ id: string; status: string; facility_id: string | null; event_type: string }>();
-    const challenge = await d1.prepare(`SELECT id, challenge_id, status FROM auth_challenge_delivery_attempts WHERE provider_reference = ? ORDER BY created_at DESC LIMIT 1`).bind(payload.providerReference).first<{ id: string; challenge_id: string; status: string }>();
+      WHERE nda.provider_reference = ? AND nda.provider = ? ORDER BY nda.started_at DESC LIMIT 1`).bind(payload.providerReference, payload.provider).first<{ id: string; status: string; facility_id: string | null; event_type: string }>();
+    const challenge = await d1.prepare(`SELECT id, challenge_id, status FROM auth_challenge_delivery_attempts WHERE provider_reference = ? AND provider = ? ORDER BY created_at DESC LIMIT 1`).bind(payload.providerReference, payload.provider).first<{ id: string; challenge_id: string; status: string }>();
     if (!notification && !challenge) return securityResponse({ accepted: true, matched: false, eventId: payload.eventId }, 202, context.requestId);
     const statements: D1PreparedStatement[] = [];
     if (notification) {

@@ -27,7 +27,7 @@ const requiredColumns: Record<string, string[]> = {
   idempotency_records: ["processing_started_at"],
   auth_sessions: ["revoked_at"],
   outbox_events: ["attempt_count", "next_attempt_at"],
-  notification_delivery_attempts: ["provider_reference", "provider_status", "status_updated_at"],
+  notification_delivery_attempts: ["provider", "provider_reference", "provider_status", "status_updated_at"],
   auth_challenge_delivery_attempts: ["provider_reference", "provider_status", "status_updated_at"],
 };
 
