@@ -32,6 +32,11 @@ test("staging and production fail closed until every required provider is config
   }
 });
 
+test("staging and production do not require a global credit price", () => {
+  const result = validateEnvironment({ ...withDatabase, SECUREVISIT_ENVIRONMENT: "staging" });
+  assert.equal(result.missing.includes("VISIT_CREDIT_PRICE_MINOR"), false);
+});
+
 test("institutional OIDC configuration requires a confidential client secret", () => {
   const base = {
     ...withDatabase,
