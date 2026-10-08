@@ -15,6 +15,8 @@ To choose a port, pass it through to Vinext, for example `npm run dev -- --port 
 
 For a new local checkout, `npm run dev:local -- --port 5174` applies the local D1 migrations, loads the fictional development seed, and then starts the same full-stack server. It is safe to run repeatedly; migrations and seed operations are idempotent.
 
+If you want to exercise a real LiveKit development project locally, set `VIDEO_PROVIDER=livekit`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` in the ignored `.env.local`. The local Worker receives those values server-side; the credentials are not exposed to the browser. Staging and production must use separately managed Cloudflare secrets.
+
 The production checks are:
 
 ```bash

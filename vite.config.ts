@@ -26,10 +26,16 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const environmentVars: Record<string, string> = {};
 for (const key of [
   "SECUREVISIT_ENVIRONMENT",
+  "VIDEO_PROVIDER",
   // The LiveKit URL is public endpoint configuration (the API key and
   // secret remain server-side secrets). Forwarding it keeps the Worker CSP
   // and provider validation aligned with the local/staging environment.
   "LIVEKIT_URL",
+  // These values are forwarded only into the server-side local Worker
+  // isolate; they are never exposed through Vite's client env mechanism.
+  // Production deployments must use Wrangler/Cloudflare secrets instead.
+  "LIVEKIT_API_KEY",
+  "LIVEKIT_API_SECRET",
   "VISITOR_AUTH_DELIVERY",
   "PAYMENT_PROVIDER",
   "PAYMENT_CHECKOUT_URL",
