@@ -3,6 +3,7 @@ const FEDERATION_CALLBACKS = new Set([
   "/api/auth/staff/saml/callback",
   "/api/webhooks/livekit",
   "/api/webhooks/payments",
+  "/api/webhooks/notifications/status",
 ]);
 
 function hasCookie(cookieHeader: string | null, name: string): boolean {

@@ -106,6 +106,9 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
     requireSecret(env, "VISITOR_SMS_TWILIO_AUTH_TOKEN", missing);
     if (!value(env, "VISITOR_SMS_TWILIO_FROM") && !value(env, "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID")) missing.push("VISITOR_SMS_TWILIO_FROM or VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID");
   }
+  if (notificationDeliveries.some((delivery) => ["resend", "twilio"].includes(delivery)) || visitorDeliveries.some((delivery) => ["resend", "twilio"].includes(delivery))) {
+    requireSecret(env, "NOTIFICATION_STATUS_WEBHOOK_SECRET", missing);
+  }
   const staffProvider = value(env, "STAFF_AUTH_PROVIDER").toLowerCase();
   const staffProviders = staffProvider === "both" ? ["oidc", "saml"] : [staffProvider];
   if (!staffProvider) missing.push("STAFF_AUTH_PROVIDER");
