@@ -26,6 +26,10 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const environmentVars: Record<string, string> = {};
 for (const key of [
   "SECUREVISIT_ENVIRONMENT",
+  // The LiveKit URL is public endpoint configuration (the API key and
+  // secret remain server-side secrets). Forwarding it keeps the Worker CSP
+  // and provider validation aligned with the local/staging environment.
+  "LIVEKIT_URL",
   "VISITOR_AUTH_DELIVERY",
   "PAYMENT_PROVIDER",
   "PAYMENT_CHECKOUT_URL",
