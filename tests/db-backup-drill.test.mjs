@@ -11,6 +11,8 @@ test("database backup drill refuses direct remote restore and reorders exports s
   assert.match(source, /RESTORE_OK/);
   assert.match(source, /INTEGRITY_OK/);
   assert.match(source, /pragma_foreign_key_check/);
+  assert.match(source, /LEDGER_OK/);
+  assert.match(source, /AUDIT_OK/);
 });
 
 test("package scripts expose explicit local backup, remote backup, and restore-drill commands", async () => {

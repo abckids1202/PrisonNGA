@@ -112,7 +112,13 @@ if (action === "backup") {
     const foreignKeys = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", "SELECT COUNT(*) AS foreign_key_violations FROM pragma_foreign_key_check();", "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });
     const foreignKeyOutput = `${foreignKeys.stdout || ""}\n${foreignKeys.stderr || ""}`;
     if (foreignKeys.error || foreignKeys.status !== 0 || !/foreign_key_violations["\s:]+0/i.test(foreignKeyOutput)) fail(`Restore completed, but foreign-key consistency check returned violations. Output: ${foreignKeyOutput.slice(-500)}`);
-    console.log(`Restore drill passed. Verified schema consistency and foreign-key integrity in disposable database: ${persistTo}`);
+    const ledger = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", "SELECT CASE WHEN (SELECT COUNT(*) FROM credit_accounts ca WHERE ca.available_credits < 0 OR ca.reserved_credits < 0 OR ca.available_credits <> (SELECT COALESCE(SUM(cle.amount), 0) FROM credit_ledger_entries cle WHERE cle.credit_account_id = ca.id) OR ca.reserved_credits <> (SELECT COUNT(*) FROM credit_ledger_entries r WHERE r.credit_account_id = ca.id AND r.entry_type = 'RESERVATION' AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries t WHERE t.appointment_id = r.appointment_id AND t.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION')))) = 0 THEN 'LEDGER_OK' ELSE 'LEDGER_INCOMPLETE' END AS ledger_status;", "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });
+    const ledgerOutput = `${ledger.stdout || ""}\n${ledger.stderr || ""}`;
+    if (ledger.error || ledger.status !== 0 || !/LEDGER_OK/i.test(ledgerOutput)) fail(`Restore completed, but credit ledger consistency verification did not return LEDGER_OK. Output: ${ledgerOutput.slice(-500)}`);
+    const audit = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", "SELECT CASE WHEN (SELECT COUNT(*) FROM audit_events WHERE correlation_id IS NULL OR trim(correlation_id) = '' OR (old_values IS NOT NULL AND json_valid(old_values) = 0) OR (new_values IS NOT NULL AND json_valid(new_values) = 0)) = 0 THEN 'AUDIT_OK' ELSE 'AUDIT_INCOMPLETE' END AS audit_status;", "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });
+    const auditOutput = `${audit.stdout || ""}\n${audit.stderr || ""}`;
+    if (audit.error || audit.status !== 0 || !/AUDIT_OK/i.test(auditOutput)) fail(`Restore completed, but audit integrity verification did not return AUDIT_OK. Output: ${auditOutput.slice(-500)}`);
+    console.log(`Restore drill passed. Verified schema, foreign-key, credit-ledger, and audit integrity in disposable database: ${persistTo}`);
   } finally {
     await rm(configPath, { force: true });
     await rm(persistTo, { recursive: true, force: true });
