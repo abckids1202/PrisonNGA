@@ -52,10 +52,17 @@ test("visitor phone verification binds the challenge to the visitor and persists
   assert.match(route, /visitor-contact-verification:\$\{visitor\.userId\}:\$\{code\}/);
   assert.match(route, /UPDATE users SET phone = \?, phone_verified_at = \?/);
   assert.doesNotMatch(route, /phone IS NULL OR phone =/);
+  assert.match(route, /SELECT id FROM users WHERE phone = \? AND id <> \? LIMIT 1/);
   assert.match(route, /UPDATE visitor_profiles SET phone = \?, phone_verified_at = \?/);
   assert.match(route, /VISITOR_PHONE_VERIFIED/);
   assert.match(route, /auditAndOutboxStatements/);
   assert.doesNotMatch(route, /console\.log|console\.error/);
+});
+
+test("visitor account clears phone verification as soon as the entered number changes", async () => {
+  const source = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /setProfile\(\(current\) => current \? \{ \.\.\.current, phoneVerifiedAt: null \} : current\)/);
+  assert.match(source, /setPhoneChallengeId\(""\)/);
 });
 
 test("visitor phone verification uses the provider-neutral SMS delivery boundary", async () => {

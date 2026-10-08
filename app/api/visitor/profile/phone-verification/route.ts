@@ -32,7 +32,10 @@ export async function POST(request: Request) {
     const owner = await d1.prepare("SELECT id, phone, phone_verified_at FROM users WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'").bind(visitor.userId).first<{ id: string; phone: string | null; phone_verified_at: string | null }>();
     if (!owner) throw new SecurityError("VISITOR_ACCOUNT_NOT_FOUND", 404);
     if (owner.phone === phone && owner.phone_verified_at) return securityResponse({ alreadyVerified: true, destination: maskPhone(phone) }, 200, context.requestId);
-    const conflict = await d1.prepare("SELECT id FROM users WHERE phone = ? AND id <> ? AND user_type = 'VISITOR' AND status = 'ACTIVE' LIMIT 1").bind(phone, visitor.userId).first();
+    // `users.phone` is globally unique, including staff and disabled records.
+    // Keep the response generic so this does not become an account-enumeration
+    // oracle, while still failing before the later unique-index write.
+    const conflict = await d1.prepare("SELECT id FROM users WHERE phone = ? AND id <> ? LIMIT 1").bind(phone, visitor.userId).first();
     if (conflict) throw new SecurityError("PHONE_ALREADY_IN_USE", 409);
     const destinationHash = await hashIdentifier(`sms:${phone}`, salt);
     const recent = await d1.prepare("SELECT COUNT(*) AS count FROM auth_challenges WHERE user_id = ? AND purpose = 'CONTACT_VERIFICATION' AND julianday(created_at) > julianday('now', '-15 minutes')").bind(visitor.userId).first<{ count: number }>();

@@ -885,7 +885,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
       <form onSubmit={(event) => void saveProfile(event)}>
         <label>Legal name<input autoComplete="name" required minLength={2} maxLength={160} value={legalName} onChange={(event) => setLegalName(event.target.value)} /></label>
         <label>Name you go by <span className="sv4-field-optional">Optional</span><input autoComplete="nickname" maxLength={120} value={preferredName} onChange={(event) => setPreferredName(event.target.value)} /></label>
-        <label>Mobile number<input autoComplete="tel" type="tel" maxLength={40} value={phone} onChange={(event) => { setPhone(event.target.value); setPhoneChallengeId(""); setPhoneVerificationError(""); }} placeholder="Add a number for visit updates" /><small>{profile?.phoneVerifiedAt ? "Verified contact" : "Not verified yet — saving a number does not verify ownership."}</small></label>
+        <label>Mobile number<input autoComplete="tel" type="tel" maxLength={40} value={phone} onChange={(event) => { setPhone(event.target.value); setProfile((current) => current ? { ...current, phoneVerifiedAt: null } : current); setPhoneChallengeId(""); setPhoneVerificationError(""); }} placeholder="Add a number for visit updates" /><small>{profile?.phoneVerifiedAt ? "Verified contact" : "Not verified yet — saving a number does not verify ownership."}</small></label>
         {error && <p className="sv4-request-error" role="alert">{error}</p>}
         <button className="sv4-button sv4-button-primary" disabled={loading || saving}>{saving ? "Saving…" : loading ? "Loading profile…" : "Save changes"}</button>
       </form>
