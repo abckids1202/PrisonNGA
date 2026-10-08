@@ -71,6 +71,17 @@ function applyTransportSecurityHeader(response: Response, request: Request, envi
   }
 }
 
+function applyWorkerSecurityHeaders(response: Response, request: Request, env: Env, environment: string, requestId: string): void {
+  response.headers.set("Content-Security-Policy", `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' ${liveKitConnectSources(env)}`);
+  response.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-XSS-Protection", "0");
+  response.headers.set("X-Request-Id", requestId);
+  applyTransportSecurityHeader(response, request, environment);
+}
+
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; visitor_joined: number; facility_joined: number; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
@@ -603,27 +614,27 @@ const worker = {
     if (!isHealthProbe && (environmentCheck.environment === "invalid" || (!environmentCheck.ok && environmentCheck.environment !== "development"))) {
       operationalLog("error", { event: "ENVIRONMENT_VALIDATION_FAILED", requestId, correlationId: requestId, missing: environmentCheck.missing });
       const response = Response.json({ error: "SERVICE_NOT_READY" }, { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
-      response.headers.set("X-Request-Id", requestId);
-      applyTransportSecurityHeader(response, routedRequest, environmentCheck.environment);
+      applyWorkerSecurityHeaders(response, routedRequest, env, environmentCheck.environment, requestId);
       return response;
     }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      return handleImageOptimization(routedRequest, {
+      const imageResponse = await handleImageOptimization(routedRequest, {
         fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, routedRequest.url))),
         transformImage: async (body, { width, format, quality }) => {
           const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
           return result.response();
         },
       }, allowedWidths);
+      const securedImageResponse = new Response(imageResponse.body, imageResponse);
+      applyWorkerSecurityHeaders(securedImageResponse, routedRequest, env, environmentCheck.environment, requestId);
+      return securedImageResponse;
     }
 
     if (!isSameOriginMutation(routedRequest)) {
       const response = Response.json({ error: "CSRF_ORIGIN_INVALID" }, { status: 403, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
-      response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-      response.headers.set("X-Request-Id", requestId);
-      applyTransportSecurityHeader(response, routedRequest, environmentCheck.environment);
+      applyWorkerSecurityHeaders(response, routedRequest, env, environmentCheck.environment, requestId);
       return response;
     }
 
@@ -635,8 +646,7 @@ const worker = {
       } catch (error) {
         if (error instanceof Error && error.name === "SecurityError") {
           const response = Response.json({ error: error.message, requestId }, { status: 413, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Request-Id": requestId } });
-          response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-          applyTransportSecurityHeader(response, routedRequest, environmentCheck.environment);
+          applyWorkerSecurityHeaders(response, routedRequest, env, environmentCheck.environment, requestId);
           return response;
         }
         throw error;
@@ -649,22 +659,11 @@ const worker = {
     } catch (error) {
       operationalLog("error", { event: "REQUEST_HANDLER_FAILED", requestId, correlationId: requestId, error });
       const failedResponse = Response.json({ error: "INTERNAL_ERROR", requestId }, { status: 500, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Request-Id": requestId } });
-      failedResponse.headers.set("Content-Security-Policy", `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' ${liveKitConnectSources(env)}`);
-      failedResponse.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
-      failedResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-      failedResponse.headers.set("X-Frame-Options", "DENY");
-      failedResponse.headers.set("X-XSS-Protection", "0");
-      applyTransportSecurityHeader(failedResponse, routedRequest, environmentCheck.environment);
+      applyWorkerSecurityHeaders(failedResponse, routedRequest, env, environmentCheck.environment, requestId);
       return failedResponse;
     }
     const securedResponse = new Response(response.body, response);
-    securedResponse.headers.set("Content-Security-Policy", `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' ${liveKitConnectSources(env)}`);
-    securedResponse.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
-    securedResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    securedResponse.headers.set("X-Content-Type-Options", "nosniff");
-    securedResponse.headers.set("X-Frame-Options", "DENY");
-    securedResponse.headers.set("X-XSS-Protection", "0");
-    applyTransportSecurityHeader(securedResponse, request, environmentCheck.environment);
+    applyWorkerSecurityHeaders(securedResponse, routedRequest, env, environmentCheck.environment, requestId);
     if (routedRequest.method !== "GET" || new URL(routedRequest.url).pathname.startsWith("/api/")) securedResponse.headers.set("Cache-Control", "no-store");
     return securedResponse;
   },

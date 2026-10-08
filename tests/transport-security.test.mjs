@@ -6,9 +6,18 @@ const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "u
 
 test("production HTTPS responses opt into HSTS while local development remains HTTP-safe", () => {
   assert.match(worker, /function applyTransportSecurityHeader\(response: Response, request: Request, environment: string\)/);
+  assert.match(worker, /function applyWorkerSecurityHeaders\(response: Response, request: Request, env: Env, environment: string, requestId: string\)/);
   assert.match(worker, /environment !== "development" && new URL\(request\.url\)\.protocol === "https:"/);
   assert.match(worker, /Strict-Transport-Security.*max-age=31536000; includeSubDomains/);
-  assert.match(worker, /applyTransportSecurityHeader\(securedResponse, request, environmentCheck\.environment\)/);
+  assert.match(worker, /applyWorkerSecurityHeaders\(securedResponse, routedRequest, env, environmentCheck\.environment, requestId\)/);
+});
+
+test("edge rejection and image responses retain the same browser security policy", () => {
+  assert.match(worker, /applyWorkerSecurityHeaders\(response, routedRequest, env, environmentCheck\.environment, requestId\)/);
+  assert.match(worker, /applyWorkerSecurityHeaders\(securedImageResponse, routedRequest, env, environmentCheck\.environment, requestId\)/);
+  assert.match(worker, /Content-Security-Policy/);
+  assert.match(worker, /Permissions-Policy/);
+  assert.match(worker, /liveKitConnectSources\(env\)/);
 });
 
 test("health probes remain routable while application traffic fails closed", () => {
