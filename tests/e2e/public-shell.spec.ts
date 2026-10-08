@@ -146,6 +146,33 @@ test("development visitor SMS OTP creates a real browser session", async ({ page
   await expect(verify.json()).resolves.toMatchObject({ authenticated: true, visitor: { displayName: "SMS Browser Visitor", phone } });
 });
 
+test("visitor can verify a phone contact and changing it removes trusted state", async ({ page }) => {
+  const email = `contact-${Date.now()}@example.test`;
+  const phone = `+62812${String(Date.now()).slice(-8)}`;
+  const replacement = `+62813${String(Date.now() + 1).slice(-8)}`;
+  const requestCode = await page.request.post("/api/auth/visitor/request", { data: { email } });
+  expect(requestCode.status()).toBe(201);
+  const challenge = await requestCode.json() as { challengeId?: string; devCode?: string };
+  const verify = await page.request.post("/api/auth/visitor/verify", { data: { challengeId: challenge.challengeId, code: challenge.devCode, displayName: "Contact Visitor" } });
+  expect(verify.status()).toBe(200);
+
+  await page.goto("/visitor");
+  await page.getByRole("button", { name: "Open account", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Contact Visitor", exact: true })).toBeVisible();
+  await page.getByLabel("Mobile number").fill(phone);
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByText("PHONE UNVERIFIED", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Send verification code", exact: true }).click();
+  await expect(page.getByLabel("Phone verification code")).toHaveValue(/^\d{6}$/);
+  await page.getByRole("button", { name: "Verify phone", exact: true }).click();
+  await expect(page.getByText("PHONE VERIFIED", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Mobile number").fill(replacement);
+  await expect(page.getByText("PHONE UNVERIFIED", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send verification code", exact: true })).toBeVisible();
+});
+
 test("visitor credit purchase is settled only by the signed webhook and is duplicate-safe", async ({ page }) => {
   const email = `payment-${Date.now()}@example.test`;
   const requestCode = await page.request.post("/api/auth/visitor/request", { data: { email } });
