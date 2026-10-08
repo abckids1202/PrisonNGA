@@ -8,6 +8,9 @@ test("visitor prisoner directory is limited to operational, configured facilitie
   assert.match(source, /INNER JOIN visit_policies vp ON vp\.facility_id = p\.facility_id/);
   assert.match(source, /f\.current_state = 'NORMAL_OPERATIONS'/);
   assert.match(source, /vr\.facility_id = p\.facility_id/);
+  assert.match(source, /const prisoners = result\.results\.map/);
+  assert.match(source, /relationship_status: record\.relationship_status/);
+  assert.doesNotMatch(source, /return securityResponse\(\{ prisoners: result\.results/);
 });
 
 test("visitor appointment types use the same operational facility boundary", async () => {
