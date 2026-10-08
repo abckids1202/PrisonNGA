@@ -22,11 +22,17 @@ const requiredTables = [
 // workflows so a partially migrated database fails closed before traffic is
 // admitted.
 const requiredColumns: Record<string, string[]> = {
+  users: ["phone", "phone_verified_at"],
+  auth_challenges: ["user_id"],
+  saml_request_cache: ["state_hash"],
+  appointments: ["last_transition_id", "policy_version", "duration_minutes"],
+  incidents: ["idempotency_key", "request_hash"],
   visit_policies: ["credit_price_minor", "credit_currency"],
-  payment_provider_events: ["processing_started_at"],
+  waiting_room_sessions: ["assigned_room_id", "assigned_kiosk_id", "visitor_presence_at", "prisoner_presence_at", "kiosk_camera_state", "kiosk_microphone_state", "kiosk_network_state", "kiosk_device_checked_at"],
+  payment_provider_events: ["attempt_count", "available_at", "last_error", "processing_started_at"],
   idempotency_records: ["processing_started_at"],
   auth_sessions: ["revoked_at"],
-  outbox_events: ["attempt_count", "next_attempt_at"],
+  outbox_events: ["attempt_count", "next_attempt_at", "processing_started_at"],
   notification_delivery_attempts: ["provider", "provider_reference", "provider_status", "status_updated_at"],
   auth_challenge_delivery_attempts: ["provider_reference", "provider_status", "status_updated_at"],
 };
