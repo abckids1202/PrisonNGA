@@ -3,6 +3,10 @@ import { copyFileSync, existsSync, readFileSync, statSync } from "node:fs";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const forwardedArgs = process.argv.slice(2);
+const portFlagIndex = forwardedArgs.findIndex((argument) => argument === "--port" || argument === "-p");
+const localPort = portFlagIndex >= 0 && /^\d+$/.test(forwardedArgs[portFlagIndex + 1] || "")
+  ? forwardedArgs[portFlagIndex + 1]
+  : "5173";
 
 if (!existsSync(".env.local") || statSync(".env.local").size === 0) {
   copyFileSync(".env.example", ".env.local");
@@ -20,6 +24,10 @@ for (const line of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
   process.env[match[1]] = rawValue.startsWith("\"") && rawValue.endsWith("\"")
     ? rawValue.slice(1, -1)
     : rawValue;
+}
+
+if (process.env.SECUREVISIT_ENVIRONMENT !== "development") {
+  throw new Error("dev:local requires SECUREVISIT_ENVIRONMENT=development; refusing to start with staging or production settings.");
 }
 
 function runScript(script, args = []) {
@@ -41,6 +49,8 @@ function runScript(script, args = []) {
 try {
   await runScript("db:migrate:local");
   await runScript("db:seed:local");
+  console.log(`SecureVisit local development server: http://localhost:${localPort}`);
+  console.log(`Visitor: http://localhost:${localPort}/visitor · Control: http://localhost:${localPort}/control · Kiosk: http://localhost:${localPort}/kiosk`);
   await runScript("dev", forwardedArgs);
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
