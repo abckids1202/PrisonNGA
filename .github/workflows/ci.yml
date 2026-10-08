@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate patch whitespace
+        run: git diff --check
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -51,4 +54,4 @@ jobs:
         run: npm run db:test:migrations:local
 
       - name: Dependency audit
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev --audit-level=high
