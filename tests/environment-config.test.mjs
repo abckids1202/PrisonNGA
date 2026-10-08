@@ -71,6 +71,7 @@ test("staging and production reject weak webhook signing secrets", () => {
     LIVEKIT_API_SECRET: "secret",
     EVIDENCE_STORAGE_PROVIDER: "r2",
     EVIDENCE_BUCKET: {},
+    EVIDENCE_RETENTION_DAYS: "365",
     EVIDENCE_SCAN_PROVIDER: "webhook",
     EVIDENCE_SCAN_WEBHOOK_URL: "https://scan.example.test/scan",
     EVIDENCE_SCAN_WEBHOOK_SECRET: "short",
@@ -89,6 +90,24 @@ test("staging and production reject weak webhook signing secrets", () => {
   assert.ok(result.missing.includes("EVIDENCE_SCAN_WEBHOOK_SECRET (must be at least 32 characters)"));
   assert.ok(result.missing.includes("PAYMENT_WEBHOOK_SECRET (must be at least 32 characters)"));
   assert.ok(result.missing.includes("NOTIFICATION_WEBHOOK_SECRET (must be at least 32 characters)"));
+});
+
+test("staging and production reject weak LiveKit secrets and unsafe retention windows", () => {
+  const result = validateEnvironment({
+    ...withDatabase,
+    SECUREVISIT_ENVIRONMENT: "staging",
+    SECUREVISIT_HASH_SALT: "x".repeat(32),
+    STAFF_STEP_UP_SECRET: "y".repeat(32),
+    VIDEO_PROVIDER: "livekit",
+    LIVEKIT_URL: "wss://securevisit.livekit.cloud",
+    LIVEKIT_API_KEY: "key",
+    LIVEKIT_API_SECRET: "short",
+    EVIDENCE_STORAGE_PROVIDER: "r2",
+    EVIDENCE_BUCKET: {},
+    EVIDENCE_RETENTION_DAYS: "0",
+  });
+  assert.ok(result.missing.includes("LIVEKIT_API_SECRET (must be at least 32 characters)"));
+  assert.ok(result.missing.includes("EVIDENCE_RETENTION_DAYS (must be an integer from 1 to 3650)"));
 });
 
 test("production endpoints reject embedded credentials, fragments, and non-HTTPS URLs", () => {
