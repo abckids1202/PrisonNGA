@@ -30,6 +30,7 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       SECUREVISIT_ENVIRONMENT: "development",
+      SECUREVISIT_E2E_ISOLATED: "true",
       VISITOR_AUTH_DELIVERY: "console",
       PAYMENT_PROVIDER: "local_test",
       PAYMENT_WEBHOOK_SECRET: "local-e2e-payment-secret",

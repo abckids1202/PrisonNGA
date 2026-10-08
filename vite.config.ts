@@ -1,5 +1,5 @@
 import vinext from "vinext";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import hostingConfig from "./.openai/hosting.json" with { type: "json" };
 import { sites } from "./build/sites-vite-plugin.ts";
 
@@ -12,6 +12,15 @@ const { d1, r2 } = hostingConfig;
 // the binding absent locally so the scheduled D1 outbox worker remains the
 // default development path.
 const notificationQueueName = process.env.NOTIFICATION_QUEUE_NAME?.trim();
+
+// Vite loads `.env.local` for application code, but the Cloudflare Worker
+// isolate only receives values explicitly copied into its `vars` binding.
+// Read the local file here as a fallback while allowing an explicit process
+// environment (for example the isolated browser release runner) to win.
+const loadedLocalEnvironment = loadEnv("development", process.cwd(), "");
+const runtimeEnvironmentValue = (key: string): string | undefined => process.env[key] || loadedLocalEnvironment[key] || undefined;
+const isolatedDevelopmentE2E = process.env.SECUREVISIT_E2E_ISOLATED === "true"
+  && runtimeEnvironmentValue("SECUREVISIT_ENVIRONMENT") === "development";
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
@@ -26,8 +35,24 @@ for (const key of [
   "PAYMENT_WEBHOOK_SECRET",
   "VISIT_CREDIT_PRICE_MINOR",
   "EVIDENCE_STORAGE_PROVIDER",
+  "SECUREVISIT_E2E_ISOLATED",
 ]) {
-  if (process.env[key]) environmentVars[key] = process.env[key];
+  const value = runtimeEnvironmentValue(key);
+  if (value) environmentVars[key] = value;
+}
+
+// The release browser suite is intentionally self-contained. Keep these
+// adapters available only to the disposable development Worker so it can
+// exercise the persisted journey without ever making them valid for staging
+// or production.
+if (isolatedDevelopmentE2E) {
+  Object.assign(environmentVars, {
+    VISITOR_AUTH_DELIVERY: "console",
+    PAYMENT_PROVIDER: "local_test",
+    PAYMENT_WEBHOOK_SECRET: "local-e2e-payment-secret",
+    VISIT_CREDIT_PRICE_MINOR: "50000",
+    EVIDENCE_STORAGE_PROVIDER: "local_test",
+  });
 }
 
 const localBindingConfig = {

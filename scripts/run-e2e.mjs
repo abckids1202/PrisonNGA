@@ -7,7 +7,18 @@ import { fileURLToPath } from "node:url";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const isolated = process.env.SECUREVISIT_E2E_ISOLATED === "true";
 const isolatedStatePath = isolated ? await mkdtemp(path.join(os.tmpdir(), "securevisit-e2e-state-")) : null;
-const childEnvironment = isolatedStatePath ? { ...process.env, SECUREVISIT_LOCAL_D1_STATE_DIR: isolatedStatePath } : process.env;
+const childEnvironment = isolatedStatePath
+  ? {
+      ...process.env,
+      SECUREVISIT_LOCAL_D1_STATE_DIR: isolatedStatePath,
+      SECUREVISIT_ENVIRONMENT: "development",
+      VISITOR_AUTH_DELIVERY: "console",
+      PAYMENT_PROVIDER: "local_test",
+      PAYMENT_WEBHOOK_SECRET: "local-e2e-payment-secret",
+      VISIT_CREDIT_PRICE_MINOR: "50000",
+      EVIDENCE_STORAGE_PROVIDER: "local_test",
+    }
+  : process.env;
 // The normal browser suite talks to the same persisted local D1 state as
 // `vinext dev`. Release verification opts into an isolated disposable state so
 // it can run while a developer's local server is open.

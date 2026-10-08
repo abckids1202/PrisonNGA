@@ -24,11 +24,16 @@ export interface PaymentProvider {
 
 export async function getPaymentProvider(): Promise<PaymentProvider | null> {
   const provider = (await runtimeValue("PAYMENT_PROVIDER")).toLowerCase();
+  const environment = await runtimeValue("SECUREVISIT_ENVIRONMENT");
+  // A fresh local checkout may still have the non-production `none` value.
+  // Keep development runnable, but never allow this fallback outside the
+  // explicitly selected development environment.
+  if ((!provider || provider === "none" || provider === "console") && environment === "development") return new LocalDevelopmentPaymentProvider();
   if (!provider || provider === "none" || provider === "console") return null;
   // This deterministic adapter exists only for local acceptance tests; staging
   // and production environment validation require the signed webhook adapter.
   if (provider === "local_test") {
-    return (await runtimeValue("SECUREVISIT_ENVIRONMENT")) === "development" ? new LocalDevelopmentPaymentProvider() : null;
+    return environment === "development" ? new LocalDevelopmentPaymentProvider() : null;
   }
   if (provider === "webhook") {
     const url = await runtimeValue("PAYMENT_CHECKOUT_URL");

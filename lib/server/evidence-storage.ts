@@ -39,6 +39,10 @@ export async function getEvidenceStore(): Promise<EvidenceStore | null> {
   const provider = (await getRuntimeValue("EVIDENCE_STORAGE_PROVIDER") || "r2").toLowerCase();
   if (provider === "local_test") return environment === "development" ? localDevelopmentStore : null;
   const bucket = await getEvidenceBucket();
+  // Local development has no R2 binding in a fresh checkout. Keep the
+  // workflow testable in memory while staging and production still require
+  // protected R2 through environment validation.
+  if (!bucket && environment === "development" && (provider === "r2" || provider === "")) return localDevelopmentStore;
   if (!bucket) return null;
   return {
     put: async (key, value, options) => { await bucket.put(key, value, options); },

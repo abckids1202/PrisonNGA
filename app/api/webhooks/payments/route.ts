@@ -9,11 +9,13 @@ import { safeOperationalErrorMessage } from "../../../../lib/server/observabilit
 export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
+    const configuredEnvironment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
+    const environment = (configuredEnvironment || "development").toLowerCase();
     const secret = await getRuntimeValue("PAYMENT_WEBHOOK_SECRET");
-    const configuredProvider = (await getRuntimeValue("PAYMENT_PROVIDER") || "").toLowerCase();
+    const rawProvider = (await getRuntimeValue("PAYMENT_PROVIDER") || "").toLowerCase();
+    const configuredProvider = rawProvider;
     if (!secret || !configuredProvider || configuredProvider === "none" || configuredProvider === "console") throw new SecurityError("PAYMENT_WEBHOOK_NOT_CONFIGURED", 503);
     const rawBody = await readTextBodyWithinLimit(request, 256 * 1024);
-    const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
     const timestampHeader = request.headers.get("x-securevisit-timestamp");
     if (environment !== "development" && !timestampHeader) throw new SecurityError("PAYMENT_WEBHOOK_TIMESTAMP_REQUIRED", 401);
     if (!await verifyPaymentWebhookSignature(rawBody, request.headers.get("x-securevisit-signature"), secret, timestampHeader)) throw new SecurityError("PAYMENT_WEBHOOK_SIGNATURE_INVALID", 401);
