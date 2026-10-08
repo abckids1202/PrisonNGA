@@ -26,7 +26,7 @@ const base = {
   VISIT_CREDIT_PRICE_MINOR: "100000",
   PAYMENT_CHECKOUT_URL: "https://payments.example.test/checkout",
   PAYMENT_REFUND_URL: "https://payments.example.test/refund",
-  PAYMENT_PROVIDER_SECRET: "payment-secret",
+  PAYMENT_PROVIDER_SECRET: "p".repeat(32),
   PAYMENT_WEBHOOK_SECRET: "w".repeat(32),
   NOTIFICATION_DELIVERY: "webhook",
   NOTIFICATION_WEBHOOK_URL: "https://notify.example.test",

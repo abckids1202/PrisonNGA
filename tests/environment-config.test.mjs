@@ -111,6 +111,7 @@ test("staging and production reject weak webhook signing secrets", () => {
   assert.ok(result.missing.includes("VISITOR_AUTH_WEBHOOK_SECRET (must be at least 32 characters)"));
   assert.ok(result.missing.includes("EVIDENCE_SCAN_WEBHOOK_SECRET (must be at least 32 characters)"));
   assert.ok(result.missing.includes("PAYMENT_WEBHOOK_SECRET (must be at least 32 characters)"));
+  assert.ok(result.missing.includes("PAYMENT_PROVIDER_SECRET (must be at least 32 characters)"));
   assert.ok(result.missing.includes("NOTIFICATION_WEBHOOK_SECRET (must be at least 32 characters)"));
 });
 

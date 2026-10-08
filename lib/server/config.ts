@@ -85,7 +85,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (value(env, "PAYMENT_PROVIDER") !== "webhook") missing.push("PAYMENT_PROVIDER=webhook");
   if (!isSecureHttpsEndpoint(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL (must be an https:// URL without credentials or fragments)");
   if (!isSecureHttpsEndpoint(value(env, "PAYMENT_REFUND_URL"))) missing.push("PAYMENT_REFUND_URL (must be an https:// URL without credentials or fragments)");
-  if (!value(env, "PAYMENT_PROVIDER_SECRET")) missing.push("PAYMENT_PROVIDER_SECRET");
+  requireSecret(env, "PAYMENT_PROVIDER_SECRET", missing);
   requireSecret(env, "PAYMENT_WEBHOOK_SECRET", missing);
   const legacyNotificationDelivery = value(env, "NOTIFICATION_DELIVERY");
   const notificationEmailDelivery = value(env, "NOTIFICATION_EMAIL_DELIVERY") || legacyNotificationDelivery;
