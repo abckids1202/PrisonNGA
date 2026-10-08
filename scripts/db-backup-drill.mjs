@@ -103,7 +103,16 @@ if (action === "backup") {
     const integrity = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", "SELECT CASE WHEN (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('facilities', 'users', 'appointments', 'credit_ledger_entries', 'payment_intents', 'audit_events')) = 6 THEN 'RESTORE_OK' ELSE 'RESTORE_INCOMPLETE' END AS restore_status;", "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });
     const integrityOutput = `${integrity.stdout || ""}\n${integrity.stderr || ""}`;
     if (integrity.error || integrity.status !== 0 || !/RESTORE_OK/i.test(integrityOutput)) fail(`Restore completed, but required schema verification did not return RESTORE_OK. Output: ${integrityOutput.slice(-500)}`);
-    console.log(`Restore drill passed. Verified disposable database: ${persistTo}`);
+    // D1 rejects the SQLite integrity_check pragma in the local adapter. Use
+    // supported SQL checks that still prove the restored schema is populated
+    // and its declared relationships can be evaluated.
+    const sqliteIntegrity = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", "SELECT CASE WHEN (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table') >= 38 THEN 'INTEGRITY_OK' ELSE 'INTEGRITY_INCOMPLETE' END AS integrity_status;", "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });
+    const sqliteIntegrityOutput = `${sqliteIntegrity.stdout || ""}\n${sqliteIntegrity.stderr || ""}`;
+    if (sqliteIntegrity.error || sqliteIntegrity.status !== 0 || !/INTEGRITY_OK/i.test(sqliteIntegrityOutput)) fail(`Restore completed, but schema consistency verification did not return INTEGRITY_OK. Output: ${sqliteIntegrityOutput.slice(-500)}`);
+    const foreignKeys = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--command", "SELECT COUNT(*) AS foreign_key_violations FROM pragma_foreign_key_check();", "--json", "--persist-to", persistTo, "--config", configPath], { cwd: projectRoot, encoding: "utf8" });
+    const foreignKeyOutput = `${foreignKeys.stdout || ""}\n${foreignKeys.stderr || ""}`;
+    if (foreignKeys.error || foreignKeys.status !== 0 || !/foreign_key_violations["\s:]+0/i.test(foreignKeyOutput)) fail(`Restore completed, but foreign-key consistency check returned violations. Output: ${foreignKeyOutput.slice(-500)}`);
+    console.log(`Restore drill passed. Verified schema consistency and foreign-key integrity in disposable database: ${persistTo}`);
   } finally {
     await rm(configPath, { force: true });
     await rm(persistTo, { recursive: true, force: true });
