@@ -19,3 +19,11 @@ test("staff incident queries include visitor-reported cases", async () => {
   assert.match(source, /reporter\.user_type AS reporter_type/);
   assert.doesNotMatch(source, /INNER JOIN users reporter ON reporter\.id = i\.reporter_user_id AND reporter\.user_type = 'STAFF'/);
 });
+
+test("visitor support outbox events resolve the visitor and use dedicated notification copy", async () => {
+  const outbox = await readFile(new URL("../lib/server/notifications/outbox.ts", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  assert.match(outbox, /row\.aggregate_type === "incident"/);
+  assert.match(outbox, /i\.incident_type = 'VISITOR_SUPPORT'/);
+  assert.match(worker, /eventType === "VISITOR_SUPPORT_CREATED"/);
+});

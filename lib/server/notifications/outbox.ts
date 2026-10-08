@@ -69,5 +69,12 @@ export async function resolveOutboxVisitorRecipient(
     return payment?.visitor_user_id || null;
   }
 
+  if (row.aggregate_type === "incident") {
+    const supportCase = await db.prepare(
+      "SELECT i.reporter_user_id AS visitor_user_id FROM incidents i INNER JOIN users u ON u.id = i.reporter_user_id AND u.user_type = 'VISITOR' WHERE i.id = ? AND i.facility_id = ? AND i.incident_type = 'VISITOR_SUPPORT'",
+    ).bind(row.aggregate_id, row.facility_id).first<{ visitor_user_id: string }>();
+    return supportCase?.visitor_user_id || null;
+  }
+
   return null;
 }
