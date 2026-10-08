@@ -13,7 +13,7 @@ const requiredTables = [
   "audit_events", "audit_export_manifests", "break_glass_requests", "outbox_events", "appointments", "prisoners", "visitor_profiles", "visitor_relationships", "verification_cases", "evidence_documents",
   "retention_policies", "legal_holds", "appointment_status_events", "resource_reservations", "resources", "kiosk_credentials", "waiting_room_sessions", "visitor_waiting_room_checkins",
   "visit_sessions", "visitor_device_check_attempts", "visit_session_events", "credit_accounts", "credit_ledger_entries", "payment_intents",
-  "payment_provider_events", "payment_refund_requests", "notification_provider_events", "notifications", "incidents", "incident_events", "step_up_assertions",
+  "payment_provider_events", "payment_refund_requests", "notification_delivery_attempts", "notification_provider_events", "notifications", "incidents", "incident_events", "step_up_assertions",
 ];
 
 // Table existence alone is not enough for a safe rollout. A database can have

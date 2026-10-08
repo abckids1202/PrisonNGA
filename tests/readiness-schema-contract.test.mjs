@@ -9,6 +9,8 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /tariffConfigured/);
   assert.match(source, /payment_provider_events: \["processing_started_at"\]/);
   assert.match(source, /idempotency_records: \["processing_started_at"\]/);
+  assert.match(source, /notification_delivery_attempts.*notification_provider_events/);
+  assert.match(source, /notification_delivery_attempts: \["provider", "provider_reference", "provider_status", "status_updated_at"\]/);
   assert.match(source, /PRAGMA table_info\(\$\{table\}\)/);
   assert.match(source, /schemaMissing: \{ tables: missingTables, columns: missingColumns \}/);
 });
