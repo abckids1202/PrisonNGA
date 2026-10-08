@@ -2,7 +2,7 @@ import { getD1 } from "../../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
-import { deliverVisitorChallenge } from "../../../../../lib/server/visitor-auth/delivery";
+import { deliverVisitorChallenge, getVisitorAuthDelivery } from "../../../../../lib/server/visitor-auth/delivery";
 
 function normalizePhone(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/[\s().-]/g, "") : "";
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       WHERE NOT EXISTS (SELECT 1 FROM auth_challenges WHERE user_id = ? AND purpose = 'CONTACT_VERIFICATION' AND consumed_at IS NULL AND julianday(created_at) > julianday('now', '-60 seconds'))`)
       .bind(challengeId, visitor.userId, phone, destinationHash, maskPhone(phone), codeHash, expiresAt, now.toISOString(), visitor.userId).run();
     if (!inserted.meta.changes) throw new SecurityError("AUTH_RETRY_TOO_SOON", 429);
-    const delivery = (await getRuntimeValue("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
+    const delivery = await getVisitorAuthDelivery("SMS");
     const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
     const attemptId = crypto.randomUUID();
     await d1.prepare("INSERT INTO auth_challenge_delivery_attempts (id, challenge_id, channel, provider, status, attempt_count, started_at) VALUES (?, ?, 'SMS', ?, 'PENDING', 1, ?)").bind(attemptId, challengeId, delivery || "unconfigured", now.toISOString()).run();
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ?").bind(new Date().toISOString(), attemptId).run();
       return securityResponse({ challengeId, destination: maskPhone(phone), expiresAt, retryAfterSeconds: 60, devCode: code }, 201, context.requestId);
     }
-    if (delivery !== "webhook") {
+    if (delivery !== "webhook" && delivery !== "twilio") {
       await d1.batch([
         d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'FAILED', error_code = 'AUTH_DELIVERY_NOT_CONFIGURED', completed_at = ? WHERE id = ?").bind(new Date().toISOString(), attemptId),
         d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId),

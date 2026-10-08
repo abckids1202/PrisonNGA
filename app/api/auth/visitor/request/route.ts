@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
-import { deliverVisitorChallenge } from "../../../../../lib/server/visitor-auth/delivery";
+import { deliverVisitorChallenge, getVisitorAuthDelivery } from "../../../../../lib/server/visitor-auth/delivery";
 
 function normalizeEmail(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     if (!inserted.meta.changes) throw new SecurityError("AUTH_RETRY_TOO_SOON", 429);
     const responseBody: Record<string, unknown> = { challengeId, channel, destination: channel === "EMAIL" ? maskEmail(email) : maskPhone(phone), expiresAt, retryAfterSeconds: 60 };
     const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
-    const delivery = (await getRuntimeValue("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
+    const delivery = await getVisitorAuthDelivery(channel as "EMAIL" | "SMS");
     const deliveryAttemptId = crypto.randomUUID();
     const startedAt = new Date().toISOString();
     try {
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     if (delivery === "console" && environment === "development") {
       responseBody.devCode = code;
       await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
-    } else if (delivery === "webhook") {
+    } else if (delivery === "webhook" || delivery === "resend" || delivery === "twilio") {
       try {
         await deliverVisitorChallenge({ channel: channel as "EMAIL" | "SMS", challengeId, destination, code, expiresAt });
       } catch {

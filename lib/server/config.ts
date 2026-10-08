@@ -46,11 +46,27 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (value(env, "SECUREVISIT_HASH_SALT").length < 32) missing.push("SECUREVISIT_HASH_SALT");
   if (value(env, "STAFF_STEP_UP_SECRET").length < 32) missing.push("STAFF_STEP_UP_SECRET");
   if (!isSecureHttpsEndpoint(value(env, "PUBLIC_APP_URL"))) missing.push("PUBLIC_APP_URL (must be an https:// URL without credentials or fragments)");
-  const visitorDelivery = value(env, "VISITOR_AUTH_DELIVERY");
-  if (visitorDelivery !== "webhook") missing.push("VISITOR_AUTH_DELIVERY=webhook");
-  if (visitorDelivery === "webhook") {
+  const legacyVisitorDelivery = value(env, "VISITOR_AUTH_DELIVERY");
+  const visitorEmailDelivery = value(env, "VISITOR_EMAIL_DELIVERY") || legacyVisitorDelivery;
+  const visitorSmsDelivery = value(env, "VISITOR_SMS_DELIVERY") || legacyVisitorDelivery;
+  const visitorDeliveries = [visitorEmailDelivery, visitorSmsDelivery];
+  if (!legacyVisitorDelivery && !visitorEmailDelivery && !visitorSmsDelivery) {
+    missing.push("VISITOR_AUTH_DELIVERY=webhook");
+  } else if (!visitorEmailDelivery || !visitorSmsDelivery || !visitorDeliveries.every((delivery) => ["webhook", "resend", "twilio"].includes(delivery)) || !["webhook", "resend"].includes(visitorEmailDelivery) || !["webhook", "twilio"].includes(visitorSmsDelivery)) {
+    missing.push("VISITOR_AUTH_DELIVERY=webhook, or configure VISITOR_EMAIL_DELIVERY/VISITOR_SMS_DELIVERY");
+  }
+  if (visitorDeliveries.includes("webhook")) {
     if (!isSecureHttpsEndpoint(value(env, "VISITOR_AUTH_WEBHOOK_URL"))) missing.push("VISITOR_AUTH_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
     requireSecret(env, "VISITOR_AUTH_WEBHOOK_SECRET", missing);
+  }
+  if (visitorEmailDelivery === "resend") {
+    if (!value(env, "RESEND_API_KEY")) missing.push("RESEND_API_KEY");
+    if (!value(env, "VISITOR_EMAIL_FROM")) missing.push("VISITOR_EMAIL_FROM");
+  }
+  if (visitorSmsDelivery === "twilio") {
+    if (!value(env, "VISITOR_SMS_TWILIO_ACCOUNT_SID")) missing.push("VISITOR_SMS_TWILIO_ACCOUNT_SID");
+    requireSecret(env, "VISITOR_SMS_TWILIO_AUTH_TOKEN", missing);
+    if (!value(env, "VISITOR_SMS_TWILIO_FROM") && !value(env, "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID")) missing.push("VISITOR_SMS_TWILIO_FROM or VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID");
   }
   if (value(env, "VIDEO_PROVIDER") !== "livekit") missing.push("VIDEO_PROVIDER=livekit");
   if (!validLiveKitUrl(value(env, "LIVEKIT_URL"))) missing.push("LIVEKIT_URL (must be an https:// or wss:// URL without credentials)");

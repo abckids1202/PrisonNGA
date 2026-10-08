@@ -17,7 +17,7 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run test:quick`: 427 application tests passed. `npm run verify:release` should report 428 total tests because it also counts the migration-verification subtest.
+- `npm run test:quick`: 428 application tests passed. `npm run verify:release` should report 429 total tests because it also counts the migration-verification subtest.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
@@ -32,11 +32,13 @@ This evidence proves the repository workflows and local failure handling remain 
 
 ### Visitor email/SMS delivery
 
-Configure `VISITOR_AUTH_DELIVERY=webhook` with an HTTPS adapter. SecureVisit sends:
+Configure either the signed HTTPS adapter (`VISITOR_AUTH_DELIVERY=webhook`) or the direct adapters (`VISITOR_EMAIL_DELIVERY=resend` and/or `VISITOR_SMS_DELIVERY=twilio`). The signed adapter receives:
 
 - `x-securevisit-timestamp`: Unix timestamp in seconds.
 - `x-securevisit-signature`: `sha256=<HMAC-SHA256(timestamp + "." + raw body)>`.
 - `idempotency-key`: `visitor-auth:<challengeId>`.
+
+The direct adapters call Resend and Twilio from the Worker using server-only credentials and the same challenge idempotency key. Direct provider credentials must be configured separately for each channel; they are never returned to the browser.
 
 The adapter must validate the timestamp within a five-minute replay window, verify the signature over the raw body, deduplicate the idempotency key, and return a 2xx response only after accepting the message for delivery. It must never log the OTP.
 

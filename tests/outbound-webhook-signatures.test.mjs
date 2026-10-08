@@ -15,6 +15,8 @@ test("outbound visitor, payment, and notification webhooks bind signatures to a 
   const calls = [];
   const originalFetch = globalThis.fetch;
   process.env.SECUREVISIT_ENVIRONMENT = "staging";
+  process.env.VISITOR_EMAIL_DELIVERY = "webhook";
+  process.env.VISITOR_SMS_DELIVERY = "webhook";
   process.env.VISITOR_AUTH_WEBHOOK_URL = "https://auth.example.test/send";
   process.env.VISITOR_AUTH_WEBHOOK_SECRET = "visitor-secret";
   process.env.PAYMENT_PROVIDER = "webhook";
@@ -63,6 +65,8 @@ test("outbound providers reject unsafe endpoint configuration before sending dat
   const originalFetch = globalThis.fetch;
   let calls = 0;
   process.env.SECUREVISIT_ENVIRONMENT = "staging";
+  process.env.VISITOR_EMAIL_DELIVERY = "webhook";
+  process.env.VISITOR_SMS_DELIVERY = "webhook";
   process.env.VISITOR_AUTH_WEBHOOK_URL = "https://user:pass@auth.example.test/send";
   process.env.VISITOR_AUTH_WEBHOOK_SECRET = "visitor-secret";
   process.env.PAYMENT_PROVIDER = "webhook";
@@ -77,6 +81,47 @@ test("outbound providers reject unsafe endpoint configuration before sending dat
     assert.equal(await getPaymentProvider(), null);
     await assert.rejects(() => deliverNotification({ notificationId: "notification-unsafe", email: "visitor@example.test", phone: null, template: "TEST", title: "Test", body: "Test", payload: {} }), /NOTIFICATION_DELIVERY_NOT_CONFIGURED/);
     assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previous)) delete process.env[key];
+    }
+    Object.assign(process.env, previous);
+  }
+});
+
+test("direct visitor auth adapters send email through Resend and SMS through Twilio", async () => {
+  const previous = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  Object.assign(process.env, {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    VISITOR_AUTH_DELIVERY: "",
+    VISITOR_EMAIL_DELIVERY: "resend",
+    VISITOR_SMS_DELIVERY: "twilio",
+    RESEND_API_KEY: "re_test_key",
+    VISITOR_EMAIL_FROM: "SecureVisit <no-reply@example.test>",
+    VISITOR_SMS_TWILIO_ACCOUNT_SID: "AC1234567890",
+    VISITOR_SMS_TWILIO_AUTH_TOKEN: "t".repeat(32),
+    VISITOR_SMS_TWILIO_FROM: "+15005550006",
+  });
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ id: "provider-message-1" }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    await deliverVisitorChallenge({ channel: "EMAIL", challengeId: "resend-challenge", destination: "visitor@example.test", code: "123456", expiresAt: "2026-09-24T12:00:00.000Z" });
+    await deliverVisitorChallenge({ channel: "SMS", challengeId: "twilio-challenge", destination: "+6281234567890", code: "654321", expiresAt: "2026-09-24T12:00:00.000Z" });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].url, "https://api.resend.com/emails");
+    assert.equal(new Headers(calls[0].init.headers).get("idempotency-key"), "securevisit-auth:resend-challenge");
+    assert.match(String(calls[0].init.body), /123456/);
+    assert.match(new Headers(calls[0].init.headers).get("authorization") || "", /^Bearer /);
+    assert.match(calls[1].url, /api\.twilio\.com\/2010-04-01\/Accounts\/AC1234567890\/Messages\.json$/);
+    assert.equal(new Headers(calls[1].init.headers).get("idempotency-key"), "securevisit-auth:twilio-challenge");
+    assert.match(new Headers(calls[1].init.headers).get("authorization") || "", /^Basic /);
+    assert.match(String(calls[1].init.body), /To=%2B6281234567890/);
+    assert.match(String(calls[1].init.body), /654321/);
   } finally {
     globalThis.fetch = originalFetch;
     for (const key of Object.keys(process.env)) {
