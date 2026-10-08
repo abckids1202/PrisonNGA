@@ -22,6 +22,10 @@ function value(env: RuntimeConfig, key: string): string {
   return typeof candidate === "string" ? candidate.trim() : "";
 }
 
+function requireSecret(env: RuntimeConfig, key: string, missing: string[], minimumLength = 32): void {
+  if (value(env, key).length < minimumLength) missing.push(`${key} (must be at least ${minimumLength} characters)`);
+}
+
 export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   const configuredEnvironment = value(env, "SECUREVISIT_ENVIRONMENT");
   const environment = configuredEnvironment === "production" || configuredEnvironment === "staging" || configuredEnvironment === "development"
@@ -46,7 +50,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (visitorDelivery !== "webhook") missing.push("VISITOR_AUTH_DELIVERY=webhook");
   if (visitorDelivery === "webhook") {
     if (!isSecureHttpsEndpoint(value(env, "VISITOR_AUTH_WEBHOOK_URL"))) missing.push("VISITOR_AUTH_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
-    if (!value(env, "VISITOR_AUTH_WEBHOOK_SECRET")) missing.push("VISITOR_AUTH_WEBHOOK_SECRET");
+    requireSecret(env, "VISITOR_AUTH_WEBHOOK_SECRET", missing);
   }
   if (value(env, "VIDEO_PROVIDER") !== "livekit") missing.push("VIDEO_PROVIDER=livekit");
   if (!validLiveKitUrl(value(env, "LIVEKIT_URL"))) missing.push("LIVEKIT_URL (must be an https:// or wss:// URL without credentials)");
@@ -57,7 +61,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (evidenceScanProvider !== "webhook") missing.push("EVIDENCE_SCAN_PROVIDER=webhook");
   if (evidenceScanProvider === "webhook") {
     if (!isSecureHttpsEndpoint(value(env, "EVIDENCE_SCAN_WEBHOOK_URL"))) missing.push("EVIDENCE_SCAN_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
-    if (!value(env, "EVIDENCE_SCAN_WEBHOOK_SECRET")) missing.push("EVIDENCE_SCAN_WEBHOOK_SECRET");
+    requireSecret(env, "EVIDENCE_SCAN_WEBHOOK_SECRET", missing);
   }
   if (value(env, "PAYMENT_PROVIDER") !== "webhook") missing.push("PAYMENT_PROVIDER=webhook");
   const visitCreditPrice = Number(value(env, "VISIT_CREDIT_PRICE_MINOR"));
@@ -65,10 +69,10 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (!isSecureHttpsEndpoint(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL (must be an https:// URL without credentials or fragments)");
   if (!isSecureHttpsEndpoint(value(env, "PAYMENT_REFUND_URL"))) missing.push("PAYMENT_REFUND_URL (must be an https:// URL without credentials or fragments)");
   if (!value(env, "PAYMENT_PROVIDER_SECRET")) missing.push("PAYMENT_PROVIDER_SECRET");
-  if (!value(env, "PAYMENT_WEBHOOK_SECRET")) missing.push("PAYMENT_WEBHOOK_SECRET");
+  requireSecret(env, "PAYMENT_WEBHOOK_SECRET", missing);
   if (value(env, "NOTIFICATION_DELIVERY") !== "webhook") missing.push("NOTIFICATION_DELIVERY=webhook");
   if (!isSecureHttpsEndpoint(value(env, "NOTIFICATION_WEBHOOK_URL"))) missing.push("NOTIFICATION_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
-  if (!value(env, "NOTIFICATION_WEBHOOK_SECRET")) missing.push("NOTIFICATION_WEBHOOK_SECRET");
+  requireSecret(env, "NOTIFICATION_WEBHOOK_SECRET", missing);
   const staffProvider = value(env, "STAFF_AUTH_PROVIDER").toLowerCase();
   const staffProviders = staffProvider === "both" ? ["oidc", "saml"] : [staffProvider];
   if (!staffProvider) missing.push("STAFF_AUTH_PROVIDER");

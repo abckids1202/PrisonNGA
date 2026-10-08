@@ -55,6 +55,42 @@ test("staging and production require protected R2 evidence storage", () => {
   assert.ok(!configured.missing.includes("EVIDENCE_STORAGE_PROVIDER=r2"));
 });
 
+test("staging and production reject weak webhook signing secrets", () => {
+  const base = {
+    ...withDatabase,
+    SECUREVISIT_ENVIRONMENT: "staging",
+    PUBLIC_APP_URL: "https://securevisit.example.test",
+    SECUREVISIT_HASH_SALT: "x".repeat(32),
+    STAFF_STEP_UP_SECRET: "y".repeat(32),
+    VISITOR_AUTH_DELIVERY: "webhook",
+    VISITOR_AUTH_WEBHOOK_URL: "https://auth.example.test/send",
+    VISITOR_AUTH_WEBHOOK_SECRET: "short",
+    VIDEO_PROVIDER: "livekit",
+    LIVEKIT_URL: "wss://securevisit.livekit.cloud",
+    LIVEKIT_API_KEY: "key",
+    LIVEKIT_API_SECRET: "secret",
+    EVIDENCE_STORAGE_PROVIDER: "r2",
+    EVIDENCE_BUCKET: {},
+    EVIDENCE_SCAN_PROVIDER: "webhook",
+    EVIDENCE_SCAN_WEBHOOK_URL: "https://scan.example.test/scan",
+    EVIDENCE_SCAN_WEBHOOK_SECRET: "short",
+    PAYMENT_PROVIDER: "webhook",
+    VISIT_CREDIT_PRICE_MINOR: "50000",
+    PAYMENT_CHECKOUT_URL: "https://payments.example.test/checkout",
+    PAYMENT_REFUND_URL: "https://payments.example.test/refund",
+    PAYMENT_PROVIDER_SECRET: "provider-secret",
+    PAYMENT_WEBHOOK_SECRET: "short",
+    NOTIFICATION_DELIVERY: "webhook",
+    NOTIFICATION_WEBHOOK_URL: "https://notify.example.test/send",
+    NOTIFICATION_WEBHOOK_SECRET: "short",
+  };
+  const result = validateEnvironment(base);
+  assert.ok(result.missing.includes("VISITOR_AUTH_WEBHOOK_SECRET (must be at least 32 characters)"));
+  assert.ok(result.missing.includes("EVIDENCE_SCAN_WEBHOOK_SECRET (must be at least 32 characters)"));
+  assert.ok(result.missing.includes("PAYMENT_WEBHOOK_SECRET (must be at least 32 characters)"));
+  assert.ok(result.missing.includes("NOTIFICATION_WEBHOOK_SECRET (must be at least 32 characters)"));
+});
+
 test("production endpoints reject embedded credentials, fragments, and non-HTTPS URLs", () => {
   const base = {
     DB: {},
