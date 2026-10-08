@@ -21,4 +21,9 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /saml_request_cache: \["state_hash"\]/);
   assert.match(source, /PRAGMA table_info\(\$\{table\}\)/);
   assert.match(source, /schemaMissing: \{ tables: missingTables, columns: missingColumns \}/);
+  assert.match(source, /const deliveryConfigured = \(delivery: string, channel: "EMAIL" \| "SMS"/);
+  assert.match(source, /configuredVisitorEmailDelivery/);
+  assert.match(source, /configuredVisitorSmsDelivery/);
+  assert.match(source, /configuredNotificationEmailDelivery/);
+  assert.match(source, /configuredNotificationSmsDelivery/);
 });

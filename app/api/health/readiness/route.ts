@@ -62,7 +62,7 @@ export async function GET() {
       for (const column of columns) if (!available.has(column)) missingColumns.push(`${table}.${column}`);
     }
     const schemaReady = missingTables.length === 0 && missingColumns.length === 0;
-    const [paymentProvider, videoConfig, notificationEmailDelivery, notificationSmsDelivery, evidenceBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, visitorAuthDelivery, visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
+    const [paymentProvider, videoConfig, , , evidenceBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, , visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
       getPaymentProvider(),
       getVideoConfig(),
       getNotificationDelivery("EMAIL"),
@@ -93,7 +93,20 @@ export async function GET() {
     ]);
     const environmentConfig = validateEnvironment({ DB: d1, EVIDENCE_BUCKET: evidenceBucket, ...Object.fromEntries(configurationKeys.map((key, index) => [key, configurationValues[index]])) });
     const webhookConfigured = (url: string | null, secret: string | null) => Boolean(url && isSecureHttpsEndpoint(url)) && Boolean(secret);
-    const visitorAuth = visitorAuthDelivery === "webhook" && webhookConfigured(visitorAuthWebhookUrl, visitorAuthWebhookSecret);
+    const configured = Object.fromEntries(await Promise.all(configurationKeys.map(async (key) => [key, await getRuntimeValue(key)] as const)));
+    const configuredString = (key: string) => typeof configured[key] === "string" ? configured[key].trim() : "";
+    const deliveryConfigured = (delivery: string, channel: "EMAIL" | "SMS", webhookUrl: string | null, webhookSecret: string | null) => {
+      if (delivery === "in_app") return environment === "development";
+      if (delivery === "webhook") return webhookConfigured(webhookUrl, webhookSecret);
+      if (delivery === "resend" && channel === "EMAIL") return Boolean(configuredString("RESEND_API_KEY") && configuredString("VISITOR_EMAIL_FROM"));
+      if (delivery === "twilio" && channel === "SMS") return Boolean(configuredString("VISITOR_SMS_TWILIO_ACCOUNT_SID") && configuredString("VISITOR_SMS_TWILIO_AUTH_TOKEN") && (configuredString("VISITOR_SMS_TWILIO_FROM") || configuredString("VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID")));
+      return false;
+    };
+    const configuredVisitorEmailDelivery = (configuredString("VISITOR_EMAIL_DELIVERY") || configuredString("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
+    const configuredVisitorSmsDelivery = (configuredString("VISITOR_SMS_DELIVERY") || configuredString("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
+    const visitorAuth = environment === "development"
+      || (deliveryConfigured(configuredVisitorEmailDelivery, "EMAIL", configuredString("VISITOR_AUTH_WEBHOOK_URL") || visitorAuthWebhookUrl, configuredString("VISITOR_AUTH_WEBHOOK_SECRET") || visitorAuthWebhookSecret)
+        && deliveryConfigured(configuredVisitorSmsDelivery, "SMS", configuredString("VISITOR_AUTH_WEBHOOK_URL") || visitorAuthWebhookUrl, configuredString("VISITOR_AUTH_WEBHOOK_SECRET") || visitorAuthWebhookSecret));
     const evidenceScanning = evidenceScanProvider === "webhook" && webhookConfigured(evidenceScanWebhookUrl, evidenceScanWebhookSecret);
     const paymentWebhook = Boolean(paymentProvider) && Boolean(paymentWebhookSecret);
     const oidcReady = Boolean(staffOidcIssuer && isSecureHttpsEndpoint(staffOidcIssuer)) && Boolean(staffOidcClientId) && Boolean(staffOidcClientSecret) && Boolean(staffOidcRedirectUri && isSecureHttpsEndpoint(staffOidcRedirectUri))
@@ -108,6 +121,11 @@ export async function GET() {
       : staffAuthProvider === "saml"
         ? samlReady
         : false;
+    const configuredNotificationEmailDelivery = (configuredString("NOTIFICATION_EMAIL_DELIVERY") || configuredString("NOTIFICATION_DELIVERY") || "").toLowerCase();
+    const configuredNotificationSmsDelivery = (configuredString("NOTIFICATION_SMS_DELIVERY") || configuredString("NOTIFICATION_DELIVERY") || "").toLowerCase();
+    const notifications = deliveryConfigured(configuredNotificationEmailDelivery, "EMAIL", configuredString("NOTIFICATION_WEBHOOK_URL") || notificationWebhookUrl, configuredString("NOTIFICATION_WEBHOOK_SECRET") || notificationWebhookSecret)
+      && deliveryConfigured(configuredNotificationSmsDelivery, "SMS", configuredString("NOTIFICATION_WEBHOOK_URL") || notificationWebhookUrl, configuredString("NOTIFICATION_WEBHOOK_SECRET") || notificationWebhookSecret)
+      && (configuredNotificationEmailDelivery !== "webhook" && configuredNotificationSmsDelivery !== "webhook" || Boolean(notificationWebhookUrl) && Boolean(notificationWebhookSecret));
     const providerConfiguration = {
       payment: Boolean(paymentProvider),
       tariff: tariffConfigured,
@@ -117,8 +135,7 @@ export async function GET() {
       evidenceScanning,
       visitorAuth,
       staffIdentity,
-      notifications: [notificationEmailDelivery, notificationSmsDelivery].every((delivery) => delivery === "in_app" || ["webhook", "resend", "twilio"].includes(delivery))
-        && (notificationEmailDelivery !== "webhook" && notificationSmsDelivery !== "webhook" || Boolean(notificationWebhookUrl) && Boolean(notificationWebhookSecret)),
+      notifications,
     };
     const providersReady = Object.values(providerConfiguration).every(Boolean);
     const ready = schemaReady && environmentConfig.ok && (environment === "development" || providersReady);
