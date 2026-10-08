@@ -6,6 +6,7 @@ import { getPaymentProvider } from "../../../../lib/server/payments/provider";
 import { getVideoConfig } from "../../../../lib/server/video/provider";
 import { getNotificationDelivery } from "../../../../lib/server/notifications/provider";
 import { isSecureHttpsEndpoint } from "../../../../lib/server/endpoint";
+import { isDeliveryConfigured } from "../../../../lib/server/delivery-readiness";
 
 const requiredTables = [
   "users", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "roles", "permissions", "user_roles", "role_permissions",
@@ -92,22 +93,29 @@ export async function GET() {
       ...configurationKeys.map((key) => getRuntimeValue(key)),
     ]);
     const environmentConfig = validateEnvironment({ DB: d1, EVIDENCE_BUCKET: evidenceBucket, ...Object.fromEntries(configurationKeys.map((key, index) => [key, configurationValues[index]])) });
-    const webhookConfigured = (url: string | null, secret: string | null) => Boolean(url && isSecureHttpsEndpoint(url)) && Boolean(secret);
     const configured = Object.fromEntries(await Promise.all(configurationKeys.map(async (key) => [key, await getRuntimeValue(key)] as const)));
     const configuredString = (key: string) => typeof configured[key] === "string" ? configured[key].trim() : "";
     const deliveryConfigured = (delivery: string, channel: "EMAIL" | "SMS", webhookUrl: string | null, webhookSecret: string | null) => {
-      if (delivery === "in_app") return environment === "development";
-      if (delivery === "webhook") return webhookConfigured(webhookUrl, webhookSecret);
-      if (delivery === "resend" && channel === "EMAIL") return Boolean(configuredString("RESEND_API_KEY") && configuredString("VISITOR_EMAIL_FROM"));
-      if (delivery === "twilio" && channel === "SMS") return Boolean(configuredString("VISITOR_SMS_TWILIO_ACCOUNT_SID") && configuredString("VISITOR_SMS_TWILIO_AUTH_TOKEN") && (configuredString("VISITOR_SMS_TWILIO_FROM") || configuredString("VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID")));
-      return false;
+      return isDeliveryConfigured({
+        environment,
+        delivery,
+        channel,
+        webhookUrl,
+        webhookSecret,
+        resendApiKey: configuredString("RESEND_API_KEY"),
+        emailFrom: configuredString("VISITOR_EMAIL_FROM"),
+        twilioAccountSid: configuredString("VISITOR_SMS_TWILIO_ACCOUNT_SID"),
+        twilioAuthToken: configuredString("VISITOR_SMS_TWILIO_AUTH_TOKEN"),
+        twilioFrom: configuredString("VISITOR_SMS_TWILIO_FROM"),
+        twilioMessagingServiceSid: configuredString("VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID"),
+      });
     };
     const configuredVisitorEmailDelivery = (configuredString("VISITOR_EMAIL_DELIVERY") || configuredString("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
     const configuredVisitorSmsDelivery = (configuredString("VISITOR_SMS_DELIVERY") || configuredString("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
     const visitorAuth = environment === "development"
       || (deliveryConfigured(configuredVisitorEmailDelivery, "EMAIL", configuredString("VISITOR_AUTH_WEBHOOK_URL") || visitorAuthWebhookUrl, configuredString("VISITOR_AUTH_WEBHOOK_SECRET") || visitorAuthWebhookSecret)
         && deliveryConfigured(configuredVisitorSmsDelivery, "SMS", configuredString("VISITOR_AUTH_WEBHOOK_URL") || visitorAuthWebhookUrl, configuredString("VISITOR_AUTH_WEBHOOK_SECRET") || visitorAuthWebhookSecret));
-    const evidenceScanning = evidenceScanProvider === "webhook" && webhookConfigured(evidenceScanWebhookUrl, evidenceScanWebhookSecret);
+    const evidenceScanning = evidenceScanProvider === "webhook" && Boolean(evidenceScanWebhookUrl && isSecureHttpsEndpoint(evidenceScanWebhookUrl)) && Boolean(evidenceScanWebhookSecret);
     const paymentWebhook = Boolean(paymentProvider) && Boolean(paymentWebhookSecret);
     const oidcReady = Boolean(staffOidcIssuer && isSecureHttpsEndpoint(staffOidcIssuer)) && Boolean(staffOidcClientId) && Boolean(staffOidcClientSecret) && Boolean(staffOidcRedirectUri && isSecureHttpsEndpoint(staffOidcRedirectUri))
       && Boolean((await getRuntimeValue("STAFF_OIDC_MFA_ACR")) || (await getRuntimeValue("STAFF_OIDC_MFA_AMR")));

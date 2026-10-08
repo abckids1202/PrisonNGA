@@ -26,4 +26,5 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /configuredVisitorSmsDelivery/);
   assert.match(source, /configuredNotificationEmailDelivery/);
   assert.match(source, /configuredNotificationSmsDelivery/);
+  assert.match(source, /isDeliveryConfigured/);
 });
