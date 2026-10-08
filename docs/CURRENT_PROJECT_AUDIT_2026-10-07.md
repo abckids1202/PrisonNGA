@@ -1,6 +1,8 @@
 # SecureVisit Current Project Audit
 
-Date: 2026-10-07
+Date: 2026-10-08
+
+Latest verified repository commit: `309b5e1 fix: enforce payment signing secret strength`
 
 This document is the current project-lead assessment of the repository. It distinguishes implemented code from provider or institutional evidence that cannot be proven locally.
 
@@ -11,7 +13,8 @@ cd C:\Users\charl\OneDrive\Desktop\PrisonNGA
 npm install
 npm run db:migrate:local
 npm run db:seed:local
-npm run dev -- --port 5174
+$env:PORT=5174
+npm run dev:local
 ```
 
 Open `/visitor`, `/control`, or `/kiosk` at `http://localhost:5174`. The application uses same-origin API routes; a second backend on port 8001 is not part of the current architecture.
@@ -54,7 +57,11 @@ Approximate readiness:
 - Fail-closed environment validation for staging and production.
 - Liveness and staff-authorized readiness checks.
 - Request IDs, correlation IDs, bounded provider responses, rate-limit retry guidance, and facility-state handling.
+- Centralized delivery-provider readiness checks for webhook, Resend, Twilio, and development channels.
+- Production payment signing secrets are rejected unless they meet the minimum entropy length.
 - Automated server/unit tests and browser-level journey coverage for local adapters.
+
+The current local evidence baseline is **434 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
 
 ## Not yet proven or still incomplete
 
