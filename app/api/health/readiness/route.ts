@@ -10,9 +10,9 @@ import { isSecureHttpsEndpoint } from "../../../../lib/server/endpoint";
 const requiredTables = [
   "users", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "roles", "permissions", "user_roles", "role_permissions",
   "auth_sessions", "auth_challenges", "auth_challenge_delivery_attempts", "idempotency_records", "auth_federation_states", "saml_request_cache", "security_events", "rate_limit_buckets",
-  "audit_events", "audit_export_manifests", "break_glass_requests", "outbox_events", "appointments", "prisoners", "visitor_profiles", "visitor_relationships", "verification_cases", "evidence_documents",
-  "retention_policies", "legal_holds", "appointment_status_events", "resource_reservations", "resources", "kiosk_credentials", "waiting_room_sessions", "visitor_waiting_room_checkins",
-  "visit_sessions", "visitor_device_check_attempts", "visit_session_events", "credit_accounts", "credit_ledger_entries", "payment_intents",
+  "audit_events", "audit_export_manifests", "break_glass_requests", "outbox_events", "appointments", "appointment_types", "appointment_type_history", "prisoners", "visitor_profiles", "visitor_relationships", "verification_cases", "evidence_documents",
+  "retention_policies", "legal_holds", "facility_closures", "appointment_status_events", "resource_reservations", "resources", "kiosk_credentials", "kiosk_device_check_attempts", "waiting_room_sessions", "visitor_waiting_room_checkins",
+  "visit_sessions", "visit_session_participants", "visitor_device_check_attempts", "visit_session_events", "credit_accounts", "credit_ledger_entries", "payment_intents",
   "payment_provider_events", "payment_refund_requests", "notification_delivery_attempts", "notification_provider_events", "notifications", "incidents", "incident_events", "step_up_assertions",
 ];
 

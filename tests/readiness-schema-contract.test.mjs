@@ -11,6 +11,10 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /idempotency_records: \["processing_started_at"\]/);
   assert.match(source, /notification_delivery_attempts.*notification_provider_events/);
   assert.match(source, /notification_delivery_attempts: \["provider", "provider_reference", "provider_status", "status_updated_at"\]/);
+  assert.match(source, /appointment_types.*appointment_type_history.*prisoners/);
+  assert.match(source, /facility_closures.*appointment_status_events/);
+  assert.match(source, /kiosk_device_check_attempts.*waiting_room_sessions/);
+  assert.match(source, /visit_session_participants.*visitor_device_check_attempts/);
   assert.match(source, /PRAGMA table_info\(\$\{table\}\)/);
   assert.match(source, /schemaMissing: \{ tables: missingTables, columns: missingColumns \}/);
 });
