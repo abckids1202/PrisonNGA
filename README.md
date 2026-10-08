@@ -13,6 +13,8 @@ npm run dev
 
 To choose a port, pass it through to Vinext, for example `npm run dev -- --port 5174`, then open `http://localhost:5174`. This is a full-stack development server: the page and its `/api/*` routes share that origin. There is no separate backend-only server on port 8001 in this project.
 
+For a new local checkout, `npm run dev:local -- --port 5174` applies the local D1 migrations, loads the fictional development seed, and then starts the same full-stack server. It is safe to run repeatedly; migrations and seed operations are idempotent.
+
 The production checks are:
 
 ```bash

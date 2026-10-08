@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "vinext dev",
+    "dev:local": "node scripts/dev-local.mjs",
     "build": "vinext build",
     "deploy:dry-run": "npm run build && wrangler deploy --dry-run",
     "start": "vinext start",
