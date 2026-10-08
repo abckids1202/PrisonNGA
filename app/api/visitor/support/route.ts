@@ -31,13 +31,14 @@ export async function POST(request: Request) {
   try {
     const visitor = await requireVisitorIdentity();
     const body = await request.json() as { category?: unknown; subject?: unknown; message?: unknown; facilityId?: unknown; appointmentId?: unknown };
-    const category = typeof body.category === "string" ? body.category.trim().toUpperCase() as SupportCategory : "";
+    const rawCategory = typeof body.category === "string" ? body.category.trim().toUpperCase() : "";
     const subject = typeof body.subject === "string" ? body.subject.trim().slice(0, 160) : "";
     const message = typeof body.message === "string" ? body.message.trim().slice(0, 2000) : "";
     const requestedFacilityId = typeof body.facilityId === "string" ? body.facilityId.trim() : "";
     const appointmentId = typeof body.appointmentId === "string" ? body.appointmentId.trim() : "";
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
-    if (!categories.includes(category)) throw new SecurityError("SUPPORT_CATEGORY_INVALID", 400);
+    if (!categories.includes(rawCategory as SupportCategory)) throw new SecurityError("SUPPORT_CATEGORY_INVALID", 400);
+    const category = rawCategory as SupportCategory;
     if (subject.length < 4 || message.length < 8) throw new SecurityError("SUPPORT_DETAILS_REQUIRED", 400);
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     const d1 = await getD1();

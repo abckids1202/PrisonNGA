@@ -44,6 +44,8 @@ npm ci
 npm run validate:environment
 npm run db:migrations:list
 npm run db:migrate:remote
+npm run db:backup:remote -- --output .\backups\staging-YYYYMMDD.sql
+npm run db:restore:drill -- --input .\backups\staging-YYYYMMDD.sql
 npm run build
 npm run typecheck
 npm run lint
