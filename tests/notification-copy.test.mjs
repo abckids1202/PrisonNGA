@@ -18,6 +18,7 @@ test("outbox notification copy explains critical payment and visit outcomes", as
   assert.match(source, /eventType\.startsWith\("WAITING_ROOM_"\)/);
   assert.match(source, /SESSION_EXPIRED/);
   assert.match(source, /LIVE_SESSION_PROVIDER_CLOSE_FAILED/);
+  assert.match(source, /LIVE_SESSION_FINALIZATION_BLOCKED/);
   assert.match(source, /did not confirm that the visit room closed safely/);
   assert.match(source, /recordSessionProviderCloseFailure/);
   assert.match(source, /EXPIRED_SESSION_PROVIDER_UNAVAILABLE/);

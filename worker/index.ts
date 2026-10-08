@@ -455,6 +455,32 @@ async function recordSessionProviderCloseFailure(env: Env, session: ExpiredSessi
   }
 }
 
+async function recordSessionFinalizationBlocked(env: Env, session: ExpiredSession, reason: string): Promise<void> {
+  try {
+    const prior = await env.DB.prepare("SELECT 1 AS present FROM audit_events WHERE facility_id = ? AND action_type = 'LIVE_SESSION_FINALIZATION_BLOCKED' AND entity_type = 'visit_session' AND entity_id = ? LIMIT 1")
+      .bind(session.facility_id, session.id).first<{ present: number }>();
+    if (prior) return;
+    const correlationId = crypto.randomUUID();
+    await env.DB.batch(auditAndOutboxStatements(env.DB, {
+      actorUserId: "system:scheduler",
+      actorRole: "SYSTEM",
+      facilityId: session.facility_id,
+      actionType: "LIVE_SESSION_FINALIZATION_BLOCKED",
+      entityType: "visit_session",
+      entityId: session.id,
+      reason,
+      oldValues: { sessionStatus: session.status, providerRoomName: session.provider_room_name },
+      newValues: { interventionRequired: true, retryable: true, creditSettlementBlocked: true },
+      requestId: correlationId,
+      correlationId,
+      eventType: "LIVE_SESSION_FINALIZATION_BLOCKED",
+      payload: { sessionId: session.id, appointmentId: session.appointment_id, visitorUserId: session.visitor_user_id, retryable: true, creditSettlementBlocked: true },
+    }));
+  } catch (auditError) {
+    operationalLog("error", { event: "EXPIRED_SESSION_FINALIZATION_BLOCKED_AUDIT_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", error: auditError });
+  }
+}
+
 async function reconcileExpiredSessions(env: Env): Promise<void> {
     const sessions = await env.DB.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, vs.version, vs.status, vs.actual_started_at,
       vs.termination_reason,
@@ -491,6 +517,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
     }
     if (!session.credit_account_id) {
       operationalLog("error", { event: "EXPIRED_SESSION_CREDIT_ACCOUNT_MISSING", sessionId: session.id, appointmentId: session.appointment_id, facilityId: session.facility_id, actorId: "system:scheduler" });
+      await recordSessionFinalizationBlocked(env, session, "The visit credit account was missing after the provider room closed; credit settlement remains blocked until staff recovery.");
       continue;
     }
 
@@ -540,6 +567,7 @@ function notificationCopy(eventType: string, payload: Record<string, unknown> = 
   if (eventType === "VISITOR_SUSPICIOUS_LOGIN") return { title: "New sign-in detected", body: "A new browser signed in to your SecureVisit account. If this was not you, open Account and sign out all sessions, then contact the facility support team." };
   if (eventType === "LIVE_SESSION_START_FAILED") return { title: "Your visit is temporarily delayed", body: "The facility could not open the secure video room. Your visit has not started or consumed its credit; staff can retry when the video service is available." };
   if (eventType === "LIVE_SESSION_PROVIDER_CLOSE_FAILED") return { title: "Your visit needs facility attention", body: "The video service did not confirm that the visit room closed safely. The facility team has been alerted and will resolve the session before any credit settlement is finalized." };
+  if (eventType === "LIVE_SESSION_FINALIZATION_BLOCKED") return { title: "Your visit needs facility attention", body: "The visit room closed, but final credit settlement needs facility recovery. The facility team has been alerted and your credit will not be silently consumed." };
   if (eventType === "APPOINTMENT_APPROVE") return { title: "Your visit was approved", body: "Your appointment is ready. Open Visit Details to prepare." };
   if (eventType === "APPOINTMENT_REJECT") return { title: "Your visit needs attention", body: "Your appointment request was not approved. Open Visit Details to see the reason." };
   if (eventType === "APPOINTMENT_RESCHEDULED") return { title: "Your visit time changed", body: "Your new time is waiting for facility review. Open Visit Details to see the updated request." };
