@@ -40,6 +40,10 @@ const config = {
 };
 
 await mkdir(configDirectory, { recursive: true });
+// A previous interrupted run can leave its generated config behind. The file
+// is disposable and is scoped to this process id, so remove it before writing
+// to keep release verification resumable after crashes or forced termination.
+await rm(configPath, { force: true });
 await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { flag: "wx" });
 
 try {
