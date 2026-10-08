@@ -20,6 +20,13 @@ const notificationQueueName = process.env.NOTIFICATION_QUEUE_NAME?.trim();
 const loadedLocalEnvironment = loadEnv("development", process.cwd(), "");
 const runtimeEnvironmentValue = (key: string): string | undefined => process.env[key] || loadedLocalEnvironment[key] || undefined;
 const isolatedDevelopmentE2E = process.env.SECUREVISIT_E2E_ISOLATED === "true";
+const configuredEnvironment = runtimeEnvironmentValue("SECUREVISIT_ENVIRONMENT") || "";
+const localOnlyProviderSecrets = new Set([
+  "LIVEKIT_API_KEY",
+  "LIVEKIT_API_SECRET",
+  "PAYMENT_PROVIDER_SECRET",
+  "PAYMENT_WEBHOOK_SECRET",
+]);
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
@@ -46,6 +53,10 @@ for (const key of [
   "EVIDENCE_STORAGE_PROVIDER",
   "SECUREVISIT_E2E_ISOLATED",
 ]) {
+  // Provider credentials may be convenient for a local Worker, but they must
+  // never be copied from a developer env file into a staging/production
+  // bundle. Those environments receive secrets from Cloudflare bindings.
+  if (localOnlyProviderSecrets.has(key) && configuredEnvironment !== "development") continue;
   const value = runtimeEnvironmentValue(key);
   if (value) environmentVars[key] = value;
 }

@@ -8,6 +8,8 @@ test("Cloudflare local Worker vars include env-file values without overriding ex
   assert.match(source, /process\.env\[key\] \|\| loadedLocalEnvironment\[key\]/);
   assert.match(source, /runtimeEnvironmentValue\(key\)/);
   assert.match(source, /isolatedDevelopmentE2E/);
+  assert.match(source, /localOnlyProviderSecrets/);
+  assert.match(source, /configuredEnvironment !== "development"/);
   assert.match(source, /"VIDEO_PROVIDER"/);
   assert.match(source, /"LIVEKIT_URL"/);
   assert.match(source, /"LIVEKIT_API_KEY"/);
