@@ -35,3 +35,11 @@ export function SecureVisitLogo({ markOnly = false }: { markOnly?: boolean }) {
     {!markOnly ? <span><strong>SecureVisit</strong><small>CONTROL</small></span> : null}
   </div>;
 }
+
+export function DrawerSection({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="sv3-drawer-section"><span className="sv3-eyebrow">{title}</span>{children}</section>;
+}
+
+export function DrawerFooter({ children }: { children: ReactNode }) {
+  return <div className="sv3-drawer-actions">{children}</div>;
+}
