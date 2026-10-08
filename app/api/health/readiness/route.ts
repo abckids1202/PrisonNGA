@@ -54,7 +54,7 @@ export async function GET() {
       for (const column of columns) if (!available.has(column)) missingColumns.push(`${table}.${column}`);
     }
     const schemaReady = missingTables.length === 0 && missingColumns.length === 0;
-    const [paymentProvider, videoConfig, notificationDelivery, evidenceBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, visitorAuthDelivery, visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, ...configurationValues] = await Promise.all([
+    const [paymentProvider, videoConfig, notificationDelivery, evidenceBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, visitorAuthDelivery, visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
       getPaymentProvider(),
       getVideoConfig(),
       getNotificationDelivery(),
@@ -79,6 +79,7 @@ export async function GET() {
       getRuntimeValue("STAFF_SAML_ENTRY_POINT"),
       getRuntimeValue("STAFF_SAML_IDP_CERT"),
       getRuntimeValue("STAFF_SAML_CALLBACK_URI"),
+      d1.prepare("SELECT COUNT(*) AS configured_count FROM visit_policies WHERE credit_price_minor IS NOT NULL AND credit_price_minor > 0 AND credit_currency = 'IDR'").first<{ configured_count: number }>(),
       ...configurationKeys.map((key) => getRuntimeValue(key)),
     ]);
     const environmentConfig = validateEnvironment({ DB: d1, EVIDENCE_BUCKET: evidenceBucket, ...Object.fromEntries(configurationKeys.map((key, index) => [key, configurationValues[index]])) });
@@ -90,6 +91,7 @@ export async function GET() {
       && Boolean((await getRuntimeValue("STAFF_OIDC_MFA_ACR")) || (await getRuntimeValue("STAFF_OIDC_MFA_AMR")));
     const samlReady = Boolean(staffSamlEntityId) && Boolean(staffSamlMetadataUrl && isSecureHttpsEndpoint(staffSamlMetadataUrl)) && Boolean(staffSamlEntryPoint && isSecureHttpsEndpoint(staffSamlEntryPoint)) && Boolean(staffSamlIdpCert) && Boolean(staffSamlCallbackUri && isSecureHttpsEndpoint(staffSamlCallbackUri))
       && Boolean(await getRuntimeValue("STAFF_SAML_MFA_ACR"));
+    const tariffConfigured = environment === "development" || Number(tariffRow?.configured_count || 0) > 0;
     const staffIdentity = staffAuthProvider === "both"
       ? oidcReady && samlReady
       : staffAuthProvider === "oidc"
@@ -99,6 +101,7 @@ export async function GET() {
         : false;
     const providerConfiguration = {
       payment: Boolean(paymentProvider),
+      tariff: tariffConfigured,
       paymentWebhook,
       livekit: videoConfig.configured,
       evidenceStorage: Boolean(evidenceBucket) && (environment === "development" ? evidenceStorageProvider === "local_test" || evidenceStorageProvider === "r2" : evidenceStorageProvider === "r2"),
@@ -109,9 +112,9 @@ export async function GET() {
     };
     const providersReady = Object.values(providerConfiguration).every(Boolean);
     const ready = schemaReady && environmentConfig.ok && (environment === "development" || providersReady);
-    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
+    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, tariff: { configured: tariffConfigured, configuredFacilities: Number(tariffRow?.configured_count || 0) }, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
   } catch (error) {
     if (error instanceof Error && error.name === "SecurityError") return securityErrorResponse(error, context.requestId);
-    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
+    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
   }
 }
