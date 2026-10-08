@@ -19,8 +19,7 @@ const notificationQueueName = process.env.NOTIFICATION_QUEUE_NAME?.trim();
 // environment (for example the isolated browser release runner) to win.
 const loadedLocalEnvironment = loadEnv("development", process.cwd(), "");
 const runtimeEnvironmentValue = (key: string): string | undefined => process.env[key] || loadedLocalEnvironment[key] || undefined;
-const isolatedDevelopmentE2E = process.env.SECUREVISIT_E2E_ISOLATED === "true"
-  && runtimeEnvironmentValue("SECUREVISIT_ENVIRONMENT") === "development";
+const isolatedDevelopmentE2E = process.env.SECUREVISIT_E2E_ISOLATED === "true";
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
@@ -49,7 +48,7 @@ if (isolatedDevelopmentE2E) {
   Object.assign(environmentVars, {
     VISITOR_AUTH_DELIVERY: "console",
     PAYMENT_PROVIDER: "local_test",
-    PAYMENT_WEBHOOK_SECRET: "local-e2e-payment-secret",
+    PAYMENT_WEBHOOK_SECRET: "local-development-payment-webhook-secret-0123456789",
     VISIT_CREDIT_PRICE_MINOR: "50000",
     EVIDENCE_STORAGE_PROVIDER: "local_test",
   });

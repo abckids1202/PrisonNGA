@@ -199,7 +199,7 @@ test("visitor credit purchase is settled only by the signed webhook and is dupli
     amountMinor: paymentBody.paymentIntent?.amountMinor,
     currency: paymentBody.paymentIntent?.currency,
   });
-  const signature = createHmac("sha256", "local-e2e-payment-secret").update(payload).digest("hex");
+  const signature = createHmac("sha256", "local-development-payment-webhook-secret-0123456789").update(payload).digest("hex");
   const webhookHeaders = { "content-type": "application/json", "x-payment-provider": "local_test", "x-securevisit-signature": `sha256=${signature}` };
   const firstWebhook = await page.request.post("/api/webhooks/payments", { headers: webhookHeaders, data: payload });
   expect(firstWebhook.status()).toBe(200);
@@ -383,14 +383,26 @@ test("persisted visitor verification, payment, appointment request, and staff ap
       amountMinor: paymentBody.paymentIntent?.amountMinor,
       currency: paymentBody.paymentIntent?.currency,
     });
-    const signature = createHmac("sha256", "local-e2e-payment-secret").update(payload).digest("hex");
+    const signature = createHmac("sha256", "local-development-payment-webhook-secret-0123456789").update(payload).digest("hex");
     const webhook = await page.request.post("/api/webhooks/payments", {
       headers: { "content-type": "application/json", "x-payment-provider": "local_test", "x-securevisit-signature": `sha256=${signature}` },
       data: payload,
     });
     expect(webhook.status(), await webhook.text()).toBe(200);
 
+    // Availability must only expose slots backed by a recently healthy kiosk.
+    // Refresh the seeded development kiosk exactly as the controlled device
+    // would before a visitor begins booking.
+    const kioskHeaders = {
+      origin: testOrigin,
+      "x-securevisit-kiosk-id": "kiosk-02",
+      "x-securevisit-kiosk-token": "local-e2e-kiosk-token-012345678901234567890123",
+    };
+    const heartbeat = await page.request.post("/api/kiosk/heartbeat", { headers: kioskHeaders });
+    expect(heartbeat.status(), await heartbeat.text()).toBe(200);
+
     let selectedStart: string | undefined;
+    let lastAvailabilityBody: unknown;
     for (let offset = 3; offset <= 25 && !selectedStart; offset += 1) {
       const requestedDate = new Date(Date.now() + offset * 24 * 60 * 60 * 1000);
       requestedDate.setUTCHours(1, 0, 0, 0);
@@ -399,9 +411,10 @@ test("persisted visitor verification, payment, appointment request, and staff ap
       const availability = await page.request.get(`/api/visitor/availability?facilityId=facility-central-001&prisonerId=prisoner-ar-001&date=${date}&duration=30`);
       expect(availability.status(), await availability.text()).toBe(200);
       const availabilityBody = await availability.json() as { slots?: string[] };
+      lastAvailabilityBody = availabilityBody;
       selectedStart = availabilityBody.slots?.[0];
     }
-    expect(selectedStart).toBeTruthy();
+    expect(selectedStart, `Expected at least one available appointment slot; last availability response: ${JSON.stringify(lastAvailabilityBody)}`).toBeTruthy();
     if (!selectedStart) throw new Error("Expected at least one available appointment slot");
     const start = new Date(selectedStart);
     const end = new Date(start.getTime() + 30 * 60 * 1000);
@@ -456,13 +469,6 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     expect(visitorCheckIn.status(), await visitorCheckIn.text()).toBe(201);
     await expect(visitorCheckIn.json()).resolves.toMatchObject({ checkIn: { state: "VISITOR_WAITING", visitorPresence: "present" } });
 
-    const kioskHeaders = {
-      origin: testOrigin,
-      "x-securevisit-kiosk-id": "kiosk-02",
-      "x-securevisit-kiosk-token": "local-e2e-kiosk-token-012345678901234567890123",
-    };
-    const heartbeat = await page.request.post("/api/kiosk/heartbeat", { headers: kioskHeaders });
-    expect(heartbeat.status(), await heartbeat.text()).toBe(200);
     const kioskCheck = await page.request.post(`/api/kiosk/visits/${approvedAppointmentId}/device-check`, {
       headers: { ...kioskHeaders, "Idempotency-Key": `kiosk-device-check-${Date.now()}-e2e` },
       data: { cameraResult: "ready", microphoneResult: "ready", networkResult: "stable", latencyMs: 42 },

@@ -33,7 +33,7 @@ export default defineConfig({
       SECUREVISIT_E2E_ISOLATED: "true",
       VISITOR_AUTH_DELIVERY: "console",
       PAYMENT_PROVIDER: "local_test",
-      PAYMENT_WEBHOOK_SECRET: "local-e2e-payment-secret",
+      PAYMENT_WEBHOOK_SECRET: "local-development-payment-webhook-secret-0123456789",
       VISIT_CREDIT_PRICE_MINOR: "50000",
       EVIDENCE_STORAGE_PROVIDER: "local_test",
       ...(process.env.SECUREVISIT_LOCAL_D1_STATE_DIR ? { SECUREVISIT_LOCAL_D1_STATE_DIR: process.env.SECUREVISIT_LOCAL_D1_STATE_DIR } : {}),
