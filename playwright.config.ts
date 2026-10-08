@@ -35,6 +35,7 @@ export default defineConfig({
       PAYMENT_WEBHOOK_SECRET: "local-e2e-payment-secret",
       VISIT_CREDIT_PRICE_MINOR: "50000",
       EVIDENCE_STORAGE_PROVIDER: "local_test",
+      ...(process.env.SECUREVISIT_LOCAL_D1_STATE_DIR ? { SECUREVISIT_LOCAL_D1_STATE_DIR: process.env.SECUREVISIT_LOCAL_D1_STATE_DIR } : {}),
     },
   },
 });

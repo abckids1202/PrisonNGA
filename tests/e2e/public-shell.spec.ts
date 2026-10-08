@@ -497,8 +497,8 @@ test("persisted visitor verification, payment, appointment request, and staff ap
       headers: { origin: testOrigin, "Idempotency-Key": `waiting-start-provider-outage-${Date.now()}-e2e` },
       data: { appointmentId: approvedAppointmentId, command: "start_visit", expectedVersion: preflightBody.version, reason: "Pilot acceptance provider-outage check." },
     });
-    expect(providerStart.status(), await providerStart.text()).toBe(503);
-    await expect(providerStart.json()).resolves.toMatchObject({ error: "VIDEO_PROVIDER_NOT_CONFIGURED" });
+    expect(providerStart.status(), await providerStart.text()).toBe(409);
+    await expect(providerStart.json()).resolves.toMatchObject({ error: "VISIT_NOT_STARTED" });
   } finally {
     await staff.close();
   }
