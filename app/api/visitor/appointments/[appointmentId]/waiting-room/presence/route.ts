@@ -2,6 +2,7 @@ import { getD1 } from "../../../../../../../db/runtime";
 import { enforceRateLimit } from "../../../../../../../lib/server/rate-limit";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../../lib/server/security";
 import { isRecentPresence } from "../../../../../../../lib/server/waiting-room-readiness";
+import { recordWaitingRoomReconciliationRequired } from "../../../../../../../lib/server/reconciliation";
 
 const activeStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
 
@@ -67,7 +68,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
             current.facility_id,
             nextVersion,
           ).run();
-        if (!restored.meta.changes) throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+        if (!restored.meta.changes) {
+          await recordWaitingRoomReconciliationRequired(d1, { facilityId: String(current.facility_id), appointmentId, operation: "VISITOR_PRESENCE", requestId: context.requestId, expectedVersion: nextVersion });
+          throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+        }
       }
       throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
     }

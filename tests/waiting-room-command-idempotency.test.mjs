@@ -12,6 +12,14 @@ test("waiting-room commands are replay-safe and clean up orphan LiveKit rooms on
   assert.match(source, /STALE_WAITING_ROOM_STATE/);
 });
 
+test("waiting-room reconciliation failures create a durable critical signal", async () => {
+  const source = await readFile(new URL("../lib/server/reconciliation.ts", import.meta.url), "utf8");
+  assert.match(source, /WAITING_ROOM_RECONCILIATION_REQUIRED/);
+  assert.match(source, /severity, request_id, metadata, created_at/);
+  assert.match(source, /requiresStaffReview: true/);
+  assert.match(source, /WAITING_ROOM_RECONCILIATION_RECORD_FAILED/);
+});
+
 test("waiting-room cancellation releases reserved credit and assigned resources", async () => {
   const source = await readFile(new URL("../app/api/control/waiting-room/route.ts", import.meta.url), "utf8");
   assert.match(source, /releaseVisitCreditStatements/);

@@ -2,6 +2,7 @@ import { getD1 } from "../../../../../../db/runtime";
 import { authenticateKiosk } from "../../../../../../lib/server/kiosk-credentials";
 import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 import { getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
+import { recordWaitingRoomReconciliationRequired } from "../../../../../../lib/server/reconciliation";
 
 const deviceResults = ["ready", "warning", "failed"] as const;
 const networkResults = ["stable", "fair", "poor", "unknown"] as const;
@@ -83,7 +84,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
             kiosk.facilityId,
             nextVersion,
           ).run();
-        if (!restored.meta.changes) throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+        if (!restored.meta.changes) {
+          await recordWaitingRoomReconciliationRequired(d1, { facilityId: kiosk.facilityId, appointmentId: visitId, operation: "KIOSK_DEVICE_CHECK", requestId: context.requestId, expectedVersion: nextVersion });
+          throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+        }
       }
       throw new SecurityError("KIOSK_DEVICE_CHECK_INCOMPLETE", 503);
     }
