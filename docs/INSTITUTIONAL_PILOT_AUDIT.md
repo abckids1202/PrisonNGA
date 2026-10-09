@@ -113,6 +113,7 @@ The current repository already includes:
 - Visitor and staff logout now resolve the session owner before revocation, preserving the `LOGOUT_REQUESTED` audit event for session-authenticated users.
 - Repeat visitor Waiting Room heartbeats now refresh presence freshness without incrementing appointment or readiness versions; first check-in and actual state transitions remain optimistic-concurrency-protected.
 - Visitor presence, kiosk presence, and kiosk device-check writes now compensate a partial optimistic-concurrency batch when a related write changes zero rows; staging still needs a remote-D1 race test and a reconciliation drill.
+- Staff Waiting Room transitions now persist their transition marker before guarded credit/resource cleanup, preventing cancellation from silently skipping settlement release.
 - Waiting Room's time-window selector now filters the persisted queue by the next two hours, facility-local today, or all approved records instead of being visual-only; queue counts use the selected window.
 - Control appointments and facility state now refresh from protected APIs every 15 seconds with no-store caching and explicit unavailable-state handling, so operational screens do not remain silently stale after mount.
 - The Control top-bar notification action now reads facility-scoped persisted security events and distinguishes loading, empty, and unavailable states instead of claiming there are no notifications without an API read.

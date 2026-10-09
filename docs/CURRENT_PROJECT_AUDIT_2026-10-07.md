@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 
-Latest verified code baseline: `881f05f fix: reconcile partial waiting room writes`
+Latest verified code baseline: `6f7f2ad fix: persist waiting room transition marker`
 
 Audit update: 2026-10-09
 
@@ -30,6 +30,11 @@ write is restored while its incremented version is still owned by the request;
 failure to restore returns an explicit reconciliation-required error. This
 reduces the risk but does not replace a staging concurrency test against remote
 D1.
+
+The staff Waiting Room transition now persists `last_transition_id` on the
+appointment before credit/resource cleanup guards execute. This closes a
+previous cancellation defect where the visit could be marked cancelled while
+the guarded cleanup statements matched zero rows.
 
 This document is the current project-lead assessment of the repository. It distinguishes implemented code from provider or institutional evidence that cannot be proven locally.
 
