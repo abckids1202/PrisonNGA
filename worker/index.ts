@@ -12,6 +12,7 @@ import { processPaymentProviderEvent } from "../lib/server/payments/process-even
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
 import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
+import { notificationDeadLetterStatement } from "../lib/server/reconciliation";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
 import { assertRequestBodyWithinLimit } from "../lib/server/request-body";
@@ -349,9 +350,28 @@ async function processOutbox(env: Env): Promise<void> {
       const attempt = row.attempt_count + 1;
       const delaySeconds = Math.min(3600, 30 * (2 ** Math.max(0, attempt - 1)));
       const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
-      await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'FAILED', error_message = ?, finished_at = ? WHERE outbox_event_id = ? AND attempt_number = ? AND status = 'PROCESSING'").bind(message, now, row.id, attempt).run();
-      await env.DB.prepare("UPDATE outbox_events SET status = CASE WHEN attempt_count >= 5 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, processing_started_at = NULL, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
-      operationalLog("error", { event: attempt >= 5 ? "NOTIFICATION_OUTBOX_DEAD_LETTER" : "NOTIFICATION_OUTBOX_RETRY_SCHEDULED", outboxEventId: row.id, eventType: row.event_type, facilityId: row.facility_id, correlationId: row.correlation_id, attempt, error: message });
+      const deadLettered = attempt >= 5;
+      const transition = env.DB.prepare("UPDATE outbox_events SET status = CASE WHEN attempt_count >= 5 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, processing_started_at = NULL, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id);
+      const failureStatements: D1PreparedStatement[] = [
+        env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'FAILED', error_message = ?, finished_at = ? WHERE outbox_event_id = ? AND attempt_number = ? AND status = 'PROCESSING'").bind(message, now, row.id, attempt),
+        transition,
+      ];
+      if (deadLettered && row.facility_id) {
+        failureStatements.push(notificationDeadLetterStatement(env.DB, {
+          facilityId: row.facility_id,
+          outboxEventId: row.id,
+          eventType: row.event_type,
+          aggregateType: row.aggregate_type,
+          aggregateId: row.aggregate_id,
+          attempt,
+          error: message,
+          requestId: row.correlation_id,
+          correlationId: row.correlation_id,
+          now,
+        }));
+      }
+      await env.DB.batch(failureStatements);
+      operationalLog("error", { event: deadLettered ? "NOTIFICATION_OUTBOX_DEAD_LETTER" : "NOTIFICATION_OUTBOX_RETRY_SCHEDULED", outboxEventId: row.id, eventType: row.event_type, facilityId: row.facility_id, correlationId: row.correlation_id, attempt, error: message });
     }
   }
 }

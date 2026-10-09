@@ -19,6 +19,12 @@ test("notification queue acknowledges only after outbox processing and retries f
   assert.match(workerSource, /message\.retry\(\);[\s\S]*throw error/);
 });
 
+test("notification dead letters create a durable critical security alarm", () => {
+  assert.match(workerSource, /notificationDeadLetterStatement/);
+  assert.match(workerSource, /deadLettered && row\.facility_id/);
+  assert.match(workerSource, /NOTIFICATION_OUTBOX_DEAD_LETTER/);
+});
+
 test("queue binding is opt-in and configured for both production dispatch and consumption", () => {
   assert.match(viteConfigSource, /NOTIFICATION_QUEUE_NAME/);
   assert.match(viteConfigSource, /binding: "NOTIFICATION_QUEUE"/);

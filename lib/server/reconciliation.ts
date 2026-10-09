@@ -2,6 +2,49 @@ import { operationalLog } from "./observability";
 
 type ReconciliationDatabase = Pick<D1Database, "prepare">;
 
+export function notificationDeadLetterStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    outboxEventId: string;
+    eventType: string;
+    aggregateType: string;
+    aggregateId: string | null;
+    attempt: number;
+    error: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    SELECT ?, ?, 'NOTIFICATION_OUTBOX_DEAD_LETTER', 'CRITICAL', ?, ?, ?
+    WHERE EXISTS (
+      SELECT 1 FROM outbox_events
+      WHERE id = ? AND facility_id = ? AND status = 'DEAD_LETTER' AND attempt_count >= 5
+    )`).bind(
+    `notification-dead-letter:${input.outboxEventId}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "outbox_event",
+      entityId: input.outboxEventId,
+      operation: "NOTIFICATION_DELIVERY",
+      eventType: input.eventType,
+      aggregateType: input.aggregateType,
+      aggregateId: input.aggregateId,
+      attempt: input.attempt,
+      error: input.error,
+      correlationId: input.correlationId,
+      requiresStaffReview: true,
+    }),
+    input.now,
+    input.outboxEventId,
+    input.facilityId,
+  );
+}
+
 /**
  * Record a durable operational alarm when a compensating workflow write could
  * not restore its previous snapshot. The primary request must still fail
