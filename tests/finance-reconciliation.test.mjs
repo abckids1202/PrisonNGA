@@ -19,8 +19,8 @@ test("finance reconciliation detects facility-scoped payment and provider-event 
   d1.database.exec(`
     CREATE TABLE users (id TEXT PRIMARY KEY, user_type TEXT NOT NULL);
     CREATE TABLE payment_intents (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, status TEXT);
-    CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT);
-    CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, idempotency_key TEXT);
+    CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, available_credits INTEGER NOT NULL DEFAULT 0, reserved_credits INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER NOT NULL DEFAULT 0, idempotency_key TEXT);
     CREATE TABLE payment_provider_events (id TEXT PRIMARY KEY, payload TEXT, status TEXT);
     CREATE TABLE payment_refund_requests (id TEXT PRIMARY KEY, payment_intent_id TEXT, facility_id TEXT, status TEXT);
     INSERT INTO users VALUES ('visitor-1', 'VISITOR'), ('visitor-2', 'VISITOR');
@@ -33,4 +33,22 @@ test("finance reconciliation detects facility-scoped payment and provider-event 
   assert.equal(result.results.length, 2);
   assert.deepEqual(result.results.map((row) => row.issue_type).sort(), ["PAYMENT_WITHOUT_PURCHASE", "RECEIVED_PROVIDER_EVENT"]);
   assert.ok(result.results.every((row) => row.payment_intent_id === "payment-1"));
+});
+
+test("finance reconciliation detects a credit account that disagrees with its ledger", async () => {
+  const d1 = new D1();
+  d1.database.exec(`
+    CREATE TABLE users (id TEXT PRIMARY KEY, user_type TEXT NOT NULL);
+    CREATE TABLE payment_intents (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, status TEXT);
+    CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL);
+    CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER NOT NULL, idempotency_key TEXT);
+    CREATE TABLE payment_provider_events (id TEXT PRIMARY KEY, payload TEXT, status TEXT);
+    CREATE TABLE payment_refund_requests (id TEXT PRIMARY KEY, payment_intent_id TEXT, facility_id TEXT, status TEXT);
+    INSERT INTO users VALUES ('visitor-1', 'VISITOR');
+    INSERT INTO credit_accounts VALUES ('credit-1', 'facility-1', 'visitor-1', 4, 0);
+    INSERT INTO credit_ledger_entries VALUES ('ledger-1', 'credit-1', NULL, 'PURCHASE', 3, 'payment:p1:purchase');
+  `);
+  const result = await financeReconciliationStatement(d1, "facility-1").all();
+  assert.deepEqual(result.results.map((row) => row.issue_type), ["CREDIT_ACCOUNT_BALANCE_MISMATCH"]);
+  assert.match(result.results[0].detail, /credit-1/);
 });

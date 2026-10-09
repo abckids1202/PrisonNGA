@@ -61,6 +61,16 @@ export function financeReconciliationStatement(d1: D1Database, facilityId: strin
         'Refund request failed before provider acceptance and requires a retry.'
       FROM payment_refund_requests pr INNER JOIN payment_intents pi ON pi.id = pr.payment_intent_id INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR'
       WHERE pr.facility_id = ? AND pr.status = 'FAILED'
+      UNION ALL
+      SELECT 'CREDIT_ACCOUNT_BALANCE_MISMATCH', NULL, NULL,
+        'Credit account ' || ca.id || ' does not reconcile with its append-only ledger or active reservation count.'
+      FROM credit_accounts ca INNER JOIN users u ON u.id = ca.user_id AND u.user_type = 'VISITOR'
+      WHERE ca.facility_id = ?
+        AND (ca.available_credits < 0 OR ca.reserved_credits < 0
+          OR ca.available_credits + ca.reserved_credits <> (SELECT COALESCE(SUM(cle.amount), 0) FROM credit_ledger_entries cle WHERE cle.credit_account_id = ca.id)
+          OR ca.reserved_credits <> (SELECT COUNT(*) FROM credit_ledger_entries reservation
+            WHERE reservation.credit_account_id = ca.id AND reservation.entry_type = 'RESERVATION'
+              AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = reservation.appointment_id AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))))
     )
-    ORDER BY issue_type, payment_intent_id LIMIT 100`).bind(facilityId, facilityId, facilityId, facilityId, facilityId);
+    ORDER BY issue_type, payment_intent_id LIMIT 100`).bind(facilityId, facilityId, facilityId, facilityId, facilityId, facilityId);
 }
