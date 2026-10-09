@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 
-Latest verified code baseline: `a2bcd00 feat: require tariff and refund policy gates`
+Latest verified code baseline: `c8c0e12 fix: expire bounced visitor challenges`
 
 Audit update: 2026-10-09
 
@@ -93,7 +93,7 @@ Approximate readiness:
 - Production payment signing secrets are rejected unless they meet the minimum entropy length.
 - Automated server/unit tests and browser-level journey coverage for local adapters.
 
-The current local evidence baseline is **460 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `a2bcd00`. Staff Waiting Room, resource-reassignment, kiosk credential, notification dead-letter, payment reconciliation dead-letter, LiveKit provider-close failure, blocked-finalization, and evidence-retention deletion-failure gaps now create durable critical reconciliation/privacy signals for follow-up. Compliance can create a replay-safe incident directly from those alarms, and the security-event-to-incident relationship is persisted and returned after refresh. Production readiness now also requires explicit tariff and refund-policy attestations alongside the institutional release gates, and Administration exposes those gates to operators. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
+The current local evidence baseline is **460 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `c8c0e12`. Staff Waiting Room, resource-reassignment, kiosk credential, notification dead-letter, payment reconciliation dead-letter, LiveKit provider-close failure, blocked-finalization, and evidence-retention deletion-failure gaps now create durable critical reconciliation/privacy signals for follow-up. Terminal provider delivery failures now immediately expire the linked visitor OTP challenge. Compliance can create a replay-safe incident directly from those alarms, and the security-event-to-incident relationship is persisted and returned after refresh. Production readiness now also requires explicit tariff and refund-policy attestations alongside the institutional release gates, and Administration exposes those gates to operators. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
 
 A disposable local backup/restore drill also passed after the release verification, including schema, foreign-key, credit-ledger, and audit-integrity checks. This is local recovery evidence only; remote D1 backup scheduling, R2 recovery, RPO/RTO measurement, and a production-like restore exercise remain release gates.
 
