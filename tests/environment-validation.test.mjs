@@ -35,7 +35,9 @@ test("production release gates fail closed until institutional evidence is attes
   assert.ok(result.missing.includes("SECUREVISIT_BACKUP_RESTORE_DRILL=verified"));
 });
 
-test("development and staging do not require production approval attestations", () => {
+test("development skips release attestations while staging requires acceptance evidence", () => {
   assert.equal(evaluateReleaseGates("development", {}).ready, true);
-  assert.equal(evaluateReleaseGates("staging", {}).ready, true);
+  const staging = evaluateReleaseGates("staging", {});
+  assert.equal(staging.ready, false);
+  assert.ok(staging.missing.includes("SECUREVISIT_LIVEKIT_STAGING=verified"));
 });

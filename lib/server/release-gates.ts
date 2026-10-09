@@ -36,8 +36,11 @@ const productionGates: Array<[string, string]> = [
 export function evaluateReleaseGates(environment: string, env: Record<string, unknown>): ReleaseGateResult {
   const required = environment === "production"
     ? [...productionGates.map(([key]) => key), "SECUREVISIT_RELEASE_EVIDENCE_ID", "SECUREVISIT_RELEASE_EVIDENCE_EXPIRES_AT", "SECUREVISIT_RELEASE_EVIDENCE_MANIFEST"]
-    : [];
-  const missing = productionGates
+    : environment === "staging"
+      ? pilotEvidenceGates.map(([key]) => key)
+      : [];
+  const gateDefinitions = environment === "staging" ? pilotEvidenceGates : productionGates;
+  const missing = gateDefinitions
     .filter(([key, expected]) => required.includes(key) && String(env[key] || "").trim().toLowerCase() !== expected)
     .map(([key, expected]) => `${key}=${expected}`);
   const evidenceId = typeof env.SECUREVISIT_RELEASE_EVIDENCE_ID === "string" ? env.SECUREVISIT_RELEASE_EVIDENCE_ID.trim() : "";
