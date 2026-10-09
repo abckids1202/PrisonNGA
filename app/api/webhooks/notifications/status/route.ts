@@ -9,7 +9,7 @@ import { verifyPaymentWebhookSignature } from "../../../../../lib/server/payment
 const TERMINAL_SUCCESS = new Set(["DELIVERED"]);
 const ACCEPTED_STATUS = "SENT";
 const TERMINAL_FAILURE = new Set(["FAILED", "BOUNCED", "REJECTED", "UNDELIVERED", "INVALID_NUMBER"]);
-const ALLOWED_STATUSES = new Set([...TERMINAL_SUCCESS, ...TERMINAL_FAILURE, "QUEUED", "PROCESSING"]);
+const ALLOWED_STATUSES = new Set([...TERMINAL_SUCCESS, ACCEPTED_STATUS, ...TERMINAL_FAILURE, "QUEUED", "PROCESSING"]);
 
 type DeliveryStatusPayload = { eventId: string; provider: string; providerReference: string; status: string; errorCode?: string; errorMessage?: string };
 
