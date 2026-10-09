@@ -18,6 +18,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern .wrangler",
     "typecheck": "tsc --noEmit --incremental false",
     "validate:environment": "node --import tsx --env-file-if-exists=.env.local scripts/validate-environment.mjs",
+    "audit:pilot": "node --import tsx --env-file-if-exists=.env.local scripts/audit-pilot.mjs",
     "staging:smoke": "node --env-file-if-exists=.env.local scripts/staging-smoke.mjs",
     "db:migrate:local": "node --env-file-if-exists=.env.local scripts/d1-migrations.mjs apply --local",
     "db:migrate:remote": "node --env-file-if-exists=.env.local scripts/d1-migrations.mjs apply --remote",

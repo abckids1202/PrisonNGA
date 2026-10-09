@@ -4,6 +4,8 @@ This document separates repository evidence from external launch prerequisites. 
 
 The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.md](./FAILURE_HANDLING.md).
 
+Run `npm run audit:pilot` for a redacted JSON readiness report. Add `--strict` when the report is being used as a staging/production gate; it exits non-zero until the provider configuration, remote database identity, storage, queue, and required release evidence are present. The command never prints secret values.
+
 ## Current repository evidence
 
 - Cloudflare Worker and D1 workflow foundation is present.
