@@ -4,6 +4,25 @@ Date: 2026-10-09
 
 Latest verified code baseline: `b4df3bb fix: isolate scheduled maintenance failures`
 
+Audit update: 2026-10-09
+
+The route-boundary review found no protected application API route that is
+obviously missing an identity, permission, visitor, kiosk, webhook, health, or
+environment boundary. Facility settings are also backed by the current
+facility-policy, closure, restriction, and resource APIs; the `NOT CONNECTED`
+state is a fallback for unknown settings tabs, not the active implementation.
+
+The most important newly confirmed implementation risk is transactional
+correctness under concurrency. Several workflows use D1 `batch()` statements
+that write related records and then inspect `meta.changes` after the batch has
+already executed. A zero-row optimistic-concurrency result is handled in
+application code, but D1 does not automatically roll back a successful earlier
+statement merely because a later statement changed zero rows. The kiosk
+presence path is a concrete example: the waiting-room row can be updated while
+the appointment update loses its version race. This requires an atomic
+transition design or a tested reconciliation/compensation strategy before
+production use; passing local tests does not prove this race is safe.
+
 This document is the current project-lead assessment of the repository. It distinguishes implemented code from provider or institutional evidence that cannot be proven locally.
 
 ## Local development
