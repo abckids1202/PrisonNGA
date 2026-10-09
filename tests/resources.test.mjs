@@ -69,6 +69,22 @@ test("resource selection and room/device reservations are atomic and idempotent"
   } finally { d1.close(); }
 });
 
+test("partial room or kiosk allocation is compensated when the other resource is unavailable", async () => {
+  const roomOnly = new SQLiteD1();
+  try {
+    addResource(roomOnly, "room-1", "ROOM", "Room 01", "AVAILABLE");
+    await assert.rejects(allocateVisitResources(roomOnly, { facilityId: "facility-1", appointmentId: "visit-room-only", startsAt: "2026-10-01T09:00:00.000Z", endsAt: "2026-10-01T09:30:00.000Z" }), /RESOURCE_RESERVATION_CONFLICT/);
+    assert.equal(roomOnly.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations").get().count, 0);
+  } finally { roomOnly.close(); }
+
+  const deviceOnly = new SQLiteD1();
+  try {
+    addResource(deviceOnly, "device-1", "DEVICE", "Kiosk 01", "ONLINE");
+    await assert.rejects(allocateVisitResources(deviceOnly, { facilityId: "facility-1", appointmentId: "visit-device-only", startsAt: "2026-10-01T09:00:00.000Z", endsAt: "2026-10-01T09:30:00.000Z" }), /RESOURCE_RESERVATION_CONFLICT/);
+    assert.equal(deviceOnly.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations").get().count, 0);
+  } finally { deviceOnly.close(); }
+});
+
 test("resource allocation skips conflicting resources and uses another available pair", async () => {
   const d1 = new SQLiteD1();
   try {

@@ -26,11 +26,28 @@ export async function allocateVisitResources(d1: D1Database, input: { facilityId
   } catch {
     throw new SecurityError("RESOURCE_RESERVATION_CONFLICT", 409);
   }
+  const roomCreated = Number(results[0]?.meta.changes || 0) > 0;
+  const deviceCreated = Number(results[1]?.meta.changes || 0) > 0;
+  if (roomCreated !== deviceCreated) {
+    const orphanReservationId = roomCreated ? roomId : deviceId;
+    const removed = await d1.prepare("DELETE FROM resource_reservations WHERE id = ? AND facility_id = ? AND appointment_id = ? AND status = 'RESERVED'")
+      .bind(orphanReservationId, input.facilityId, input.appointmentId).run();
+    if (!removed.meta.changes) throw new SecurityError("RESOURCE_RESERVATION_RECONCILIATION_REQUIRED", 503);
+    throw new SecurityError("RESOURCE_RESERVATION_CONFLICT", 409);
+  }
   const reserved = await d1.prepare(`SELECT rr.resource_type, rr.resource_id, r.display_name FROM resource_reservations rr INNER JOIN resources r ON r.id = rr.resource_id AND r.facility_id = rr.facility_id
     WHERE rr.facility_id = ? AND rr.appointment_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')`).bind(input.facilityId, input.appointmentId).all<{ resource_type: string; resource_id: string; display_name: string }>();
   const room = reserved.results.find((item) => item.resource_type === "ROOM");
   const device = reserved.results.find((item) => item.resource_type === "DEVICE");
-  if (!room || !device) throw new SecurityError("RESOURCES_UNAVAILABLE", 409);
+  if (!room || !device) {
+    const createdIds = [roomCreated ? roomId : null, deviceCreated ? deviceId : null].filter((id): id is string => Boolean(id));
+    if (createdIds.length) {
+      const cleanup = await d1.prepare("DELETE FROM resource_reservations WHERE id IN (?, ?) AND facility_id = ? AND appointment_id = ? AND status = 'RESERVED'")
+        .bind(createdIds[0] || "", createdIds[1] || "", input.facilityId, input.appointmentId).run();
+      if (cleanup.meta.changes !== createdIds.length) throw new SecurityError("RESOURCE_RESERVATION_RECONCILIATION_REQUIRED", 503);
+    }
+    throw new SecurityError("RESOURCES_UNAVAILABLE", 409);
+  }
   return { roomId: room.resource_id, roomName: room.display_name, deviceId: device.resource_id, deviceName: device.display_name, created: results.some((result) => result.meta.changes > 0) };
 }
 
