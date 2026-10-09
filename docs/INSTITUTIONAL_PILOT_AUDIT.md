@@ -68,6 +68,7 @@ The current repository already includes:
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Terminal email/SMS provider status failures now expire the linked visitor OTP challenge immediately, preventing a bounced or undelivered code from remaining usable until its normal ten-minute expiry.
 - Notification provider `SENT` callbacks now remain an accepted/in-progress state; only an explicit `DELIVERED` callback marks visitor delivery complete.
+- `SENT` callbacks remain on the accepted status allow-list, so provider acknowledgement is persisted without being rejected or misrepresented as delivery completion.
 - Evidence-retention deletion failures now create a deduplicated, facility-scoped critical privacy alarm with the object key, retention deadline, safe failure reason, correlation ID, and an explicit staff-review/deletion-unconfirmed state.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
