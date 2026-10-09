@@ -14,6 +14,8 @@ test("delivery status webhook is signed, replay-safe, and updates both notificat
   assert.match(route, /UPDATE notifications SET status = \?/);
   assert.match(route, /BOUNCED/);
   assert.match(route, /auth_challenge_delivery_attempts/);
+  assert.match(route, /UPDATE auth_challenges SET expires_at/);
+  assert.match(route, /consumed_at IS NULL/);
   assert.match(route, /auditAndOutboxStatements/);
   assert.match(migration, /provider_status/);
   assert.match(migration, /provider_error/);
