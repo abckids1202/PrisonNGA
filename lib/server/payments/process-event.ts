@@ -5,6 +5,8 @@ import type { PaymentWebhook } from "./provider";
 
 const successfulEvents = new Set(["PAYMENT_SUCCEEDED", "PAYMENT_PAID", "PAYMENT_SUCCESS", "SUCCEEDED", "PAID"]);
 const failedEvents = new Set(["PAYMENT_FAILED", "PAYMENT_EXPIRED", "PAYMENT_REFUNDED", "PAYMENT_DISPUTED", "FAILED", "EXPIRED", "REFUNDED", "DISPUTED"]);
+const successfulStatuses = new Set(["SUCCEEDED", "PAID", "SUCCESS"]);
+const failedStatuses = new Set(["FAILED", "EXPIRED", "REFUNDED", "DISPUTED"]);
 
 function paymentEventTrail(d1: D1Database, input: { intentId: string; facilityId: string; userId: string; eventKey: string; status: string; eventType: string; correlationId: string }) {
   return auditAndOutboxStatements(d1, {
@@ -64,7 +66,12 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
   if (payload.currency && payload.currency.toUpperCase() !== intent.currency.toUpperCase()) {
     throw new SecurityError("PAYMENT_CURRENCY_MISMATCH", 409);
   }
-  const isSuccessfulEvent = successfulEvents.has(payload.eventType) || payload.status === "SUCCEEDED";
+  const suppliedStatus = payload.status || "";
+  if ((successfulEvents.has(payload.eventType) && suppliedStatus && !successfulStatuses.has(suppliedStatus))
+    || (failedEvents.has(payload.eventType) && suppliedStatus && !failedStatuses.has(suppliedStatus))) {
+    throw new SecurityError("PAYMENT_EVENT_STATUS_MISMATCH", 409);
+  }
+  const isSuccessfulEvent = successfulEvents.has(payload.eventType) || successfulStatuses.has(suppliedStatus);
   if (isSuccessfulEvent && (!payload.providerReference || payload.amountMinor === undefined || !payload.currency)) {
     throw new SecurityError("PAYMENT_SETTLEMENT_FIELDS_REQUIRED", 409);
   }
@@ -100,7 +107,7 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
     }
     return { status: "SUCCEEDED", paymentIntentId: intent.id };
   }
-  if (failedEvents.has(payload.eventType) || ["FAILED", "EXPIRED", "REFUNDED", "DISPUTED"].includes(payload.status || "")) {
+  if (failedEvents.has(payload.eventType) || failedStatuses.has(suppliedStatus)) {
     const nextStatus = payload.eventType.includes("REFUND") || payload.status === "REFUNDED" ? "REFUNDED" : payload.eventType.includes("DISPUT") || payload.status === "DISPUTED" ? "DISPUTED" : payload.eventType.includes("EXPIRED") || payload.status === "EXPIRED" ? "EXPIRED" : "FAILED";
     if (nextStatus === "REFUNDED" || nextStatus === "DISPUTED") {
       const allowedPriorStatuses = nextStatus === "REFUNDED" ? "('PENDING', 'CHECKOUT_CREATED', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'REFUNDED', 'DISPUTED')" : "('PENDING', 'CHECKOUT_CREATED', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'DISPUTED')";

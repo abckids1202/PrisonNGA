@@ -84,6 +84,26 @@ test("payment settlement requires provider reference, amount, and currency", asy
   }
 });
 
+test("payment settlement rejects contradictory provider event and status fields", async () => {
+  const successMismatch = new D1();
+  await assert.rejects(processPaymentProviderEvent(successMismatch, {
+    provider: "webhook",
+    eventKey: "event-1",
+    payload: { ...event, status: "FAILED" },
+  }), /PAYMENT_EVENT_STATUS_MISMATCH/);
+  assert.equal(successMismatch.sqlite.prepare("SELECT status FROM payment_intents WHERE id = 'payment-1'").get().status, "CHECKOUT_CREATED");
+  assert.equal(successMismatch.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+
+  const refundMismatch = new D1();
+  await assert.rejects(processPaymentProviderEvent(refundMismatch, {
+    provider: "webhook",
+    eventKey: "event-1",
+    payload: { ...event, eventType: "PAYMENT_REFUNDED", status: "SUCCEEDED" },
+  }), /PAYMENT_EVENT_STATUS_MISMATCH/);
+  assert.equal(refundMismatch.sqlite.prepare("SELECT status FROM payment_intents WHERE id = 'payment-1'").get().status, "CHECKOUT_CREATED");
+  assert.equal(refundMismatch.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+});
+
 test("payment success commits provider status, credit purchase, event, audit, and outbox together", async () => {
   const d1 = new D1();
   await processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-1", payload: event });
