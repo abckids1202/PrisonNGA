@@ -11,6 +11,7 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 - Sensitive mutations use facility scope, permission checks, version checks, idempotency where required, audit events, and outbox events.
 - Recording is disabled by policy and must remain disabled for the pilot.
 - Development OTP delivery and development simulation controls are environment-gated and are not pilot capabilities.
+- Production release gates also require a named release-evidence manifest ID and a future expiry timestamp; readiness rejects stale or malformed evidence metadata.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, and dependency audit must pass before every pushed phase.
 
 ### Baseline verification — 2026-10-09
