@@ -594,6 +594,19 @@ function notificationCopy(eventType: string, payload: Record<string, unknown> = 
   return { title: "SecureVisit update", body: "There is a new update in your SecureVisit account." };
 }
 
+async function runScheduledJob(name: string, task: Promise<void>): Promise<void> {
+  try {
+    await task;
+  } catch (error) {
+    operationalLog("error", {
+      event: "SCHEDULED_JOB_FAILED",
+      actorId: "system:scheduler",
+      jobName: name,
+      error: safeOperationalErrorMessage(error, "SCHEDULED_JOB_FAILED", 500),
+    });
+  }
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -611,7 +624,21 @@ const worker = {
         return processOutbox(env);
       })
       : processOutbox(env);
-    ctx.waitUntil(Promise.all([outboxWork, reconcilePaymentEvents(env), expireAbandonedPaymentIntents(env), reconcileStaleKioskHealth(env), reconcileWaitingRoomNoShows(env), purgeExpiredEvidence(env), purgeExpiredStepUpAssertions(env), expireBreakGlassRequests(env), reconcileStaleAuthDeliveryAttempts(env.DB), purgeExpiredAuthArtifacts(env.DB), purgeExpiredAuthSessions(env.DB), purgeStaleRateLimitBuckets(env.DB), reconcileExpiredSessions(env)]));
+    ctx.waitUntil(Promise.all([
+      runScheduledJob("notification-outbox", outboxWork),
+      runScheduledJob("payment-events", reconcilePaymentEvents(env)),
+      runScheduledJob("abandoned-payments", expireAbandonedPaymentIntents(env)),
+      runScheduledJob("kiosk-health", reconcileStaleKioskHealth(env)),
+      runScheduledJob("waiting-room-no-shows", reconcileWaitingRoomNoShows(env)),
+      runScheduledJob("evidence-retention", purgeExpiredEvidence(env)),
+      runScheduledJob("step-up-expiry", purgeExpiredStepUpAssertions(env)),
+      runScheduledJob("break-glass-expiry", expireBreakGlassRequests(env)),
+      runScheduledJob("auth-delivery-reconciliation", reconcileStaleAuthDeliveryAttempts(env.DB)),
+      runScheduledJob("auth-artifact-cleanup", purgeExpiredAuthArtifacts(env.DB)),
+      runScheduledJob("auth-session-cleanup", purgeExpiredAuthSessions(env.DB)),
+      runScheduledJob("rate-limit-cleanup", purgeStaleRateLimitBuckets(env.DB)),
+      runScheduledJob("live-session-reconciliation", reconcileExpiredSessions(env)),
+    ]));
   },
   async queue(batch: NotificationQueueBatch, env: Env): Promise<void> {
     // Claiming remains inside processOutbox, so duplicate queue deliveries
