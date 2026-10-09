@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 
-Latest verified code baseline: `71dd4ab feat: alarm on payment reconciliation dead letters`
+Latest verified code baseline: `a190e5b feat: alarm on live session provider failures`
 
 Audit update: 2026-10-09
 
@@ -93,7 +93,7 @@ Approximate readiness:
 - Production payment signing secrets are rejected unless they meet the minimum entropy length.
 - Automated server/unit tests and browser-level journey coverage for local adapters.
 
-The current local evidence baseline is **453 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `71dd4ab`. Staff Waiting Room, resource-reassignment, kiosk credential, notification dead-letter, and payment reconciliation dead-letter gaps now create durable critical reconciliation signals for follow-up. Compliance can create a replay-safe incident directly from those alarms, and the security-event-to-incident relationship is persisted and returned after refresh. Production readiness also fails closed until institutional release-gate attestations are present, and Administration exposes those gates to operators. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
+The current local evidence baseline is **456 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `a190e5b`. Staff Waiting Room, resource-reassignment, kiosk credential, notification dead-letter, payment reconciliation dead-letter, and LiveKit provider-close failure gaps now create durable critical reconciliation signals for follow-up. Compliance can create a replay-safe incident directly from those alarms, and the security-event-to-incident relationship is persisted and returned after refresh. Production readiness also fails closed until institutional release-gate attestations are present, and Administration exposes those gates to operators. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
 
 ## Not yet proven or still incomplete
 
