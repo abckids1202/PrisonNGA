@@ -11,3 +11,12 @@ test("live-session detail exposes facility-scoped settlement recovery evidence",
   assert.match(source, /reconciliation: reconciliation \? \{ required: true/);
   assert.match(source, /reconciliation: reconciliation \? \{ required: true[\s\S]*required: false/);
 });
+
+test("live-session drawer loads and presents persisted evidence and settlement recovery", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /loadSessionDetail\(sessionId: string\)/);
+  assert.match(source, /\/api\/control\/live-sessions\/\$\{encodeURIComponent\(sessionId\)\}/);
+  assert.match(source, /MANUAL REVIEW REQUIRED/);
+  assert.match(source, /selectedDetail\?\.events\.slice\(0, 4\)/);
+  assert.match(source, /setSelectedDetail\(null\)/);
+});
