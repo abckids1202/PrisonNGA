@@ -10,6 +10,9 @@ test("Administration integrations tab reads protected readiness state", async ()
   assert.match(source, /releaseGates/);
   assert.match(source, /Institutional launch gates/);
   assert.match(source, /Launch remains blocked/);
+  assert.match(source, /createReconciliationIncident/);
+  assert.match(source, /security-event-incident-/);
+  assert.match(source, /Create incident/);
   assert.match(source, /Secret values are never returned/);
   assert.match(source, /tab === "Integrations" \? <IntegrationReadinessPanel/);
 });

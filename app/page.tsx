@@ -1621,6 +1621,7 @@ function ComplianceTab({ tab, onNotify }: { tab: string; onNotify: (message: str
   const [financeSummary, setFinanceSummary] = useState<{ credits_purchased?: number; credits_consumed?: number; credits_reserved?: number; refund_cases?: number } | null>(null);
   const [reportError, setReportError] = useState(false);
   const [securityError, setSecurityError] = useState(false);
+  const [reconciliationIncidents, setReconciliationIncidents] = useState<Record<string, string>>({});
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
@@ -1634,9 +1635,36 @@ function ComplianceTab({ tab, onNotify }: { tab: string; onNotify: (message: str
     Promise.all(requests).finally(() => { if (active) setLoading(false); });
     return () => { active = false; window.clearTimeout(loadingTimer); if (reportResetTimer !== null) window.clearTimeout(reportResetTimer); if (securityResetTimer !== null) window.clearTimeout(securityResetTimer); };
   }, [tab, refreshNonce]);
+  const createReconciliationIncident = async (event: ComplianceSecurityEvent) => {
+    const metadata = event.metadata || {};
+    const entityType = typeof metadata.entityType === "string" ? metadata.entityType : "";
+    const entityId = typeof metadata.entityId === "string" ? metadata.entityId : "";
+    const incidentIdempotencyKey = `security-event-incident-${event.id}`;
+    try {
+      const response = await fetch("/api/control/incidents", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": incidentIdempotencyKey },
+        body: JSON.stringify({
+          incidentType: "RECONCILIATION",
+          severity: "CRITICAL",
+          title: `Reconciliation required · ${entityId || event.id}`,
+          description: `A ${event.eventType.replaceAll("_", " ").toLowerCase()} requires staff review. Correlation ${String(metadata.correlationId || "not recorded")}; expected version ${String(metadata.expectedVersion || "not recorded")}.`,
+          appointmentId: entityType === "appointment" ? entityId : undefined,
+          resourceId: entityType === "resource" ? entityId : undefined,
+        }),
+      });
+      const body = await response.json() as { incidentId?: string; error?: string };
+      if (!response.ok || !body.incidentId) throw new Error(body.error || "Incident could not be created.");
+      setReconciliationIncidents((current) => ({ ...current, [event.id]: body.incidentId! }));
+      onNotify(`Incident ${body.incidentId} created for staff follow-up.`, "success");
+    } catch (reason: unknown) {
+      onNotify(reason instanceof Error ? reason.message : "Incident could not be created.", "error");
+    }
+  };
   if (tab === "Recording Access") return <div className="sv3-settings-surface"><Status tone="blue">RECORDING DISABLED</Status><h2>No recording access workflow is active</h2><p>Recording is disabled by the pilot policy. There are no recordings to review, and this workspace does not create fictional access requests.</p></div>;
   if (tab === "Reports") return <div className="sv3-report-grid">{[["Daily operations", reportError ? "Report unavailable" : loading || auditCount === null ? "Loading" : `${auditCount} audit events loaded`, "Facility-scoped audit activity", reportError ? "UNAVAILABLE" : loading || auditCount === null ? "LOADING" : "READY"], ["Credit reconciliation", reportError ? "Report unavailable" : financeSummary ? `${financeSummary.credits_purchased || 0} purchased · ${financeSummary.credits_consumed || 0} consumed` : "Financial records unavailable", "Persisted D1 ledger summary", reportError ? "UNAVAILABLE" : financeSummary ? "READY" : "UNAVAILABLE"], ["Access review", "Recording policy is OFF", "No recording access records exist", "NOT APPLICABLE"]].map((report) => <div className="sv3-report-card" key={report[0]}><span className="sv3-report-icon">▤</span><strong>{report[0]}</strong><small>{report[1]} · {report[2]}</small><Status tone={report[3] === "READY" ? "green" : report[3] === "NOT APPLICABLE" ? "blue" : "orange"}>{report[3]}</Status><b>{report[3] === "READY" ? "Open report →" : "View status →"}</b></div>)}</div>;
-  return <div className="sv3-security-events">{loading ? <div className="sv3-empty"><strong>Loading persisted security events…</strong></div> : securityError ? <div className="sv3-empty" role="alert"><strong>Security events unavailable</strong><p>The protected security-event service could not be reached. No empty state is being inferred.</p></div> : securityEvents.length ? securityEvents.map((event) => <div className={`sv3-security-event ${event.severity === "CRITICAL" ? "critical" : ""}`} key={event.id}><span>{event.severity === "CRITICAL" ? "!" : event.severity === "WARNING" ? "!" : "✓"}</span><div><strong>{event.eventType.replaceAll("_", " ")}</strong><small>{new Date(event.createdAt).toLocaleString("en-ID", { timeZone: "Asia/Jakarta" })} · {event.requestId || "No request ID"}</small></div><Status tone={event.severity === "CRITICAL" ? "red" : event.severity === "WARNING" ? "orange" : "green"}>{event.severity}</Status></div>) : <div className="sv3-empty"><strong>No security events recorded</strong><p>The current facility scope has no persisted security events.</p></div>}<Button variant="secondary" onClick={() => { setRefreshNonce((value) => value + 1); onNotify("Security events refreshed from the current facility scope.", "info"); }}>Refresh facility scope</Button></div>;
+  return <div className="sv3-security-events">{loading ? <div className="sv3-empty"><strong>Loading persisted security events…</strong></div> : securityError ? <div className="sv3-empty" role="alert"><strong>Security events unavailable</strong><p>The protected security-event service could not be reached. No empty state is being inferred.</p></div> : securityEvents.length ? securityEvents.map((event) => { const metadata = event.metadata || {}; const requiresStaffReview = event.severity === "CRITICAL" && metadata.requiresStaffReview === true; const incidentId = reconciliationIncidents[event.id]; return <div className={`sv3-security-event ${event.severity === "CRITICAL" ? "critical" : ""}`} key={event.id}><span>{event.severity === "CRITICAL" ? "!" : event.severity === "WARNING" ? "!" : "✓"}</span><div><strong>{event.eventType.replaceAll("_", " ")}</strong><small>{new Date(event.createdAt).toLocaleString("en-ID", { timeZone: "Asia/Jakarta" })} · {event.requestId || "No request ID"}</small>{requiresStaffReview ? <small>Staff review required · {incidentId ? `Incident ${incidentId}` : "No incident linked"}</small> : null}</div><Status tone={event.severity === "CRITICAL" ? "red" : event.severity === "WARNING" ? "orange" : "green"}>{event.severity}</Status>{requiresStaffReview ? <Button variant="quiet" onClick={() => void createReconciliationIncident(event)} disabled={Boolean(incidentId)}>{incidentId ? "Incident created" : "Create incident"}</Button> : null}</div>; }) : <div className="sv3-empty"><strong>No security events recorded</strong><p>The current facility scope has no persisted security events.</p></div>}<Button variant="secondary" onClick={() => { setRefreshNonce((value) => value + 1); onNotify("Security events refreshed from the current facility scope.", "info"); }}>Refresh facility scope</Button></div>;
 }
 
 type FacilityResource = { id: string; resource_type: string; display_name: string; status: string; room_id: string | null; health_state: string; last_heartbeat_at: string | null; version: number; active_appointment_id: string | null; has_active_kiosk_credential: number; kiosk_credential_last_used_at: string | null };
