@@ -1,8 +1,8 @@
 # SecureVisit Current Project Audit
 
-Date: 2026-10-08
+Date: 2026-10-09
 
-Latest verified repository commit: `309b5e1 fix: enforce payment signing secret strength`
+Latest verified repository commit: `02a6429 fix: scope session events by facility`
 
 This document is the current project-lead assessment of the repository. It distinguishes implemented code from provider or institutional evidence that cannot be proven locally.
 
@@ -61,7 +61,7 @@ Approximate readiness:
 - Production payment signing secrets are rejected unless they meet the minimum entropy length.
 - Automated server/unit tests and browser-level journey coverage for local adapters.
 
-The current local evidence baseline is **434 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
+The current local evidence baseline is **435 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
 
 ## Not yet proven or still incomplete
 
