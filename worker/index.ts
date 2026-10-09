@@ -393,6 +393,41 @@ async function processOutbox(env: Env): Promise<void> {
   }
 }
 
+async function reconcileCreditAccountInvariants(env: Env): Promise<void> {
+  const rows = await env.DB.prepare(`SELECT ca.id, ca.facility_id, ca.available_credits, ca.reserved_credits,
+      (SELECT COALESCE(SUM(cle.amount), 0) FROM credit_ledger_entries cle WHERE cle.credit_account_id = ca.id) AS ledger_total,
+      (SELECT COUNT(*) FROM credit_ledger_entries reservation
+        WHERE reservation.credit_account_id = ca.id AND reservation.entry_type = 'RESERVATION'
+          AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = reservation.appointment_id AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))) AS active_reservations
+    FROM credit_accounts ca INNER JOIN users u ON u.id = ca.user_id AND u.user_type = 'VISITOR'
+    WHERE ca.available_credits < 0 OR ca.reserved_credits < 0
+      OR ca.available_credits + ca.reserved_credits <> (SELECT COALESCE(SUM(cle.amount), 0) FROM credit_ledger_entries cle WHERE cle.credit_account_id = ca.id)
+      OR ca.reserved_credits <> (SELECT COUNT(*) FROM credit_ledger_entries reservation
+        WHERE reservation.credit_account_id = ca.id AND reservation.entry_type = 'RESERVATION'
+          AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = reservation.appointment_id AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION')))
+    ORDER BY ca.updated_at ASC LIMIT 25`).all<{ id: string; facility_id: string; available_credits: number; reserved_credits: number; ledger_total: number; active_reservations: number }>();
+
+  for (const row of rows.results) {
+    const requestId = `credit-reconciliation:${row.facility_id}:${row.id}`;
+    try {
+      await env.DB.prepare(`INSERT OR IGNORE INTO security_events
+        (id, facility_id, event_type, severity, request_id, metadata, created_at)
+        VALUES (?, ?, 'CREDIT_ACCOUNT_RECONCILIATION_REQUIRED', 'CRITICAL', ?, ?, CURRENT_TIMESTAMP)`)
+        .bind(requestId, row.facility_id, requestId, JSON.stringify({
+          entityType: 'credit_account',
+          entityId: row.id,
+          availableCredits: row.available_credits,
+          reservedCredits: row.reserved_credits,
+          ledgerTotal: row.ledger_total,
+          activeReservations: row.active_reservations,
+          requiresStaffReview: true,
+        })).run();
+    } catch (error) {
+      operationalLog('error', { event: 'CREDIT_ACCOUNT_RECONCILIATION_ALARM_FAILED', facilityId: row.facility_id, creditAccountId: row.id, requestId, error });
+    }
+  }
+}
+
 async function purgeExpiredEvidence(env: Env): Promise<void> {
   if (!env.EVIDENCE_BUCKET) return;
   await env.DB.prepare("UPDATE evidence_documents SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE status = 'PENDING_DELETION' AND legal_hold = 1").run();
@@ -703,6 +738,7 @@ const worker = {
       : processOutbox(env);
     ctx.waitUntil(Promise.all([
       runScheduledJob("notification-outbox", outboxWork),
+      runScheduledJob("credit-account-reconciliation", reconcileCreditAccountInvariants(env)),
       runScheduledJob("payment-events", reconcilePaymentEvents(env)),
       runScheduledJob("abandoned-payments", expireAbandonedPaymentIntents(env)),
       runScheduledJob("kiosk-health", reconcileStaleKioskHealth(env)),
