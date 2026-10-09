@@ -22,6 +22,13 @@ test("waiting-room reconciliation failures create a durable critical signal", as
   assert.match(source, /WAITING_ROOM_RECONCILIATION_RECORD_FAILED/);
 });
 
+test("resource reassignment conflicts create a durable reconciliation signal", async () => {
+  const source = await readFile(new URL("../app/api/control/resources/route.ts", import.meta.url), "utf8");
+  assert.match(source, /recordWaitingRoomReconciliationRequired/);
+  assert.match(source, /operation: "RESOURCE_REASSIGNMENT"/);
+  assert.match(source, /RESOURCE_REASSIGNMENT_CONFLICT/);
+});
+
 test("waiting-room cancellation releases reserved credit and assigned resources", async () => {
   const source = await readFile(new URL("../app/api/control/waiting-room/route.ts", import.meta.url), "utf8");
   assert.match(source, /releaseVisitCreditStatements/);

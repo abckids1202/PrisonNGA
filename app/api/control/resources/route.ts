@@ -4,6 +4,7 @@ import { assertReason, getRequestContext, requirePermission, requireStepUp, secu
 import { createKioskCredentialSecret, hashKioskCredential } from "../../../../lib/server/kiosk-credentials";
 import { resourceReassignmentStatements } from "../../../../lib/server/resource-reassignment";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
+import { recordWaitingRoomReconciliationRequired } from "../../../../lib/server/reconciliation";
 
 const commands = ["set_status", "heartbeat", "issue_kiosk_credential", "revoke_kiosk_credential", "reassign_appointment"] as const;
 
@@ -121,7 +122,17 @@ export async function POST(request: Request) {
       const statements = resourceReassignmentStatements({ d1, facilityId: authorization.facilityId, appointmentId, sourceReservationId: source.id, sourceResourceId: source.resource_id, sourceResourceType: source.resource_type, sourceStatus: source.status, startsAt: source.starts_at, endsAt: source.ends_at, targetResourceId: target.id, expectedSourceVersion, expectedTargetVersion, expectedWaitingVersion, waitingExists: source.waiting_version !== null, actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, reason, oldResourceName: current.display_name, newResourceName: target.display_name, requestId: context.requestId, correlationId, now });
       const results = await d1.batch(statements);
       const waitingUpdated = source.waiting_version === null || Boolean(results[4]?.meta.changes);
-      if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes && results[3]?.meta.changes && waitingUpdated)) throw new SecurityError("RESOURCE_REASSIGNMENT_CONFLICT", 409);
+      if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes && results[3]?.meta.changes && waitingUpdated)) {
+        await recordWaitingRoomReconciliationRequired(d1, {
+          facilityId: authorization.facilityId,
+          appointmentId,
+          operation: "RESOURCE_REASSIGNMENT",
+          requestId: context.requestId,
+          correlationId,
+          expectedVersion: source.waiting_version === null ? 0 : expectedWaitingVersion + 1,
+        });
+        throw new SecurityError("RESOURCE_REASSIGNMENT_CONFLICT", 409);
+      }
       return finish({ appointmentId, resourceId: target.id, resourceType: target.resource_type, displayName: target.display_name, version: target.version + 1, waitingVersion: source.waiting_version === null ? null : expectedWaitingVersion + 1, correlationId });
     }
     if (body.command === "issue_kiosk_credential") {
