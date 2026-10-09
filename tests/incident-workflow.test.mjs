@@ -7,7 +7,7 @@ class D1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
-      CREATE TABLE incidents (id TEXT PRIMARY KEY, facility_id TEXT, incident_type TEXT, severity TEXT, status TEXT, title TEXT, description TEXT, appointment_id TEXT, session_id TEXT, resource_id TEXT, reporter_user_id TEXT, assigned_user_id TEXT, resolution TEXT, version INTEGER, idempotency_key TEXT, request_hash TEXT, created_at TEXT, updated_at TEXT);
+      CREATE TABLE incidents (id TEXT PRIMARY KEY, facility_id TEXT, incident_type TEXT, severity TEXT, status TEXT, title TEXT, description TEXT, appointment_id TEXT, session_id TEXT, resource_id TEXT, source_security_event_id TEXT, reporter_user_id TEXT, assigned_user_id TEXT, resolution TEXT, version INTEGER, idempotency_key TEXT, request_hash TEXT, created_at TEXT, updated_at TEXT);
       CREATE UNIQUE INDEX incidents_create_idempotency_idx ON incidents (facility_id, reporter_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
       CREATE TABLE incident_events (id TEXT PRIMARY KEY, incident_id TEXT, event_type TEXT, actor_user_id TEXT, details TEXT, correlation_id TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
@@ -38,13 +38,14 @@ function auditInput(actionType, id) {
   return { actorUserId: "staff-1", actorRole: "Supervisor", facilityId: "facility-1", actionType, entityType: "incident", entityId: id, reason: "Verified operational reason", oldValues: null, newValues: { actionType }, requestId: "request-1", correlationId: `cor-${id}`, eventType: actionType, payload: { id } };
 }
 
-const createInput = { id: "incident-1", facilityId: "facility-1", incidentType: "DEVICE", severity: "HIGH", title: "Kiosk disconnected", description: "Kiosk heartbeat stopped during the visit.", appointmentId: "visit-1", sessionId: null, resourceId: "kiosk-1", reporterUserId: "staff-1", idempotencyKey: "key-hash", requestHash: "request-hash", now: "2026-09-22T10:00:00.000Z", correlationId: "cor-incident-1" };
+const createInput = { id: "incident-1", facilityId: "facility-1", incidentType: "DEVICE", severity: "HIGH", title: "Kiosk disconnected", description: "Kiosk heartbeat stopped during the visit.", appointmentId: "visit-1", sessionId: null, resourceId: "kiosk-1", sourceSecurityEventId: "security-event-1", reporterUserId: "staff-1", idempotencyKey: "key-hash", requestHash: "request-hash", now: "2026-09-22T10:00:00.000Z", correlationId: "cor-incident-1" };
 
 test("incident create writes record, case history, central audit, and outbox together", async () => {
   const d1 = new D1();
   try {
     const results = await d1.batch(createIncidentStatements(d1, createInput, auditInput("INCIDENT_CREATED", createInput.id)));
     assert.equal(results[0].meta.changes, 1);
+    assert.equal(d1.sqlite.prepare("SELECT source_security_event_id FROM incidents WHERE id = ?").get(createInput.id).source_security_event_id, "security-event-1");
     for (const table of ["incidents", "incident_events", "audit_events", "outbox_events"]) assert.equal(d1.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 1);
   } finally { d1.close(); }
 });

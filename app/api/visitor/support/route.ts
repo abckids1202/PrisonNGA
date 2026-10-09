@@ -88,6 +88,7 @@ export async function POST(request: Request) {
         appointmentId: appointment?.id || null,
         sessionId: null,
         resourceId: null,
+        sourceSecurityEventId: null,
         reporterUserId: visitor.userId,
         idempotencyKey: idempotencyKeyHash,
         requestHash,

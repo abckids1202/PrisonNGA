@@ -644,12 +644,13 @@ export const incidents = sqliteTable("incidents", {
   appointmentId: text("appointment_id"),
   sessionId: text("session_id"),
   resourceId: text("resource_id"),
+  sourceSecurityEventId: text("source_security_event_id"),
   reporterUserId: text("reporter_user_id").notNull().references(() => users.id),
   assignedUserId: text("assigned_user_id").references(() => users.id),
   resolution: text("resolution"),
   version: integer("version").notNull().default(1),
   ...timestamps,
-}, (table) => ({ facilityStatusIdx: index("incidents_facility_status_idx").on(table.facilityId, table.status, table.createdAt), appointmentIdx: index("incidents_appointment_idx").on(table.appointmentId), severityIdx: index("incidents_severity_idx").on(table.facilityId, table.severity) }));
+}, (table) => ({ facilityStatusIdx: index("incidents_facility_status_idx").on(table.facilityId, table.status, table.createdAt), appointmentIdx: index("incidents_appointment_idx").on(table.appointmentId), severityIdx: index("incidents_severity_idx").on(table.facilityId, table.severity), sourceSecurityEventIdx: uniqueIndex("incidents_source_security_event_idx").on(table.sourceSecurityEventId) }));
 
 export const incidentEvents = sqliteTable("incident_events", {
   id: text("id").primaryKey(),

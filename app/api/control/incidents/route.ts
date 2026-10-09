@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   let transitionClaim: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("incident.manage");
-    const body = await request.json() as { incidentId?: unknown; command?: unknown; title?: unknown; description?: unknown; incidentType?: unknown; severity?: unknown; appointmentId?: unknown; sessionId?: unknown; resourceId?: unknown; assignedUserId?: unknown; resolution?: unknown; expectedVersion?: unknown; reason?: unknown };
+    const body = await request.json() as { incidentId?: unknown; command?: unknown; title?: unknown; description?: unknown; incidentType?: unknown; severity?: unknown; appointmentId?: unknown; sessionId?: unknown; resourceId?: unknown; sourceSecurityEventId?: unknown; assignedUserId?: unknown; resolution?: unknown; expectedVersion?: unknown; reason?: unknown };
     const command = body.command as typeof commands[number] | undefined;
     const d1 = await getD1();
     database = d1;
@@ -41,21 +41,28 @@ export async function POST(request: Request) {
       const appointmentId = typeof body.appointmentId === "string" ? body.appointmentId.trim() : null;
       const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : null;
       const resourceId = typeof body.resourceId === "string" ? body.resourceId.trim() : null;
-      const [appointment, session, resource] = await Promise.all([
+      const sourceSecurityEventId = typeof body.sourceSecurityEventId === "string" ? body.sourceSecurityEventId.trim() : null;
+      const [appointment, session, resource, sourceSecurityEvent] = await Promise.all([
         appointmentId ? d1.prepare("SELECT id FROM appointments WHERE id = ? AND facility_id = ?").bind(appointmentId, authorization.facilityId).first<{ id: string }>() : null,
         sessionId ? d1.prepare("SELECT id FROM visit_sessions WHERE id = ? AND facility_id = ?").bind(sessionId, authorization.facilityId).first<{ id: string }>() : null,
         resourceId ? d1.prepare("SELECT id FROM resources WHERE id = ? AND facility_id = ?").bind(resourceId, authorization.facilityId).first<{ id: string }>() : null,
+        sourceSecurityEventId ? d1.prepare("SELECT id, severity FROM security_events WHERE id = ? AND facility_id = ?").bind(sourceSecurityEventId, authorization.facilityId).first<{ id: string; severity: string }>() : null,
       ]);
       if (appointmentId && !appointment) throw new SecurityError("INCIDENT_APPOINTMENT_NOT_FOUND", 404);
       if (sessionId && !session) throw new SecurityError("INCIDENT_SESSION_NOT_FOUND", 404);
       if (resourceId && !resource) throw new SecurityError("INCIDENT_RESOURCE_NOT_FOUND", 404);
+      if (sourceSecurityEventId && (!sourceSecurityEvent || sourceSecurityEvent.severity !== "CRITICAL")) throw new SecurityError("INCIDENT_SECURITY_EVENT_NOT_FOUND", 404);
       const salt = await getSecuritySalt();
       const idempotencyKeyHash = await hashIdentifier(`incident-create:${authorization.facilityId}:${authorization.userId}:${idempotencyKey}`, salt);
-      const requestHash = await hashIdentifier(JSON.stringify({ incidentType, severity: body.severity, title, description, appointmentId, sessionId, resourceId }), salt);
+      const requestHash = await hashIdentifier(JSON.stringify({ incidentType, severity: body.severity, title, description, appointmentId, sessionId, resourceId, sourceSecurityEventId }), salt);
       const id = `INC-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
-      const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "INCIDENT_CREATED", entityType: "incident", entityId: id, reason: description, newValues: { incidentType, severity: body.severity, title, appointmentId, sessionId, resourceId }, requestId: context.requestId, correlationId, eventType: "INCIDENT_CREATED", payload: { incidentId: id, severity: body.severity } };
-      const results = await d1.batch(createIncidentStatements(d1, { id, facilityId: authorization.facilityId, incidentType, severity: String(body.severity), title, description, appointmentId, sessionId, resourceId, reporterUserId: authorization.userId, idempotencyKey: idempotencyKeyHash, requestHash, now, correlationId }, event));
+      const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "INCIDENT_CREATED", entityType: "incident", entityId: id, reason: description, newValues: { incidentType, severity: body.severity, title, appointmentId, sessionId, resourceId, sourceSecurityEventId }, requestId: context.requestId, correlationId, eventType: "INCIDENT_CREATED", payload: { incidentId: id, severity: body.severity, sourceSecurityEventId } };
+      const results = await d1.batch(createIncidentStatements(d1, { id, facilityId: authorization.facilityId, incidentType, severity: String(body.severity), title, description, appointmentId, sessionId, resourceId, sourceSecurityEventId, reporterUserId: authorization.userId, idempotencyKey: idempotencyKeyHash, requestHash, now, correlationId }, event));
       if (!results[0]?.meta.changes) {
+        if (sourceSecurityEventId) {
+          const linked = await d1.prepare("SELECT id, status, version FROM incidents WHERE facility_id = ? AND source_security_event_id = ?").bind(authorization.facilityId, sourceSecurityEventId).first<{ id: string; status: string; version: number }>();
+          if (linked) return securityResponse({ incidentId: linked.id, status: linked.status, version: linked.version, idempotent: true }, 200, context.requestId);
+        }
         const existing = await d1.prepare("SELECT id, status, version, request_hash FROM incidents WHERE facility_id = ? AND reporter_user_id = ? AND idempotency_key = ?").bind(authorization.facilityId, authorization.userId, idempotencyKeyHash).first<{ id: string; status: string; version: number; request_hash: string }>();
         if (!existing) throw new SecurityError("INCIDENT_CREATE_CONFLICT", 409);
         if (existing.request_hash !== requestHash) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
