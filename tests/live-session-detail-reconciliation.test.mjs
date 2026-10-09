@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+test("live-session detail exposes facility-scoped settlement recovery evidence", async () => {
+  const source = await readFile(new URL("../app/api/control/live-sessions/[sessionId]/route.ts", import.meta.url), "utf8");
+  assert.match(source, /facility_id = \? AND entity_type = 'visit_session'/);
+  assert.match(source, /action_type = 'LIVE_SESSION_FINALIZATION_BLOCKED'/);
+  assert.match(source, /reconciliation: reconciliation \? \{ required: true/);
+  assert.match(source, /reconciliation: reconciliation \? \{ required: true[\s\S]*required: false/);
+});

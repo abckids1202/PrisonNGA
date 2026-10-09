@@ -13,7 +13,17 @@ export async function GET(_request: Request, context: RouteContext) {
     const d1 = await getD1();
     const events = await d1.prepare(`SELECT id, event_type, source, participant_role, metadata, correlation_id, created_at
       FROM visit_session_events WHERE session_id = ? ORDER BY created_at DESC LIMIT 50`).bind(sessionId).all();
-    return securityResponse({ session: toSessionPayload(session), events: events.results, permissions: authorization.permissions }, 200, requestContext.requestId);
+    const reconciliation = await d1.prepare(`SELECT id, action_type, reason, correlation_id, request_id, created_at, new_values
+      FROM audit_events
+      WHERE facility_id = ? AND entity_type = 'visit_session' AND entity_id = ?
+        AND action_type = 'LIVE_SESSION_FINALIZATION_BLOCKED'
+      ORDER BY created_at DESC LIMIT 1`).bind(authorization.facilityId, sessionId).first();
+    return securityResponse({
+      session: toSessionPayload(session),
+      events: events.results,
+      reconciliation: reconciliation ? { required: true, ...reconciliation } : { required: false },
+      permissions: authorization.permissions,
+    }, 200, requestContext.requestId);
   } catch (error) {
     return securityErrorResponse(error, requestContext.requestId);
   }
