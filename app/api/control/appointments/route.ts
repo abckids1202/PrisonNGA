@@ -1,6 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { controlAppointmentsStatement } from "../../../../lib/server/control-appointments";
-import { releaseVisitCredit } from "../../../../lib/server/credits";
+import { compensateCreditLedgerEntry, releaseVisitCredit } from "../../../../lib/server/credits";
 import { releaseVisitResources, type Allocation } from "../../../../lib/server/resources";
 import { appointmentDecisionCommitted, appointmentDecisionStatements, compensateIncompleteApproval } from "../../../../lib/server/appointment-decisions";
 import { claimIdempotency, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
@@ -195,6 +195,8 @@ export async function POST(request: Request) {
           now,
         });
         if (!compensated) throw new SecurityError("APPOINTMENT_DECISION_RECONCILIATION_REQUIRED", 503);
+      } else if (["reject", "cancel", "no_show"].includes(command) && results[1]?.meta.changes && !results[2]?.meta.changes) {
+        await compensateCreditLedgerEntry(d1, { idempotencyKey: `${appointmentId}:reservation-release`, entryType: "RESERVATION_RELEASE" });
       }
       throw new SecurityError("APPOINTMENT_DECISION_INCOMPLETE", 503);
     }

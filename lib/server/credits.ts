@@ -221,7 +221,7 @@ export function refundPurchasedCreditsStatements(
   ];
 }
 
-async function compensateCreditLedgerEntry(d1: D1Database, input: { idempotencyKey: string; entryType: string }) {
+export async function compensateCreditLedgerEntry(d1: D1Database, input: { idempotencyKey: string; entryType: string }) {
   const removed = await d1.prepare("DELETE FROM credit_ledger_entries WHERE idempotency_key = ? AND entry_type = ?")
     .bind(input.idempotencyKey, input.entryType).run();
   if (!removed.meta.changes) throw new SecurityError("CREDIT_LEDGER_RECONCILIATION_REQUIRED", 503);
