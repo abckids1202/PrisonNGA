@@ -84,6 +84,8 @@ try {
   const csp = header(liveResponse, "content-security-policy");
   check("CSP exists", Boolean(csp), "content-security-policy");
   check("CSP allows same-origin connections", csp.includes("connect-src 'self'"), csp || "missing");
+  check("CSP allows LiveKit Cloud connections", csp.includes("https://*.livekit.cloud") && csp.includes("wss://*.livekit.cloud"), csp || "missing");
+  check("CSP allows LiveKit hosted connections", csp.includes("https://*.livekit.io") && csp.includes("wss://*.livekit.io"), csp || "missing");
   check("CSP blocks framing", csp.includes("frame-ancestors 'none'"), csp || "missing");
 } catch (error) {
   check("liveness request", false, error instanceof Error ? error.message : String(error));

@@ -27,13 +27,15 @@ function runSmoke(baseUrl, extra = {}) {
   });
 }
 
-function startServer({ secureHeaders = true } = {}) {
+function startServer({ secureHeaders = true, livekit = true } = {}) {
   const server = createServer((request, response) => {
     if (secureHeaders) {
       response.setHeader("X-Content-Type-Options", "nosniff");
       response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
       response.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
-      response.setHeader("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; connect-src 'self' wss://*.livekit.cloud");
+      response.setHeader("Content-Security-Policy", livekit
+        ? "default-src 'self'; frame-ancestors 'none'; connect-src 'self' https://*.livekit.cloud wss://*.livekit.cloud https://*.livekit.io wss://*.livekit.io"
+        : "default-src 'self'; frame-ancestors 'none'; connect-src 'self'");
     }
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ status: "ok" }));
@@ -63,6 +65,17 @@ test("staging smoke fails when required security headers are missing", async () 
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /Staging smoke failed/);
     assert.match(result.stderr, /camera permission policy/);
+  } finally {
+    server.close();
+  }
+});
+
+test("staging smoke fails when LiveKit connections are blocked by CSP", async () => {
+  const { server, baseUrl } = await startServer({ livekit: false });
+  try {
+    const result = await runSmoke(baseUrl);
+    assert.notEqual(result.code, 0);
+    assert.match(result.stderr, /LiveKit Cloud connections/);
   } finally {
     server.close();
   }
