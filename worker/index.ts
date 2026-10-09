@@ -428,6 +428,43 @@ async function reconcileCreditAccountInvariants(env: Env): Promise<void> {
   }
 }
 
+async function reconcileActiveAppointmentInvariants(env: Env): Promise<void> {
+  const rows = await env.DB.prepare(`SELECT a.id, a.facility_id, a.status, a.version,
+      (SELECT COUNT(*) FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')) AS active_resources,
+      EXISTS (SELECT 1 FROM credit_ledger_entries reservation
+        INNER JOIN credit_accounts ca ON ca.id = reservation.credit_account_id AND ca.facility_id = a.facility_id AND ca.user_id = a.visitor_user_id
+        WHERE reservation.appointment_id = a.id AND reservation.entry_type = 'RESERVATION'
+          AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = a.id AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))) AS active_credit_reservation
+    FROM appointments a
+    WHERE a.status IN ('APPROVED', 'WAITING', 'IN_PROGRESS')
+      AND ((SELECT COUNT(*) FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')) <> 2
+        OR NOT EXISTS (SELECT 1 FROM credit_ledger_entries reservation
+          INNER JOIN credit_accounts ca ON ca.id = reservation.credit_account_id AND ca.facility_id = a.facility_id AND ca.user_id = a.visitor_user_id
+          WHERE reservation.appointment_id = a.id AND reservation.entry_type = 'RESERVATION'
+            AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = a.id AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))))
+    ORDER BY a.updated_at ASC LIMIT 25`).all<{ id: string; facility_id: string; status: string; version: number; active_resources: number; active_credit_reservation: number }>();
+
+  for (const row of rows.results) {
+    const requestId = `appointment-reconciliation:${row.facility_id}:${row.id}`;
+    try {
+      await env.DB.prepare(`INSERT OR IGNORE INTO security_events
+        (id, facility_id, event_type, severity, request_id, metadata, created_at)
+        VALUES (?, ?, 'APPOINTMENT_INTEGRITY_RECONCILIATION_REQUIRED', 'CRITICAL', ?, ?, CURRENT_TIMESTAMP)`)
+        .bind(requestId, row.facility_id, requestId, JSON.stringify({
+          entityType: 'appointment',
+          entityId: row.id,
+          status: row.status,
+          version: row.version,
+          activeResources: row.active_resources,
+          activeCreditReservation: Boolean(row.active_credit_reservation),
+          requiresStaffReview: true,
+        })).run();
+    } catch (error) {
+      operationalLog('error', { event: 'APPOINTMENT_RECONCILIATION_ALARM_FAILED', facilityId: row.facility_id, appointmentId: row.id, requestId, error });
+    }
+  }
+}
+
 async function purgeExpiredEvidence(env: Env): Promise<void> {
   if (!env.EVIDENCE_BUCKET) return;
   await env.DB.prepare("UPDATE evidence_documents SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE status = 'PENDING_DELETION' AND legal_hold = 1").run();
@@ -739,6 +776,7 @@ const worker = {
     ctx.waitUntil(Promise.all([
       runScheduledJob("notification-outbox", outboxWork),
       runScheduledJob("credit-account-reconciliation", reconcileCreditAccountInvariants(env)),
+      runScheduledJob("active-appointment-reconciliation", reconcileActiveAppointmentInvariants(env)),
       runScheduledJob("payment-events", reconcilePaymentEvents(env)),
       runScheduledJob("abandoned-payments", expireAbandonedPaymentIntents(env)),
       runScheduledJob("kiosk-health", reconcileStaleKioskHealth(env)),
