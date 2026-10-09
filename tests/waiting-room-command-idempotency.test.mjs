@@ -19,6 +19,8 @@ test("waiting-room cancellation releases reserved credit and assigned resources"
   assert.match(source, /entry_type IN \('RESERVATION_RELEASE', 'CONSUMPTION'\)/);
   assert.match(source, /UPDATE resource_reservations SET status = 'RELEASED'/);
   assert.match(source, /last_transition_id = \?/);
+  assert.match(source, /SET status = \?, version = version \+ 1, updated_at = \?, last_transition_id = \?/);
+  assert.match(source, /\.bind\(nextAppointmentStatus, now, correlationId/);
 });
 
 test("waiting-room admission is blocked while the facility is restricted", async () => {

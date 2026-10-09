@@ -284,9 +284,9 @@ export async function POST(request: Request) {
         AND p.status = 'ACTIVE' AND p.visitation_status = 'APPROVED' AND f.current_state = 'NORMAL_OPERATIONS'
     )` : "";
     const statements = [
-      d1.prepare(`UPDATE appointments SET status = ?, version = version + 1, updated_at = ?
+      d1.prepare(`UPDATE appointments SET status = ?, version = version + 1, updated_at = ?, last_transition_id = ?
         WHERE id = ? AND facility_id = ? AND version = ? ${eligibilityGuard}`)
-        .bind(nextAppointmentStatus, now, body.appointmentId, authorization.facilityId, Number(current.appointment_version || 1)),
+        .bind(nextAppointmentStatus, now, correlationId, body.appointmentId, authorization.facilityId, Number(current.appointment_version || 1)),
       d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0
         ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = excluded.visitor_presence, visitor_presence_at = excluded.visitor_presence_at, prisoner_presence = excluded.prisoner_presence, prisoner_presence_at = excluded.prisoner_presence_at, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, room_state = excluded.room_state, kiosk_state = excluded.kiosk_state, restriction_state = excluded.restriction_state, assigned_room_id = COALESCE(excluded.assigned_room_id, waiting_room_sessions.assigned_room_id), assigned_kiosk_id = COALESCE(excluded.assigned_kiosk_id, waiting_room_sessions.assigned_kiosk_id), staff_notes = COALESCE(excluded.staff_notes, waiting_room_sessions.staff_notes), version = excluded.version, last_checked_at = excluded.last_checked_at, updated_at = excluded.updated_at`)
