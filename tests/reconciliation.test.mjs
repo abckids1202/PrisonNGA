@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
+import { liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
 
 class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
@@ -210,6 +210,54 @@ test("payment dead letters create one durable facility-scoped alarm", async () =
       eventType: "payment.succeeded",
       attempt: 8,
       error: "provider payload could not be reconciled",
+      requiresStaffReview: true,
+    });
+  } finally {
+    d1.close();
+  }
+});
+
+test("live-session provider close failures create one durable critical alarm", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    const statement = liveSessionProviderFailureStatement(d1, {
+      facilityId: "facility-1",
+      sessionId: "session-1",
+      appointmentId: "visit-1",
+      visitorUserId: "visitor-1",
+      providerRoomName: "securevisit-room-1",
+      reason: "LiveKit did not confirm room closure.",
+      requestId: "request-session-1",
+      correlationId: "correlation-session-1",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await statement.run()).meta.changes, 1);
+    const duplicate = liveSessionProviderFailureStatement(d1, {
+      facilityId: "facility-1",
+      sessionId: "session-1",
+      appointmentId: "visit-1",
+      visitorUserId: "visitor-1",
+      providerRoomName: "securevisit-room-1",
+      reason: "LiveKit did not confirm room closure.",
+      requestId: "request-session-1",
+      correlationId: "correlation-session-1",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await duplicate.run()).meta.changes, 0);
+    const event = d1.sqlite.prepare("SELECT facility_id, event_type, severity, request_id, metadata FROM security_events WHERE event_type = 'LIVE_SESSION_PROVIDER_CLOSE_FAILED'").get();
+    assert.equal(event.facility_id, "facility-1");
+    assert.equal(event.severity, "CRITICAL");
+    assert.equal(event.request_id, "request-session-1");
+    assert.deepEqual(JSON.parse(event.metadata), {
+      entityType: "visit_session",
+      entityId: "session-1",
+      operation: "LIVE_SESSION_PROVIDER_CLOSE",
+      appointmentId: "visit-1",
+      visitorUserId: "visitor-1",
+      providerRoomName: "securevisit-room-1",
+      reason: "LiveKit did not confirm room closure.",
+      correlationId: "correlation-session-1",
+      retryable: true,
       requiresStaffReview: true,
     });
   } finally {

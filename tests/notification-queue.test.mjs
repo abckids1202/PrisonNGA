@@ -31,6 +31,12 @@ test("payment reconciliation dead letters create a durable critical security ala
   assert.match(workerSource, /paymentDeadLetterStatement\(env\.DB/);
 });
 
+test("LiveKit provider close failures create a durable critical security alarm", () => {
+  assert.match(workerSource, /liveSessionProviderFailureStatement/);
+  assert.match(workerSource, /LIVE_SESSION_PROVIDER_CLOSE_FAILED/);
+  assert.match(workerSource, /liveSessionProviderFailureStatement\(env\.DB/);
+});
+
 test("queue binding is opt-in and configured for both production dispatch and consumption", () => {
   assert.match(viteConfigSource, /NOTIFICATION_QUEUE_NAME/);
   assert.match(viteConfigSource, /binding: "NOTIFICATION_QUEUE"/);

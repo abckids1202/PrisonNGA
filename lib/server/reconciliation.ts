@@ -86,6 +86,42 @@ export function paymentDeadLetterStatement(
   );
 }
 
+export function liveSessionProviderFailureStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    sessionId: string;
+    appointmentId: string;
+    visitorUserId: string;
+    providerRoomName: string;
+    reason: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    VALUES (?, ?, 'LIVE_SESSION_PROVIDER_CLOSE_FAILED', 'CRITICAL', ?, ?, ?)`).bind(
+    `live-session-provider-close-failed:${input.sessionId}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "visit_session",
+      entityId: input.sessionId,
+      operation: "LIVE_SESSION_PROVIDER_CLOSE",
+      appointmentId: input.appointmentId,
+      visitorUserId: input.visitorUserId,
+      providerRoomName: input.providerRoomName,
+      reason: input.reason,
+      correlationId: input.correlationId,
+      retryable: true,
+      requiresStaffReview: true,
+    }),
+    input.now,
+  );
+}
+
 /**
  * Record a durable operational alarm when a compensating workflow write could
  * not restore its previous snapshot. The primary request must still fail

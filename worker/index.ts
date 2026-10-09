@@ -12,7 +12,7 @@ import { processPaymentProviderEvent } from "../lib/server/payments/process-even
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
 import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
-import { notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
+import { liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
 import { assertRequestBodyWithinLimit } from "../lib/server/request-body";
@@ -472,7 +472,8 @@ async function recordSessionProviderCloseFailure(env: Env, session: ExpiredSessi
       .bind(session.facility_id, session.id).first<{ present: number }>();
     if (priorFailure) return;
     const correlationId = crypto.randomUUID();
-    await env.DB.batch(auditAndOutboxStatements(env.DB, {
+    await env.DB.batch([
+      ...auditAndOutboxStatements(env.DB, {
       actorUserId: "system:scheduler",
       actorRole: "SYSTEM",
       facilityId: session.facility_id,
@@ -486,7 +487,19 @@ async function recordSessionProviderCloseFailure(env: Env, session: ExpiredSessi
       correlationId,
       eventType: "LIVE_SESSION_PROVIDER_CLOSE_FAILED",
       payload: { sessionId: session.id, appointmentId: session.appointment_id, visitorUserId: session.visitor_user_id, retryable: true },
-    }));
+      }),
+      liveSessionProviderFailureStatement(env.DB, {
+        facilityId: session.facility_id,
+        sessionId: session.id,
+        appointmentId: session.appointment_id,
+        visitorUserId: session.visitor_user_id,
+        providerRoomName: session.provider_room_name,
+        reason,
+        requestId: correlationId,
+        correlationId,
+        now: new Date().toISOString(),
+      }),
+    ]);
   } catch (auditError) {
     operationalLog("error", { event: "EXPIRED_SESSION_CLOSE_FAILURE_AUDIT_FAILED", sessionId: session.id, facilityId: session.facility_id, actorId: "system:scheduler", error: auditError });
   }
