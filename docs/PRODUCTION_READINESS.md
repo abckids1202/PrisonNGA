@@ -6,6 +6,8 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 
 Run `npm run audit:pilot` for a redacted JSON readiness report. Add `--strict` when the report is being used as a staging/production gate; it exits non-zero until the provider configuration, remote database identity, storage, queue, and required release evidence are present. The command never prints secret values.
 
+Use the [pilot evidence register](./PILOT_EVIDENCE_REGISTER.md) to assign owners, collect artifacts, and map each external approval or staging test to the exact environment variable and release-manifest gate.
+
 ## Current repository evidence
 
 - Cloudflare Worker and D1 workflow foundation is present.

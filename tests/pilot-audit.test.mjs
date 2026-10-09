@@ -58,3 +58,24 @@ test("environment template declares every pilot evidence gate", async () => {
     "SECUREVISIT_LIVEKIT_STAGING",
   ]) assert.match(template, new RegExp(`^${key}=`, "m"));
 });
+
+test("pilot evidence register maps every release gate", async () => {
+  const register = await readFile("docs/PILOT_EVIDENCE_REGISTER.md", "utf8");
+  for (const key of [
+    "SECUREVISIT_RELEASE_APPROVAL",
+    "SECUREVISIT_SECURITY_REVIEW",
+    "SECUREVISIT_PRIVACY_REVIEW",
+    "SECUREVISIT_TARIFF_APPROVAL",
+    "SECUREVISIT_REFUND_POLICY_APPROVAL",
+    "SECUREVISIT_BACKUP_RESTORE_DRILL",
+    "SECUREVISIT_WAF",
+    "SECUREVISIT_MONITORING",
+    "SECUREVISIT_OUTAGE_RUNBOOK",
+    "SECUREVISIT_IDENTITY_STAGING",
+    "SECUREVISIT_PAYMENT_STAGING",
+    "SECUREVISIT_NOTIFICATION_STAGING",
+    "SECUREVISIT_EVIDENCE_STAGING",
+    "SECUREVISIT_KIOSK_STAGING",
+    "SECUREVISIT_LIVEKIT_STAGING",
+  ]) assert.ok(register.includes(`| \`${key}\` |`), `missing register entry for ${key}`);
+});
