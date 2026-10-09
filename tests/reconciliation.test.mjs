@@ -115,6 +115,19 @@ test("notification dead letters create one durable facility-scoped alarm", async
       now: "2026-10-09T12:00:00.000Z",
     });
     assert.equal((await statement.run()).meta.changes, 1);
+    const crossFacilityStatement = notificationDeadLetterStatement(d1, {
+      facilityId: "facility-2",
+      outboxEventId: "outbox-1",
+      eventType: "VISIT_APPROVED",
+      aggregateType: "appointment",
+      aggregateId: "visit-1",
+      attempt: 5,
+      error: "provider unavailable",
+      requestId: "correlation-cross-facility",
+      correlationId: "correlation-cross-facility",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await crossFacilityStatement.run()).meta.changes, 0);
     const duplicateStatement = notificationDeadLetterStatement(d1, {
       facilityId: "facility-1",
       outboxEventId: "outbox-1",
@@ -128,9 +141,11 @@ test("notification dead letters create one durable facility-scoped alarm", async
       now: "2026-10-09T12:00:00.000Z",
     });
     assert.equal((await duplicateStatement.run()).meta.changes, 0);
-    const event = d1.sqlite.prepare("SELECT facility_id, event_type, severity, metadata FROM security_events WHERE event_type = 'NOTIFICATION_OUTBOX_DEAD_LETTER'").get();
+    const event = d1.sqlite.prepare("SELECT facility_id, event_type, severity, request_id, metadata FROM security_events WHERE event_type = 'NOTIFICATION_OUTBOX_DEAD_LETTER'").get();
     assert.equal(event.facility_id, "facility-1");
+    assert.equal(event.event_type, "NOTIFICATION_OUTBOX_DEAD_LETTER");
     assert.equal(event.severity, "CRITICAL");
+    assert.equal(event.request_id, "correlation-3");
     assert.deepEqual(JSON.parse(event.metadata), {
       entityType: "outbox_event",
       entityId: "outbox-1",
