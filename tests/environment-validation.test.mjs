@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { validateEnvironment } from "../lib/server/config.ts";
+import { evaluateReleaseGates } from "../lib/server/release-gates.ts";
 
 test("development validation is explicit and does not require production providers", () => {
   const result = validateEnvironment({ DB: {}, SECUREVISIT_ENVIRONMENT: "development" });
@@ -25,4 +26,16 @@ test("invalid environment is rejected before provider validation", () => {
   assert.equal(result.ok, false);
   assert.equal(result.environment, "invalid");
   assert.equal(result.missing.length, 1);
+});
+
+test("production release gates fail closed until institutional evidence is attested", () => {
+  const result = evaluateReleaseGates("production", {});
+  assert.equal(result.ready, false);
+  assert.ok(result.missing.includes("SECUREVISIT_SECURITY_REVIEW=approved"));
+  assert.ok(result.missing.includes("SECUREVISIT_BACKUP_RESTORE_DRILL=verified"));
+});
+
+test("development and staging do not require production approval attestations", () => {
+  assert.equal(evaluateReleaseGates("development", {}).ready, true);
+  assert.equal(evaluateReleaseGates("staging", {}).ready, true);
 });
