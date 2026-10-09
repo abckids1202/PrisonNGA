@@ -8,6 +8,8 @@ const productionGates: Array<[string, string]> = [
   ["SECUREVISIT_RELEASE_APPROVAL", "approved"],
   ["SECUREVISIT_SECURITY_REVIEW", "approved"],
   ["SECUREVISIT_PRIVACY_REVIEW", "approved"],
+  ["SECUREVISIT_TARIFF_APPROVAL", "approved"],
+  ["SECUREVISIT_REFUND_POLICY_APPROVAL", "approved"],
   ["SECUREVISIT_BACKUP_RESTORE_DRILL", "verified"],
   ["SECUREVISIT_WAF", "enabled"],
   ["SECUREVISIT_MONITORING", "configured"],
