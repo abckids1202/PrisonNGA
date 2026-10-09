@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 
-Latest verified code baseline: `e9c0399 fix: signal resource reassignment conflicts`
+Latest verified code baseline: `1b31d4a fix: audit kiosk credential reconciliation`
 
 Audit update: 2026-10-09
 
@@ -93,7 +93,7 @@ Approximate readiness:
 - Production payment signing secrets are rejected unless they meet the minimum entropy length.
 - Automated server/unit tests and browser-level journey coverage for local adapters.
 
-The current local evidence baseline is **445 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `e9c0399`. Staff Waiting Room and resource-reassignment commit gaps now create durable critical reconciliation signals for follow-up. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
+The current local evidence baseline is **446 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `1b31d4a`. Staff Waiting Room, resource-reassignment, and kiosk credential commit gaps now create durable critical reconciliation signals for follow-up. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
 
 ## Not yet proven or still incomplete
 

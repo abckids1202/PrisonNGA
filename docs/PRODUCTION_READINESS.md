@@ -17,14 +17,14 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run test:quick`: 445 application tests passed. The release verifier runs the migration verification as a separate release gate rather than presenting a combined test count.
+- `npm run test:quick`: 446 application tests passed. The release verifier runs the migration verification as a separate release gate rather than presenting a combined test count.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
 - Local D1 migration verification: passed.
 - Browser smoke suite: 17 tests passed on an isolated local port with the disposable D1 state shared by migrations and the Worker process.
 - `npm audit --audit-level=high`: 0 vulnerabilities reported.
-- Working tree: clean after verified code push `e9c0399`; incomplete staff Waiting Room and resource-reassignment commits now create durable reconciliation alarms.
+- Working tree: clean after verified code push `1b31d4a`; incomplete staff Waiting Room, resource-reassignment, and kiosk credential commits now create durable reconciliation alarms.
 
 The notification delivery boundary also persists provider references and accepts signed, replay-safe delivery-status callbacks for delivered, failed, bounced, rejected, undelivered, and invalid-recipient outcomes. This is repository evidence only; real provider webhook delivery still requires staging configuration and a recorded acceptance run.
 
