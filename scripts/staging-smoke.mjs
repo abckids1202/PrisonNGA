@@ -1,6 +1,5 @@
 const baseUrl = String(process.env.STAGING_DOMAIN || "").trim().replace(/\/$/, "");
 const readinessCookie = String(process.env.STAGING_READINESS_COOKIE || "").trim();
-const readinessBearer = String(process.env.STAGING_READINESS_BEARER || "").trim();
 const requireReadiness = String(process.env.STAGING_SMOKE_REQUIRE_READINESS || "true").toLowerCase() !== "false";
 const allowInsecure = String(process.env.STAGING_SMOKE_ALLOW_INSECURE || "false").toLowerCase() === "true";
 const timeoutMs = Number(process.env.STAGING_SMOKE_TIMEOUT_MS || 10000);
@@ -90,10 +89,8 @@ try {
   check("liveness request", false, error instanceof Error ? error.message : String(error));
 }
 
-if (readinessCookie || readinessBearer) {
-  const headers = readinessCookie
-    ? { cookie: readinessCookie }
-    : { authorization: `Bearer ${readinessBearer}` };
+if (readinessCookie) {
+  const headers = { cookie: readinessCookie };
   try {
     const readinessResponse = await request("/api/health/readiness", headers);
     const readinessBody = await readJson(readinessResponse);
@@ -105,7 +102,7 @@ if (readinessCookie || readinessBearer) {
     check("readiness request", false, error instanceof Error ? error.message : String(error));
   }
 } else if (requireReadiness) {
-  check("readiness credentials", false, "set STAGING_READINESS_COOKIE or STAGING_READINESS_BEARER");
+  check("readiness credentials", false, "set STAGING_READINESS_COOKIE to a short-lived staff session cookie");
 } else {
   skip("authenticated readiness", "set STAGING_SMOKE_REQUIRE_READINESS=true to make this a release gate");
 }

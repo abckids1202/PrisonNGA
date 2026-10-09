@@ -11,12 +11,10 @@ Set `STAGING_DOMAIN` to the HTTPS staging origin. The command checks:
 - camera and microphone are allowed by `Permissions-Policy`;
 - CSP contains same-origin connections and `frame-ancestors 'none'`.
 
-The authenticated readiness check is required by default. Set one of these using a short-lived staff session only:
+The authenticated readiness check is required by default. Set the staff session cookie using a short-lived staff session only:
 
 ```powershell
 $env:STAGING_READINESS_COOKIE = 'securevisit_staff_session=...'
-# or
-$env:STAGING_READINESS_BEARER = '...'
 $env:STAGING_SMOKE_REQUIRE_READINESS = 'true'
 npm run staging:smoke
 ```
