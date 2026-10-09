@@ -10,6 +10,8 @@ export type RequestContext = { requestId: string; ipAddress: string | null; user
 export type AuthorizationContext = { userId: string; facilityId: string; roles: string[]; permissions: string[]; displayName: string };
 export type VisitorAuthorizationContext = { userId: string; email: string | null; phone: string | null; phoneVerifiedAt: string | null; displayName: string };
 
+const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
+
 const identityHeaders = {
   id: "oai-authenticated-user-id",
   email: "oai-authenticated-user-email",
@@ -43,13 +45,13 @@ export async function getStaffSessionIdentity(): Promise<WorkspaceIdentity | nul
   const salt = await getSecuritySalt();
   const tokenHash = await hashIdentifier(sessionToken, salt);
   const db = await getDb();
-  const [sessionUser] = await db.select({ externalId: users.externalId, email: users.email, displayName: users.displayName, status: users.status, userType: users.userType })
+  const [sessionUser] = await db.select({ externalId: users.externalId, email: users.email, displayName: users.displayName, status: users.status, userType: users.userType, lastSeenAt: authSessions.lastSeenAt })
     .from(authSessions)
     .innerJoin(users, eq(authSessions.userId, users.id))
     .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "STAFF"), isNull(authSessions.revokedAt), sql`julianday(${authSessions.expiresAt}) > julianday(${new Date().toISOString()})`))
     .limit(1);
   if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
-  await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
+  if (shouldTouchSession(sessionUser.lastSeenAt)) await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
   return { externalId: sessionUser.externalId, email: sessionUser.email || "", displayName: sessionUser.displayName };
 }
 
@@ -71,14 +73,20 @@ export async function getVisitorSessionIdentity(): Promise<VisitorAuthorizationC
   const salt = await getSecuritySalt();
   const tokenHash = await hashIdentifier(sessionToken, salt);
   const db = await getDb();
-  const [sessionUser] = await db.select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, phone: users.phone, phoneVerifiedAt: users.phoneVerifiedAt, displayName: users.displayName, userType: users.userType, status: users.status })
+  const [sessionUser] = await db.select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, phone: users.phone, phoneVerifiedAt: users.phoneVerifiedAt, displayName: users.displayName, userType: users.userType, status: users.status, lastSeenAt: authSessions.lastSeenAt })
     .from(authSessions)
     .innerJoin(users, eq(authSessions.userId, users.id))
     .where(and(eq(authSessions.tokenHash, tokenHash), eq(users.userType, "VISITOR"), isNull(authSessions.revokedAt), sql`julianday(${authSessions.expiresAt}) > julianday(${new Date().toISOString()})`))
     .limit(1);
   if (!sessionUser || sessionUser.status !== "ACTIVE") return null;
-  await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
+  if (shouldTouchSession(sessionUser.lastSeenAt)) await db.update(authSessions).set({ lastSeenAt: new Date().toISOString() }).where(and(eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
   return { userId: sessionUser.id, email: sessionUser.emailVerifiedAt ? sessionUser.email : null, phone: sessionUser.phone, phoneVerifiedAt: sessionUser.phoneVerifiedAt, displayName: sessionUser.displayName };
+}
+
+function shouldTouchSession(lastSeenAt: string | null): boolean {
+  if (!lastSeenAt) return true;
+  const parsed = Date.parse(lastSeenAt);
+  return !Number.isFinite(parsed) || Date.now() - parsed >= SESSION_TOUCH_INTERVAL_MS;
 }
 
 export async function getRequestContext(): Promise<RequestContext> {
