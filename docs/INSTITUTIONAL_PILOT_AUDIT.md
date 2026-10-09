@@ -64,7 +64,7 @@ The current repository already includes:
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 444 application tests and 17 browser tests passing; the release verifier runs fresh migration verification and a production dependency audit as separate release gates.
+- Automated server tests and browser smoke tests. Current validation baseline is 445 application tests and 17 browser tests passing; the release verifier runs fresh migration verification and a production dependency audit as separate release gates.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 
 ## What remains incomplete or unproven
@@ -115,6 +115,7 @@ The current repository already includes:
 - Visitor presence, kiosk presence, and kiosk device-check writes now compensate a partial optimistic-concurrency batch when a related write changes zero rows; staging still needs a remote-D1 race test and a reconciliation drill.
 - Staff Waiting Room transitions now persist their transition marker before guarded credit/resource cleanup, preventing cancellation from silently skipping settlement release.
 - Compensation failures now create a facility-scoped critical security event for staff review, with a redacted runtime fallback if D1 cannot persist the alarm.
+- Visitor Waiting Room check-in now compensates partial appointment/session writes, including deletion of a newly inserted session row, and raises the same critical reconciliation alarm if restoration cannot complete.
 - Waiting Room's time-window selector now filters the persisted queue by the next two hours, facility-local today, or all approved records instead of being visual-only; queue counts use the selected window.
 - Control appointments and facility state now refresh from protected APIs every 15 seconds with no-store caching and explicit unavailable-state handling, so operational screens do not remain silently stale after mount.
 - The Control top-bar notification action now reads facility-scoped persisted security events and distinguishes loading, empty, and unavailable states instead of claiming there are no notifications without an API read.
