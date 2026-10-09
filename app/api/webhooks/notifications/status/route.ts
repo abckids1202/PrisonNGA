@@ -6,7 +6,8 @@ import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { operationalLog } from "../../../../../lib/server/observability";
 import { verifyPaymentWebhookSignature } from "../../../../../lib/server/payments/provider";
 
-const TERMINAL_SUCCESS = new Set(["DELIVERED", "SENT"]);
+const TERMINAL_SUCCESS = new Set(["DELIVERED"]);
+const ACCEPTED_STATUS = "SENT";
 const TERMINAL_FAILURE = new Set(["FAILED", "BOUNCED", "REJECTED", "UNDELIVERED", "INVALID_NUMBER"]);
 const ALLOWED_STATUSES = new Set([...TERMINAL_SUCCESS, ...TERMINAL_FAILURE, "QUEUED", "PROCESSING"]);
 
@@ -19,6 +20,7 @@ function normalizedText(value: unknown, maxLength: number): string {
 function notificationStatus(status: string): "DELIVERED" | "FAILED" | null {
   if (TERMINAL_SUCCESS.has(status)) return "DELIVERED";
   if (TERMINAL_FAILURE.has(status)) return "FAILED";
+  if (status === ACCEPTED_STATUS) return null;
   return null;
 }
 
