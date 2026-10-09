@@ -165,3 +165,6 @@ A disposable local backup/restore drill also passed after the release verificati
 Current decision: **No-go for institutional production; continue development and controlled staging.**
 
 The project becomes pilot-ready only when the finish sequence has recorded evidence, not merely configuration placeholders or passing local tests.
+### Verification update — 2026-10-09
+
+The release verifier now reports 470 combined Node tests: 468 application tests, migration verification, and staging-smoke contract coverage. The staging smoke contract explicitly fails when CSP blocks LiveKit Cloud or hosted WebSocket/HTTPS connections. This is repository evidence only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
