@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 function runAudit(extra = [], env = {}) {
@@ -35,4 +36,25 @@ test("strict pilot audit fails closed outside development until configuration an
   assert.equal(report.readyForPilot, false);
   assert.ok(report.missingConfiguration.length > 0);
   assert.ok(report.missingStagingEvidence.includes("SECUREVISIT_LIVEKIT_STAGING=verified"));
+});
+
+test("environment template declares every pilot evidence gate", async () => {
+  const template = await readFile(".env.example", "utf8");
+  for (const key of [
+    "SECUREVISIT_RELEASE_APPROVAL",
+    "SECUREVISIT_SECURITY_REVIEW",
+    "SECUREVISIT_PRIVACY_REVIEW",
+    "SECUREVISIT_TARIFF_APPROVAL",
+    "SECUREVISIT_REFUND_POLICY_APPROVAL",
+    "SECUREVISIT_BACKUP_RESTORE_DRILL",
+    "SECUREVISIT_WAF",
+    "SECUREVISIT_MONITORING",
+    "SECUREVISIT_OUTAGE_RUNBOOK",
+    "SECUREVISIT_IDENTITY_STAGING",
+    "SECUREVISIT_PAYMENT_STAGING",
+    "SECUREVISIT_NOTIFICATION_STAGING",
+    "SECUREVISIT_EVIDENCE_STAGING",
+    "SECUREVISIT_KIOSK_STAGING",
+    "SECUREVISIT_LIVEKIT_STAGING",
+  ]) assert.match(template, new RegExp(`^${key}=`, "m"));
 });
