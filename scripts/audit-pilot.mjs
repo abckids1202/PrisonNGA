@@ -1,27 +1,13 @@
 import { validateEnvironment } from "../lib/server/config.ts";
-import { evaluateReleaseGates } from "../lib/server/release-gates.ts";
+import { evaluateReleaseGates, pilotEvidenceGates } from "../lib/server/release-gates.ts";
 
 const values = { ...process.env, DB: {} };
 const environment = String(values.SECUREVISIT_ENVIRONMENT || "invalid").trim() || "invalid";
 const strict = process.argv.includes("--strict");
 const environmentCheck = validateEnvironment(values);
 const releaseGates = evaluateReleaseGates(environment, values);
-const stagingEvidenceGates = [
-  ["SECUREVISIT_TARIFF_APPROVAL", "approved"],
-  ["SECUREVISIT_REFUND_POLICY_APPROVAL", "approved"],
-  ["SECUREVISIT_BACKUP_RESTORE_DRILL", "verified"],
-  ["SECUREVISIT_WAF", "enabled"],
-  ["SECUREVISIT_MONITORING", "configured"],
-  ["SECUREVISIT_OUTAGE_RUNBOOK", "approved"],
-  ["SECUREVISIT_IDENTITY_STAGING", "verified"],
-  ["SECUREVISIT_PAYMENT_STAGING", "verified"],
-  ["SECUREVISIT_NOTIFICATION_STAGING", "verified"],
-  ["SECUREVISIT_EVIDENCE_STAGING", "verified"],
-  ["SECUREVISIT_KIOSK_STAGING", "verified"],
-  ["SECUREVISIT_LIVEKIT_STAGING", "verified"],
-];
 const missingStagingEvidence = environment === "staging"
-  ? stagingEvidenceGates.filter(([key, expected]) => String(values[key] || "").trim().toLowerCase() !== expected).map(([key, expected]) => `${key}=${expected}`)
+  ? pilotEvidenceGates.filter(([key, expected]) => String(values[key] || "").trim().toLowerCase() !== expected).map(([key, expected]) => `${key}=${expected}`)
   : [];
 
 const present = (key) => typeof values[key] === "string" && values[key].trim().length > 0;

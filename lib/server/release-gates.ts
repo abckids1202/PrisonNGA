@@ -11,10 +11,7 @@ type ReleaseEvidenceManifest = {
   gates?: unknown;
 };
 
-const productionGates: Array<[string, string]> = [
-  ["SECUREVISIT_RELEASE_APPROVAL", "approved"],
-  ["SECUREVISIT_SECURITY_REVIEW", "approved"],
-  ["SECUREVISIT_PRIVACY_REVIEW", "approved"],
+export const pilotEvidenceGates: Array<[string, string]> = [
   ["SECUREVISIT_TARIFF_APPROVAL", "approved"],
   ["SECUREVISIT_REFUND_POLICY_APPROVAL", "approved"],
   ["SECUREVISIT_BACKUP_RESTORE_DRILL", "verified"],
@@ -27,6 +24,13 @@ const productionGates: Array<[string, string]> = [
   ["SECUREVISIT_EVIDENCE_STAGING", "verified"],
   ["SECUREVISIT_KIOSK_STAGING", "verified"],
   ["SECUREVISIT_LIVEKIT_STAGING", "verified"],
+];
+
+const productionGates: Array<[string, string]> = [
+  ["SECUREVISIT_RELEASE_APPROVAL", "approved"],
+  ["SECUREVISIT_SECURITY_REVIEW", "approved"],
+  ["SECUREVISIT_PRIVACY_REVIEW", "approved"],
+  ...pilotEvidenceGates,
 ];
 
 export function evaluateReleaseGates(environment: string, env: Record<string, unknown>): ReleaseGateResult {
