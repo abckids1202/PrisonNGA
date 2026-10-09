@@ -12,6 +12,9 @@ class SQLiteD1Statement {
     if (this.database.zeroReservationBalanceUpdate && this.sql.includes("available_credits = available_credits - 1") && this.sql.includes("UPDATE credit_accounts")) {
       return { meta: { changes: 0 } };
     }
+    if (this.database.zeroCreditBalanceUpdate && this.sql.includes("UPDATE credit_accounts")) {
+      return { meta: { changes: 0 } };
+    }
     const result = this.database.sqlite.prepare(this.sql).run(...this.values);
     return { meta: { changes: Number(result.changes) } };
   }
@@ -21,6 +24,7 @@ class SQLiteD1Statement {
 class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
   zeroReservationBalanceUpdate = false;
+  zeroCreditBalanceUpdate = false;
 
   constructor() {
     this.sqlite.exec(`
@@ -228,6 +232,35 @@ test("credit reservation compensates a zero-row balance write instead of leaving
     const account = d1.sqlite.prepare("SELECT available_credits, reserved_credits FROM credit_accounts WHERE id = 'account-partial'").get();
     assert.equal(account.available_credits, 1);
     assert.equal(account.reserved_credits, 0);
+  } finally { d1.close(); }
+});
+
+test("credit settlement transitions compensate ledger entries when their balance write affects zero rows", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    d1.zeroCreditBalanceUpdate = true;
+    await assert.rejects(settlePaymentPurchase(d1, { paymentIntentId: "payment-zero", facilityId: "facility-1", userId: "visitor-zero", amount: 2, reason: "Zero-row purchase test." }), /CREDIT_PURCHASE_BALANCE_WRITE_FAILED/);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE idempotency_key = 'payment:payment-zero:purchase'").get().count, 0);
+
+    d1.zeroCreditBalanceUpdate = false;
+    const now = new Date().toISOString();
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("account-transition", "facility-1", "visitor-1", 2, 0, 1, now, now);
+    const input = { accountId: "account-transition", appointmentId: "visit-1", actorUserId: "staff-1", reason: "Transition test." };
+    await reserveVisitCredit(d1, input);
+    d1.zeroCreditBalanceUpdate = true;
+    await assert.rejects(releaseVisitCredit(d1, input), /CREDIT_RELEASE_BALANCE_WRITE_FAILED/);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE idempotency_key = 'visit-1:reservation-release'").get().count, 0);
+    d1.zeroCreditBalanceUpdate = false;
+    await reserveVisitCredit(d1, { ...input, appointmentId: "visit-2" });
+    d1.zeroCreditBalanceUpdate = true;
+    await assert.rejects(consumeVisitCredit(d1, { ...input, appointmentId: "visit-2" }), /CREDIT_CONSUMPTION_BALANCE_WRITE_FAILED/);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE idempotency_key = 'visit-2:consumption'").get().count, 0);
+
+    d1.zeroCreditBalanceUpdate = false;
+    await settlePaymentPurchase(d1, { paymentIntentId: "payment-zero-refund", facilityId: "facility-1", userId: "visitor-zero-refund", amount: 2, reason: "Refund test." });
+    d1.zeroCreditBalanceUpdate = true;
+    await assert.rejects(refundPurchasedCredits(d1, { paymentIntentId: "payment-zero-refund", facilityId: "facility-1", userId: "visitor-zero-refund", actorUserId: "system", reason: "Zero-row refund test." }), /CREDIT_REFUND_BALANCE_WRITE_FAILED/);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE idempotency_key = 'payment:payment-zero-refund:refund'").get().count, 0);
   } finally { d1.close(); }
 });
 

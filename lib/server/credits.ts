@@ -56,7 +56,10 @@ export async function settlePaymentPurchase(
     }
     return { purchased: false, idempotent: true };
   }
-  if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_PURCHASE_BALANCE_WRITE_FAILED", 503);
+  if (!results[1]?.meta.changes) {
+    await compensateCreditLedgerEntry(d1, { idempotencyKey: purchaseKey, entryType: "PURCHASE" });
+    throw new SecurityError("CREDIT_PURCHASE_BALANCE_WRITE_FAILED", 503);
+  }
   return { purchased: true, idempotent: false };
 }
 
@@ -101,7 +104,10 @@ export async function releaseVisitCredit(
   const now = new Date().toISOString();
   const results = await d1.batch(releaseVisitCreditStatements(d1, { ...input, now }));
   if (results[0]?.meta.changes) {
-    if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_RELEASE_BALANCE_WRITE_FAILED", 503);
+    if (!results[1]?.meta.changes) {
+      await compensateCreditLedgerEntry(d1, { idempotencyKey: `${input.appointmentId}:reservation-release`, entryType: "RESERVATION_RELEASE" });
+      throw new SecurityError("CREDIT_RELEASE_BALANCE_WRITE_FAILED", 503);
+    }
     return { released: true };
   }
 
@@ -119,7 +125,10 @@ export async function consumeVisitCredit(
   const now = new Date().toISOString();
   const results = await d1.batch(consumeVisitCreditStatements(d1, { ...input, now }));
   if (results[0]?.meta.changes) {
-    if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_CONSUMPTION_BALANCE_WRITE_FAILED", 503);
+    if (!results[1]?.meta.changes) {
+      await compensateCreditLedgerEntry(d1, { idempotencyKey: `${input.appointmentId}:consumption`, entryType: "CONSUMPTION" });
+      throw new SecurityError("CREDIT_CONSUMPTION_BALANCE_WRITE_FAILED", 503);
+    }
     return { consumed: true };
   }
 
@@ -186,7 +195,10 @@ export async function refundPurchasedCredits(
   if (!purchase) return { refunded: false, pending: true };
   const results = await d1.batch(refundPurchasedCreditsStatements(d1, { paymentIntentId: input.paymentIntentId, accountId: purchase.credit_account_id, amount: purchase.amount, actorUserId: input.actorUserId, reason: input.reason, now: new Date().toISOString() }));
   if (results[0]?.meta.changes) {
-    if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_REFUND_BALANCE_WRITE_FAILED", 503);
+    if (!results[1]?.meta.changes) {
+      await compensateCreditLedgerEntry(d1, { idempotencyKey: refundKey, entryType: "REFUND" });
+      throw new SecurityError("CREDIT_REFUND_BALANCE_WRITE_FAILED", 503);
+    }
     return { refunded: true };
   }
   const raced = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ?").bind(refundKey).first();
@@ -207,4 +219,10 @@ export function refundPurchasedCreditsStatements(
     d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
       .bind(input.amount, input.now, input.accountId),
   ];
+}
+
+async function compensateCreditLedgerEntry(d1: D1Database, input: { idempotencyKey: string; entryType: string }) {
+  const removed = await d1.prepare("DELETE FROM credit_ledger_entries WHERE idempotency_key = ? AND entry_type = ?")
+    .bind(input.idempotencyKey, input.entryType).run();
+  if (!removed.meta.changes) throw new SecurityError("CREDIT_LEDGER_RECONCILIATION_REQUIRED", 503);
 }
