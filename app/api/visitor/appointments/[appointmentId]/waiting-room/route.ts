@@ -3,6 +3,7 @@ import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
 import { isRecentDeviceCheck, isRecentPresence } from "../../../../../../lib/server/waiting-room-readiness";
 import { isWaitingRoomOpen } from "../../../../../../lib/server/waiting-room-window";
+import { recordWaitingRoomReconciliationRequired } from "../../../../../../lib/server/reconciliation";
 
 export async function POST(request: Request, { params }: { params: Promise<{ appointmentId: string }> }) {
   const context = await getRequestContext();
@@ -16,9 +17,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     const d1 = await getD1();
     const now = new Date().toISOString();
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.status AS appointment_status, a.version AS appointment_version,
-        a.requested_start, a.requested_end,
+        a.requested_start, a.requested_end, a.updated_at AS appointment_updated_at,
         f.current_state AS facility_state, p.status AS prisoner_status, p.visitation_status,
         wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.visitor_presence_at, wr.prisoner_presence, wr.prisoner_presence_at,
+        wr.identity_state, wr.camera_state, wr.microphone_state, wr.network_state, wr.room_state, wr.kiosk_state, wr.restriction_state, wr.last_checked_at,
         dc.id AS device_check_id, dc.camera_result, dc.microphone_result, dc.network_result, dc.created_at AS device_checked_at
       FROM appointments a
       INNER JOIN facilities f ON f.id = a.facility_id
@@ -82,7 +84,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         SELECT ?, 'VISITOR_WAITING_ROOM_CHECKED_IN', 'appointment', ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), appointmentId, current.facility_id, JSON.stringify({ appointmentId, state: nextState }), correlationId, now),
     ]);
-    if (!result.every((entry) => entry?.meta.changes === 1)) throw new SecurityError("WAITING_ROOM_CHECK_IN_INCOMPLETE", 503);
+    if (!result.every((entry) => entry?.meta.changes === 1)) {
+      // D1 reports a zero-row optimistic-concurrency match as a successful
+      // statement. Restore every earlier write while its incremented version
+      // is still owned by this request, including deleting a newly created
+      // Waiting Room row when no row existed before check-in.
+      let restored = true;
+      if (result[1]?.meta.changes) {
+        const waitingRestore = current.waiting_version === null
+          ? await d1.prepare(`DELETE FROM waiting_room_sessions WHERE appointment_id = ? AND facility_id = ? AND version = ?`).bind(appointmentId, current.facility_id, nextVersion).run()
+          : await d1.prepare(`UPDATE waiting_room_sessions SET state = ?, visitor_presence = ?, visitor_presence_at = ?, prisoner_presence = ?, prisoner_presence_at = ?, identity_state = ?, camera_state = ?, microphone_state = ?, network_state = ?, room_state = ?, kiosk_state = ?, restriction_state = ?, version = ?, last_checked_at = ?, updated_at = ? WHERE appointment_id = ? AND facility_id = ? AND version = ?`)
+            .bind(current.state || "NOT_ARRIVED", current.visitor_presence || null, current.visitor_presence_at || null, current.prisoner_presence || null, current.prisoner_presence_at || null, current.identity_state || null, current.camera_state || null, current.microphone_state || null, current.network_state || null, current.room_state || null, current.kiosk_state || null, current.restriction_state || null, Number(current.waiting_version), current.last_checked_at || null, now, appointmentId, current.facility_id, nextVersion).run();
+        restored = restored && Boolean(waitingRestore.meta.changes);
+      }
+      if (result[0]?.meta.changes) {
+        const appointmentRestore = await d1.prepare(`UPDATE appointments SET status = ?, version = ?, updated_at = ? WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND version = ?`).bind(current.appointment_status, Number(current.appointment_version), current.appointment_updated_at || now, appointmentId, current.facility_id, visitor.userId, Number(current.appointment_version || 1) + 1).run();
+        restored = restored && Boolean(appointmentRestore.meta.changes);
+      }
+      if (!restored) {
+        await recordWaitingRoomReconciliationRequired(d1, { facilityId: String(current.facility_id), appointmentId, operation: "VISITOR_WAITING_ROOM_CHECK_IN", requestId: context.requestId, correlationId, expectedVersion: nextVersion });
+        throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+      }
+      throw new SecurityError("WAITING_ROOM_CHECK_IN_INCOMPLETE", 503);
+    }
     return securityResponse({ checkIn: { id: checkInId, appointmentId, state: nextState, visitorPresence: "present", prisonerPresence: nextPrisonerPresence, version: nextVersion, correlationId }, idempotent: false }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

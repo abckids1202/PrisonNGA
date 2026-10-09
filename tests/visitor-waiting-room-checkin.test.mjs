@@ -28,3 +28,10 @@ test("visitor waiting-room check-in enforces the opening boundary unless staff a
   assert.match(source, /!facilityAlreadyOpenedRoom && !isWaitingRoomOpen\(/);
   assert.match(source, /throw new SecurityError\("WAITING_ROOM_NOT_OPEN", 409\)/);
 });
+
+test("visitor check-in compensates partial appointment and Waiting Room writes", () => {
+  assert.match(source, /WAITING_ROOM_RECONCILIATION_REQUIRED/);
+  assert.match(source, /DELETE FROM waiting_room_sessions WHERE appointment_id = \? AND facility_id = \? AND version = \?/);
+  assert.match(source, /UPDATE appointments SET status = \?, version = \?, updated_at = \?/);
+  assert.match(source, /recordWaitingRoomReconciliationRequired/);
+});
