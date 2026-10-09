@@ -7,6 +7,7 @@ import { evaluateWaitingRoomReadiness, isRecentPresence } from "../../../../lib/
 import { releaseVisitCreditStatements } from "../../../../lib/server/credits";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
+import { recordWaitingRoomReconciliationRequired } from "../../../../lib/server/reconciliation";
 
 const eligibleStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
 const commands = ["admit_visitor", "confirm_prisoner_presence", "run_preflight", "retry_device", "contact_visitor", "mark_late", "cancel_visit", "start_visit"] as const;
@@ -334,6 +335,14 @@ export async function POST(request: Request) {
       requiredResultIndexes.push(optionalWriteOffset, optionalWriteOffset + 1);
     }
     if (requiredResultIndexes.some((index) => !results[index]?.meta.changes)) {
+      await recordWaitingRoomReconciliationRequired(d1, {
+        facilityId: authorization.facilityId,
+        appointmentId: body.appointmentId,
+        operation: `STAFF_WAITING_ROOM_COMMAND:${command.toUpperCase()}`,
+        requestId: context.requestId,
+        correlationId,
+        expectedVersion: nextVersion,
+      });
       throw new SecurityError("WAITING_ROOM_COMMIT_INCOMPLETE", 503);
     }
     roomCleanup = null;
