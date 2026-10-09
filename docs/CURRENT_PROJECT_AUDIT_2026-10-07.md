@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 
-Latest verified code baseline: staging-smoke verification milestone (pending commit)
+Latest verified code baseline: `0ebccba feat: add staging deployment smoke checks`
 
 Audit update: 2026-10-09
 
