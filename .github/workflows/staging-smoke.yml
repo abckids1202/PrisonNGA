@@ -1,0 +1,35 @@
+name: SecureVisit staging smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Check deployed staging contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: staging
+    env:
+      STAGING_DOMAIN: ${{ secrets.STAGING_DOMAIN }}
+      STAGING_READINESS_COOKIE: ${{ secrets.STAGING_READINESS_COOKIE }}
+      STAGING_SMOKE_REQUIRE_READINESS: "true"
+      STAGING_SMOKE_ALLOW_INSECURE: "false"
+      STAGING_SMOKE_TIMEOUT_MS: "10000"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run staging smoke
+        run: npm run staging:smoke

@@ -2,6 +2,8 @@
 
 `npm run staging:smoke` is a deployment check for the staging environment. It is intentionally separate from the local release verifier: local tests prove repository behavior, while this command checks the deployed origin and its configured readiness contract.
 
+The repository also includes a manual GitHub Actions workflow at `.github/workflows/staging-smoke.yml`. Configure the `staging` environment with the masked `STAGING_DOMAIN` and `STAGING_READINESS_COOKIE` secrets, then run **SecureVisit staging smoke → Run workflow** after a staging deployment. The workflow never runs on ordinary pushes and is intentionally separate from production credentials.
+
 ## Required environment
 
 Set `STAGING_DOMAIN` to the HTTPS staging origin. The command checks:
