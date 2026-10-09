@@ -113,6 +113,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   const staffProviders = staffProvider === "both" ? ["oidc", "saml"] : [staffProvider];
   if (!staffProvider) missing.push("STAFF_AUTH_PROVIDER");
   else if (!staffProviders.every((provider) => provider === "oidc" || provider === "saml")) missing.push("STAFF_AUTH_PROVIDER=oidc, saml, or both");
+  if (staffProvider && staffProvider !== "both") missing.push("STAFF_AUTH_PROVIDER=both for staging/production");
   if (staffProviders.includes("oidc")) {
     if (!isSecureHttpsEndpoint(value(env, "STAFF_OIDC_ISSUER"))) missing.push("STAFF_OIDC_ISSUER (must be an https:// URL without credentials or fragments)");
     if (!value(env, "STAFF_OIDC_CLIENT_ID")) missing.push("STAFF_OIDC_CLIENT_ID");

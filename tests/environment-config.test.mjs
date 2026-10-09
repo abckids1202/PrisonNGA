@@ -32,6 +32,15 @@ test("staging and production fail closed until every required provider is config
   }
 });
 
+test("staging and production require both institutional staff federation paths", () => {
+  for (const provider of ["oidc", "saml", "none"]) {
+    const result = validateEnvironment({ ...withDatabase, SECUREVISIT_ENVIRONMENT: "staging", STAFF_AUTH_PROVIDER: provider });
+    assert.ok(result.missing.includes("STAFF_AUTH_PROVIDER=both for staging/production"), `provider ${provider} must not satisfy the pilot staff-auth contract`);
+  }
+  const development = validateEnvironment({ ...withDatabase, SECUREVISIT_ENVIRONMENT: "development", STAFF_AUTH_PROVIDER: "oidc" });
+  assert.equal(development.missing.includes("STAFF_AUTH_PROVIDER=both for staging/production"), false);
+});
+
 test("staging and production do not require a global credit price", () => {
   const result = validateEnvironment({ ...withDatabase, SECUREVISIT_ENVIRONMENT: "staging" });
   assert.equal(result.missing.includes("VISIT_CREDIT_PRICE_MINOR"), false);

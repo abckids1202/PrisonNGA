@@ -15,6 +15,7 @@ Use the [pilot evidence register](./PILOT_EVIDENCE_REGISTER.md) to assign owners
 - Sensitive mutations use facility scope, permission checks, version checks, idempotency where required, audit events, and outbox events.
 - Recording is disabled by policy and must remain disabled for the pilot.
 - Development OTP delivery and development simulation controls are environment-gated and are not pilot capabilities.
+- Staging and production environment validation requires both institutional staff federation paths (`STAFF_AUTH_PROVIDER=both`), with OIDC and SAML MFA claims configured independently; development may use a local-only provider shape.
 - Production release gates require a named release-evidence manifest ID, matching future expiry metadata, and one named, unexpired evidence record for every gate; readiness rejects missing, malformed, stale, or incomplete manifests.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, deployment-header smoke tests (including LiveKit connectivity), and dependency audit must pass before every pushed phase.
 
