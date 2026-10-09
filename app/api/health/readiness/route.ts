@@ -124,13 +124,11 @@ export async function GET() {
     const samlReady = Boolean(staffSamlEntityId) && Boolean(staffSamlMetadataUrl && isSecureHttpsEndpoint(staffSamlMetadataUrl)) && Boolean(staffSamlEntryPoint && isSecureHttpsEndpoint(staffSamlEntryPoint)) && Boolean(staffSamlIdpCert) && Boolean(staffSamlCallbackUri && isSecureHttpsEndpoint(staffSamlCallbackUri))
       && Boolean(await getRuntimeValue("STAFF_SAML_MFA_ACR"));
     const tariffConfigured = environment === "development" || Number(tariffRow?.configured_count || 0) > 0;
-    const staffIdentity = staffAuthProvider === "both"
-      ? oidcReady && samlReady
-      : staffAuthProvider === "oidc"
-      ? oidcReady
-      : staffAuthProvider === "saml"
-        ? samlReady
-        : false;
+    // Staging and production have one institutional staff-auth contract: both
+    // federation paths must be configured and MFA-validated. The environment
+    // validator enforces this too; keeping the summary equally strict avoids a
+    // misleading partial "staff identity ready" status in the UI.
+    const staffIdentity = String(staffAuthProvider || "").toLowerCase() === "both" && oidcReady && samlReady;
     const configuredNotificationEmailDelivery = (configuredString("NOTIFICATION_EMAIL_DELIVERY") || configuredString("NOTIFICATION_DELIVERY") || "").toLowerCase();
     const configuredNotificationSmsDelivery = (configuredString("NOTIFICATION_SMS_DELIVERY") || configuredString("NOTIFICATION_DELIVERY") || "").toLowerCase();
     const notifications = deliveryConfigured(configuredNotificationEmailDelivery, "EMAIL", configuredString("NOTIFICATION_WEBHOOK_URL") || notificationWebhookUrl, configuredString("NOTIFICATION_WEBHOOK_SECRET") || notificationWebhookSecret)
