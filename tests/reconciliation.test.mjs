@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
+import { liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
 
 class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
@@ -258,6 +258,55 @@ test("live-session provider close failures create one durable critical alarm", a
       reason: "LiveKit did not confirm room closure.",
       correlationId: "correlation-session-1",
       retryable: true,
+      requiresStaffReview: true,
+    });
+  } finally {
+    d1.close();
+  }
+});
+
+test("blocked live-session finalization creates one durable critical alarm", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    const statement = liveSessionFinalizationBlockedStatement(d1, {
+      facilityId: "facility-1",
+      sessionId: "session-2",
+      appointmentId: "visit-2",
+      visitorUserId: "visitor-2",
+      providerRoomName: "securevisit-room-2",
+      reason: "Credit settlement evidence was incomplete.",
+      requestId: "request-session-2",
+      correlationId: "correlation-session-2",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await statement.run()).meta.changes, 1);
+    const duplicate = liveSessionFinalizationBlockedStatement(d1, {
+      facilityId: "facility-1",
+      sessionId: "session-2",
+      appointmentId: "visit-2",
+      visitorUserId: "visitor-2",
+      providerRoomName: "securevisit-room-2",
+      reason: "Credit settlement evidence was incomplete.",
+      requestId: "request-session-2",
+      correlationId: "correlation-session-2",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await duplicate.run()).meta.changes, 0);
+    const event = d1.sqlite.prepare("SELECT facility_id, event_type, severity, request_id, metadata FROM security_events WHERE event_type = 'LIVE_SESSION_FINALIZATION_BLOCKED'").get();
+    assert.equal(event.facility_id, "facility-1");
+    assert.equal(event.severity, "CRITICAL");
+    assert.equal(event.request_id, "request-session-2");
+    assert.deepEqual(JSON.parse(event.metadata), {
+      entityType: "visit_session",
+      entityId: "session-2",
+      operation: "LIVE_SESSION_FINALIZATION",
+      appointmentId: "visit-2",
+      visitorUserId: "visitor-2",
+      providerRoomName: "securevisit-room-2",
+      reason: "Credit settlement evidence was incomplete.",
+      correlationId: "correlation-session-2",
+      retryable: true,
+      creditSettlementBlocked: true,
       requiresStaffReview: true,
     });
   } finally {

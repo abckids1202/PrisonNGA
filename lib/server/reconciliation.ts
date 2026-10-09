@@ -122,6 +122,43 @@ export function liveSessionProviderFailureStatement(
   );
 }
 
+export function liveSessionFinalizationBlockedStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    sessionId: string;
+    appointmentId: string;
+    visitorUserId: string;
+    providerRoomName: string;
+    reason: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    VALUES (?, ?, 'LIVE_SESSION_FINALIZATION_BLOCKED', 'CRITICAL', ?, ?, ?)`).bind(
+    `live-session-finalization-blocked:${input.sessionId}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "visit_session",
+      entityId: input.sessionId,
+      operation: "LIVE_SESSION_FINALIZATION",
+      appointmentId: input.appointmentId,
+      visitorUserId: input.visitorUserId,
+      providerRoomName: input.providerRoomName,
+      reason: input.reason,
+      correlationId: input.correlationId,
+      retryable: true,
+      creditSettlementBlocked: true,
+      requiresStaffReview: true,
+    }),
+    input.now,
+  );
+}
+
 /**
  * Record a durable operational alarm when a compensating workflow write could
  * not restore its previous snapshot. The primary request must still fail

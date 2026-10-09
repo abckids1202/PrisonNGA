@@ -37,6 +37,12 @@ test("LiveKit provider close failures create a durable critical security alarm",
   assert.match(workerSource, /liveSessionProviderFailureStatement\(env\.DB/);
 });
 
+test("blocked LiveKit finalization creates a durable critical security alarm", () => {
+  assert.match(workerSource, /liveSessionFinalizationBlockedStatement/);
+  assert.match(workerSource, /creditSettlementBlocked: true/);
+  assert.match(workerSource, /liveSessionFinalizationBlockedStatement\(env\.DB/);
+});
+
 test("queue binding is opt-in and configured for both production dispatch and consumption", () => {
   assert.match(viteConfigSource, /NOTIFICATION_QUEUE_NAME/);
   assert.match(viteConfigSource, /binding: "NOTIFICATION_QUEUE"/);
