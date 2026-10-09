@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 
-Latest verified code baseline: pending push for staff Waiting Room reconciliation alarm hardening.
+Latest verified code baseline: `f43882e fix: signal incomplete waiting room commits`
 
 Audit update: 2026-10-09
 
@@ -93,7 +93,7 @@ Approximate readiness:
 - Production payment signing secrets are rejected unless they meet the minimum entropy length.
 - Automated server/unit tests and browser-level journey coverage for local adapters.
 
-The current local evidence baseline is **445 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier. Staff Waiting Room command commit gaps now also create a durable critical reconciliation signal for follow-up. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
+The current local evidence baseline is **445 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `f43882e`. Staff Waiting Room command commit gaps now also create a durable critical reconciliation signal for follow-up. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
 
 ## Not yet proven or still incomplete
 
