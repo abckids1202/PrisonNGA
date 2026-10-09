@@ -14,7 +14,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `visitor-waiting-room-presence:${visitor.userId}:${appointmentId}`, limit: 120, windowSeconds: 10 * 60 });
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.status AS appointment_status, a.version AS appointment_version,
-        f.current_state AS facility_state, wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.prisoner_presence, wr.prisoner_presence_at
+        f.current_state AS facility_state, wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.visitor_presence_at, wr.prisoner_presence, wr.prisoner_presence_at, wr.last_checked_at
       FROM appointments a
       INNER JOIN facilities f ON f.id = a.facility_id
       LEFT JOIN waiting_room_sessions wr ON wr.appointment_id = a.id AND wr.facility_id = a.facility_id
@@ -47,7 +47,30 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
         WHERE id = ? AND facility_id = ? AND version = ? AND status IN ('APPROVED', 'WAITING', 'IN_PROGRESS')`)
         .bind(now, appointmentId, current.facility_id, Number(current.appointment_version)),
     ]);
-    if (!result[0]?.meta.changes || !result[1]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+    if (!result[0]?.meta.changes || !result[1]?.meta.changes) {
+      // D1 batches are atomic for SQL errors, but a statement that matches zero
+      // rows is not an SQL error. If the appointment loses its version race
+      // after the waiting-room row changed, compensate while the new version
+      // is still exclusively ours so the two records cannot drift apart.
+      if (result[0]?.meta.changes) {
+        const restored = await d1.prepare(`UPDATE waiting_room_sessions
+          SET state = ?, visitor_presence = ?, visitor_presence_at = ?, version = ?, last_checked_at = ?, updated_at = ?
+          WHERE appointment_id = ? AND facility_id = ? AND version = ?`)
+          .bind(
+            current.state || "NOT_ARRIVED",
+            current.visitor_presence || null,
+            current.visitor_presence_at || null,
+            Number(current.waiting_version),
+            current.last_checked_at || null,
+            now,
+            appointmentId,
+            current.facility_id,
+            nextVersion,
+          ).run();
+        if (!restored.meta.changes) throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+      }
+      throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+    }
     return securityResponse({ presence: "present", state: persistedState, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : "waiting", prisonerPresenceAt: prisonerPresent ? current.prisoner_presence_at || null : null, version: nextVersion }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

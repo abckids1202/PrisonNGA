@@ -15,7 +15,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     if (!kiosk) throw new SecurityError("KIOSK_AUTHENTICATION_REQUIRED", 401);
     await enforceRateLimit(d1, { key: `kiosk-presence:${kiosk.facilityId}:${kiosk.resourceId}`, limit: 120, windowSeconds: 60 });
     const current = await d1.prepare(`SELECT a.id, a.facility_id, a.status AS appointment_status, a.version AS appointment_version,
-        f.current_state AS facility_state, wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.visitor_presence_at, wr.prisoner_presence, wr.prisoner_presence_at
+        f.current_state AS facility_state, wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.visitor_presence_at, wr.prisoner_presence, wr.prisoner_presence_at, wr.last_checked_at
       FROM appointments a
       INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN facilities f ON f.id = a.facility_id
@@ -67,7 +67,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
         SELECT ?, ?, 'appointment', ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), `KIOSK_PRISONER_${String(body.presence).toUpperCase()}`, visitId, kiosk.facilityId, JSON.stringify({ appointmentId: visitId, state: nextState, prisonerPresence: body.presence, resourceId: kiosk.resourceId }), correlationId, now),
     ]);
-    if (!result[0]?.meta.changes || !result[1]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+    if (!result[0]?.meta.changes || !result[1]?.meta.changes) {
+      // A zero-row optimistic-concurrency result is not a D1 SQL error. Undo
+      // the first write when the appointment update loses a race, provided no
+      // later writer has advanced the waiting-room version.
+      if (result[0]?.meta.changes) {
+        const restored = await d1.prepare(`UPDATE waiting_room_sessions
+          SET state = ?, prisoner_presence = ?, prisoner_presence_at = ?, version = ?, last_checked_at = ?, updated_at = ?
+          WHERE appointment_id = ? AND facility_id = ? AND version = ?`)
+          .bind(
+            current.state || "NOT_ARRIVED",
+            current.prisoner_presence || null,
+            current.prisoner_presence_at || null,
+            current.waiting_version === null ? 0 : Number(current.waiting_version),
+            current.last_checked_at || null,
+            now,
+            visitId,
+            kiosk.facilityId,
+            nextVersion,
+          ).run();
+        if (!restored.meta.changes) throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+      }
+      throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+    }
     return securityResponse({ visitId, state: nextState, prisonerPresence: body.presence, visitorPresence: nextVisitorPresence, version: nextVersion, correlationId }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

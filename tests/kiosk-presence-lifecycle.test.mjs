@@ -37,3 +37,9 @@ test("kiosk presence heartbeats refresh freshness without bumping the workflow v
   assert.match(presenceRoute, /version = \? AND state = \?/);
   assert.match(presenceRoute, /idempotent: true/);
 });
+
+test("kiosk presence compensates a partial appointment transition", () => {
+  assert.match(presenceRoute, /WAITING_ROOM_RECONCILIATION_REQUIRED/);
+  assert.match(presenceRoute, /SET state = \?, prisoner_presence = \?, prisoner_presence_at = \?, version = \?, last_checked_at = \?, updated_at = \?/);
+  assert.match(presenceRoute, /if \(result\[0\]\?\.meta\.changes\) \{/);
+});

@@ -30,7 +30,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     }
     await enforceRateLimit(d1, { key: `kiosk-device-check:${kiosk.facilityId}:${kiosk.resourceId}:${visitId}`, limit: 12, windowSeconds: 60 * 60 });
     const current = await d1.prepare(`SELECT a.id, a.version AS appointment_version, a.status AS appointment_status, a.facility_id,
-        f.current_state AS facility_state, w.version AS waiting_version, w.state, w.visitor_presence, w.prisoner_presence
+        f.current_state AS facility_state, w.version AS waiting_version, w.state, w.visitor_presence, w.prisoner_presence,
+        w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.kiosk_state, w.last_checked_at
       FROM appointments a
       INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN facilities f ON f.id = a.facility_id
@@ -61,7 +62,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
         .bind(crypto.randomUUID(), visitId, kiosk.facilityId, JSON.stringify({ appointmentId: visitId, resourceId: kiosk.resourceId, cameraResult: body.cameraResult, microphoneResult: body.microphoneResult, networkResult: body.networkResult }), correlationId, now),
     ];
     const result = await d1.batch(statements);
-    if (!result.every((entry) => entry?.meta.changes === 1)) throw new SecurityError("KIOSK_DEVICE_CHECK_INCOMPLETE", 503);
+    if (!result.every((entry) => entry?.meta.changes === 1)) {
+      // The evidence insert can lose an idempotency race even after the
+      // waiting-room update matched. Restore the readiness snapshot while the
+      // incremented version is still owned by this request.
+      if (result[0]?.meta.changes) {
+        const restored = await d1.prepare(`UPDATE waiting_room_sessions
+          SET kiosk_camera_state = ?, kiosk_microphone_state = ?, kiosk_network_state = ?, kiosk_device_checked_at = ?, kiosk_state = ?, version = ?, last_checked_at = ?, updated_at = ?
+          WHERE appointment_id = ? AND facility_id = ? AND version = ?`)
+          .bind(
+            current.kiosk_camera_state || null,
+            current.kiosk_microphone_state || null,
+            current.kiosk_network_state || null,
+            current.kiosk_device_checked_at || null,
+            current.kiosk_state || null,
+            Number(current.waiting_version || 0),
+            current.last_checked_at || null,
+            now,
+            visitId,
+            kiosk.facilityId,
+            nextVersion,
+          ).run();
+        if (!restored.meta.changes) throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+      }
+      throw new SecurityError("KIOSK_DEVICE_CHECK_INCOMPLETE", 503);
+    }
     return securityResponse({ deviceCheck: { id: checkId, appointmentId: visitId, resourceId: kiosk.resourceId, cameraResult: body.cameraResult, microphoneResult: body.microphoneResult, networkResult: body.networkResult, latencyMs, createdAt: now, correlationId }, idempotent: false }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

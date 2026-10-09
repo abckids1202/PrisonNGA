@@ -15,3 +15,9 @@ test("visitor heartbeat response preserves authoritative escalated states", () =
   assert.match(source, /const persistedState = \["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"\]/);
   assert.match(source, /state: persistedState/);
 });
+
+test("visitor presence compensates a partial optimistic-concurrency write", () => {
+  assert.match(source, /WAITING_ROOM_RECONCILIATION_REQUIRED/);
+  assert.match(source, /SET state = \?, visitor_presence = \?, visitor_presence_at = \?, version = \?, last_checked_at = \?, updated_at = \?/);
+  assert.match(source, /if \(result\[0\]\?\.meta\.changes\) \{/);
+});
