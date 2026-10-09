@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
+import { evidenceRetentionFailureStatement, liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
 
 class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
@@ -308,6 +308,51 @@ test("blocked live-session finalization creates one durable critical alarm", asy
       retryable: true,
       creditSettlementBlocked: true,
       requiresStaffReview: true,
+    });
+  } finally {
+    d1.close();
+  }
+});
+
+test("evidence retention failures create one durable critical privacy alarm", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    const statement = evidenceRetentionFailureStatement(d1, {
+      facilityId: "facility-1",
+      evidenceId: "evidence-1",
+      storageKey: "facility-1/evidence-1",
+      retentionUntil: "2026-10-08T00:00:00.000Z",
+      error: "R2 delete timed out",
+      requestId: "request-retention-1",
+      correlationId: "correlation-retention-1",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await statement.run()).meta.changes, 1);
+    const duplicate = evidenceRetentionFailureStatement(d1, {
+      facilityId: "facility-1",
+      evidenceId: "evidence-1",
+      storageKey: "facility-1/evidence-1",
+      retentionUntil: "2026-10-08T00:00:00.000Z",
+      error: "R2 delete timed out",
+      requestId: "request-retention-1",
+      correlationId: "correlation-retention-1",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await duplicate.run()).meta.changes, 0);
+    const event = d1.sqlite.prepare("SELECT facility_id, event_type, severity, request_id, metadata FROM security_events WHERE event_type = 'EVIDENCE_RETENTION_DELETE_FAILED'").get();
+    assert.equal(event.facility_id, "facility-1");
+    assert.equal(event.severity, "CRITICAL");
+    assert.equal(event.request_id, "request-retention-1");
+    assert.deepEqual(JSON.parse(event.metadata), {
+      entityType: "evidence_document",
+      entityId: "evidence-1",
+      operation: "EVIDENCE_RETENTION_DELETE",
+      storageKey: "facility-1/evidence-1",
+      retentionUntil: "2026-10-08T00:00:00.000Z",
+      error: "R2 delete timed out",
+      correlationId: "correlation-retention-1",
+      requiresStaffReview: true,
+      deletionUnconfirmed: true,
     });
   } finally {
     d1.close();

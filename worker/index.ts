@@ -12,7 +12,7 @@ import { processPaymentProviderEvent } from "../lib/server/payments/process-even
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
 import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
-import { liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
+import { evidenceRetentionFailureStatement, liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
 import { assertRequestBodyWithinLimit } from "../lib/server/request-body";
@@ -423,6 +423,20 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
       }));
     } catch (error) {
       try { await env.DB.batch([restoreClaimedEvidenceRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now: new Date().toISOString() })]); } catch { /* Keep the original retention error; the next worker run can recover the claim. */ }
+      try {
+        await env.DB.batch([evidenceRetentionFailureStatement(env.DB, {
+          facilityId: row.facility_id,
+          evidenceId: row.id,
+          storageKey: row.storage_key,
+          retentionUntil: row.retention_until,
+          error: safeOperationalErrorMessage(error, "EVIDENCE_RETENTION_DELETE_FAILED", 500),
+          requestId: correlationId,
+          correlationId,
+          now: new Date().toISOString(),
+        })]);
+      } catch (alarmError) {
+        operationalLog("error", { event: "EVIDENCE_RETENTION_FAILURE_ALARM_FAILED", evidenceId: row.id, facilityId: row.facility_id, requestId: correlationId, correlationId, error: alarmError });
+      }
       operationalLog("error", { event: "EVIDENCE_RETENTION_DELETE_FAILED", evidenceId: row.id, facilityId: row.facility_id, requestId: correlationId, correlationId, error });
     }
   }

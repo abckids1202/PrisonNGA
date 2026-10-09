@@ -159,6 +159,40 @@ export function liveSessionFinalizationBlockedStatement(
   );
 }
 
+export function evidenceRetentionFailureStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    evidenceId: string;
+    storageKey: string;
+    retentionUntil: string;
+    error: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    VALUES (?, ?, 'EVIDENCE_RETENTION_DELETE_FAILED', 'CRITICAL', ?, ?, ?)`).bind(
+    `evidence-retention-delete-failed:${input.evidenceId}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "evidence_document",
+      entityId: input.evidenceId,
+      operation: "EVIDENCE_RETENTION_DELETE",
+      storageKey: input.storageKey,
+      retentionUntil: input.retentionUntil,
+      error: input.error,
+      correlationId: input.correlationId,
+      requiresStaffReview: true,
+      deletionUnconfirmed: true,
+    }),
+    input.now,
+  );
+}
+
 /**
  * Record a durable operational alarm when a compensating workflow write could
  * not restore its previous snapshot. The primary request must still fail

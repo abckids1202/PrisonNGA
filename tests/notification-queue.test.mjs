@@ -43,6 +43,11 @@ test("blocked LiveKit finalization creates a durable critical security alarm", (
   assert.match(workerSource, /liveSessionFinalizationBlockedStatement\(env\.DB/);
 });
 
+test("evidence retention failures create a durable critical privacy alarm", () => {
+  assert.match(workerSource, /evidenceRetentionFailureStatement/);
+  assert.match(workerSource, /evidenceRetentionFailureStatement\(env\.DB/);
+});
+
 test("queue binding is opt-in and configured for both production dispatch and consumption", () => {
   assert.match(viteConfigSource, /NOTIFICATION_QUEUE_NAME/);
   assert.match(viteConfigSource, /binding: "NOTIFICATION_QUEUE"/);
