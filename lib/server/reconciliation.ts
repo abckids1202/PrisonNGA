@@ -45,6 +45,47 @@ export function notificationDeadLetterStatement(
   );
 }
 
+export function paymentDeadLetterStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    paymentEventId: string;
+    provider: string;
+    eventKey: string;
+    eventType: string;
+    attempt: number;
+    error: string;
+    requestId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    SELECT ?, ?, 'PAYMENT_PROVIDER_EVENT_DEAD_LETTER', 'CRITICAL', ?, ?, ?
+    WHERE EXISTS (
+      SELECT 1 FROM payment_provider_events
+      WHERE id = ? AND facility_id = ? AND status = 'DEAD_LETTER' AND attempt_count >= 8
+    )`).bind(
+    `payment-provider-dead-letter:${input.paymentEventId}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "payment_provider_event",
+      entityId: input.paymentEventId,
+      operation: "PAYMENT_RECONCILIATION",
+      provider: input.provider,
+      eventKey: input.eventKey,
+      eventType: input.eventType,
+      attempt: input.attempt,
+      error: input.error,
+      requiresStaffReview: true,
+    }),
+    input.now,
+    input.paymentEventId,
+    input.facilityId,
+  );
+}
+
 /**
  * Record a durable operational alarm when a compensating workflow write could
  * not restore its previous snapshot. The primary request must still fail

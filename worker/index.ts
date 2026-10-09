@@ -12,7 +12,7 @@ import { processPaymentProviderEvent } from "../lib/server/payments/process-even
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
 import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
-import { notificationDeadLetterStatement } from "../lib/server/reconciliation";
+import { notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
 import { assertRequestBodyWithinLimit } from "../lib/server/request-body";
@@ -85,7 +85,7 @@ function applyWorkerSecurityHeaders(response: Response, request: Request, env: E
 
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; visitor_joined: number; facility_joined: number; provider_room_name: string; credit_account_id: string | null };
-type PaymentRetryEvent = { id: string; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
+type PaymentRetryEvent = { id: string; facility_id: string | null; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
 type AbandonedPaymentIntent = { id: string; facility_id: string; user_id: string; credit_quantity: number; amount_minor: number; currency: string; version: number };
 
 async function reconcileStaleKioskHealth(env: Env): Promise<void> {
@@ -190,7 +190,7 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
   await env.DB.prepare(`UPDATE payment_provider_events
     SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, processing_started_at = NULL, last_error = 'Recovered stale processing claim.'
     WHERE status = 'PROCESSING' AND processing_started_at IS NOT NULL AND julianday(processing_started_at) < julianday('now', '-5 minutes')`).run();
-  const rows = await env.DB.prepare("SELECT id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now') ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
+  const rows = await env.DB.prepare("SELECT id, facility_id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now') ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
   for (const row of rows.results) {
     const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now')").bind(row.id).run();
     if (!claim.meta.changes) continue;
@@ -215,7 +215,24 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
       const delaySeconds = Math.min(3600, 30 * (2 ** Math.max(0, attempt - 1)));
       const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
       const message = safeOperationalErrorMessage(error, "PAYMENT_EVENT_RECONCILIATION_FAILED", 500);
-      await env.DB.prepare("UPDATE payment_provider_events SET status = CASE WHEN attempt_count >= 8 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, processing_started_at = NULL, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id).run();
+      const deadLettered = attempt >= 8;
+      const failureStatements: D1PreparedStatement[] = [
+        env.DB.prepare("UPDATE payment_provider_events SET status = CASE WHEN attempt_count >= 8 THEN 'DEAD_LETTER' ELSE 'FAILED' END, available_at = ?, processing_started_at = NULL, last_error = ? WHERE id = ? AND status = 'PROCESSING'").bind(nextAttemptAt, message, row.id),
+      ];
+      if (deadLettered && row.facility_id) {
+        failureStatements.push(paymentDeadLetterStatement(env.DB, {
+          facilityId: row.facility_id,
+          paymentEventId: row.id,
+          provider: row.provider,
+          eventKey: row.event_key,
+          eventType: row.event_type,
+          attempt,
+          error: message,
+          requestId: row.event_key,
+          now: new Date().toISOString(),
+        }));
+      }
+      await env.DB.batch(failureStatements);
       operationalLog("error", { event: "PAYMENT_EVENT_RECONCILIATION_FAILED", eventId: row.id, provider: row.provider, attempt, correlationId: row.event_key, error: message });
     }
   }

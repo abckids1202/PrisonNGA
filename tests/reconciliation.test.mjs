@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { notificationDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
+import { notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
 
 class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
@@ -18,6 +18,12 @@ class SQLiteD1 {
         created_at TEXT NOT NULL
       );
       CREATE TABLE outbox_events (
+        id TEXT PRIMARY KEY,
+        facility_id TEXT,
+        status TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL
+      );
+      CREATE TABLE payment_provider_events (
         id TEXT PRIMARY KEY,
         facility_id TEXT,
         status TEXT NOT NULL,
@@ -156,6 +162,54 @@ test("notification dead letters create one durable facility-scoped alarm", async
       attempt: 5,
       error: "provider unavailable",
       correlationId: "correlation-3",
+      requiresStaffReview: true,
+    });
+  } finally {
+    d1.close();
+  }
+});
+
+test("payment dead letters create one durable facility-scoped alarm", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    d1.sqlite.prepare("INSERT INTO payment_provider_events VALUES (?, ?, 'DEAD_LETTER', ?)").run("payment-event-1", "facility-1", 8);
+    const statement = paymentDeadLetterStatement(d1, {
+      facilityId: "facility-1",
+      paymentEventId: "payment-event-1",
+      provider: "sandbox-provider",
+      eventKey: "provider-event-1",
+      eventType: "payment.succeeded",
+      attempt: 8,
+      error: "provider payload could not be reconciled",
+      requestId: "provider-event-1",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await statement.run()).meta.changes, 1);
+    const duplicate = paymentDeadLetterStatement(d1, {
+      facilityId: "facility-1",
+      paymentEventId: "payment-event-1",
+      provider: "sandbox-provider",
+      eventKey: "provider-event-1",
+      eventType: "payment.succeeded",
+      attempt: 8,
+      error: "provider payload could not be reconciled",
+      requestId: "provider-event-1",
+      now: "2026-10-09T12:00:00.000Z",
+    });
+    assert.equal((await duplicate.run()).meta.changes, 0);
+    const event = d1.sqlite.prepare("SELECT facility_id, event_type, severity, request_id, metadata FROM security_events WHERE event_type = 'PAYMENT_PROVIDER_EVENT_DEAD_LETTER'").get();
+    assert.equal(event.facility_id, "facility-1");
+    assert.equal(event.severity, "CRITICAL");
+    assert.equal(event.request_id, "provider-event-1");
+    assert.deepEqual(JSON.parse(event.metadata), {
+      entityType: "payment_provider_event",
+      entityId: "payment-event-1",
+      operation: "PAYMENT_RECONCILIATION",
+      provider: "sandbox-provider",
+      eventKey: "provider-event-1",
+      eventType: "payment.succeeded",
+      attempt: 8,
+      error: "provider payload could not be reconciled",
       requiresStaffReview: true,
     });
   } finally {
