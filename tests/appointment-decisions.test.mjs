@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { appointmentDecisionCommitted, appointmentDecisionStatements } from "../lib/server/appointment-decisions.ts";
+import { appointmentDecisionCommitted, appointmentDecisionStatements, compensateIncompleteApproval } from "../lib/server/appointment-decisions.ts";
 
 class SQLiteD1Statement {
   values = [];
@@ -282,6 +282,38 @@ test("approval retry completes an earlier reservation without reserving twice", 
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE appointment_id = 'visit-1' AND entry_type = 'RESERVATION'").get().count, 1);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations WHERE appointment_id = 'visit-1'").get().count, 2);
   } finally { d1.close(); }
+});
+
+test("incomplete approval can be compensated back to review without leaving credit or resources held", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    d1.sqlite.prepare("INSERT INTO credit_ledger_entries VALUES (?, ?, NULL, 'MANUAL_ADJUSTMENT', ?, ?, ?, ?, ?)")
+      .run("credit-grant-compensate", "credit-1", 2, "grant:compensate", "Pilot credit grant", "system", "before");
+    await d1.batch(appointmentDecisionStatements(d1, input));
+    assert.equal(await compensateIncompleteApproval(d1, {
+      appointmentId: input.appointmentId,
+      facilityId: input.facilityId,
+      visitorUserId: input.visitorUserId,
+      creditAccountId: input.approval.creditAccountId,
+      fromStatus: input.fromStatus,
+      expectedVersion: input.expectedVersion,
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole,
+      requestId: input.requestId,
+      correlationId: input.correlationId,
+      now: input.now,
+    }), true);
+    const appointment = d1.sqlite.prepare("SELECT status, version FROM appointments WHERE id = 'visit-1'").get();
+    assert.equal(appointment.status, "UNDER_REVIEW");
+    assert.equal(appointment.version, 5);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations WHERE appointment_id = 'visit-1' AND status IN ('HELD', 'RESERVED', 'ACTIVE')").get().count, 0);
+    assert.equal(d1.sqlite.prepare("SELECT available_credits, reserved_credits FROM credit_accounts WHERE id = 'credit-1'").get().available_credits, 2);
+    assert.equal(d1.sqlite.prepare("SELECT reserved_credits FROM credit_accounts WHERE id = 'credit-1'").get().reserved_credits, 0);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM appointment_status_events WHERE to_status = 'UNDER_REVIEW'").get().count, 1);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action_type = 'APPOINTMENT_APPROVAL_COMPENSATED'").get().count, 1);
+  } finally {
+    d1.close();
+  }
 });
 
 test("cancellation releases reserved credit and resources in the status transaction", async () => {

@@ -74,6 +74,71 @@ export async function appointmentDecisionCommitted(
   return true;
 }
 
+export async function compensateIncompleteApproval(
+  d1: D1Database,
+  input: {
+    appointmentId: string;
+    facilityId: string;
+    visitorUserId: string;
+    creditAccountId: string;
+    fromStatus: string;
+    expectedVersion: number;
+    actorUserId: string;
+    actorRole: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): Promise<boolean> {
+  const compensationId = crypto.randomUUID();
+  const compensationGuard = {
+    sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND status = ? AND version = ? AND last_transition_id = ?)",
+    values: [input.appointmentId, input.facilityId, input.fromStatus, input.expectedVersion + 2, compensationId],
+  };
+  const results = await d1.batch([
+    d1.prepare(`UPDATE appointments SET status = ?, version = version + 1, updated_at = ?, last_transition_id = ?
+      WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND status = 'APPROVED' AND version = ? AND last_transition_id = ?`)
+      .bind(input.fromStatus, input.now, compensationId, input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion + 1, input.correlationId),
+    d1.prepare(`UPDATE resource_reservations SET status = 'RELEASED'
+      WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE') AND created_at = ?`)
+      .bind(input.appointmentId, input.facilityId, input.now),
+    d1.prepare(`DELETE FROM credit_ledger_entries
+      WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION' AND idempotency_key = ?`)
+      .bind(input.appointmentId, input.creditAccountId, `${input.appointmentId}:reservation`),
+    d1.prepare(`UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ?
+      WHERE id = ? AND reserved_credits >= 1 AND changes() = 1`)
+      .bind(input.now, input.creditAccountId),
+    d1.prepare(`INSERT INTO appointment_status_events
+      (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at)
+      SELECT ?, ?, 'APPROVED', ?, ?, 'APPROVAL_COMPENSATED', 'Approval was rolled back because its required credit or resource state was incomplete.', ?, ?
+      WHERE ${compensationGuard.sql}`)
+      .bind(compensationId, input.appointmentId, input.fromStatus, input.actorUserId, compensationId, input.now, ...compensationGuard.values),
+    ...auditAndOutboxStatements(d1, {
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole,
+      facilityId: input.facilityId,
+      actionType: "APPOINTMENT_APPROVAL_COMPENSATED",
+      entityType: "appointment",
+      entityId: input.appointmentId,
+      reason: "Approval was rolled back because its required credit or resource state was incomplete.",
+      oldValues: { status: "APPROVED", correlationId: input.correlationId },
+      newValues: { status: input.fromStatus, correlationId: compensationId },
+      requestId: input.requestId,
+      correlationId: compensationId,
+      eventType: "APPOINTMENT_APPROVAL_COMPENSATED",
+      payload: { appointmentId: input.appointmentId, status: input.fromStatus, failedCorrelationId: input.correlationId },
+    }, compensationGuard),
+  ]);
+  if (!results[0]?.meta.changes) return false;
+  const state = await d1.prepare(`SELECT
+    (SELECT COUNT(*) FROM resource_reservations WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE') AND created_at = ?) AS active_created_resources,
+    EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND idempotency_key = ? AND entry_type = 'RESERVATION') AS created_reservation,
+    (SELECT version FROM appointments WHERE id = ? AND facility_id = ? AND status = ? AND last_transition_id = ?) AS appointment_version`)
+    .bind(input.appointmentId, input.facilityId, input.now, input.appointmentId, `${input.appointmentId}:reservation`, input.appointmentId, input.facilityId, input.fromStatus, compensationId)
+    .first<{ active_created_resources: number; created_reservation: number; appointment_version: number | null }>();
+  return Boolean(state && state.appointment_version === input.expectedVersion + 2 && Number(state.active_created_resources) === 0 && !state.created_reservation);
+}
+
 export function appointmentDecisionStatements(d1: D1Database, input: AppointmentDecisionInput): D1PreparedStatement[] {
   const guard = {
     sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND status = ? AND version = ? AND last_transition_id = ?)",

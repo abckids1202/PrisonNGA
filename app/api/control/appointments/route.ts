@@ -2,7 +2,7 @@ import { getD1 } from "../../../../db/runtime";
 import { controlAppointmentsStatement } from "../../../../lib/server/control-appointments";
 import { releaseVisitCredit } from "../../../../lib/server/credits";
 import { releaseVisitResources, type Allocation } from "../../../../lib/server/resources";
-import { appointmentDecisionCommitted, appointmentDecisionStatements } from "../../../../lib/server/appointment-decisions";
+import { appointmentDecisionCommitted, appointmentDecisionStatements, compensateIncompleteApproval } from "../../../../lib/server/appointment-decisions";
 import { claimIdempotency, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { canTransitionAppointment } from "../../../../lib/server/workflow";
@@ -179,7 +179,25 @@ export async function POST(request: Request) {
       }
       throw new SecurityError("STALE_APPOINTMENT", 409);
     }
-    if (!decisionCommitted) throw new SecurityError("APPOINTMENT_DECISION_INCOMPLETE", 503);
+    if (!decisionCommitted) {
+      if (command === "approve" && results[0]?.meta.changes) {
+        const compensated = await compensateIncompleteApproval(d1, {
+          appointmentId,
+          facilityId: authorization.facilityId,
+          visitorUserId: current.visitor_user_id,
+          creditAccountId: current.credit_account_id!,
+          fromStatus: current.status,
+          expectedVersion: current.version,
+          actorUserId: authorization.userId,
+          actorRole: authorization.roles[0] || "Scheduling Officer",
+          requestId: context.requestId,
+          correlationId,
+          now,
+        });
+        if (!compensated) throw new SecurityError("APPOINTMENT_DECISION_RECONCILIATION_REQUIRED", 503);
+      }
+      throw new SecurityError("APPOINTMENT_DECISION_INCOMPLETE", 503);
+    }
     const allocation = command === "approve" ? await getAssignedResources(d1, authorization.facilityId, appointmentId) : null;
     if (command === "approve" && !allocation) throw new SecurityError("APPOINTMENT_RESOURCE_ASSIGNMENT_INCOMPLETE", 500);
     const assignedResources = allocation ? { roomId: allocation.roomId, roomName: allocation.roomName, deviceId: allocation.deviceId, deviceName: allocation.deviceName } : null;
