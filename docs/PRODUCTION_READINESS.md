@@ -17,14 +17,14 @@ The failure behavior contract for the pilot is documented in [FAILURE_HANDLING.m
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run test:quick`: 460 application tests passed. The release verifier runs the migration verification as a separate release gate rather than presenting a combined test count.
+- `npm run test:quick`: 461 application tests passed. The release verifier runs the migration verification as a separate release gate rather than presenting a combined test count.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
 - Local D1 migration verification: passed.
 - Browser smoke suite: 17 tests passed on an isolated local port with the disposable D1 state shared by migrations and the Worker process.
 - `npm audit --audit-level=high`: 0 vulnerabilities reported.
-- Working tree: clean after verified code push `3d30f05`; incomplete staff Waiting Room, resource-reassignment, kiosk credential, notification dead-letter, payment reconciliation dead-letter, LiveKit provider-close failure, blocked-finalization, and evidence-retention deletion-failure paths now create durable reconciliation/privacy alarms, terminal notification-provider failures immediately expire linked visitor OTP challenges, provider `SENT` callbacks remain accepted/in-progress rather than being reported as delivered, Compliance can create incidents from those alarms with a persisted security-event link, production readiness requires explicit institutional release-gate attestations including tariff and refund-policy approval, and Administration exposes those gates.
+- Working tree: clean after verified code push `0622a07`; incomplete staff Waiting Room, resource-reassignment, kiosk credential, notification dead-letter, payment reconciliation dead-letter, LiveKit provider-close failure, blocked-finalization, and evidence-retention deletion-failure paths now create durable reconciliation/privacy alarms, terminal notification-provider failures immediately expire linked visitor OTP challenges, provider `SENT` callbacks remain accepted/in-progress rather than being reported as delivered, contradictory payment event/status combinations are rejected before credit mutation, Compliance can create incidents from those alarms with a persisted security-event link, production readiness requires explicit institutional release-gate attestations including tariff and refund-policy approval, and Administration exposes those gates.
 - A disposable local backup/restore drill passed with schema, foreign-key, credit-ledger, and audit-integrity checks. This does not satisfy the remote D1/R2 backup, recovery-point/recovery-time, or production-like restore gate.
 
 The notification delivery boundary also persists provider references and accepts signed, replay-safe delivery-status callbacks for delivered, failed, bounced, rejected, undelivered, and invalid-recipient outcomes. This is repository evidence only; real provider webhook delivery still requires staging configuration and a recorded acceptance run.

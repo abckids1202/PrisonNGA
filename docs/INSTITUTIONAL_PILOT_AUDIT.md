@@ -64,7 +64,7 @@ The current repository already includes:
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 460 application tests and 17 browser tests passing; the release verifier runs fresh migration verification and a production dependency audit as separate release gates.
+- Automated server tests and browser smoke tests. Current validation baseline is 461 application tests and 17 browser tests passing; the release verifier runs fresh migration verification and a production dependency audit as separate release gates.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Terminal email/SMS provider status failures now expire the linked visitor OTP challenge immediately, preventing a bounced or undelivered code from remaining usable until its normal ten-minute expiry.
 - Notification provider `SENT` callbacks now remain an accepted/in-progress state; only an explicit `DELIVERED` callback marks visitor delivery complete.
