@@ -24,7 +24,7 @@ The current repository baseline was rechecked against the pilot contract:
 - Local D1 migration verification: passed.
 - Browser smoke suite: 17 tests passed on an isolated local port with the disposable D1 state shared by migrations and the Worker process.
 - `npm audit --audit-level=high`: 0 vulnerabilities reported.
-- Working tree: clean after the verified push (`30aeeb9`).
+- Working tree: clean after the verified code push (`1c32d47`).
 
 The notification delivery boundary also persists provider references and accepts signed, replay-safe delivery-status callbacks for delivered, failed, bounced, rejected, undelivered, and invalid-recipient outcomes. This is repository evidence only; real provider webhook delivery still requires staging configuration and a recorded acceptance run.
 

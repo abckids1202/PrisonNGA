@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 
-Latest verified repository commit: `30aeeb9 docs: synchronize pilot readiness evidence`
+Latest verified code baseline: `1c32d47 fix: distinguish notification acceptance from delivery`
 
 This document is the current project-lead assessment of the repository. It distinguishes implemented code from provider or institutional evidence that cannot be proven locally.
 
