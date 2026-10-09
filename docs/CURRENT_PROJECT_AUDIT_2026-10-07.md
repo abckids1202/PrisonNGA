@@ -95,6 +95,8 @@ Approximate readiness:
 
 The current local evidence baseline is **459 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `9813746`. Staff Waiting Room, resource-reassignment, kiosk credential, notification dead-letter, payment reconciliation dead-letter, LiveKit provider-close failure, blocked-finalization, and evidence-retention deletion-failure gaps now create durable critical reconciliation/privacy signals for follow-up. Compliance can create a replay-safe incident directly from those alarms, and the security-event-to-incident relationship is persisted and returned after refresh. Production readiness also fails closed until institutional release-gate attestations are present, and Administration exposes those gates to operators. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
 
+A disposable local backup/restore drill also passed after the release verification, including schema, foreign-key, credit-ledger, and audit-integrity checks. This is local recovery evidence only; remote D1 backup scheduling, R2 recovery, RPO/RTO measurement, and a production-like restore exercise remain release gates.
+
 ## Not yet proven or still incomplete
 
 ### External identity and communication
