@@ -38,7 +38,7 @@ export async function PATCH(request: Request) {
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const responseBody = { ok: true, markedRead: ids.length };
     const results = await d1.batch([
-      ...ids.map((id) => database.prepare("UPDATE notifications SET status = 'READ', read_at = ? WHERE id = ? AND user_id = ? AND status != 'READ'").bind(now, id, visitor.userId)),
+      ...ids.map((id) => database.prepare("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND user_id = ? AND read_at IS NULL").bind(now, id, visitor.userId)),
       ...auditAndOutboxStatements(database, {
         actorUserId: visitor.userId,
         actorRole: "VISITOR",

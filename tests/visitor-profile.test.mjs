@@ -16,6 +16,16 @@ test("visitor profile and notification writes use scoped rate limits", async () 
   assert.match(notificationsRoute, /enforceRateLimit/);
 });
 
+test("marking a visitor notification read preserves its delivery status", async () => {
+  const route = await readFile(new URL("../app/api/visitor/notifications/route.ts", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
+  assert.match(route, /UPDATE notifications SET read_at = COALESCE\(read_at, \?\)/);
+  assert.doesNotMatch(route, /UPDATE notifications SET status = 'READ'/);
+  assert.match(page, /unreadNotifications:.*!item\.read_at/);
+  assert.match(page, /notification\.status === "FAILED" \? "Delivery issue/);
+  assert.match(page, /notification\.status === "SENT" \? "Accepted for delivery/);
+});
+
 test("visitor profile updates are replay-safe and emit privacy-safe workflow events", async () => {
   const profileRoute = await readFile(new URL("../app/api/visitor/profile/route.ts", import.meta.url), "utf8");
   assert.match(profileRoute, /Idempotency-Key/);

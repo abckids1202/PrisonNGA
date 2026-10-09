@@ -623,7 +623,7 @@ export const notifications = sqliteTable("notifications", {
   title: text("title").notNull(),
   body: text("body").notNull(),
   payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
-  status: text("status", { enum: ["QUEUED", "DELIVERED", "FAILED", "READ"] }).notNull().default("QUEUED"),
+  status: text("status", { enum: ["QUEUED", "SENT", "DELIVERED", "FAILED", "READ"] }).notNull().default("QUEUED"),
   attemptCount: integer("attempt_count").notNull().default(0),
   availableAt: text("available_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   deliveredAt: text("delivered_at"),

@@ -105,11 +105,11 @@ export default function VisitorPage({ initialTab = "Home" }: { initialTab?: Visi
       load<{ appointments?: VisitorAppointmentRecord[] }>("/api/visitor/appointments"),
       load<{ relationships?: VisitorRelationshipRecord[] }>("/api/visitor/relationships"),
       load<{ accounts?: VisitorCreditAccount[] }>("/api/visitor/credits"),
-      load<{ notifications?: Array<{ status?: string }> }>("/api/visitor/notifications"),
+      load<{ notifications?: Array<{ status?: string; read_at?: string | null }> }>("/api/visitor/notifications"),
     ]).then(([appointments, relationships, credits, notifications]) => {
       if (!active) return;
       setDataError(null);
-      setVisitorData((current) => ({ ...current, appointments: appointments.appointments || [], relationships: relationships.relationships || [], credits: credits.accounts || [], unreadNotifications: (notifications.notifications || []).filter((item: { status?: string }) => item.status !== "READ").length, loading: false }));
+      setVisitorData((current) => ({ ...current, appointments: appointments.appointments || [], relationships: relationships.relationships || [], credits: credits.accounts || [], unreadNotifications: (notifications.notifications || []).filter((item: { read_at?: string | null }) => !item.read_at).length, loading: false }));
     }).catch(() => {
       if (!active) return;
       setDataError("We couldn’t load your visitor workspace. Your records have not been changed.");
@@ -966,7 +966,7 @@ function VisitorNotifications({ onAction, onUnreadChange }: { onAction: (message
       if (!response.ok) throw new Error(body.error || "Could not load your inbox.");
       const items = body.notifications || [];
       setNotifications(items);
-      onUnreadChange(items.filter((item) => item.status !== "READ").length);
+      onUnreadChange(items.filter((item) => !item.read_at).length);
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load your inbox.");
@@ -985,19 +985,20 @@ function VisitorNotifications({ onAction, onUnreadChange }: { onAction: (message
       const response = await fetch("/api/visitor/notifications", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visitor-notifications-${crypto.randomUUID()}` }, body: JSON.stringify({ notificationIds: ids }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not update your inbox.");
-      const next = notifications.map((item) => ids.includes(item.id) ? { ...item, status: "READ" } : item);
+      const readAt = new Date().toISOString();
+      const next = notifications.map((item) => ids.includes(item.id) ? { ...item, read_at: item.read_at || readAt } : item);
       setNotifications(next);
-      onUnreadChange(next.filter((item) => item.status !== "READ").length);
+      onUnreadChange(next.filter((item) => !item.read_at).length);
       onAction(ids.length === 1 ? "Notification marked as read." : "Notifications marked as read.", "success");
     } catch (reason) {
       onAction(reason instanceof Error ? reason.message : "Could not update your inbox.", "info");
     } finally { setBusy(false); }
   }
 
-  return <aside className="sv4-notifications" aria-label="Notifications"><div className="sv4-notifications-head"><div><p className="sv4-kicker">Your inbox</p><h2>Notifications</h2></div><span>{notifications.filter((item) => item.status !== "READ").length} unread</span></div>
+  return <aside className="sv4-notifications" aria-label="Notifications"><div className="sv4-notifications-head"><div><p className="sv4-kicker">Your inbox</p><h2>Notifications</h2></div><span>{notifications.filter((item) => !item.read_at).length} unread</span></div>
     {loading ? <p className="sv4-notification-empty">Loading your notifications…</p> : error ? <div className="sv4-notification-empty" role="alert">{error}<button type="button" onClick={() => void load()}>Try again</button></div> : notifications.length ? <>
-      {notifications.map((notification) => <button className={notification.status === "READ" ? "sv4-notification-read" : ""} key={notification.id} disabled={busy} onClick={() => { if (notification.status !== "READ") void markRead([notification.id]); else onAction(notification.title, "info"); }}><span className={`sv4-notification-icon ${notification.status === "READ" ? "sage" : "orange"}`}>{notification.template.toLowerCase().includes("payment") ? "◇" : notification.template.toLowerCase().includes("visit") ? "◷" : "i"}</span><span><strong>{notification.title}</strong><small>{notification.body}</small><em>{new Date(notification.created_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</em></span>{notification.status !== "READ" && <b aria-label="Unread">●</b>}</button>)}
-      {notifications.some((item) => item.status !== "READ") && <button type="button" className="sv4-notifications-all" disabled={busy} onClick={() => void markRead(notifications.filter((item) => item.status !== "READ").map((item) => item.id))}>Mark all as read</button>}
+      {notifications.map((notification) => <button className={notification.read_at ? "sv4-notification-read" : ""} key={notification.id} disabled={busy} onClick={() => { if (!notification.read_at) void markRead([notification.id]); else onAction(notification.title, "info"); }}><span className={`sv4-notification-icon ${notification.read_at ? "sage" : "orange"}`}>{notification.template.toLowerCase().includes("payment") ? "◇" : notification.template.toLowerCase().includes("visit") ? "◷" : "i"}</span><span><strong>{notification.title}</strong><small>{notification.body}</small><em>{notification.status === "FAILED" ? "Delivery issue · " : notification.status === "SENT" ? "Accepted for delivery · " : notification.status === "DELIVERED" ? "Delivered · " : ""}{new Date(notification.created_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</em></span>{!notification.read_at && <b aria-label="Unread">●</b>}</button>)}
+      {notifications.some((item) => !item.read_at) && <button type="button" className="sv4-notifications-all" disabled={busy} onClick={() => void markRead(notifications.filter((item) => !item.read_at).map((item) => item.id))}>Mark all as read</button>}
     </> : <p className="sv4-notification-empty">You’re all caught up. New visit and credit updates will appear here.</p>}
   </aside>;
 }
