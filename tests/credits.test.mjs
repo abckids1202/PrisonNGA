@@ -9,6 +9,9 @@ class SQLiteD1Statement {
   constructor(database, sql) { this.database = database; this.sql = sql; }
   bind(...values) { this.values = values; return this; }
   async run() {
+    if (this.database.zeroReservationBalanceUpdate && this.sql.includes("available_credits = available_credits - 1") && this.sql.includes("UPDATE credit_accounts")) {
+      return { meta: { changes: 0 } };
+    }
     const result = this.database.sqlite.prepare(this.sql).run(...this.values);
     return { meta: { changes: Number(result.changes) } };
   }
@@ -17,6 +20,7 @@ class SQLiteD1Statement {
 
 class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
+  zeroReservationBalanceUpdate = false;
 
   constructor() {
     this.sqlite.exec(`
@@ -205,6 +209,25 @@ test("credit reservation cannot cross the appointment visitor boundary", async (
       reason: "Cross-visitor reservation.",
     }), /INSUFFICIENT_VISIT_CREDITS/);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+  } finally { d1.close(); }
+});
+
+test("credit reservation compensates a zero-row balance write instead of leaving a ledger orphan", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    const now = new Date().toISOString();
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("account-partial", "facility-1", "visitor-1", 1, 0, 1, now, now);
+    d1.zeroReservationBalanceUpdate = true;
+    await assert.rejects(reserveVisitCredit(d1, {
+      accountId: "account-partial",
+      appointmentId: "visit-1",
+      actorUserId: "staff-1",
+      reason: "Partial reservation test.",
+    }), /CREDIT_RESERVATION_BALANCE_WRITE_FAILED/);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE appointment_id = 'visit-1' AND entry_type = 'RESERVATION'").get().count, 0);
+    const account = d1.sqlite.prepare("SELECT available_credits, reserved_credits FROM credit_accounts WHERE id = 'account-partial'").get();
+    assert.equal(account.available_credits, 1);
+    assert.equal(account.reserved_credits, 0);
   } finally { d1.close(); }
 });
 

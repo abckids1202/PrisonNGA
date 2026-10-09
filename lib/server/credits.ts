@@ -76,7 +76,12 @@ export async function reserveVisitCredit(
       .bind(now, input.accountId),
   ]);
   if (results[0]?.meta.changes) {
-    if (!results[1]?.meta.changes) throw new SecurityError("CREDIT_RESERVATION_BALANCE_WRITE_FAILED", 503);
+    if (!results[1]?.meta.changes) {
+      const compensated = await d1.prepare("DELETE FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION' AND idempotency_key = ?")
+        .bind(input.appointmentId, input.accountId, `${input.appointmentId}:reservation`).run();
+      if (!compensated.meta.changes) throw new SecurityError("CREDIT_RESERVATION_RECONCILIATION_REQUIRED", 503);
+      throw new SecurityError("CREDIT_RESERVATION_BALANCE_WRITE_FAILED", 503);
+    }
     return { creditAccountId: input.accountId, appointmentId: input.appointmentId, created: true };
   }
 
