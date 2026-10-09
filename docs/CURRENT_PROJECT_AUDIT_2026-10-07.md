@@ -2,9 +2,17 @@
 
 Date: 2026-10-09
 
-Latest verified code baseline: `0ebccba feat: add staging deployment smoke checks`
+Latest verified code baseline: `1ab82a8 security: align readiness with federation policy`
 
 Audit update: 2026-10-09
+
+Verification update: the release verifier passed after the readiness hardening
+changes. Staging readiness now uses the same centralized release-gate evaluator
+as the CLI audit and requires all staging acceptance attestations. Staging and
+production configuration also require both OIDC and SAML staff federation paths
+with their independent MFA requirements, and the protected readiness response
+uses that same strict contract. The current repository remains clean after the
+verified push.
 
 The route-boundary review found no protected application API route that is
 obviously missing an identity, permission, visitor, kiosk, webhook, health, or
@@ -87,6 +95,10 @@ Approximate readiness:
 - Payment-intent, signed webhook, refund-request, dispute, and ledger foundations.
 - Durable outbox processing, retries/dead-letter handling, replay endpoint, and scheduled reconciliation hooks.
 - Fail-closed environment validation for staging and production.
+- Staging readiness evidence is evaluated by the protected readiness endpoint,
+  CLI audit, and Administration view through one shared release-gate evaluator.
+- Staging and production staff identity readiness requires both OIDC and SAML
+  configuration with MFA claims; partial federation configuration is rejected.
 - Liveness and staff-authorized readiness checks.
 - Request IDs, correlation IDs, bounded provider responses, rate-limit retry guidance, and facility-state handling.
 - Centralized delivery-provider readiness checks for webhook, Resend, Twilio, and development channels.
