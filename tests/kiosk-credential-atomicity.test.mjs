@@ -15,6 +15,9 @@ test("kiosk credential rotation keeps resource, credential, audit, and outbox wr
   assert.match(source, /kiosk-credential:\$\{authorization\.facilityId\}:\$\{current\.id\}/);
   assert.match(source, /IDEMPOTENCY_KEY_REQUIRED/);
   assert.match(source, /completeIdempotencyStatement\(d1/);
+  assert.match(source, /recordResourceReconciliationRequired/);
+  assert.match(source, /KIOSK_CREDENTIAL_ISSUE/);
+  assert.match(source, /KIOSK_CREDENTIAL_REVOKE/);
   assert.match(source, /credentialStatus: "ACTIVE", version/);
   assert.match(source, /credentialStatus: "REVOKED", version/);
 });

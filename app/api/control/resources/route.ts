@@ -4,7 +4,7 @@ import { assertReason, getRequestContext, requirePermission, requireStepUp, secu
 import { createKioskCredentialSecret, hashKioskCredential } from "../../../../lib/server/kiosk-credentials";
 import { resourceReassignmentStatements } from "../../../../lib/server/resource-reassignment";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
-import { recordWaitingRoomReconciliationRequired } from "../../../../lib/server/reconciliation";
+import { recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../../../../lib/server/reconciliation";
 
 const commands = ["set_status", "heartbeat", "issue_kiosk_credential", "revoke_kiosk_credential", "reassign_appointment"] as const;
 
@@ -160,7 +160,10 @@ export async function POST(request: Request) {
         ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "KIOSK_CREDENTIAL_ISSUED", entityType: "resource", entityId: current.id, reason, oldValues: { credentialStatus: "previous credential revoked" }, newValues: { credentialStatus: "ACTIVE", credentialId }, requestId: context.requestId, correlationId, eventType: "KIOSK_CREDENTIAL_ISSUED", payload: { resourceId: current.id, credentialId } }, resourceGuard),
         completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: replayBody }),
       ]);
-      if (!(results[0]?.meta.changes && results[2]?.meta.changes && results[3]?.meta.changes && results[4]?.meta.changes && results[results.length - 1]?.meta.changes)) throw new SecurityError("STALE_RESOURCE", 409);
+      if (!(results[0]?.meta.changes && results[2]?.meta.changes && results[3]?.meta.changes && results[4]?.meta.changes && results[results.length - 1]?.meta.changes)) {
+        await recordResourceReconciliationRequired(d1, { facilityId: authorization.facilityId, resourceId: current.id, operation: "KIOSK_CREDENTIAL_ISSUE", requestId: context.requestId, correlationId, expectedVersion: current.version + 1 });
+        throw new SecurityError("STALE_RESOURCE", 409);
+      }
       idempotency = null;
       return securityResponse({ ...replayBody, idempotent: false, credential: { token: secret, header: "X-SecureVisit-Kiosk-Token" } }, 201, context.requestId);
     }
@@ -187,7 +190,10 @@ export async function POST(request: Request) {
         ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "KIOSK_CREDENTIAL_REVOKED", entityType: "resource", entityId: current.id, reason, oldValues: { credentialStatus: "ACTIVE", credentialId: activeCredential.id }, newValues: { credentialStatus: "REVOKED" }, requestId: context.requestId, correlationId, eventType: "KIOSK_CREDENTIAL_REVOKED", payload: { resourceId: current.id, credentialId: activeCredential.id } }, resourceGuard),
         completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: replayBody }),
       ]);
-      if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes && results[3]?.meta.changes && results[results.length - 1]?.meta.changes)) throw new SecurityError("STALE_RESOURCE", 409);
+      if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes && results[3]?.meta.changes && results[results.length - 1]?.meta.changes)) {
+        await recordResourceReconciliationRequired(d1, { facilityId: authorization.facilityId, resourceId: current.id, operation: "KIOSK_CREDENTIAL_REVOKE", requestId: context.requestId, correlationId, expectedVersion: current.version + 1 });
+        throw new SecurityError("STALE_RESOURCE", 409);
+      }
       idempotency = null;
       return securityResponse({ ...replayBody, idempotent: false }, 200, context.requestId);
     }

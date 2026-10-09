@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
+import { recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
 
 class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
@@ -52,10 +52,39 @@ test("waiting-room reconciliation alarms persist facility-scoped critical metada
     assert.equal(event.severity, "CRITICAL");
     assert.equal(event.request_id, "request-1");
     assert.deepEqual(JSON.parse(event.metadata), {
-      appointmentId: "visit-1",
+      entityType: "appointment",
+      entityId: "visit-1",
       operation: "KIOSK_DEVICE_CHECK",
       correlationId: "correlation-1",
       expectedVersion: 8,
+      requiresStaffReview: true,
+    });
+  } finally {
+    d1.close();
+  }
+});
+
+test("resource reconciliation alarms use the resource entity boundary", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    await recordResourceReconciliationRequired(d1, {
+      facilityId: "facility-1",
+      resourceId: "kiosk-1",
+      operation: "KIOSK_CREDENTIAL_REVOKE",
+      requestId: "request-2",
+      correlationId: "correlation-2",
+      expectedVersion: 4,
+    });
+    const event = d1.sqlite.prepare("SELECT facility_id, event_type, severity, metadata FROM security_events").get();
+    assert.equal(event.facility_id, "facility-1");
+    assert.equal(event.event_type, "RESOURCE_RECONCILIATION_REQUIRED");
+    assert.equal(event.severity, "CRITICAL");
+    assert.deepEqual(JSON.parse(event.metadata), {
+      entityType: "resource",
+      entityId: "kiosk-1",
+      operation: "KIOSK_CREDENTIAL_REVOKE",
+      correlationId: "correlation-2",
+      expectedVersion: 4,
       requiresStaffReview: true,
     });
   } finally {
