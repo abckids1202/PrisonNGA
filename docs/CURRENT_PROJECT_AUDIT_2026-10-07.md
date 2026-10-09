@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 
-Latest verified code baseline: `93e3d6c feat: link reconciliation alarms to incidents`
+Latest verified code baseline: `1cd526f feat: persist security alarm incident links`
 
 Audit update: 2026-10-09
 
@@ -93,7 +93,7 @@ Approximate readiness:
 - Production payment signing secrets are rejected unless they meet the minimum entropy length.
 - Automated server/unit tests and browser-level journey coverage for local adapters.
 
-The current local evidence baseline is **451 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `93e3d6c`. Staff Waiting Room, resource-reassignment, and kiosk credential commit gaps now create durable critical reconciliation signals for follow-up, and Compliance can create a replay-safe incident directly from those alarms. Production readiness also fails closed until institutional release-gate attestations are present, and Administration exposes those gates to operators. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
+The current local evidence baseline is **450 application tests passing**, with typecheck, lint, production build, fresh local D1 migration verification, 17 browser tests, and production dependency audit passing in the release verifier on `1cd526f`. Staff Waiting Room, resource-reassignment, and kiosk credential commit gaps now create durable critical reconciliation signals for follow-up. Compliance can create a replay-safe incident directly from those alarms, and the security-event-to-incident relationship is persisted and returned after refresh. Production readiness also fails closed until institutional release-gate attestations are present, and Administration exposes those gates to operators. This proves repository behavior only; it does not prove external provider delivery, institutional identity, hardware, resilience, or policy approval.
 
 ## Not yet proven or still incomplete
 
