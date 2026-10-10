@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `b32b5b1` (`fix: preserve participant first-seen telemetry`).
+Latest verified repository commit: `c489875` (`fix: preserve staff waiting room decisions`).
 The local release verifier passed at this baseline with 513 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -55,6 +55,7 @@ The current repository already includes:
 - LiveKit webhook activation now requires a joined visitor or assigned facility/kiosk participant; staff observers and room-level telemetry cannot start a credit-consuming session or set its actual start time.
 - LiveKit participant disconnects now move visitor/kiosk sessions into `RECONNECTING` for recovery, while observer disconnects remain telemetry-only.
 - LiveKit participant upserts now preserve the immutable first-join timestamp while updating current status and last-seen telemetry.
+- Visitor Waiting Room check-in now preserves authoritative staff states and the staff-controlled identity review when a delayed or repeated visitor request arrives; visitor device results update only the visitor-owned readiness fields.
 - LiveKit participant joins, disconnects, and reconnect attempts now create immutable facility audit events without notification fan-out, preserving a provider-level connection history.
 - Staff-initiated and scheduled LiveKit room-close failures now create a deduplicated `LIVE_SESSION_PROVIDER_CLOSE_FAILED` audit/outbox record. Provider-client-unavailable failures are recorded for every affected expired session, so no timeout failure disappears into logs only.
 - No-show reconciliation now treats presence as valid only when its persisted heartbeat timestamp is fresh, preventing disconnected clients from blocking terminal appointment cleanup.
