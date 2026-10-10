@@ -83,6 +83,19 @@ function applyWorkerSecurityHeaders(response: Response, request: Request, env: E
   applyTransportSecurityHeader(response, request, environment);
 }
 
+function backgroundEnvironmentReady(env: Env, trigger: "scheduled" | "queue"): boolean {
+  const check = validateEnvironment(env);
+  if (check.environment === "invalid" || (!check.ok && check.environment !== "development")) {
+    operationalLog("error", {
+      event: "BACKGROUND_ENVIRONMENT_VALIDATION_FAILED",
+      trigger,
+      missing: check.missing,
+    });
+    return false;
+  }
+  return true;
+}
+
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
 type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; visitor_joined: number; facility_joined: number; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; facility_id: string | null; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
@@ -764,6 +777,11 @@ async function runScheduledJob(name: string, task: Promise<void>): Promise<void>
 
 const worker = {
   async scheduled(_event: { scheduledTime: number; cron: string }, env: Env, ctx: ExecutionContext): Promise<void> {
+    // HTTP traffic is rejected by fetch() when a staging/production binding or
+    // provider is missing. Scheduled work must obey the same boundary; running
+    // reconciliation against a half-configured deployment can mutate durable
+    // state while the service is not actually able to deliver or recover it.
+    if (!backgroundEnvironmentReady(env, "scheduled")) return;
     const outboxWork = env.NOTIFICATION_QUEUE
       ? env.NOTIFICATION_QUEUE.send({ type: "OUTBOX_DRAIN", requestedAt: new Date().toISOString() }).catch((error) => {
         // Queue delivery is an optimization, not a correctness dependency.
@@ -794,6 +812,10 @@ const worker = {
   async queue(batch: NotificationQueueBatch, env: Env): Promise<void> {
     // Claiming remains inside processOutbox, so duplicate queue deliveries
     // are safe and only one consumer can process each D1 row.
+    if (!backgroundEnvironmentReady(env, "queue")) {
+      for (const message of batch.messages) message.retry();
+      throw new Error("WORKER_ENVIRONMENT_NOT_READY");
+    }
     try {
       await processOutbox(env);
       for (const message of batch.messages) message.ack();

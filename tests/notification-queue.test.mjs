@@ -14,6 +14,8 @@ test("notification processing keeps a durable cron fallback for transient queue 
 
 test("notification queue acknowledges only after outbox processing and retries failures", () => {
   assert.match(workerSource, /async queue\(batch: NotificationQueueBatch, env: Env\)/);
+  assert.match(workerSource, /backgroundEnvironmentReady\(env, "queue"\)/);
+  assert.match(workerSource, /WORKER_ENVIRONMENT_NOT_READY/);
   assert.match(workerSource, /await processOutbox\(env\);[\s\S]*message\.ack\(\)/);
   assert.match(workerSource, /NOTIFICATION_QUEUE_CONSUME_FAILED/);
   assert.match(workerSource, /message\.retry\(\);[\s\S]*throw error/);
