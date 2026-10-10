@@ -17,12 +17,12 @@ export async function POST(request: Request) {
     const rawProvider = (await getRuntimeValue("PAYMENT_PROVIDER") || "").toLowerCase();
     const configuredProvider = rawProvider;
     if (!secret || !configuredProvider || configuredProvider === "none" || configuredProvider === "console") throw new SecurityError("PAYMENT_WEBHOOK_NOT_CONFIGURED", 503);
+    const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `payment-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const rawBody = await readTextBodyWithinLimit(request, 256 * 1024);
     const timestampHeader = request.headers.get("x-securevisit-timestamp");
     if (environment !== "development" && !timestampHeader) throw new SecurityError("PAYMENT_WEBHOOK_TIMESTAMP_REQUIRED", 401);
     if (!await verifyPaymentWebhookSignature(rawBody, request.headers.get("x-securevisit-signature"), secret, timestampHeader)) throw new SecurityError("PAYMENT_WEBHOOK_SIGNATURE_INVALID", 401);
-    const d1 = await getD1();
-    await enforceRateLimit(d1, { key: `payment-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     let parsedPayload: unknown;
     try { parsedPayload = JSON.parse(rawBody); } catch { throw new SecurityError("PAYMENT_WEBHOOK_INVALID", 400); }
     if (!parsedPayload || typeof parsedPayload !== "object" || Array.isArray(parsedPayload)) throw new SecurityError("PAYMENT_WEBHOOK_INVALID", 400);

@@ -29,6 +29,8 @@ export async function POST(request: Request) {
   try {
     const secret = await getRuntimeValue("NOTIFICATION_STATUS_WEBHOOK_SECRET");
     if (!secret) throw new SecurityError("NOTIFICATION_STATUS_WEBHOOK_NOT_CONFIGURED", 503);
+    const d1 = await getD1();
+    await enforceRateLimit(d1, { key: `notification-status-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const rawBody = await readTextBodyWithinLimit(request, 64 * 1024);
     const timestamp = request.headers.get("x-securevisit-timestamp");
     // Missing environment must never downgrade an inbound provider callback
@@ -51,8 +53,6 @@ export async function POST(request: Request) {
       errorMessage: normalizedText(body.errorMessage, 500) || undefined,
     };
     if (!payload.eventId || !payload.provider || !payload.providerReference || !ALLOWED_STATUSES.has(payload.status)) throw new SecurityError("NOTIFICATION_STATUS_INVALID", 400);
-    const d1 = await getD1();
-    await enforceRateLimit(d1, { key: `notification-status-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const snapshot = JSON.stringify(payload);
     const inserted = await d1.prepare(`INSERT OR IGNORE INTO notification_provider_events (id, provider, event_key, provider_reference, status, payload, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), payload.provider, payload.eventId, payload.providerReference, payload.status, snapshot, new Date().toISOString()).run();
