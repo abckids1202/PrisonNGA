@@ -51,7 +51,7 @@ export type RequestLiveSessionEndInput = {
  * account balance and operational evidence committed too.
  */
 export function finalizationCommitted(results: Array<{ meta?: { changes?: number } }>): boolean {
-  return [1, 2, 4, 5, 6, 7].every((index) => results[index]?.meta?.changes === 1);
+  return [1, 2, 4, 5, 6, 7, 8].every((index) => results[index]?.meta?.changes === 1);
 }
 
 export function getExpiredSessionDisposition(input: { actual_started_at: string | null; termination_reason: string | null; visitor_joined?: boolean | number | null; facility_joined?: boolean | number | null }) {

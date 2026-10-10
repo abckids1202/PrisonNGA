@@ -184,7 +184,7 @@ test("session end, appointment completion, resources, credit, audit, and outbox 
 test("finalization is not reported complete when account or evidence writes are missing", () => {
   const complete = Array.from({ length: 9 }, () => ({ meta: { changes: 1 } }));
   assert.equal(finalizationCommitted(complete), true);
-  for (const index of [1, 2, 4, 5, 6, 7]) {
+  for (const index of [1, 2, 4, 5, 6, 7, 8]) {
     const incomplete = complete.map((result) => ({ meta: { changes: result.meta.changes } }));
     incomplete[index] = { meta: { changes: 0 } };
     assert.equal(finalizationCommitted(incomplete), false);
