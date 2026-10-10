@@ -3,7 +3,7 @@ import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../lib/server/idempotency";
 import { getPaymentProvider } from "../../../../../lib/server/payments/provider";
 import { operationalLog, safeOperationalErrorMessage } from "../../../../../lib/server/observability";
-import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
+import { assertReason, getRequestContext, getRuntimeValue, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 
 export async function POST(request: Request) {
   const context = await getRequestContext();
@@ -11,6 +11,8 @@ export async function POST(request: Request) {
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("finance.manage");
+    const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
+    if (environment !== "development" && (await getRuntimeValue("SECUREVISIT_REFUND_POLICY_APPROVAL") || "").toLowerCase() !== "approved") throw new SecurityError("REFUND_POLICY_APPROVAL_REQUIRED", 503);
     const body = await request.json() as { paymentIntentId?: unknown; reason?: unknown };
     const paymentIntentId = typeof body.paymentIntentId === "string" ? body.paymentIntentId.trim() : "";
     const reason = assertReason(body.reason);

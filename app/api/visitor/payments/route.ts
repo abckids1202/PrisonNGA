@@ -19,12 +19,15 @@ async function getPublicAppOrigin(request: Request): Promise<string> {
 type CreditPricing = { perCreditMinor: number; currency: "IDR"; demo: boolean };
 
 async function getCreditPricing(d1: D1Database, facilityId: string): Promise<CreditPricing> {
+  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
+  if (environment !== "development" && (await getRuntimeValue("SECUREVISIT_TARIFF_APPROVAL") || "").toLowerCase() !== "approved") {
+    throw new SecurityError("TARIFF_APPROVAL_REQUIRED", 503);
+  }
   const policy = await d1.prepare("SELECT credit_price_minor, credit_currency FROM visit_policies WHERE facility_id = ?").bind(facilityId).first<{ credit_price_minor: number | null; credit_currency: string }>();
   if (policy && Number.isSafeInteger(policy.credit_price_minor) && Number(policy.credit_price_minor) > 0 && policy.credit_currency === "IDR") {
     return { perCreditMinor: Number(policy.credit_price_minor), currency: "IDR", demo: false };
   }
   const configured = Number(await getRuntimeValue("VISIT_CREDIT_PRICE_MINOR"));
-  const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
   // Development fallback keeps an empty local database usable, but it is
   // intentionally impossible outside development. Staging/production must
   // configure the approved tariff on the facility policy record.

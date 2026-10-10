@@ -21,3 +21,8 @@ test("refund provider acceptance remains webhook-driven and replay-safe", () => 
 test("refund lookup is restricted to visitor-owned payment intents", () => {
   assert.match(source, /u\.id = pi\.user_id AND u\.user_type = 'VISITOR'/);
 });
+
+test("refund operations fail closed until the approved policy attestation exists", () => {
+  assert.match(source, /REFUND_POLICY_APPROVAL_REQUIRED/);
+  assert.match(source, /SECUREVISIT_REFUND_POLICY_APPROVAL/);
+});
