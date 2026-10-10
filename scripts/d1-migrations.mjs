@@ -15,6 +15,7 @@ if (!validActions.has(action) || !validTargets.has(target) || (action === "seed"
 }
 
 const isRemote = target === "--remote";
+const runtimeEnvironment = String(process.env.SECUREVISIT_ENVIRONMENT || "").trim().toLowerCase();
 const databaseId = isRemote ? process.env.D1_DATABASE_ID?.trim() : localDatabaseId;
 const databaseName = isRemote ? process.env.D1_DATABASE_NAME?.trim() || "securevisit" : "site-creator-d1";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,6 +24,11 @@ if (!databaseId || !uuidPattern.test(databaseId) || (isRemote && databaseId === 
   console.error(isRemote
     ? "Remote D1 migrations require D1_DATABASE_ID to be set to the real Cloudflare database UUID in .env.local."
     : "The configured local D1 database ID is invalid.");
+  process.exit(2);
+}
+
+if (isRemote && !["staging", "production"].includes(runtimeEnvironment)) {
+  console.error("Remote D1 migrations require SECUREVISIT_ENVIRONMENT=staging or production; local development cannot target a remote database.");
   process.exit(2);
 }
 

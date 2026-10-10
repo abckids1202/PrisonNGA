@@ -49,6 +49,10 @@ const localDatabaseId = "00000000-0000-4000-8000-000000000000";
 const remote = argumentsList.includes("--remote");
 const local = argumentsList.includes("--local") || !remote;
 if (remote && local) fail("Choose exactly one database target: --remote or --local.");
+const runtimeEnvironment = String(process.env.SECUREVISIT_ENVIRONMENT || "").trim().toLowerCase();
+if (remote && !["staging", "production"].includes(runtimeEnvironment)) {
+  fail("Remote D1 backups require SECUREVISIT_ENVIRONMENT=staging or production; local development cannot target a remote database.");
+}
 
 const databaseId = remote ? process.env.D1_DATABASE_ID?.trim() : localDatabaseId;
 const databaseName = remote ? process.env.D1_DATABASE_NAME?.trim() || "securevisit" : "site-creator-d1";
