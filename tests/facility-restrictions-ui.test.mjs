@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+const page = await readFile(new URL("../app/features/management/FacilityPage.tsx", import.meta.url), "utf8");
+const shell = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const component = await readFile(new URL("../app/components/FacilityRestrictions.tsx", import.meta.url), "utf8");
 
 test("Facility management exposes persisted operating hours and restriction controls", () => {
@@ -14,5 +15,5 @@ test("Facility management exposes persisted operating hours and restriction cont
   assert.match(component, /setDraft\(normalizeState\(state\)\)/);
   assert.match(component, /Keep the selector aligned with the last persisted facility state/);
   assert.match(component, /role="alert"/);
-  assert.match(page, /throw new Error\("The protected staff API rejected the facility state change\."\)/);
+  assert.match(shell, /throw new Error\("The protected staff API rejected the facility state change\."\)/);
 });
