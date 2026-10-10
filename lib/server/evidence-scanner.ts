@@ -27,7 +27,7 @@ async function sign(payload: string, secret: string): Promise<string> {
 }
 
 export async function scanEvidence(input: EvidenceScanInput): Promise<EvidenceScanVerdict> {
-  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
+  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "unknown").toLowerCase();
   const provider = (await getRuntimeValue("EVIDENCE_SCAN_PROVIDER") || "none").toLowerCase();
   if (provider === "none" || provider === "development") {
     if (environment === "development") return "CLEAN";
@@ -62,7 +62,10 @@ export async function scanEvidence(input: EvidenceScanInput): Promise<EvidenceSc
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`EVIDENCE_SCAN_FAILED_${response.status}`);
-    const result = JSON.parse(await readBoundedResponseText(response)) as { verdict?: unknown };
+    const responseText = await readBoundedResponseText(response);
+    let result: { verdict?: unknown };
+    try { result = JSON.parse(responseText) as { verdict?: unknown }; }
+    catch { throw new Error("EVIDENCE_SCAN_INVALID_RESPONSE"); }
     if (result.verdict === "clean") return "CLEAN";
     if (result.verdict === "infected") return "INFECTED";
     throw new Error("EVIDENCE_SCAN_INVALID_RESPONSE");
