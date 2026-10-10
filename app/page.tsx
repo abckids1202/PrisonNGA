@@ -12,6 +12,7 @@ import LiveSessionsPage from "./features/live-session/LiveSessionsPage";
 import ResourcesPage from "./features/resources/ResourcesPage";
 import FacilityPage from "./features/management/FacilityPage";
 import { mapBackendAppointment, type Appointment, type AppointmentStatus, type CheckState, type ReadinessCheck, type WaitingRecord, type WaitingState } from "./features/control/model";
+import { safeTimeZone } from "@/lib/date-format";
 
 type Mode = "operations" | "management";
 type RuntimeEnvironment = "development" | "staging" | "production" | "unknown";
@@ -167,7 +168,7 @@ export default function ControlApp() {
         const body = await response.json() as { facility?: { name?: string; timezone?: string; currentState: string; version: number } };
         if (active && body.facility) {
           setFacilityName(body.facility.name || "Facility workspace");
-          setFacilityTimezone(body.facility.timezone || "Asia/Jakarta");
+          setFacilityTimezone(safeTimeZone(body.facility.timezone));
           setFacilityState(body.facility.currentState);
           setFacilityVersion(body.facility.version);
           setBackendStatus("connected");
