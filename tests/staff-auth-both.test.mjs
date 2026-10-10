@@ -31,6 +31,7 @@ const base = {
   NOTIFICATION_DELIVERY: "webhook",
   NOTIFICATION_WEBHOOK_URL: "https://notify.example.test",
   NOTIFICATION_WEBHOOK_SECRET: "n".repeat(32),
+  NOTIFICATION_QUEUE_NAME: "securevisit-staging-notifications",
   STAFF_OIDC_ISSUER: "https://oidc.example.test",
   STAFF_OIDC_CLIENT_ID: "securevisit",
   STAFF_OIDC_CLIENT_SECRET: "oidc-secret",

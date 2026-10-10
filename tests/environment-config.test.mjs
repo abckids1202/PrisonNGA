@@ -29,6 +29,7 @@ test("staging and production fail closed until every required provider is config
     assert.equal(result.ok, false);
     assert.ok(result.missing.includes("VISITOR_AUTH_DELIVERY=webhook"));
     assert.ok(result.missing.includes("PAYMENT_PROVIDER=webhook"));
+    assert.ok(result.missing.includes("NOTIFICATION_QUEUE_NAME (required for staging/production)"));
   }
 });
 
