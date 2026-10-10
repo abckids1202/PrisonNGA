@@ -201,8 +201,8 @@ The executable staging gate for this plan is [STAGING_ACCEPTANCE_RUNBOOK.md](./S
 - Define local, staging and production variables and secret ownership.
 - Add a startup/deploy validation command that checks required bindings, URLs, allowed origins, LiveKit, payment, mail/SMS, D1 and object storage configuration.
 - Add explicit migration status and deployment smoke checks.
-- Document the exact local commands, including frontend preview on port 5174 and Worker/API on port 8001 when using a split setup.
-- Keep same-origin development as the default unless the split API is required; avoid CORS drift.
+- Document the exact local commands: the default full-stack server can run on port 5174, with the UI and `/api/*` routes sharing that origin. A separate frontend/API split on ports 5174/8001 is not part of the current runtime and should only be introduced as a deliberate deployment architecture change.
+- Keep same-origin development as the default; if a split API is introduced later, define its CORS, cookie, CSRF and local-proxy contract before enabling it.
 
 Exit evidence: clean migration from empty database, migration status output, environment validation output, build/typecheck/lint/test/E2E pass.
 
