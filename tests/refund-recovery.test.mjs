@@ -26,3 +26,7 @@ test("refund operations fail closed until the approved policy attestation exists
   assert.match(source, /REFUND_POLICY_APPROVAL_REQUIRED/);
   assert.match(source, /SECUREVISIT_REFUND_POLICY_APPROVAL/);
 });
+
+test("refund operations treat a missing environment as non-development", () => {
+  assert.match(source, /getRuntimeValue\("SECUREVISIT_ENVIRONMENT"\) \|\| "unknown"/);
+});

@@ -11,7 +11,8 @@ export async function POST(request: Request) {
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const authorization = await requirePermission("finance.manage");
-    const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
+    // Missing deployment configuration must not bypass refund-policy approval.
+    const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "unknown").toLowerCase();
     if (environment !== "development" && (await getRuntimeValue("SECUREVISIT_REFUND_POLICY_APPROVAL") || "").toLowerCase() !== "approved") throw new SecurityError("REFUND_POLICY_APPROVAL_REQUIRED", 503);
     const body = await request.json() as { paymentIntentId?: unknown; reason?: unknown };
     const paymentIntentId = typeof body.paymentIntentId === "string" ? body.paymentIntentId.trim() : "";

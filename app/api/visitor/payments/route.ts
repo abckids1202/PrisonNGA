@@ -9,7 +9,8 @@ import { isSecureHttpsEndpoint } from "../../../../lib/server/endpoint";
 const DEMO_CREDIT_PRICE_MINOR = 50000;
 
 async function getPublicAppOrigin(request: Request): Promise<string> {
-  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
+  // A missing environment must not enable development checkout URLs.
+  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "unknown").toLowerCase();
   if (environment === "development") return new URL(request.url).origin;
   const configured = (await getRuntimeValue("PUBLIC_APP_URL") || "").trim();
   if (!isSecureHttpsEndpoint(configured)) throw new SecurityError("PUBLIC_APP_URL_NOT_CONFIGURED", 503);
@@ -19,7 +20,8 @@ async function getPublicAppOrigin(request: Request): Promise<string> {
 type CreditPricing = { perCreditMinor: number; currency: "IDR"; demo: boolean };
 
 async function getCreditPricing(d1: D1Database, facilityId: string): Promise<CreditPricing> {
-  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "development").toLowerCase();
+  // A missing environment must not enable the development tariff fallback.
+  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "unknown").toLowerCase();
   if (environment !== "development" && (await getRuntimeValue("SECUREVISIT_TARIFF_APPROVAL") || "").toLowerCase() !== "approved") {
     throw new SecurityError("TARIFF_APPROVAL_REQUIRED", 503);
   }

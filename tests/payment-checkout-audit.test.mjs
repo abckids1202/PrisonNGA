@@ -21,3 +21,8 @@ test("production checkout redirects use the configured public application origin
   assert.match(source, /successUrl: `\$\{publicAppOrigin\}/);
   assert.doesNotMatch(source, /const origin = new URL\(request\.url\)\.origin/);
 });
+
+test("visitor checkout fails closed when the runtime environment is missing", async () => {
+  const source = await readFile(new URL("../app/api/visitor/payments/route.ts", import.meta.url), "utf8");
+  assert.match(source, /getRuntimeValue\("SECUREVISIT_ENVIRONMENT"\) \|\| "unknown"/);
+});
