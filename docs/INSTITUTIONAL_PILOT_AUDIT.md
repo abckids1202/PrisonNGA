@@ -105,6 +105,7 @@ The current repository already includes:
 - `SENT` callbacks remain on the accepted status allow-list, so provider acknowledgement is persisted without being rejected or misrepresented as delivery completion.
 - Evidence-retention deletion failures now create a deduplicated, facility-scoped critical privacy alarm with the object key, retention deadline, safe failure reason, correlation ID, and an explicit staff-review/deletion-unconfirmed state.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
+- A canonical production operations runbook now covers database/object recovery, provider outages, kiosk recovery, identity incidents, lockdown, rollback, secret rotation, monitoring, and the required pilot exercises. It is a draft operational artifact until the named owners approve and execute the exercises.
 
 ## What remains incomplete or unproven
 
