@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `636aab8` (`fix: throttle all external webhooks early`).
+Latest verified repository commit: `94c2b99` (`fix: surface live session media control failures`).
 The local release verifier passed at this baseline with 518 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -63,6 +63,7 @@ The current repository already includes:
 - Appointment cancellation now closes any non-live Waiting Room from all three cancellation entry points—staff decision queue, staff Waiting Room command, and visitor cancellation—and clears both participant-presence signals in the same transaction; no-show reconciliation applies the same cleanup.
 - Live Session finalization now requires the terminal Waiting Room write to succeed before reporting completion, preventing a partially finalized visit from being acknowledged while stale presence or an open operational record remains.
 - LiveKit, payment, and notification-status webhook traffic is now rate-limited before request-body parsing and signature verification, reducing the cost of invalid or oversized provider traffic while preserving each signed callback boundary.
+- Live Session camera, microphone, and device-switch failures now produce recoverable user-facing status feedback instead of unhandled promise failures that leave the controls appearing to succeed.
 - LiveKit participant joins, disconnects, and reconnect attempts now create immutable facility audit events without notification fan-out, preserving a provider-level connection history.
 - Staff-initiated and scheduled LiveKit room-close failures now create a deduplicated `LIVE_SESSION_PROVIDER_CLOSE_FAILED` audit/outbox record. Provider-client-unavailable failures are recorded for every affected expired session, so no timeout failure disappears into logs only.
 - No-show reconciliation now treats presence as valid only when its persisted heartbeat timestamp is fresh, preventing disconnected clients from blocking terminal appointment cleanup.
