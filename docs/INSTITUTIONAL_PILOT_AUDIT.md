@@ -43,6 +43,7 @@ The current repository already includes:
 - Provider-neutral payment checkout boundary, signed payment webhook ingestion, duplicate-event protection, delayed-event retry and credit settlement/refund invariants.
 - Authenticated visitor payment receipts that only expose a settled payment with a matching `PURCHASE` ledger entry.
 - LiveKit token scopes, expiry, participant roles, session creation/finalization, stale-session reconciliation and recording disabled by policy.
+- A disposable development-only video-provider seam now permits persisted session/token lifecycle tests without a media service; it is rejected outside development and is not evidence of LiveKit staging readiness.
 - LiveKit participant tokens are now derived from each session's authoritative end time, capped at 30 minutes, and issued only for valid session windows; malformed windows fail closed instead of receiving an open-ended provider credential.
 - LiveKit readiness and provider configuration now reject malformed URLs, non-HTTPS/WSS schemes, and credential-bearing URLs before a browser connection or provider client can be created.
 - Staff evidence retrieval now verifies the stored object’s SHA-256 against the immutable evidence record before serving it, preventing a size-matching replacement or corruption from being presented as the submitted document.

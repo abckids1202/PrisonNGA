@@ -1,7 +1,7 @@
 import { AccessToken, RoomServiceClient, ServerError, TrackSource, type VideoGrant } from "livekit-server-sdk";
 
 export type ParticipantRole = "VISITOR" | "FACILITY" | "STAFF_OBSERVER";
-export type VideoConfig = { provider: "livekit"; configured: boolean; url: string | null; apiKey: string | null; apiSecret: string | null };
+export type VideoConfig = { provider: "livekit" | "local_test"; configured: boolean; url: string | null; apiKey: string | null; apiSecret: string | null };
 
 export function isValidLiveKitUrl(value: unknown): value is string {
   if (typeof value !== "string" || !value.trim()) return false;
@@ -28,10 +28,17 @@ export async function getVideoConfig(): Promise<VideoConfig> {
   } catch {
     values = typeof process !== "undefined" ? process.env as Record<string, unknown> : {};
   }
+  const environment = String(values.SECUREVISIT_ENVIRONMENT || "development").toLowerCase();
   const provider = String(values.VIDEO_PROVIDER || "livekit").toLowerCase();
   const url = typeof values.LIVEKIT_URL === "string" ? values.LIVEKIT_URL : null;
   const apiKey = typeof values.LIVEKIT_API_KEY === "string" ? values.LIVEKIT_API_KEY : null;
   const apiSecret = typeof values.LIVEKIT_API_SECRET === "string" ? values.LIVEKIT_API_SECRET : null;
+  // The local provider exists only to exercise persisted session and credit
+  // transitions in disposable development acceptance tests. It never passes
+  // staging/production configuration validation and does not attempt media.
+  if (provider === "local_test" && environment === "development") {
+    return { provider: "local_test", configured: true, url: url || "wss://local-test.invalid", apiKey: "local-test-key", apiSecret: "local-test-secret" };
+  }
   return { provider: "livekit", configured: provider === "livekit" && isValidLiveKitUrl(url) && Boolean(apiKey && apiSecret), url, apiKey, apiSecret };
 }
 
@@ -42,7 +49,23 @@ export function createProviderRoomName(): string {
 export async function createLiveKitProvider(): Promise<VideoProvider> {
   const config = await getVideoConfig();
   if (!config.configured || !config.url || !config.apiKey || !config.apiSecret) throw new Error("VIDEO_PROVIDER_NOT_CONFIGURED");
+  if (config.provider === "local_test") return new LocalDevelopmentVideoProvider();
   return new LiveKitVideoProvider(config);
+}
+
+class LocalDevelopmentVideoProvider implements VideoProvider {
+  async createSession(roomName: string) {
+    return { roomName, roomSid: `local-${crypto.randomUUID()}` };
+  }
+
+  async createParticipantToken(input: { roomName: string; identity: string; name: string; role: ParticipantRole; ttlSeconds?: number }) {
+    const ttlSeconds = Math.max(60, Math.min(30 * 60, Math.floor(input.ttlSeconds || 10 * 60)));
+    return `local-test:${input.role}:${input.identity}:${ttlSeconds}:${input.roomName}`;
+  }
+
+  async removeParticipant(): Promise<void> {}
+
+  async endRoom(): Promise<void> {}
 }
 
 class LiveKitVideoProvider implements VideoProvider {
