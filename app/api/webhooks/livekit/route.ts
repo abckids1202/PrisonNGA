@@ -131,7 +131,7 @@ export async function POST(request: Request) {
       const participantStatus = event.event === "participant_joined" ? "CONNECTED" : event.event === "participant_connection_aborted" ? "RECONNECTING" : "DISCONNECTED";
       statements.push(d1.prepare(`INSERT INTO visit_session_participants (id, session_id, facility_id, identity, participant_role, participant_sid, status, first_seen_at, last_seen_at, disconnected_at, metadata)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(session_id, identity) DO UPDATE SET participant_sid = excluded.participant_sid, status = excluded.status, last_seen_at = excluded.last_seen_at, disconnected_at = excluded.disconnected_at, metadata = excluded.metadata`)
+        ON CONFLICT(session_id, identity) DO UPDATE SET participant_sid = excluded.participant_sid, status = excluded.status, first_seen_at = COALESCE(visit_session_participants.first_seen_at, excluded.first_seen_at), last_seen_at = excluded.last_seen_at, disconnected_at = excluded.disconnected_at, metadata = excluded.metadata`)
         .bind(crypto.randomUUID(), session.id, session.facility_id, participantIdentity, participantRole, event.participant?.sid || null, participantStatus, now, now, participantStatus === "DISCONNECTED" ? now : null, JSON.stringify(eventMetadata)));
       const auditAction = participantAuditAction(event.event);
       if (auditAction) {

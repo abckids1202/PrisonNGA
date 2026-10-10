@@ -8,6 +8,7 @@ test("LiveKit webhook persists participant lifecycle state idempotently", async 
   assert.match(source, /ON CONFLICT\(session_id, identity\) DO UPDATE/);
   assert.match(source, /participant_joined/);
   assert.match(source, /participant_connection_aborted/);
+  assert.match(source, /first_seen_at = COALESCE\(visit_session_participants\.first_seen_at, excluded\.first_seen_at\)/);
 });
 
 test("LiveKit status promotion requires an in-progress appointment", async () => {
