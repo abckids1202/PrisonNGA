@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     if (!current) throw new SecurityError("KIOSK_NOT_ASSIGNED_TO_VISIT", 403);
     const terminalPresenceClear = body.presence === "absent" && ["COMPLETED", "CANCELLED_BY_FACILITY", "CANCELLED_BY_VISITOR", "TECHNICAL_FAILURE", "NO_SHOW"].includes(String(current.appointment_status));
     if (!terminalPresenceClear && !["APPROVED", "WAITING", "IN_PROGRESS"].includes(String(current.appointment_status))) throw new SecurityError("VISIT_NOT_READY_FOR_PRESENCE", 409);
-    if (!terminalPresenceClear && current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
+    if (!terminalPresenceClear && body.presence === "present" && current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (terminalPresenceClear) {
       return securityResponse({ visitId, state: current.state || "COMPLETED", prisonerPresence: body.presence, visitorPresence: current.visitor_presence || "absent", version: Number(current.waiting_version || 0), idempotent: true }, 200, context.requestId);
     }

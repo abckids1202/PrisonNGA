@@ -43,3 +43,8 @@ test("kiosk presence compensates a partial appointment transition", () => {
   assert.match(presenceRoute, /SET state = \?, prisoner_presence = \?, prisoner_presence_at = \?, version = \?, last_checked_at = \?, updated_at = \?/);
   assert.match(presenceRoute, /if \(result\[0\]\?\.meta\.changes\) \{/);
 });
+
+test("kiosk presence clearing is still allowed when the facility is restricted", () => {
+  assert.match(presenceRoute, /body\.presence === "present" && current\.facility_state !== "NORMAL_OPERATIONS"/);
+  assert.doesNotMatch(presenceRoute, /if \(!terminalPresenceClear && current\.facility_state !== "NORMAL_OPERATIONS"\)/);
+});
