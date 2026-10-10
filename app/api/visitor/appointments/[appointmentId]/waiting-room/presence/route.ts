@@ -33,7 +33,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
       WHERE a.id = ? AND a.visitor_user_id = ?`).bind(appointmentId, visitor.userId).first<Record<string, string | number | null>>();
     if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
     if (!activeStatuses.includes(String(current.appointment_status) as typeof activeStatuses[number])) throw new SecurityError("VISIT_NOT_READY_FOR_PRESENCE", 409);
-    if (current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (!current.waiting_version) throw new SecurityError("WAITING_ROOM_NOT_OPEN", 409);
     // Clearing presence is allowed during a facility restriction so a
     // browser cannot leave a false-positive visitor in the operational queue.

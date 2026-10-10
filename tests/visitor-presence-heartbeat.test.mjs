@@ -37,3 +37,11 @@ test("visitor presence can be cleared safely when the browser leaves", () => {
   assert.match(liveSessionSource, /window\.addEventListener\("pagehide", clearPresence\)/);
   assert.match(liveSessionSource, /function leaveVisit\(\)/);
 });
+
+test("visitor presence clearing is still allowed when the facility is restricted", () => {
+  const waitingRoomOpenGuard = source.indexOf("if (!current.waiting_version)");
+  const presenceGuard = source.indexOf('if (presence === "present" && current.facility_state !== "NORMAL_OPERATIONS")');
+  assert.ok(waitingRoomOpenGuard >= 0);
+  assert.ok(presenceGuard > waitingRoomOpenGuard);
+  assert.doesNotMatch(source, /if \(current\.facility_state !== "NORMAL_OPERATIONS"\) throw new SecurityError\("FACILITY_NOT_ACCEPTING_REQUESTS", 409\);/);
+});
