@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { allocateVisitResources } from "../lib/server/resources.ts";
-import { resourceReassignmentStatements } from "../lib/server/resource-reassignment.ts";
+import { resourceReassignmentCompensationStatements, resourceReassignmentStatements } from "../lib/server/resource-reassignment.ts";
 
 class SQLiteD1Statement {
   values = [];
@@ -173,5 +173,45 @@ test("resource reassignment leaves the original reservation untouched when the t
     assert.equal(d1.sqlite.prepare("SELECT version FROM resources WHERE id = 'source'").get().version, 1);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 0);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 0);
+  } finally { d1.close(); }
+});
+
+test("resource reassignment compensation restores a guarded partial transition", async () => {
+  const d1 = new ReassignmentD1();
+  try {
+    seedReassignment(d1);
+    d1.sqlite.exec(`
+      INSERT INTO resource_reservations VALUES ('replacement', 'facility-1', 'visit-1', 'DEVICE', 'target', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'during');
+      UPDATE resource_reservations SET status = 'RELEASED' WHERE id = 'reservation-source';
+      UPDATE resources SET version = 2 WHERE id IN ('source', 'target');
+      UPDATE waiting_room_sessions SET assigned_kiosk_id = 'target', version = 5 WHERE appointment_id = 'visit-1';
+    `);
+    const compensation = resourceReassignmentCompensationStatements({
+      d1,
+      facilityId: "facility-1",
+      appointmentId: "visit-1",
+      reservationId: "replacement",
+      sourceReservationId: "reservation-source",
+      sourceResourceId: "source",
+      targetResourceId: "target",
+      sourceStatus: "RESERVED",
+      expectedSourceVersion: 1,
+      expectedTargetVersion: 1,
+      expectedWaitingVersion: 4,
+      waitingExists: true,
+      waitingAssignmentColumn: "assigned_kiosk_id",
+      now: "2026-10-01T08:01:00.000Z",
+      restoreTargetReservation: true,
+      restoreSourceReservation: true,
+      restoreSourceVersion: true,
+      restoreTargetVersion: true,
+      restoreWaitingAssignment: true,
+    });
+    const results = await d1.batch(compensation);
+    assert.deepEqual(results.map((result) => result.meta.changes), [1, 1, 1, 1, 1]);
+    assert.equal(d1.sqlite.prepare("SELECT status FROM resource_reservations WHERE id = 'replacement'").get().status, "RELEASED");
+    assert.equal(d1.sqlite.prepare("SELECT status FROM resource_reservations WHERE id = 'reservation-source'").get().status, "RESERVED");
+    assert.deepEqual(d1.sqlite.prepare("SELECT version FROM resources ORDER BY id").all().map((row) => ({ ...row })), [{ version: 1 }, { version: 1 }]);
+    assert.deepEqual({ ...d1.sqlite.prepare("SELECT assigned_kiosk_id, version FROM waiting_room_sessions").get() }, { assigned_kiosk_id: "source", version: 4 });
   } finally { d1.close(); }
 });

@@ -2,7 +2,7 @@ import { getD1 } from "../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { createKioskCredentialSecret, hashKioskCredential } from "../../../../lib/server/kiosk-credentials";
-import { resourceReassignmentStatements } from "../../../../lib/server/resource-reassignment";
+import { resourceReassignmentCompensationStatements, resourceReassignmentStatements } from "../../../../lib/server/resource-reassignment";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../../../../lib/server/reconciliation";
 
@@ -119,18 +119,66 @@ export async function POST(request: Request) {
       }
       if (body.expectedVersion !== current.version) throw new SecurityError("STALE_RESOURCE", 409);
       const correlationId = crypto.randomUUID();
-      const statements = resourceReassignmentStatements({ d1, facilityId: authorization.facilityId, appointmentId, sourceReservationId: source.id, sourceResourceId: source.resource_id, sourceResourceType: source.resource_type, sourceStatus: source.status, startsAt: source.starts_at, endsAt: source.ends_at, targetResourceId: target.id, expectedSourceVersion, expectedTargetVersion, expectedWaitingVersion, waitingExists: source.waiting_version !== null, actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, reason, oldResourceName: current.display_name, newResourceName: target.display_name, requestId: context.requestId, correlationId, now });
+      const reassignmentReservationId = crypto.randomUUID();
+      const statements = resourceReassignmentStatements({ d1, facilityId: authorization.facilityId, appointmentId, sourceReservationId: source.id, sourceResourceId: source.resource_id, sourceResourceType: source.resource_type, sourceStatus: source.status, startsAt: source.starts_at, endsAt: source.ends_at, targetResourceId: target.id, expectedSourceVersion, expectedTargetVersion, expectedWaitingVersion, waitingExists: source.waiting_version !== null, actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, reason, oldResourceName: current.display_name, newResourceName: target.display_name, requestId: context.requestId, correlationId, now, reservationId: reassignmentReservationId });
       const results = await d1.batch(statements);
       const waitingUpdated = source.waiting_version === null || Boolean(results[4]?.meta.changes);
       if (!(results[0]?.meta.changes && results[1]?.meta.changes && results[2]?.meta.changes && results[3]?.meta.changes && waitingUpdated)) {
-        await recordWaitingRoomReconciliationRequired(d1, {
+        const compensationFlags = {
+          restoreTargetReservation: Boolean(results[0]?.meta.changes),
+          restoreSourceReservation: Boolean(results[1]?.meta.changes),
+          restoreSourceVersion: Boolean(results[2]?.meta.changes),
+          restoreTargetVersion: Boolean(results[3]?.meta.changes),
+          restoreWaitingAssignment: source.waiting_version !== null && Boolean(results[4]?.meta.changes),
+        };
+        const compensation = resourceReassignmentCompensationStatements({
+          d1,
           facilityId: authorization.facilityId,
           appointmentId,
-          operation: "RESOURCE_REASSIGNMENT",
-          requestId: context.requestId,
-          correlationId,
-          expectedVersion: source.waiting_version === null ? 0 : expectedWaitingVersion + 1,
+          reservationId: reassignmentReservationId,
+          sourceReservationId: source.id,
+          sourceResourceId: source.resource_id,
+          targetResourceId: target.id,
+          sourceStatus: source.status,
+          expectedSourceVersion,
+          expectedTargetVersion,
+          expectedWaitingVersion,
+          waitingExists: source.waiting_version !== null,
+          waitingAssignmentColumn: source.resource_type === "ROOM" ? "assigned_room_id" : "assigned_kiosk_id",
+          now,
+          ...compensationFlags,
         });
+        const compensationResults = compensation.length ? await d1.batch(compensation) : [];
+        let compensationIndex = 0;
+        const compensationSucceeded = [
+          compensationFlags.restoreTargetReservation,
+          compensationFlags.restoreSourceReservation,
+          compensationFlags.restoreSourceVersion,
+          compensationFlags.restoreTargetVersion,
+          compensationFlags.restoreWaitingAssignment,
+        ].every((required) => {
+          if (!required) return true;
+          const result = compensationResults[compensationIndex++];
+          return Boolean(result?.meta?.changes);
+        });
+        if (!compensationSucceeded) {
+          await recordResourceReconciliationRequired(d1, {
+            facilityId: authorization.facilityId,
+            resourceId: source.resource_id,
+            operation: "RESOURCE_REASSIGNMENT_COMPENSATION",
+            requestId: context.requestId,
+            correlationId,
+            expectedVersion: expectedSourceVersion + 1,
+          });
+          if (source.waiting_version !== null) await recordWaitingRoomReconciliationRequired(d1, {
+            facilityId: authorization.facilityId,
+            appointmentId,
+            operation: "RESOURCE_REASSIGNMENT_COMPENSATION",
+            requestId: context.requestId,
+            correlationId,
+            expectedVersion: expectedWaitingVersion + 1,
+          });
+        }
         throw new SecurityError("RESOURCE_REASSIGNMENT_CONFLICT", 409);
       }
       return finish({ appointmentId, resourceId: target.id, resourceType: target.resource_type, displayName: target.display_name, version: target.version + 1, waitingVersion: source.waiting_version === null ? null : expectedWaitingVersion + 1, correlationId });

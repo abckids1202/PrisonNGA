@@ -1,8 +1,8 @@
 # SecureVisit Current Project Audit
 
-Date: 2026-10-09
+Date: 2026-10-10
 
-Latest verified code baseline: `1ab82a8 security: align readiness with federation policy`
+Latest verified code baseline before this change: `28225f4 refactor: extract resources workspace`
 
 Audit update: 2026-10-09
 
@@ -33,11 +33,12 @@ production use; passing local tests does not prove this race is safe.
 
 The current code baseline adds bounded compensation for the confirmed
 waiting-room cases (visitor presence, kiosk presence, and kiosk device-check
-evidence). If a related optimistic-concurrency write loses its race, the first
-write is restored while its incremented version is still owned by the request;
-failure to restore returns an explicit reconciliation-required error. This
-reduces the risk but does not replace a staging concurrency test against remote
-D1.
+evidence), and now also applies guarded compensation to partial resource
+reassignments. If a related optimistic-concurrency write loses its race, the
+already-changed rows are restored only when their post-transition versions and
+assignments still belong to the request; failure to restore returns an explicit
+reconciliation-required error. This reduces the risk but does not replace a
+staging concurrency test against remote D1.
 
 The staff Waiting Room transition now persists `last_transition_id` on the
 appointment before credit/resource cleanup guards execute. This closes a

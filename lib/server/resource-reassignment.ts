@@ -23,13 +23,14 @@ export type ResourceReassignmentStatementInput = {
   requestId: string;
   correlationId: string;
   now: string;
+  reservationId?: string;
 };
 
 export function resourceReassignmentStatements(input: ResourceReassignmentStatementInput): D1PreparedStatement[] {
   const { d1 } = input;
   const waitingAssignmentColumn = input.sourceResourceType === "ROOM" ? "assigned_room_id" : "assigned_kiosk_id";
   const targetStatus = input.sourceResourceType === "ROOM" ? "AVAILABLE" : "ONLINE";
-  const reservationId = crypto.randomUUID();
+  const reservationId = input.reservationId || crypto.randomUUID();
   const statements: D1PreparedStatement[] = [
     d1.prepare(`INSERT INTO resource_reservations (id, facility_id, appointment_id, resource_type, resource_id, status, starts_at, ends_at, created_at)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
@@ -79,4 +80,64 @@ export function resourceReassignmentStatements(input: ResourceReassignmentStatem
 
 export function reassignmentReservationCreated(results: Array<{ meta?: { changes?: number } }>): boolean {
   return Boolean(results[0]?.meta?.changes);
+}
+
+export type ResourceReassignmentCompensationInput = {
+  d1: D1Database;
+  facilityId: string;
+  appointmentId: string;
+  reservationId: string;
+  sourceReservationId: string;
+  sourceResourceId: string;
+  targetResourceId: string;
+  sourceStatus: "HELD" | "RESERVED" | "ACTIVE";
+  expectedSourceVersion: number;
+  expectedTargetVersion: number;
+  expectedWaitingVersion: number;
+  waitingExists: boolean;
+  waitingAssignmentColumn: "assigned_room_id" | "assigned_kiosk_id";
+  now: string;
+  restoreTargetReservation: boolean;
+  restoreSourceReservation: boolean;
+  restoreSourceVersion: boolean;
+  restoreTargetVersion: boolean;
+  restoreWaitingAssignment: boolean;
+};
+
+/**
+ * Restore only the rows that this reassignment actually changed. Every write
+ * is guarded by the post-transition value, so a concurrent operator cannot be
+ * overwritten by the compensating request. A zero-row result is surfaced to
+ * the caller as a reconciliation alarm instead of being treated as success.
+ */
+export function resourceReassignmentCompensationStatements(input: ResourceReassignmentCompensationInput): D1PreparedStatement[] {
+  const { d1 } = input;
+  const statements: D1PreparedStatement[] = [];
+  if (input.restoreTargetReservation) {
+    statements.push(d1.prepare(`UPDATE resource_reservations SET status = 'RELEASED'
+      WHERE id = ? AND facility_id = ? AND appointment_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')`)
+      .bind(input.reservationId, input.facilityId, input.appointmentId));
+  }
+  if (input.restoreSourceReservation) {
+    statements.push(d1.prepare(`UPDATE resource_reservations SET status = ?
+      WHERE id = ? AND facility_id = ? AND appointment_id = ? AND status = 'RELEASED'
+        AND NOT EXISTS (SELECT 1 FROM resource_reservations WHERE id = ? AND facility_id = ? AND appointment_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE'))`)
+      .bind(input.sourceStatus, input.sourceReservationId, input.facilityId, input.appointmentId, input.reservationId, input.facilityId, input.appointmentId));
+  }
+  if (input.restoreSourceVersion) {
+    statements.push(d1.prepare(`UPDATE resources SET version = ? , updated_at = ?
+      WHERE id = ? AND facility_id = ? AND version = ?`)
+      .bind(input.expectedSourceVersion, input.now, input.sourceResourceId, input.facilityId, input.expectedSourceVersion + 1));
+  }
+  if (input.restoreTargetVersion) {
+    statements.push(d1.prepare(`UPDATE resources SET version = ?, updated_at = ?
+      WHERE id = ? AND facility_id = ? AND version = ?`)
+      .bind(input.expectedTargetVersion, input.now, input.targetResourceId, input.facilityId, input.expectedTargetVersion + 1));
+  }
+  if (input.waitingExists && input.restoreWaitingAssignment) {
+    statements.push(d1.prepare(`UPDATE waiting_room_sessions SET ${input.waitingAssignmentColumn} = ?, version = ?, updated_at = ?
+      WHERE appointment_id = ? AND facility_id = ? AND version = ? AND ${input.waitingAssignmentColumn} = ?`)
+      .bind(input.sourceResourceId, input.expectedWaitingVersion, input.now, input.appointmentId, input.facilityId, input.expectedWaitingVersion + 1, input.targetResourceId));
+  }
+  return statements;
 }
