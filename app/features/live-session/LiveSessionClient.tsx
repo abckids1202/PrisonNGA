@@ -77,6 +77,22 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
   }
 
   useEffect(() => {
+    if (!isVisitor || !visitId) return;
+    const clearPresence = () => {
+      void fetch(`/api/visitor/appointments/${encodeURIComponent(visitId)}/waiting-room/presence`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ presence: "absent" }),
+        cache: "no-store",
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+    window.addEventListener("pagehide", clearPresence);
+    return () => window.removeEventListener("pagehide", clearPresence);
+  }, [isVisitor, visitId]);
+
+  useEffect(() => {
     if (isVisitor || !kioskDeviceId || !kioskCredential) return;
     const clearPresence = () => {
       void fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/presence`, {
@@ -372,6 +388,16 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
   }
 
   function leaveVisit() {
+    if (isVisitor) {
+      void fetch(`/api/visitor/appointments/${encodeURIComponent(visitId)}/waiting-room/presence`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ presence: "absent" }),
+        cache: "no-store",
+        keepalive: true,
+      }).catch(() => undefined);
+    }
     roomRef.current?.disconnect();
     setStage("left");
   }

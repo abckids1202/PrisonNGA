@@ -159,9 +159,20 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
         // The next visit-detail refresh will surface a stale or unavailable waiting-room state.
       }
     };
+    const clearPresence = () => {
+      void fetch(`/api/visitor/appointments/${encodeURIComponent(presenceAppointmentId)}/waiting-room/presence`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ presence: "absent" }),
+        cache: "no-store",
+        keepalive: true,
+      }).catch(() => undefined);
+    };
     void sendPresence();
     const timer = window.setInterval(() => void sendPresence(), 15_000);
-    return () => { active = false; window.clearInterval(timer); };
+    window.addEventListener("pagehide", clearPresence);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("pagehide", clearPresence); };
   }, [presenceAppointmentId, presenceAppointmentStatus, presenceState]);
 
   const state = useMemo(() => appointment ? getVisitorVisitViewState(appointment) : null, [appointment]);

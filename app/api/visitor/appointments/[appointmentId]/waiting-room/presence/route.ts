@@ -6,9 +6,20 @@ import { recordWaitingRoomReconciliationRequired } from "../../../../../../../li
 
 const activeStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
 
-export async function POST(_request: Request, { params }: { params: Promise<{ appointmentId: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ appointmentId: string }> }) {
   const context = await getRequestContext();
   try {
+    const rawBody = await request.text();
+    let requestedPresence: unknown = "present";
+    if (rawBody.trim()) {
+      try {
+        requestedPresence = (JSON.parse(rawBody) as { presence?: unknown }).presence;
+      } catch {
+        throw new SecurityError("INVALID_VISITOR_PRESENCE", 400);
+      }
+    }
+    if (requestedPresence !== "present" && requestedPresence !== "absent") throw new SecurityError("INVALID_VISITOR_PRESENCE", 400);
+    const presence = requestedPresence as "present" | "absent";
     const visitor = await requireVisitorIdentity();
     const { appointmentId } = await params;
     if (!appointmentId || appointmentId.length > 128) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
@@ -26,6 +37,31 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ap
     if (!current.waiting_version) throw new SecurityError("WAITING_ROOM_NOT_OPEN", 409);
     const now = new Date().toISOString();
     const prisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at));
+
+    // A browser can disappear without a final navigation request. Allow the
+    // visitor client to explicitly clear its presence when pagehide/leave is
+    // observed, while preserving LIVE and staff-escalated states. This keeps
+    // the queue truthful immediately instead of waiting for the freshness
+    // timeout used by reconciliation.
+    if (presence === "absent") {
+      const currentState = String(current.state || "NOT_ARRIVED");
+      const nextState = currentState === "LIVE"
+        ? "LIVE"
+        : ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(currentState)
+          ? prisonerPresent ? "PRISONER_WAITING" : "NOT_ARRIVED"
+          : currentState;
+      if (current.visitor_presence !== "present") {
+        return securityResponse({ presence: "absent", state: currentState, visitorPresenceAt: current.visitor_presence_at || null, prisonerPresence: prisonerPresent ? "present" : current.prisoner_presence || "waiting", version: Number(current.waiting_version), idempotent: true }, 200, context.requestId);
+      }
+      const nextVersion = Number(current.waiting_version) + 1;
+      const cleared = await d1.prepare(`UPDATE waiting_room_sessions
+        SET state = ?, visitor_presence = 'absent', visitor_presence_at = ?, version = ?, last_checked_at = ?, updated_at = ?
+        WHERE appointment_id = ? AND facility_id = ? AND version = ? AND visitor_presence = 'present'`)
+        .bind(nextState, now, nextVersion, now, now, appointmentId, current.facility_id, Number(current.waiting_version)).run();
+      if (!cleared.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+      return securityResponse({ presence: "absent", state: nextState, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : current.prisoner_presence || "waiting", version: nextVersion }, 200, context.requestId);
+    }
+
     const nextState = prisonerPresent ? "BOTH_PRESENT" : "VISITOR_WAITING";
     const persistedState = ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT"].includes(String(current.state || "NOT_ARRIVED"))
       ? nextState
