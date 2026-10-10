@@ -114,6 +114,7 @@ The current repository already includes:
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
 - Visitor presence now supports an authenticated, optimistic-concurrency-safe `absent` transition on page hide and Live Session exit, so staff do not wait for the freshness timeout to see that a visitor has left; LIVE and staff-escalated Waiting Room states are preserved.
+- Visitor Visit Details now reads persisted facility-side kiosk, device, room and policy readiness and presents visitor-safe readiness summaries without exposing staff notes or resource identifiers.
 - Staff cancellation from Waiting Room now atomically releases any active Visit Credit reservation and all held/reserved/active room and kiosk reservations, with idempotent guards and audit/outbox evidence.
 - Resource reassignment now requires a bounded idempotency key and replays the original successful response after a network retry, while preserving source/target/waiting-room optimistic concurrency and transactional audit/outbox behavior.
 - Kiosk credential issue/revoke now use transactional idempotency claims. Replays return only a sanitized lifecycle result; the one-time credential secret is never stored in the replay body, and a lost secret requires an intentional new rotation.

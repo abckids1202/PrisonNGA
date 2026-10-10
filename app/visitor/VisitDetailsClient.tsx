@@ -27,11 +27,19 @@ type AppointmentDetail = {
   waiting_room_state: string | null;
   waiting_room_version: number | null;
   visitor_presence: string | null;
+  prisoner_presence: string | null;
   identity_state: string | null;
   camera_state: string | null;
   microphone_state: string | null;
   network_state: string | null;
+  room_state: string | null;
+  kiosk_state: string | null;
   restriction_state: string | null;
+  kiosk_camera_state: string | null;
+  kiosk_microphone_state: string | null;
+  kiosk_network_state: string | null;
+  kiosk_device_checked_at: string | null;
+  staff_preflight_at: string | null;
   session_id: string | null;
   session_status: string | null;
   actual_started_at: string | null;
@@ -67,6 +75,12 @@ function formatTimeRange(appointment: AppointmentDetail) {
 
 function prettyStatus(value: string) {
   return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function combinedReadiness(values: Array<string | null | undefined>) {
+  if (values.some((value) => ["failed", "poor", "blocked"].includes(String(value).toLowerCase()))) return "Needs attention";
+  if (values.every((value) => ["pass", "ready", "stable", "present"].includes(String(value).toLowerCase()))) return "Ready";
+  return "Waiting";
 }
 
 function stateContent(state: VisitorVisitViewState, appointment: AppointmentDetail, reviewReason?: string | null) {
@@ -248,7 +262,7 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
 
       <section className="sv5-prep-layout">
         <article className="sv5-panel sv5-preparation-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Your visit status</p><h2>{state === "review" ? "Waiting for the facility" : state === "completed" ? "Visit finished" : "Your next step"}</h2></div><strong>{completedSteps} of 5</strong></div><div className="sv5-progress-track" role="progressbar" aria-valuenow={completedSteps} aria-valuemin={0} aria-valuemax={5} aria-label={`Visit progress: ${completedSteps} of 5 steps`}><i style={{ width: `${completedSteps * 20}%` }} /></div><p className="sv5-progress-copy">Progress is based on saved appointment and session records.<span>{completedSteps * 20}%</span></p><div className="sv5-prep-list"><PreparationItem title="Request received" state={formatDate(appointment.created_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })} done /><PreparationItem title="Facility decision" state={prettyStatus(appointment.status)} done={!["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status)} current={state === "review"} /><PreparationItem title="Visit credit" state={prettyStatus(credit)} done={credit !== "NOT_RESERVED"} /><PreparationItem title="Device check" state={appointment.device_checked_at ? `Last checked ${formatDate(appointment.device_checked_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}` : "Not completed yet"} done={Boolean(appointment.device_check_id)} current={state === "approved" && !appointment.device_check_id} /><PreparationItem title="Secure video visit" state={appointment.session_status ? prettyStatus(appointment.session_status) : "Not started"} done={videoStepComplete} current={state === "ready"} /></div>{state === "approved" && <button className="sv4-button sv4-button-primary" onClick={openDeviceCheck}>Check this device <span>→</span></button>}{state === "ready" && <button className="sv4-button sv4-button-primary" onClick={openLiveVisit}>Join your visit <span>→</span></button>}</article>
-        <article className={`sv5-panel sv5-waiting-panel sv5-waiting-${["waiting", "ready", "live"].includes(state) ? "open" : "closed"}`}><div className="sv5-waiting-illustration"><span>◷</span><i /></div><p className="sv4-kicker">Facility readiness</p><h2>{state === "ready" ? "Ready to join" : state === "live" ? "Visit in progress" : state === "waiting" ? "Waiting for staff" : "Waiting room"}</h2><p>{state === "waiting" ? "Your check-in is recorded. Stay on this page for the facility’s next update." : state === "ready" ? "The facility has marked your visit ready. Join using the secure visit button." : state === "live" ? "Your session has been started. Return to the live visit when needed." : waitingRoomOpensLater ? "Your device is ready. The waiting room opens ten minutes before your scheduled visit." : "The waiting room and visit actions will appear here when the facility opens them."}</p><div className="sv5-waiting-time"><span>Scheduled time</span><strong>{formatTimeRange(appointment)}</strong></div>{state === "ready" && <button className="sv4-button sv4-button-primary" onClick={openLiveVisit}>Join your visit →</button>}</article>
+        <article className={`sv5-panel sv5-waiting-panel sv5-waiting-${["waiting", "ready", "live"].includes(state) ? "open" : "closed"}`}><div className="sv5-waiting-illustration"><span>◷</span><i /></div><p className="sv4-kicker">Facility readiness</p><h2>{state === "ready" ? "Ready to join" : state === "live" ? "Visit in progress" : state === "waiting" ? "Waiting for staff" : "Waiting room"}</h2><p>{state === "waiting" ? "Your check-in is recorded. Stay on this page for the facility’s next update." : state === "ready" ? "The facility has marked your visit ready. Join using the secure visit button." : state === "live" ? "Your session has been started. Return to the live visit when needed." : waitingRoomOpensLater ? "Your device is ready. The waiting room opens ten minutes before your scheduled visit." : "The waiting room and visit actions will appear here when the facility opens them."}</p>{appointment.waiting_room_state && ["waiting", "ready", "live"].includes(state) && <div className="sv5-readiness" aria-label="Facility readiness checks"><div className="sv5-readiness-heading"><span>Live readiness checks</span><strong>{combinedReadiness([appointment.identity_state, appointment.room_state, appointment.kiosk_state, appointment.restriction_state, appointment.visitor_presence, appointment.prisoner_presence])}</strong></div><div className="sv5-readiness-grid"><ReadinessItem label="Your device" value={combinedReadiness([appointment.camera_state, appointment.microphone_state, appointment.network_state])} /><ReadinessItem label="Facility device" value={combinedReadiness([appointment.kiosk_camera_state, appointment.kiosk_microphone_state, appointment.kiosk_network_state])} /><ReadinessItem label="Both people present" value={combinedReadiness([appointment.visitor_presence, appointment.prisoner_presence])} /><ReadinessItem label="Room & policy" value={combinedReadiness([appointment.identity_state, appointment.room_state, appointment.restriction_state])} /></div></div>}<div className="sv5-waiting-time"><span>Scheduled time</span><strong>{formatTimeRange(appointment)}</strong></div>{state === "ready" && <button className="sv4-button sv4-button-primary" onClick={openLiveVisit}>Join your visit →</button>}</article>
       </section>
 
       <section className="sv5-info-layout"><article className="sv5-panel sv5-info-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Visit information</p><h2>The details you need</h2></div><span className="sv5-info-icon">⌁</span></div><div className="sv5-detail-grid"><Detail label="Date" value={formatDate(appointment.requested_start, appointment.timezone)} /><Detail label="Time" value={formatTimeRange(appointment)} /><Detail label="Visit type" value={prettyStatus(appointment.appointment_type)} /><Detail label="Duration" value={`${duration} minutes`} /><Detail label="Facility" value={appointment.facility_name} /><Detail label="Connection" value={`${appointment.prisoner_name} · ${appointment.relationship_type || "Approved connection"}`} /></div></article><article className="sv5-panel sv5-credit-panel"><div className="sv5-credit-symbol">◇</div><p className="sv4-kicker">Visit Credit</p><h2>{credit === "CONSUMED" ? "Credit used" : credit === "RETURNED" ? "Credit returned" : credit === "RESERVED" ? "Credit reserved" : "Not reserved yet"}</h2><p>{credit === "CONSUMED" ? "The ledger records this credit as used for the completed visit." : credit === "RETURNED" ? "The ledger records this credit as returned to your balance." : credit === "RESERVED" ? "One visit credit is reserved for this appointment." : "A credit has not been reserved for this appointment."}</p><Link className="sv5-inline-link" href="/visitor/credits">View my credits →</Link></article></section>
@@ -267,6 +281,10 @@ function VisitPageMessage({ title, body, action }: { title: string; body: string
 
 function PreparationItem({ title, state, done, current = false }: { title: string; state: string; done: boolean; current?: boolean }) {
   return <div className={`sv5-prep-item ${done ? "done" : current ? "current" : "future"}`}><span>{done ? "✓" : current ? "!" : "○"}</span><strong>{title}</strong><small>{state}</small></div>;
+}
+
+function ReadinessItem({ label, value }: { label: string; value: string }) {
+  return <div className={`sv5-readiness-item sv5-readiness-${value.toLowerCase().replaceAll(" ", "-")}`}><span>{value === "Ready" ? "✓" : value === "Needs attention" ? "!" : "○"}</span><div><strong>{label}</strong><small>{value}</small></div></div>;
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
