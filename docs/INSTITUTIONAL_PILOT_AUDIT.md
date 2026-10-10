@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `f72cead` (`fix: keep kiosk absence telemetry accurate`).
+Latest verified repository commit: `98cc4c3` (`fix: clear presence when sessions finalize`).
 The local release verifier passed at this baseline with 513 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -59,6 +59,7 @@ The current repository already includes:
 - Visitor presence clearing now remains available during facility restrictions, preventing a browser closed during lockdown from leaving a stale visitor in the operational queue while new presence is still rejected.
 - Kiosk presence clearing follows the same rule during facility restrictions, preventing an abandoned controlled device from leaving stale prisoner presence while new kiosk presence is still rejected.
 - Kiosk absence events no longer refresh `prisoner_presence_at`; only present heartbeats refresh freshness, keeping presence telemetry semantically accurate.
+- Live Session finalization now clears both visitor and prisoner presence atomically with the terminal Waiting Room transition, so provider-driven completion or termination cannot leave stale active participants in persisted state.
 - LiveKit participant joins, disconnects, and reconnect attempts now create immutable facility audit events without notification fan-out, preserving a provider-level connection history.
 - Staff-initiated and scheduled LiveKit room-close failures now create a deduplicated `LIVE_SESSION_PROVIDER_CLOSE_FAILED` audit/outbox record. Provider-client-unavailable failures are recorded for every affected expired session, so no timeout failure disappears into logs only.
 - No-show reconciliation now treats presence as valid only when its persisted heartbeat timestamp is fresh, preventing disconnected clients from blocking terminal appointment cleanup.
