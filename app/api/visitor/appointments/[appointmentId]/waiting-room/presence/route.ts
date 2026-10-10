@@ -35,6 +35,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     if (!activeStatuses.includes(String(current.appointment_status) as typeof activeStatuses[number])) throw new SecurityError("VISIT_NOT_READY_FOR_PRESENCE", 409);
     if (current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (!current.waiting_version) throw new SecurityError("WAITING_ROOM_NOT_OPEN", 409);
+    // Clearing presence is allowed during a facility restriction so a
+    // browser cannot leave a false-positive visitor in the operational queue.
+    if (presence === "present" && current.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     const now = new Date().toISOString();
     const prisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at));
 
@@ -54,12 +57,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         return securityResponse({ presence: "absent", state: currentState, visitorPresenceAt: current.visitor_presence_at || null, prisonerPresence: prisonerPresent ? "present" : current.prisoner_presence || "waiting", version: Number(current.waiting_version), idempotent: true }, 200, context.requestId);
       }
       const nextVersion = Number(current.waiting_version) + 1;
-      const cleared = await d1.prepare(`UPDATE waiting_room_sessions
-        SET state = ?, visitor_presence = 'absent', visitor_presence_at = ?, version = ?, last_checked_at = ?, updated_at = ?
-        WHERE appointment_id = ? AND facility_id = ? AND version = ? AND visitor_presence = 'present'`)
-        .bind(nextState, now, nextVersion, now, now, appointmentId, current.facility_id, Number(current.waiting_version)).run();
-      if (!cleared.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
-      return securityResponse({ presence: "absent", state: nextState, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : current.prisoner_presence || "waiting", version: nextVersion }, 200, context.requestId);
+      const correlationId = crypto.randomUUID();
+      const cleared = await d1.batch([
+        d1.prepare(`UPDATE waiting_room_sessions
+          SET state = ?, visitor_presence = 'absent', visitor_presence_at = ?, version = ?, last_checked_at = ?, updated_at = ?
+          WHERE appointment_id = ? AND facility_id = ? AND version = ? AND visitor_presence = 'present'`)
+          .bind(nextState, now, nextVersion, now, now, appointmentId, current.facility_id, Number(current.waiting_version)),
+        d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
+          SELECT ?, ?, 'VISITOR', ?, 'VISITOR_PRESENCE_CLEARED', 'appointment', ?, 'Visitor presence was cleared when the browser left the waiting room or live visit.', ?, ?, ?, ?, ?
+          WHERE changes() > 0`)
+          .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ state: currentState, visitorPresence: "present", version: Number(current.waiting_version) }), JSON.stringify({ state: nextState, visitorPresence: "absent", version: nextVersion }), correlationId, context.requestId, now),
+      ]);
+      if (!cleared[0]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
+      if (!cleared[1]?.meta.changes) {
+        const restored = await d1.prepare(`UPDATE waiting_room_sessions
+          SET state = ?, visitor_presence = ?, visitor_presence_at = ?, version = ?, last_checked_at = ?, updated_at = ?
+          WHERE appointment_id = ? AND facility_id = ? AND version = ?`)
+          .bind(current.state || "NOT_ARRIVED", current.visitor_presence || null, current.visitor_presence_at || null, Number(current.waiting_version), current.last_checked_at || null, now, appointmentId, current.facility_id, nextVersion).run();
+        if (!restored.meta.changes) {
+          await recordWaitingRoomReconciliationRequired(d1, { facilityId: String(current.facility_id), appointmentId, operation: "VISITOR_PRESENCE_CLEAR", requestId: context.requestId, correlationId, expectedVersion: nextVersion });
+          throw new SecurityError("WAITING_ROOM_RECONCILIATION_REQUIRED", 503);
+        }
+        throw new SecurityError("VISITOR_PRESENCE_AUDIT_INCOMPLETE", 503);
+      }
+      return securityResponse({ presence: "absent", state: nextState, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : current.prisoner_presence || "waiting", version: nextVersion, correlationId }, 200, context.requestId);
     }
 
     const nextState = prisonerPresent ? "BOTH_PRESENT" : "VISITOR_WAITING";

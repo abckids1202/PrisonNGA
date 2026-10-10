@@ -29,6 +29,9 @@ test("visitor presence can be cleared safely when the browser leaves", () => {
   assert.match(source, /presence === "absent"/);
   assert.match(source, /visitor_presence = 'absent'/);
   assert.match(source, /currentState === "LIVE"/);
+  assert.match(source, /VISITOR_PRESENCE_CLEARED/);
+  assert.match(source, /VISITOR_PRESENCE_AUDIT_INCOMPLETE/);
+  assert.match(source, /VISITOR_PRESENCE_CLEAR/);
   assert.match(visitDetailsSource, /body: JSON\.stringify\(\{ presence: "absent" \}\)/);
   assert.match(visitDetailsSource, /window\.addEventListener\("pagehide", clearPresence\)/);
   assert.match(liveSessionSource, /window\.addEventListener\("pagehide", clearPresence\)/);
