@@ -5,6 +5,7 @@ import FacilityClosures from "../../components/FacilityClosures";
 import FacilityRestrictions from "../../components/FacilityRestrictions";
 import { Button, PageHeader, Status } from "../../components/ControlPrimitives";
 import VisitPolicyEditor from "../../components/VisitPolicyEditor";
+import { formatDateValue } from "@/lib/date-format";
 
 type NoticeTone = "success" | "warning" | "error" | "info";
 type FacilityResource = {
@@ -65,7 +66,7 @@ export default function FacilityPage({ facilityState, onFacilityStateChange, onO
   const devices = resources.filter((resource) => resource.resource_type === "DEVICE");
   const visible = tab === "Rooms" ? rooms : devices;
   const healthTone = (resource: FacilityResource) => resource.health_state === "HEALTHY" && ["AVAILABLE", "ONLINE"].includes(resource.status) ? "green" : resource.health_state === "FAILED" || resource.status === "OFFLINE" ? "red" : "orange";
-  const formatHeartbeat = (value: string | null) => value ? new Date(value).toLocaleString("en-ID", { dateStyle: "medium", timeStyle: "short", timeZone: facility?.timezone || "Asia/Jakarta" }) : "No heartbeat recorded";
+  const formatHeartbeat = (value: string | null) => value ? formatDateValue(value, { dateStyle: "medium", timeStyle: "short" }, facility?.timezone, "Heartbeat unavailable") : "No heartbeat recorded";
 
   return <>
     <PageHeader eyebrow="Management · Facility configuration" title="Facility" description="Read the current facility identity, operational state, and resource health from authoritative records." actions={<Status tone={state === "NORMAL_OPERATIONS" ? "green" : "red"}>{stateLabel}</Status>} />
