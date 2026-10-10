@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `39625be` (`fix: enforce visitor support facility state`).
+Latest verified repository commit: `9e4da7d` (`fix: fail closed on background worker configuration`).
 The local release verifier passed at this baseline with 513 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -79,6 +79,7 @@ The current repository already includes:
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
+- Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
 - Automated server tests and browser smoke tests. Current validation baseline is 513 application tests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
