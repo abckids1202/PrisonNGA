@@ -30,6 +30,13 @@ const checks = [
   { id: "staging-evidence", label: "Staging acceptance evidence", ok: environment !== "staging" || missingStagingEvidence.length === 0, detail: environment !== "staging" ? "not required outside staging" : missingStagingEvidence.length ? `${missingStagingEvidence.length} attestation(s) missing` : "all pilot attestations present" },
 ];
 
+const operationalActions = {
+  "public-domain": "Set PUBLIC_APP_URL to the deployed HTTPS application URL",
+  "remote-database": "Set D1_DATABASE_ID to the real remote database UUID",
+  "evidence-storage": "Configure EVIDENCE_STORAGE_PROVIDER=r2 and the protected evidence bucket",
+  queue: "Configure NOTIFICATION_QUEUE_NAME for the deployed environment",
+};
+
 const report = {
   generatedAt: new Date().toISOString(),
   environment: environmentCheck.environment,
@@ -43,7 +50,7 @@ const report = {
   nextActions: [
     ...environmentCheck.missing.map((item) => `Configure ${item}`),
     ...releaseGates.missing.map((item) => `Record release evidence for ${item}`),
-    ...checks.filter((check) => !check.ok && check.id === "remote-database").map(() => "Set D1_DATABASE_ID to the real remote database UUID"),
+    ...checks.filter((check) => !check.ok && operationalActions[check.id]).map((check) => operationalActions[check.id]),
   ],
 };
 

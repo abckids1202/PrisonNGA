@@ -26,6 +26,8 @@ test("pilot audit emits a redacted actionable report without failing normal deve
   assert.equal(report.environment, "development");
   assert.equal(report.readyForPilot, false);
   assert.ok(Array.isArray(report.nextActions));
+  assert.ok(report.nextActions.some((action) => action.includes("PUBLIC_APP_URL")));
+  assert.ok(report.nextActions.some((action) => action.includes("D1_DATABASE_ID")));
   assert.doesNotMatch(result.stdout, /must-not-appear/);
 });
 
