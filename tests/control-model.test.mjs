@@ -28,5 +28,6 @@ test("appointment mapping fails closed for malformed time data", () => {
   });
   assert.equal(appointment.date, "Date unavailable");
   assert.equal(appointment.time, "Time unavailable");
+  assert.equal(appointment.timezone, "Asia/Jakarta");
   assert.equal(appointment.status, "Approved");
 });
