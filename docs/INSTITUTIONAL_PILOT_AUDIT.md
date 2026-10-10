@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `94c2b99` (`fix: surface live session media control failures`).
+Latest verified repository commit: `c58bfc2` (`feat: audit release artifacts`).
 The local release verifier passed at this baseline with 518 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -106,6 +106,7 @@ The current repository already includes:
 - Evidence-retention deletion failures now create a deduplicated, facility-scoped critical privacy alarm with the object key, retention deadline, safe failure reason, correlation ID, and an explicit staff-review/deletion-unconfirmed state.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 - A canonical production operations runbook now covers database/object recovery, provider outages, kiosk recovery, identity incidents, lockdown, rollback, secret rotation, monitoring, and the required pilot exercises. It is a draft operational artifact until the named owners approve and execute the exercises.
+- `npm run audit:pilot` now verifies that the production operations runbook, pilot evidence register, and route-security matrix are present, so release documentation cannot silently disappear from a deployment baseline.
 
 ## What remains incomplete or unproven
 
