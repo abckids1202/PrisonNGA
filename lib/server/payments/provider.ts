@@ -75,7 +75,10 @@ class WebhookCheckoutProvider implements PaymentProvider {
     try {
       const response = await fetch(this.url, { method: "POST", headers: { "content-type": "application/json", "Idempotency-Key": input.paymentIntentId, "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
       if (!response.ok) throw new Error(`PAYMENT_CHECKOUT_FAILED_${response.status}`);
-      const result = JSON.parse(await readBoundedResponseText(response)) as { providerReference?: unknown; checkoutUrl?: unknown };
+      const responseText = await readBoundedResponseText(response);
+      let result: { providerReference?: unknown; checkoutUrl?: unknown };
+      try { result = JSON.parse(responseText) as { providerReference?: unknown; checkoutUrl?: unknown }; }
+      catch { throw new Error("PAYMENT_CHECKOUT_INVALID_RESPONSE"); }
       if (typeof result.providerReference !== "string" || !result.providerReference || (result.checkoutUrl !== null && typeof result.checkoutUrl !== "string")) throw new Error("PAYMENT_CHECKOUT_INVALID_RESPONSE");
       const checkoutUrl = result.checkoutUrl as string | null;
       if (checkoutUrl) {
@@ -101,7 +104,10 @@ class WebhookCheckoutProvider implements PaymentProvider {
     try {
       const response = await fetch(this.refundUrl, { method: "POST", headers: { "content-type": "application/json", "Idempotency-Key": `refund:${input.paymentIntentId}`, "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
       if (!response.ok) throw new Error(`PAYMENT_REFUND_REQUEST_FAILED_${response.status}`);
-      const result = JSON.parse(await readBoundedResponseText(response)) as { providerReference?: unknown; refundReference?: unknown };
+      const responseText = await readBoundedResponseText(response);
+      let result: { providerReference?: unknown; refundReference?: unknown };
+      try { result = JSON.parse(responseText) as { providerReference?: unknown; refundReference?: unknown }; }
+      catch { throw new Error("PAYMENT_REFUND_INVALID_RESPONSE"); }
       const providerReference = typeof result.refundReference === "string" && result.refundReference.trim()
         ? result.refundReference.trim()
         : typeof result.providerReference === "string" && result.providerReference.trim() ? result.providerReference.trim() : "";
