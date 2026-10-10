@@ -1,5 +1,6 @@
 import { validateEnvironment } from "../lib/server/config.ts";
 import { evaluateReleaseGates } from "../lib/server/release-gates.ts";
+import { existsSync } from "node:fs";
 
 const values = { ...process.env, DB: {} };
 const environment = String(values.SECUREVISIT_ENVIRONMENT || "invalid").trim() || "invalid";
@@ -7,6 +8,12 @@ const strict = process.argv.includes("--strict");
 const environmentCheck = validateEnvironment(values);
 const releaseGates = evaluateReleaseGates(environment, values);
 const missingStagingEvidence = environment === "staging" ? releaseGates.missing : [];
+const requiredRepositoryArtifacts = [
+  "docs/PRODUCTION_OPERATIONS_RUNBOOK.md",
+  "docs/PILOT_EVIDENCE_REGISTER.md",
+  "docs/ROUTE_SECURITY_MATRIX.md",
+];
+const missingRepositoryArtifacts = requiredRepositoryArtifacts.filter((path) => !existsSync(path));
 
 const present = (key) => typeof values[key] === "string" && values[key].trim().length > 0;
 const httpsUrl = (key) => {
@@ -28,6 +35,7 @@ const checks = [
   { id: "environment-config", label: "Provider and secret configuration", ok: environmentCheck.ok, detail: environmentCheck.ok ? "validated" : `${environmentCheck.missing.length} requirement(s) missing` },
   { id: "release-gates", label: "Institutional release evidence", ok: environment === "development" || releaseGates.ready, detail: environment === "development" ? "development-only gates not evaluated" : releaseGates.ready ? "all required gates attested" : `${releaseGates.missing.length} gate(s) missing` },
   { id: "staging-evidence", label: "Staging acceptance evidence", ok: environment !== "staging" || missingStagingEvidence.length === 0, detail: environment !== "staging" ? "not required outside staging" : missingStagingEvidence.length ? `${missingStagingEvidence.length} attestation(s) missing` : "all pilot attestations present" },
+  { id: "release-artifacts", label: "Release documentation artifacts", ok: missingRepositoryArtifacts.length === 0, detail: missingRepositoryArtifacts.length ? `${missingRepositoryArtifacts.length} required artifact(s) missing` : "runbook, evidence register, and route matrix present" },
 ];
 
 const operationalActions = {
@@ -35,6 +43,7 @@ const operationalActions = {
   "remote-database": "Set D1_DATABASE_ID to the real remote database UUID",
   "evidence-storage": "Configure EVIDENCE_STORAGE_PROVIDER=r2 and the protected evidence bucket",
   queue: "Configure NOTIFICATION_QUEUE_NAME for the deployed environment",
+  "release-artifacts": "Restore the required release documentation artifacts before accepting pilot evidence",
 };
 
 const report = {
@@ -50,6 +59,7 @@ const report = {
   nextActions: [
     ...environmentCheck.missing.map((item) => `Configure ${item}`),
     ...releaseGates.missing.map((item) => `Record release evidence for ${item}`),
+    ...missingRepositoryArtifacts.map((path) => `Restore required repository artifact ${path}`),
     ...checks.filter((check) => !check.ok && operationalActions[check.id]).map((check) => operationalActions[check.id]),
   ],
 };
