@@ -71,7 +71,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
       d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
         SELECT ?, ?, ?, 'present', ?, ?, ?, 'pass', ?, ?, ?, 'pass', 'pending', 'pass', NULL, NULL, NULL, ?, ?, ?, ?
         WHERE changes() > 0
-        ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = 'present', visitor_presence_at = excluded.visitor_presence_at, prisoner_presence = excluded.prisoner_presence, prisoner_presence_at = excluded.prisoner_presence_at, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, last_checked_at = excluded.last_checked_at, version = excluded.version, updated_at = excluded.updated_at
+        ON CONFLICT(appointment_id) DO UPDATE SET
+          state = CASE WHEN waiting_room_sessions.state IN ('NOT_ARRIVED', 'VISITOR_WAITING', 'PRISONER_WAITING', 'BOTH_PRESENT') THEN excluded.state ELSE waiting_room_sessions.state END,
+          visitor_presence = 'present',
+          visitor_presence_at = excluded.visitor_presence_at,
+          prisoner_presence = excluded.prisoner_presence,
+          prisoner_presence_at = excluded.prisoner_presence_at,
+          identity_state = waiting_room_sessions.identity_state,
+          camera_state = excluded.camera_state,
+          microphone_state = excluded.microphone_state,
+          network_state = excluded.network_state,
+          last_checked_at = excluded.last_checked_at,
+          version = excluded.version,
+          updated_at = excluded.updated_at
         WHERE waiting_room_sessions.version = ?`)
         .bind(appointmentId, current.facility_id, nextState, now, nextPrisonerPresence, prisonerPresent ? (current.prisoner_presence_at || now) : null, String(current.camera_result) === "ready" ? "pass" : "warning", String(current.microphone_result) === "ready" ? "pass" : "warning", String(current.network_result) === "stable" || String(current.network_result) === "fair" ? "pass" : "warning", nextVersion, now, now, now, waitingVersion),
       d1.prepare(`INSERT INTO visitor_waiting_room_checkins (id, appointment_id, facility_id, visitor_user_id, idempotency_key, state, version, correlation_id, created_at)

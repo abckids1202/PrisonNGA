@@ -35,3 +35,8 @@ test("visitor check-in compensates partial appointment and Waiting Room writes",
   assert.match(source, /UPDATE appointments SET status = \?, version = \?, updated_at = \?/);
   assert.match(source, /recordWaitingRoomReconciliationRequired/);
 });
+
+test("visitor check-in preserves authoritative staff states and identity review", () => {
+  assert.match(source, /state IN \('NOT_ARRIVED', 'VISITOR_WAITING', 'PRISONER_WAITING', 'BOTH_PRESENT'\) THEN excluded\.state ELSE waiting_room_sessions\.state/);
+  assert.match(source, /identity_state = waiting_room_sessions\.identity_state/);
+});
