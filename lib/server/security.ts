@@ -163,9 +163,27 @@ function retryAfterSeconds(error: SecurityError): number | null {
   }
 }
 
+function liveKitConnectSources(): string {
+  const sources = new Set(["https://*.livekit.cloud", "wss://*.livekit.cloud", "https://*.livekit.io", "wss://*.livekit.io"]);
+  const configuredUrl = typeof process !== "undefined" && typeof process.env?.LIVEKIT_URL === "string" ? process.env.LIVEKIT_URL.trim() : "";
+  if (configuredUrl) {
+    try {
+      const parsed = new URL(configuredUrl);
+      if (parsed.protocol === "https:" || parsed.protocol === "wss:") {
+        const origin = `${parsed.protocol}//${parsed.host}`;
+        sources.add(origin);
+        sources.add(`${parsed.protocol === "https:" ? "wss:" : "https:"}//${parsed.host}`);
+      }
+    } catch {
+      // Environment validation owns the configuration error; CSP stays on safe defaults.
+    }
+  }
+  return [...sources].join(" ");
+}
+
 export function applySecurityHeaders(response: Response, requestId?: string): void {
   response.headers.set("Cache-Control", "no-store");
-  response.headers.set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.livekit.cloud wss://*.livekit.cloud https://*.livekit.io wss://*.livekit.io");
+  response.headers.set("Content-Security-Policy", `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ${liveKitConnectSources()}`);
   response.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
