@@ -70,6 +70,12 @@ test("non-development payment webhooks require timestamped signatures", async ()
   assert.match(route, /environment !== "development"/);
 });
 
+test("payment webhooks fail closed when the runtime environment is missing", async () => {
+  const route = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
+  assert.match(route, /configuredEnvironment \|\| "unknown"/);
+  assert.match(route, /environment !== "development" && !timestampHeader/);
+});
+
 test("payment webhook processing binds events to the configured provider", async () => {
   const route = await readFile(new URL("../app/api/webhooks/payments/route.ts", import.meta.url), "utf8");
   const processor = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");

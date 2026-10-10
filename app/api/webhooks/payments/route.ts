@@ -10,7 +10,9 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const configuredEnvironment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
-    const environment = (configuredEnvironment || "development").toLowerCase();
+    // An unset environment must not weaken replay protection. Only an
+    // explicit development value may use the local non-timestamped contract.
+    const environment = (configuredEnvironment || "unknown").toLowerCase();
     const secret = await getRuntimeValue("PAYMENT_WEBHOOK_SECRET");
     const rawProvider = (await getRuntimeValue("PAYMENT_PROVIDER") || "").toLowerCase();
     const configuredProvider = rawProvider;

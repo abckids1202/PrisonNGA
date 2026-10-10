@@ -30,3 +30,9 @@ test("external notification status webhooks bypass browser CSRF checks only at t
   assert.match(csrf, /\/api\/webhooks\/notifications\/status/);
   assert.match(csrf, /FEDERATION_CALLBACKS/);
 });
+
+test("notification status webhooks fail closed when the runtime environment is missing", async () => {
+  const route = await readFile(new URL("../app/api/webhooks/notifications/status/route.ts", import.meta.url), "utf8");
+  assert.match(route, /getRuntimeValue\("SECUREVISIT_ENVIRONMENT"\)\) \|\| "unknown"/);
+  assert.match(route, /environment !== "development" && !timestamp/);
+});

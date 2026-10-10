@@ -31,7 +31,11 @@ export async function POST(request: Request) {
     if (!secret) throw new SecurityError("NOTIFICATION_STATUS_WEBHOOK_NOT_CONFIGURED", 503);
     const rawBody = await readTextBodyWithinLimit(request, 64 * 1024);
     const timestamp = request.headers.get("x-securevisit-timestamp");
-    const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) || "development";
+    // Missing environment must never downgrade an inbound provider callback
+    // to development semantics. Staging/production require timestamped
+    // signatures so replay protection remains fail-closed when deployment
+    // configuration is incomplete.
+    const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) || "unknown";
     if (environment !== "development" && !timestamp) throw new SecurityError("NOTIFICATION_STATUS_TIMESTAMP_REQUIRED", 401);
     if (!await verifyPaymentWebhookSignature(rawBody, request.headers.get("x-securevisit-signature"), secret, timestamp)) throw new SecurityError("NOTIFICATION_STATUS_SIGNATURE_INVALID", 401);
     let input: unknown;
