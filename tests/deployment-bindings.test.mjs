@@ -10,3 +10,9 @@ test("deployment build reads explicit remote D1 and R2 binding configuration", a
   assert.match(source, /database_id: configuredD1DatabaseId \|\| SITE_CREATOR_PLACEHOLDER_DATABASE_ID/);
   assert.match(source, /binding: r2 \|\| "EVIDENCE_BUCKET"/);
 });
+
+test("package scripts expose environment-specific dry-run gates", async () => {
+  const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+  assert.match(packageJson.scripts["deploy:staging:dry-run"], /validate:deployment -- --environment=staging/);
+  assert.match(packageJson.scripts["deploy:production:dry-run"], /validate:deployment -- --environment=production/);
+});
