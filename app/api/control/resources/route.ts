@@ -148,19 +148,27 @@ export async function POST(request: Request) {
           now,
           ...compensationFlags,
         });
-        const compensationResults = compensation.length ? await d1.batch(compensation) : [];
-        let compensationIndex = 0;
-        const compensationSucceeded = [
-          compensationFlags.restoreTargetReservation,
-          compensationFlags.restoreSourceReservation,
-          compensationFlags.restoreSourceVersion,
-          compensationFlags.restoreTargetVersion,
-          compensationFlags.restoreWaitingAssignment,
-        ].every((required) => {
-          if (!required) return true;
-          const result = compensationResults[compensationIndex++];
-          return Boolean(result?.meta?.changes);
-        });
+        let compensationSucceeded = true;
+        let compensationResults: Array<{ meta?: { changes?: number } }> = [];
+        try {
+          compensationResults = compensation.length ? await d1.batch(compensation) : [];
+          let compensationIndex = 0;
+          compensationSucceeded = [
+            compensationFlags.restoreTargetReservation,
+            compensationFlags.restoreSourceReservation,
+            compensationFlags.restoreSourceVersion,
+            compensationFlags.restoreTargetVersion,
+            compensationFlags.restoreWaitingAssignment,
+          ].every((required) => {
+            if (!required) return true;
+            const result = compensationResults[compensationIndex++];
+            return Boolean(result?.meta?.changes);
+          });
+        } catch {
+          // The original conflict must remain fail-closed, but a failed
+          // compensation batch must still produce the durable alarm below.
+          compensationSucceeded = false;
+        }
         if (!compensationSucceeded) {
           await recordResourceReconciliationRequired(d1, {
             facilityId: authorization.facilityId,
