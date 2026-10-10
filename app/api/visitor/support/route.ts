@@ -49,8 +49,13 @@ export async function POST(request: Request) {
     if (appointmentId && !appointment) throw new SecurityError("SUPPORT_APPOINTMENT_NOT_FOUND", 404);
     const facilityId = appointment?.facility_id || requestedFacilityId;
     if (!facilityId) throw new SecurityError("SUPPORT_FACILITY_REQUIRED", 400);
-    const facility = await d1.prepare("SELECT f.id FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(facilityId).first<{ id: string }>();
+    const facility = await d1.prepare("SELECT f.id, f.current_state FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(facilityId).first<{ id: string; current_state: string }>();
     if (!facility) throw new SecurityError("SUPPORT_FACILITY_NOT_FOUND", 404);
+    // A visitor may still contact the facility about an existing appointment
+    // during a closure, but a free-floating support case must target a
+    // facility currently accepting visitor traffic. This prevents direct API
+    // callers from bypassing the operational facility selector.
+    if (!appointment && facility.current_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     const payload = { category, subject, message, facilityId, appointmentId: appointment?.id || null };
     const salt = await getSecuritySalt();
     const idempotencyKeyHash = await hashIdentifier(`visitor-support:${visitor.userId}:${idempotencyKey}`, salt);
