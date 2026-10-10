@@ -191,13 +191,14 @@ export async function POST(request: Request) {
     const nextVersion = currentVersion + 1;
     const currentVisitorPresent = current.visitor_presence === "present" && isRecentPresence(current.visitor_presence_at === null ? null : String(current.visitor_presence_at), Date.parse(now));
     const currentPrisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at), Date.parse(now));
-    const nextVisitorPresence = command === "admit_visitor" ? "present" : currentVisitorPresent ? "present" : "waiting";
-    const nextPrisonerPresence = command === "confirm_prisoner_presence" ? "present" : currentPrisonerPresent ? "present" : "waiting";
+    const terminalWithoutLiveSession = command === "cancel_visit";
+    const nextVisitorPresence = terminalWithoutLiveSession ? "absent" : command === "admit_visitor" ? "present" : currentVisitorPresent ? "present" : "waiting";
+    const nextPrisonerPresence = terminalWithoutLiveSession ? "absent" : command === "confirm_prisoner_presence" ? "present" : currentPrisonerPresent ? "present" : "waiting";
     // Staff actions are authoritative presence signals. They must refresh the
     // heartbeat timestamp, otherwise a newly admitted participant can still be
     // considered stale by the readiness evaluator immediately after the write.
-    const nextVisitorPresenceAt = command === "admit_visitor" ? now : currentVisitorPresent ? current.visitor_presence_at || null : null;
-    const nextPrisonerPresenceAt = command === "confirm_prisoner_presence" ? now : currentPrisonerPresent ? current.prisoner_presence_at || null : null;
+    const nextVisitorPresenceAt = terminalWithoutLiveSession ? now : command === "admit_visitor" ? now : currentVisitorPresent ? current.visitor_presence_at || null : null;
+    const nextPrisonerPresenceAt = terminalWithoutLiveSession ? now : command === "confirm_prisoner_presence" ? now : currentPrisonerPresent ? current.prisoner_presence_at || null : null;
     const readiness = command === "run_preflight" || command === "retry_device" || command === "start_visit"
       ? evaluateWaitingRoomReadiness({
         visitorPresence: nextVisitorPresence,

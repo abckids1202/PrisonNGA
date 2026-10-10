@@ -224,6 +224,11 @@ export function cancelVisitorAppointmentStatements(d1: D1Database, input: Cancel
           AND (SELECT COUNT(*) FROM resource_reservations rr WHERE rr.appointment_id = ? AND rr.facility_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')) >= 2))`)
       .bind(input.now, input.correlationId, input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion, input.previousStatus,
         requiresSettlement ? 1 : 0, input.appointmentId, input.creditAccountId || "", input.appointmentId, input.appointmentId, input.facilityId),
+    d1.prepare(`UPDATE waiting_room_sessions
+      SET state = 'CANCELLED', visitor_presence = 'absent', visitor_presence_at = ?, prisoner_presence = 'absent', prisoner_presence_at = ?, version = version + 1, last_checked_at = ?, updated_at = ?
+      WHERE appointment_id = ? AND facility_id = ? AND state NOT IN ('LIVE', 'COMPLETED', 'CANCELLED', 'NO_SHOW')
+        AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND status = 'CANCELLED_BY_VISITOR' AND version = ? AND last_transition_id = ?)`)
+      .bind(input.now, input.now, input.now, input.now, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion + 1, input.correlationId),
   ];
 
   if (requiresSettlement) {

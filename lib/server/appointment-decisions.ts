@@ -240,10 +240,17 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
   }
 
   if (input.command === "no_show") {
-    statements.push(d1.prepare(`UPDATE waiting_room_sessions SET state = 'NO_SHOW', version = version + 1, last_checked_at = ?, updated_at = ?
+    statements.push(d1.prepare(`UPDATE waiting_room_sessions SET state = 'NO_SHOW', visitor_presence = 'absent', visitor_presence_at = ?, prisoner_presence = 'absent', prisoner_presence_at = ?, version = version + 1, last_checked_at = ?, updated_at = ?
       WHERE appointment_id = ? AND facility_id = ? AND state NOT IN ('LIVE', 'COMPLETED', 'CANCELLED', 'NO_SHOW')
         AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)`)
-      .bind(input.now, input.now, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.correlationId));
+      .bind(input.now, input.now, input.now, input.now, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.correlationId));
+  }
+
+  if (input.command === "cancel") {
+    statements.push(d1.prepare(`UPDATE waiting_room_sessions SET state = 'CANCELLED', visitor_presence = 'absent', visitor_presence_at = ?, prisoner_presence = 'absent', prisoner_presence_at = ?, version = version + 1, last_checked_at = ?, updated_at = ?
+      WHERE appointment_id = ? AND facility_id = ? AND state NOT IN ('LIVE', 'COMPLETED', 'CANCELLED', 'NO_SHOW')
+        AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)`)
+      .bind(input.now, input.now, input.now, input.now, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.correlationId));
   }
 
   statements.push(

@@ -26,7 +26,7 @@ class SQLiteD1 {
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT NOT NULL, appointment_id TEXT, entry_type TEXT NOT NULL, amount INTEGER NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, reason TEXT, created_by TEXT, created_at TEXT NOT NULL);
       CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY', last_heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, status TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, created_at TEXT NOT NULL);
-      CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, last_checked_at TEXT, updated_at TEXT NOT NULL);
+      CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, state TEXT NOT NULL, visitor_presence TEXT NOT NULL DEFAULT 'absent', visitor_presence_at TEXT, prisoner_presence TEXT NOT NULL DEFAULT 'absent', prisoner_presence_at TEXT, version INTEGER NOT NULL, last_checked_at TEXT, updated_at TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, current_state TEXT NOT NULL, timezone TEXT NOT NULL);
       CREATE TABLE visit_policies (facility_id TEXT PRIMARY KEY, version INTEGER NOT NULL, min_duration_minutes INTEGER NOT NULL, max_duration_minutes INTEGER NOT NULL, min_advance_minutes INTEGER NOT NULL, max_advance_days INTEGER NOT NULL, daily_start_time TEXT NOT NULL, daily_end_time TEXT NOT NULL);
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, visitation_status TEXT NOT NULL);
@@ -325,15 +325,17 @@ test("cancellation releases reserved credit and resources in the status transact
       INSERT INTO credit_ledger_entries VALUES ('ledger-existing', 'credit-1', 'visit-1', 'RESERVATION', -1, 'visit-1:reservation', 'Approved visit', 'staff-1', 'before');
       INSERT INTO resource_reservations VALUES ('rr-room', 'facility-1', 'visit-1', 'ROOM', 'room-1', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'before');
       INSERT INTO resource_reservations VALUES ('rr-device', 'facility-1', 'visit-1', 'DEVICE', 'device-1', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'before');
+      INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, version, last_checked_at, updated_at) VALUES ('visit-1', 'facility-1', 'BOTH_PRESENT', 'present', 'before', 'present', 'before', 1, 'before', 'before');
     `);
     const cancel = { ...input, fromStatus: "APPROVED", toStatus: "CANCELLED_BY_FACILITY", expectedVersion: 4, command: "cancel", creditAccountId: "credit-1", approval: undefined };
     const results = await d1.batch(appointmentDecisionStatements(d1, cancel));
-    assert.deepEqual(results.map((result) => result.meta.changes), [1, 1, 1, 2, 1, 1, 1]);
+    assert.deepEqual(results.map((result) => result.meta.changes), [1, 1, 1, 2, 1, 1, 1, 1]);
     assert.equal(d1.sqlite.prepare("SELECT status FROM appointments WHERE id = 'visit-1'").get().status, "CANCELLED_BY_FACILITY");
     assert.equal(d1.sqlite.prepare("SELECT available_credits FROM credit_accounts WHERE id = 'credit-1'").get().available_credits, 2);
     assert.equal(d1.sqlite.prepare("SELECT reserved_credits FROM credit_accounts WHERE id = 'credit-1'").get().reserved_credits, 0);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE appointment_id = 'visit-1' AND entry_type = 'RESERVATION_RELEASE'").get().count, 1);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations WHERE appointment_id = 'visit-1' AND status = 'RELEASED'").get().count, 2);
+    assert.deepEqual({ ...d1.sqlite.prepare("SELECT state, visitor_presence, prisoner_presence FROM waiting_room_sessions WHERE appointment_id = 'visit-1'").get() }, { state: "CANCELLED", visitor_presence: "absent", prisoner_presence: "absent" });
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 1);
   } finally { d1.close(); }
@@ -348,7 +350,7 @@ test("no-show closes the waiting room and releases reserved credit and resources
       INSERT INTO credit_ledger_entries VALUES ('ledger-existing', 'credit-1', 'visit-1', 'RESERVATION', -1, 'visit-1:reservation', 'Approved visit', 'staff-1', 'before');
       INSERT INTO resource_reservations VALUES ('rr-room', 'facility-1', 'visit-1', 'ROOM', 'room-1', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'before');
       INSERT INTO resource_reservations VALUES ('rr-device', 'facility-1', 'visit-1', 'DEVICE', 'device-1', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'before');
-      INSERT INTO waiting_room_sessions VALUES ('visit-1', 'facility-1', 'LATE', 1, 'before', 'before');
+      INSERT INTO waiting_room_sessions (appointment_id, facility_id, state, version, last_checked_at, updated_at, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at) VALUES ('visit-1', 'facility-1', 'LATE', 1, 'before', 'before', 'present', 'before', 'present', 'before');
     `);
     const noShow = { ...input, fromStatus: "WAITING", toStatus: "NO_SHOW", expectedVersion: 4, command: "no_show", creditAccountId: "credit-1", approval: undefined };
     const results = await d1.batch(appointmentDecisionStatements(d1, noShow));
