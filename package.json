@@ -10,6 +10,7 @@
     "dev:local": "node scripts/dev-local.mjs",
     "build": "vinext build",
     "deploy:dry-run": "npm run build && wrangler deploy --dry-run",
+    "validate:deployment": "node scripts/validate-deployment.mjs",
     "start": "vinext start",
     "test": "npm run build && node --import tsx --test",
     "test:quick": "node --import tsx --test \"tests/*.test.mjs\"",

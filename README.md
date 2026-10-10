@@ -31,6 +31,8 @@ For a faster test pass that skips the production build, run `npm run test:quick`
 
 For one repeatable local release gate, run `npm run verify:release`. It runs the disposable migration check, typecheck, lint, build/server tests, browser tests, and a production-only dependency audit. It does not deploy or mutate a remote database; staging still requires the acceptance runbook and external-provider evidence.
 
+After building a staging or production Worker, run `npm run validate:deployment -- --environment=staging` (or `production`). This preflight inspects the generated Wrangler manifest and fails if it still contains development adapters, the local D1 placeholder, no protected `EVIDENCE_BUCKET` binding, or no scheduled reconciliation trigger. It does not replace Cloudflare deployment verification or provider acceptance testing.
+
 For a redacted readiness summary, run `npm run audit:pilot`. It reports environment configuration, remote D1 identity, protected evidence storage, provider readiness, and release evidence without printing secret values. Add `npm run audit:pilot -- --strict` in a staging or production check when the command should exit non-zero until the pilot gates are satisfied.
 
 To verify the Cloudflare Worker packaging without deploying or changing a remote service, run:
