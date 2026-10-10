@@ -4,6 +4,7 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const checks = [
   ["working-tree patch validation", ["diff", "--check"], "git"],
   ["fresh local D1 migrations", ["run", "db:test:migrations:local"]],
+  ["local backup and restore drill", ["scripts/verify-local-backup-drill.mjs"], "node"],
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint"]],
   ["build and server tests", ["test"]],
@@ -19,11 +20,13 @@ for (const [label, args] of checks) {
   // Windows exposes npm as a command script rather than a native executable.
   // The arguments are fixed above, so enabling the platform shell here only
   // handles command resolution and does not interpolate user input.
-  const command = checks.find(([candidate]) => candidate === label)?.[2] === "git" ? "git" : npmCommand;
+  const commandKind = checks.find(([candidate]) => candidate === label)?.[2];
+  const command = commandKind === "git" ? "git" : commandKind === "node" ? process.execPath : npmCommand;
+  const commandArgs = commandKind === "node" ? args : args;
   const environment = label === "browser tests"
     ? { ...process.env, SECUREVISIT_E2E_ISOLATED: "true" }
     : process.env;
-  const result = spawnSync(command, args, { stdio: "inherit", shell: process.platform === "win32", env: environment });
+  const result = spawnSync(command, commandArgs, { stdio: "inherit", shell: process.platform === "win32" && commandKind !== "node", env: environment });
   if (result.error) {
     console.error(`✖ ${label}: ${result.error.message}`);
     process.exit(1);
