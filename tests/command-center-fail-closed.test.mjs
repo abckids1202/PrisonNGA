@@ -8,4 +8,8 @@ test("Command Center does not present unavailable appointment data as zero atten
   assert.match(source, /value=\{operationalDataUnavailable \? "—" : String\(attention\)\}/);
   assert.match(source, /Protected appointment data unavailable/);
   assert.match(source, /Persisted visit data unavailable/);
+  assert.match(source, /const \[resourcesError, setResourcesError\] = useState\(false\)/);
+  assert.match(source, /const roomCapacity = resourcesLoading \|\| resourcesError \? "—"/);
+  assert.match(source, /No zero-session state is being inferred/);
+  assert.match(source, /No empty queue is being inferred/);
 });
