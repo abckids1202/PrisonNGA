@@ -1,4 +1,6 @@
-# SecureVisit Current Project Audit
+# SecureVisit Current Project Audit (Superseded)
+
+> This historical audit is retained for traceability. The authoritative current assessment is [`INSTITUTIONAL_PILOT_AUDIT.md`](./INSTITUTIONAL_PILOT_AUDIT.md), dated 2026-10-10.
 
 Date: 2026-10-10
 
