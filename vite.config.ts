@@ -74,7 +74,7 @@ for (const key of [
 // adapters available only to the disposable development Worker so it can
 // exercise the persisted journey without ever making them valid for staging
 // or production.
-if (isolatedDevelopmentE2E) {
+if (isolatedDevelopmentE2E && configuredEnvironment === "development") {
   Object.assign(environmentVars, {
     VISITOR_AUTH_DELIVERY: "console",
     PAYMENT_PROVIDER: "local_test",

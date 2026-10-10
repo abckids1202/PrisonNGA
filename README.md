@@ -37,6 +37,8 @@ For a generated staging/production manifest, provide `D1_DATABASE_ID`, `D1_DATAB
 
 Non-development builds intentionally do not inherit provider or resource values from `.env.local`; inject every staging/production value through the deployment environment or secret store.
 
+The disposable browser-test adapters are likewise enabled only when both the isolated-test flag and an explicit development environment are present.
+
 Use `npm run deploy:staging:dry-run` or `npm run deploy:production:dry-run` for an environment-specific packaging check. These commands must pass the generated-manifest preflight before Wrangler is allowed to produce its dry-run upload plan. They do not deploy or mutate Cloudflare resources.
 
 For a redacted readiness summary, run `npm run audit:pilot`. It reports environment configuration, remote D1 identity, protected evidence storage, provider readiness, and release evidence without printing secret values. Add `npm run audit:pilot -- --strict` in a staging or production check when the command should exit non-zero until the pilot gates are satisfied.
