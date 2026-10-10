@@ -26,32 +26,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate patch whitespace
-        run: git diff --check
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Build and test
-        run: npm test
-
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Prepare local D1 for browser tests
-        run: npm run db:migrate:local
-
-      - name: Seed local D1 for browser tests
-        run: npm run db:seed:local
-
-      - name: Browser smoke tests
-        run: npm run test:e2e
-
-      - name: Verify fresh local D1 migrations
-        run: npm run db:test:migrations:local
-
-      - name: Dependency audit
-        run: npm audit --omit=dev --audit-level=high
+      # Keep hosted CI on the same authoritative release verifier used before
+      # every local push. This includes whitespace, migrations, backup/restore,
+      # typecheck, lint, build/server tests, browser tests, and dependency
+      # audit, instead of maintaining a second subtly different checklist.
+      - name: Verify release baseline
+        run: npm run verify:release
