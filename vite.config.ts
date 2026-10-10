@@ -21,9 +21,15 @@ const loadedLocalEnvironment = loadEnv("development", process.cwd(), "");
 const runtimeEnvironmentValue = (key: string): string | undefined => process.env[key] || loadedLocalEnvironment[key] || undefined;
 const isolatedDevelopmentE2E = process.env.SECUREVISIT_E2E_ISOLATED === "true";
 const configuredEnvironment = runtimeEnvironmentValue("SECUREVISIT_ENVIRONMENT") || "";
-const configuredD1DatabaseId = runtimeEnvironmentValue("D1_DATABASE_ID");
-const configuredD1DatabaseName = runtimeEnvironmentValue("D1_DATABASE_NAME") || "site-creator-d1";
-const configuredEvidenceBucketName = runtimeEnvironmentValue("EVIDENCE_BUCKET_NAME");
+// A non-development build must never inherit adapter or resource values from
+// a developer's .env.local file. Deployment systems should inject these values
+// through their process environment or secret store instead.
+const deploymentEnvironmentValue = (key: string): string | undefined => configuredEnvironment === "development"
+  ? runtimeEnvironmentValue(key)
+  : process.env[key]?.trim() || undefined;
+const configuredD1DatabaseId = deploymentEnvironmentValue("D1_DATABASE_ID");
+const configuredD1DatabaseName = deploymentEnvironmentValue("D1_DATABASE_NAME") || "site-creator-d1";
+const configuredEvidenceBucketName = deploymentEnvironmentValue("EVIDENCE_BUCKET_NAME");
 const localOnlyProviderSecrets = new Set([
   "LIVEKIT_API_KEY",
   "LIVEKIT_API_SECRET",
@@ -60,7 +66,7 @@ for (const key of [
   // never be copied from a developer env file into a staging/production
   // bundle. Those environments receive secrets from Cloudflare bindings.
   if (localOnlyProviderSecrets.has(key) && configuredEnvironment !== "development") continue;
-  const value = runtimeEnvironmentValue(key);
+  const value = deploymentEnvironmentValue(key);
   if (value) environmentVars[key] = value;
 }
 
