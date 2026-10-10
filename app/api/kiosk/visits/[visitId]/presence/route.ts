@@ -33,7 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
     const now = new Date().toISOString();
     const currentState = String(current.state || "NOT_ARRIVED");
     const stableStates = ["NOT_ARRIVED", "VISITOR_WAITING", "PRISONER_WAITING", "BOTH_PRESENT", "TECHNICAL_ISSUE", "STAFF_REVIEW", "READY_TO_START", "LATE", "LIVE"];
-    if (String(current.prisoner_presence || "absent") === body.presence && stableStates.includes(currentState)) {
+    if (body.presence === "present" && String(current.prisoner_presence || "absent") === body.presence && stableStates.includes(currentState)) {
       const refreshed = await d1.prepare(`UPDATE waiting_room_sessions
         SET prisoner_presence_at = ?, last_checked_at = ?, updated_at = ?
         WHERE appointment_id = ? AND facility_id = ? AND version = ? AND state = ?`)

@@ -48,3 +48,7 @@ test("kiosk presence clearing is still allowed when the facility is restricted",
   assert.match(presenceRoute, /body\.presence === "present" && current\.facility_state !== "NORMAL_OPERATIONS"/);
   assert.doesNotMatch(presenceRoute, /if \(!terminalPresenceClear && current\.facility_state !== "NORMAL_OPERATIONS"\)/);
 });
+
+test("kiosk absence does not refresh a presence timestamp", () => {
+  assert.match(presenceRoute, /if \(body\.presence === "present" && String\(current\.prisoner_presence \|\| "absent"\) === body\.presence/);
+});
