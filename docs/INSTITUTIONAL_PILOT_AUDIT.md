@@ -1,6 +1,6 @@
 # SecureVisit Institutional Pilot Audit and Completion Plan
 
-Date: 2026-10-09
+Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
 ## Executive verdict
@@ -64,7 +64,7 @@ The current repository already includes:
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 461 application tests and 17 browser tests passing; the release verifier runs fresh migration verification and a production dependency audit as separate release gates.
+- Automated server tests and browser smoke tests. Current validation baseline is 487 application tests and 17 browser tests passing; the release verifier also runs fresh migration verification, deployment-manifest preflight, and a production dependency audit as separate release gates.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Production readiness also requires a named `SECUREVISIT_RELEASE_EVIDENCE_ID`, matching future `SECUREVISIT_RELEASE_EVIDENCE_EXPIRES_AT`, and a JSON `SECUREVISIT_RELEASE_EVIDENCE_MANIFEST` containing one named, unexpired evidence record for every gate; stale, malformed, incomplete, or mismatched release evidence fails closed. These fields identify release evidence but do not substitute for the underlying security, privacy, provider, or institutional approvals.
 - Staging readiness now evaluates the same twelve pilot acceptance attestations through the shared release-gate evaluator used by the protected readiness endpoint, CLI audit, and Administration view; missing staging evidence fails closed instead of being treated as production-only.
