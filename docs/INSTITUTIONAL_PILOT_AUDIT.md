@@ -3,6 +3,18 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
+Latest verified repository commit: `ec4ecfa` (`fix: harden control timestamp rendering`).
+The local release verifier passed at this baseline with 496 application tests, 17
+browser tests, fresh migration verification, a disposable backup/restore drill,
+typecheck, lint, production build, and a zero-vulnerability dependency audit.
+This is repository evidence only; it does not attest external providers,
+institutional identity, hardware, or policy approvals.
+
+Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the
+development environment. The report identifies the expected missing deployment
+inputs `PUBLIC_APP_URL` and `D1_DATABASE_ID`, and warns that the development
+hash-salt fallback is active. No secret values are written to the report.
+
 ## Executive verdict
 
 SecureVisit is a strong persisted workflow prototype with meaningful security and failure-handling foundations. It is not yet an institutional production system. The remaining risk is concentrated in external integrations, multi-party staging proof, operational administration, and release assurance rather than in the basic page designs.
