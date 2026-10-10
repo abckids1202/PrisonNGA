@@ -55,3 +55,29 @@ test("Twilio adapter sends form-encoded SMS requests with a stable idempotency k
     globalThis.fetch = previousFetch;
   }
 });
+
+test("provider HTTP failures are surfaced without treating delivery as accepted", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("provider unavailable", { status: 503 });
+  try {
+    await assert.rejects(
+      () => withEnvironment({ RESEND_API_KEY: "re_test_key", VISITOR_EMAIL_FROM: "SecureVisit <no-reply@example.test>" }, () => sendEmailWithResend({ destination: "visitor@example.test", subject: "Code", text: "123456", idempotencyKey: "challenge-3" })),
+      /EMAIL_PROVIDER_FAILED_503/,
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("malformed provider responses fail closed without creating a delivery receipt", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ status: "queued" }), { status: 200, headers: { "content-type": "application/json" } });
+  try {
+    await assert.rejects(
+      () => withEnvironment({ VISITOR_SMS_TWILIO_ACCOUNT_SID: "AC123", VISITOR_SMS_TWILIO_AUTH_TOKEN: "twilio-secret", VISITOR_SMS_TWILIO_FROM: "+62123456789" }, () => sendSmsWithTwilio({ destination: "+628123456789", body: "Your code is 123456", idempotencyKey: "challenge-4" })),
+      /SMS_PROVIDER_INVALID_RESPONSE/,
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
