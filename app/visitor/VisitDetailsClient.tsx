@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getVisitorVisitViewState, type VisitorVisitViewState } from "@/lib/visitor/visit-details-state";
+import { formatDateValue } from "@/lib/date-format";
 
 type AppointmentDetail = {
   id: string;
@@ -63,8 +64,7 @@ type AppointmentDetail = {
 type StatusEvent = { from_status: string | null; to_status: string; reason_text: string | null; created_at: string };
 type VisitApiResponse = { appointment?: AppointmentDetail; statusHistory?: StatusEvent[]; error?: string };
 function formatDate(value: string, timezone: string, options: Intl.DateTimeFormatOptions = { dateStyle: "full" }) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Schedule unavailable" : new Intl.DateTimeFormat("en-GB", { ...options, timeZone: timezone || "Asia/Jakarta" }).format(date);
+  return formatDateValue(value, options, timezone);
 }
 
 function formatTimeRange(appointment: AppointmentDetail) {

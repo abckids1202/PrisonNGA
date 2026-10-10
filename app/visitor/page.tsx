@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import "./visitor-auth.css";
+import { formatDateValue, localDateKey } from "@/lib/date-format";
 
 export type VisitorTab = "Home" | "Visits" | "Connections" | "Credits" | "Account";
 type Tab = VisitorTab;
@@ -386,11 +387,7 @@ function activityTime(value?: string) {
 }
 
 function visitorLocalDate(date: Date, timeZone?: string) {
-  if (timeZone) {
-    const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
-    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-    return `${values.year}-${values.month}-${values.day}`;
-  }
+  if (timeZone) return localDateKey(date, timeZone) || date.toISOString().slice(0, 10);
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 10);
 }
@@ -400,8 +397,7 @@ function visitorVisitStatus(status: string) {
 }
 
 function visitorVisitTime(value: string, timeZone?: string) {
-  const date = new Date(value);
-  return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(date);
+  return formatDateValue(value, { dateStyle: "medium", timeStyle: "short" }, timeZone);
 }
 
 function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, tone?: NoticeTone) => void; onNavigate: (tab: Tab) => void }) {
