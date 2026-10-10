@@ -22,7 +22,7 @@ class SQLiteD1 {
       CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, user_id TEXT NOT NULL, available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT NOT NULL, appointment_id TEXT, entry_type TEXT NOT NULL, amount INTEGER NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, reason TEXT, created_by TEXT, created_at TEXT NOT NULL);
       CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL, status TEXT NOT NULL);
-      CREATE TABLE waiting_room_sessions (id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL, facility_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE waiting_room_sessions (id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL, facility_id TEXT NOT NULL, state TEXT NOT NULL, visitor_presence TEXT NOT NULL, visitor_presence_at TEXT, prisoner_presence TEXT NOT NULL, prisoner_presence_at TEXT, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE visit_session_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, event_type TEXT NOT NULL, source TEXT NOT NULL, participant_role TEXT, metadata TEXT, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -32,7 +32,7 @@ class SQLiteD1 {
       INSERT INTO credit_ledger_entries VALUES ('reservation-1', 'account-1', 'visit-1', 'RESERVATION', -1, 'visit-1:reservation', 'reserved', 'staff-1', 'before');
       INSERT INTO resource_reservations VALUES ('room-1', 'facility-1', 'visit-1', 'ACTIVE');
       INSERT INTO resource_reservations VALUES ('device-1', 'facility-1', 'visit-1', 'RESERVED');
-      INSERT INTO waiting_room_sessions VALUES ('waiting-1', 'visit-1', 'facility-1', 'READY_TO_START', 2, 'before');
+      INSERT INTO waiting_room_sessions VALUES ('waiting-1', 'visit-1', 'facility-1', 'READY_TO_START', 'present', 'before', 'present', 'before', 2, 'before');
     `);
   }
   prepare(sql) { return new SQLiteD1Statement(this, sql); }
@@ -176,6 +176,8 @@ test("session end, appointment completion, resources, credit, audit, and outbox 
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 1);
     assert.equal(d1.sqlite.prepare("SELECT state FROM waiting_room_sessions WHERE id = 'waiting-1'").get().state, "COMPLETED");
+    const presence = d1.sqlite.prepare("SELECT visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at FROM waiting_room_sessions WHERE id = 'waiting-1'").get();
+    assert.deepEqual({ ...presence }, { visitor_presence: "absent", visitor_presence_at: input.now, prisoner_presence: "absent", prisoner_presence_at: input.now });
   } finally { d1.close(); }
 });
 
@@ -257,5 +259,7 @@ test("staff termination records technical failure and releases rather than consu
     assert.equal(balance.reserved_credits, 0);
     assert.equal(d1.sqlite.prepare("SELECT action_type FROM audit_events").get().action_type, "VISIT_TERMINATED");
     assert.equal(d1.sqlite.prepare("SELECT state FROM waiting_room_sessions WHERE id = 'waiting-1'").get().state, "CANCELLED");
+    const presence = d1.sqlite.prepare("SELECT visitor_presence, prisoner_presence FROM waiting_room_sessions WHERE id = 'waiting-1'").get();
+    assert.deepEqual({ ...presence }, { visitor_presence: "absent", prisoner_presence: "absent" });
   } finally { d1.close(); }
 });

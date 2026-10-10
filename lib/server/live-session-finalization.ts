@@ -216,9 +216,9 @@ export function finalizeLiveSessionStatements(d1: D1Database, input: FinalizeLiv
         AND changes() = 1`,
       values: [...finalStateValues, input.appointmentId, input.creditAccountId],
     }),
-    d1.prepare(`UPDATE waiting_room_sessions SET state = ?, version = version + 1, updated_at = ?
+    d1.prepare(`UPDATE waiting_room_sessions SET state = ?, visitor_presence = 'absent', visitor_presence_at = ?, prisoner_presence = 'absent', prisoner_presence_at = ?, version = version + 1, updated_at = ?
       WHERE appointment_id = ? AND facility_id = ? AND state NOT IN ('COMPLETED', 'CANCELLED') AND ${finalState}`)
-      .bind(input.finalAppointmentStatus === "COMPLETED" ? "COMPLETED" : "CANCELLED", input.now,
+      .bind(input.finalAppointmentStatus === "COMPLETED" ? "COMPLETED" : "CANCELLED", input.now, input.now, input.now,
         input.appointmentId, input.facilityId, ...finalStateValues),
   ];
 }
