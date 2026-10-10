@@ -3,14 +3,14 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `74dedcf` (`fix: normalize payment provider parse failures`).
-The local release verifier passed at this baseline with 505 application tests, 17
+Latest verified repository commit: `1b67d13` (`fix: fail closed on evidence scanner misconfiguration`).
+The local release verifier passed at this baseline with 507 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current release verifier now reports 505 application tests passing; the
+The current release verifier now reports 507 application tests passing; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
