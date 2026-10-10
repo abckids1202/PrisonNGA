@@ -48,6 +48,7 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
   const [remoteMicMuted, setRemoteMicMuted] = useState(false);
   const [connectionLabel, setConnectionLabel] = useState("Connecting");
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [mediaError, setMediaError] = useState("");
   const [showMore, setShowMore] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [kioskDeviceId, setKioskDeviceId] = useState(kioskId || "");
@@ -359,23 +360,38 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
     const room = roomRef.current;
     if (!room) return;
     const next = !micEnabled;
-    await room.localParticipant.setMicrophoneEnabled(next);
-    setMicEnabled(next);
+    try {
+      await room.localParticipant.setMicrophoneEnabled(next);
+      setMicEnabled(next);
+      setMediaError("");
+    } catch {
+      setMediaError(next ? "We couldn’t turn on your microphone. Check your browser permission and try again." : "We couldn’t mute your microphone. Try again or leave the visit if the problem continues.");
+    }
   }
 
   async function toggleCamera() {
     const room = roomRef.current;
     if (!room) return;
     const next = !cameraEnabled;
-    await room.localParticipant.setCameraEnabled(next);
-    setCameraEnabled(next);
+    try {
+      await room.localParticipant.setCameraEnabled(next);
+      setCameraEnabled(next);
+      setMediaError("");
+    } catch {
+      setMediaError(next ? "We couldn’t turn on your camera. Check your browser permission and try again." : "We couldn’t turn off your camera. Try again or leave the visit if the problem continues.");
+    }
   }
 
   async function switchDevice(device: MediaDeviceInfo) {
     const room = roomRef.current;
     if (!room) return;
-    await room.switchActiveDevice(device.kind === "videoinput" ? "videoinput" : "audioinput", device.deviceId);
-    setShowMore(false);
+    try {
+      await room.switchActiveDevice(device.kind === "videoinput" ? "videoinput" : "audioinput", device.deviceId);
+      setMediaError("");
+      setShowMore(false);
+    } catch {
+      setMediaError(`We couldn’t switch to that ${device.kind === "videoinput" ? "camera" : "microphone"}. Check that it is connected and permitted, then try again.`);
+    }
   }
 
   async function enableAudio() {
@@ -402,7 +418,7 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
     setStage("left");
   }
 
-  const statusCopy = stage === "reconnecting" ? "Connection interrupted · reconnecting" : remoteConnected ? `${connectionLabel} connection` : "Waiting for the other side";
+  const statusCopy = mediaError || (stage === "reconnecting" ? "Connection interrupted · reconnecting" : remoteConnected ? `${connectionLabel} connection` : "Waiting for the other side");
 
   if (!isVisitor && !kioskCredential) return <div className="sv9-live-app sv9-kiosk-live"><LiveHeader role={role} /><main className="sv9-state-screen sv9-state-error"><span className="sv9-state-mark">▣</span><p className="sv9-kicker">CONTROLLED FACILITY DEVICE</p><h1>Connect this kiosk</h1><p>Enter the registered device ID and its facility-issued credential. It stays in this page’s memory and is not added to the URL or saved in browser storage.</p>{error && <p role="alert">{error}</p>}<form className="sv9-kiosk-auth-form" onSubmit={(event) => { event.preventDefault(); const id = kioskDeviceIdInput.trim(); const secret = kioskCredentialInput.trim(); if (!id || !secret) return; setKioskDeviceId(id); setKioskCredential(secret); setKioskCredentialInput(""); setError(""); setStage("loading"); }}><label>Registered kiosk ID<input autoComplete="off" value={kioskDeviceIdInput} onChange={(event) => setKioskDeviceIdInput(event.target.value)} required /></label><label>One-time device credential<input type="password" autoComplete="off" spellCheck={false} value={kioskCredentialInput} onChange={(event) => setKioskCredentialInput(event.target.value)} required /></label><button className="sv9-button sv9-button-primary" type="submit" disabled={!kioskDeviceIdInput.trim() || !kioskCredentialInput.trim()}>Authenticate kiosk</button></form></main></div>;
   if (stage === "loading" || stage === "connecting") return <div className={`sv9-live-app ${isVisitor ? "sv9-visitor-live" : "sv9-kiosk-live"}`}><LiveHeader role={role} /><main className="sv9-state-screen"><span className="sv9-state-mark">◌</span><p className="sv9-kicker">SECURE VISIT</p><h1>{stage === "loading" ? "Preparing your secure visit" : "Connecting your secure video"}</h1><p>{stage === "loading" ? "Checking the visit authorization and session window." : "Your camera and microphone stay protected while we connect."}</p><span className="sv9-loading-line" /></main></div>;
