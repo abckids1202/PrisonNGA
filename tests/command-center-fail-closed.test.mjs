@@ -12,4 +12,6 @@ test("Command Center does not present unavailable appointment data as zero atten
   assert.match(source, /const roomCapacity = resourcesLoading \|\| resourcesError \? "—"/);
   assert.match(source, /No zero-session state is being inferred/);
   assert.match(source, /No empty queue is being inferred/);
+  assert.match(source, /operationalDataUnavailable \|\| waitingUnavailable \? "Unknown"/);
+  assert.match(source, /operationalDataUnavailable \|\| sessionsUnavailable \? "Unknown"/);
 });
