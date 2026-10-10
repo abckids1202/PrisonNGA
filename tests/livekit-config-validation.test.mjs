@@ -47,3 +47,18 @@ test("local video provider cannot satisfy non-development configuration", async 
     if (previousProvider === undefined) delete process.env.VIDEO_PROVIDER; else process.env.VIDEO_PROVIDER = previousProvider;
   }
 });
+
+test("missing environment cannot implicitly enable the local video provider", async () => {
+  const previousEnvironment = process.env.SECUREVISIT_ENVIRONMENT;
+  const previousProvider = process.env.VIDEO_PROVIDER;
+  try {
+    delete process.env.SECUREVISIT_ENVIRONMENT;
+    process.env.VIDEO_PROVIDER = "local_test";
+    const config = await getVideoConfig();
+    assert.equal(config.provider, "livekit");
+    assert.equal(config.configured, false);
+  } finally {
+    if (previousEnvironment === undefined) delete process.env.SECUREVISIT_ENVIRONMENT; else process.env.SECUREVISIT_ENVIRONMENT = previousEnvironment;
+    if (previousProvider === undefined) delete process.env.VIDEO_PROVIDER; else process.env.VIDEO_PROVIDER = previousProvider;
+  }
+});

@@ -28,7 +28,7 @@ export async function getVideoConfig(): Promise<VideoConfig> {
   } catch {
     values = typeof process !== "undefined" ? process.env as Record<string, unknown> : {};
   }
-  const environment = String(values.SECUREVISIT_ENVIRONMENT || "development").toLowerCase();
+  const environment = String(values.SECUREVISIT_ENVIRONMENT || "unknown").toLowerCase();
   const provider = String(values.VIDEO_PROVIDER || "livekit").toLowerCase();
   const url = typeof values.LIVEKIT_URL === "string" ? values.LIVEKIT_URL : null;
   const apiKey = typeof values.LIVEKIT_API_KEY === "string" ? values.LIVEKIT_API_KEY : null;
