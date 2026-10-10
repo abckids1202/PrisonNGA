@@ -25,10 +25,13 @@ export async function POST(request: Request) {
   try {
     const config = await getVideoConfig();
     if (!config.configured || !config.apiKey || !config.apiSecret) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
+    const d1 = await getD1();
+    // Throttle before reading/parsing untrusted provider payloads so invalid
+    // or oversized webhook traffic cannot consume verification work without
+    // crossing the same application rate-limit boundary as valid events.
+    await enforceRateLimit(d1, { key: `livekit-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const body = await readTextBodyWithinLimit(request, 256 * 1024);
     const event = await new WebhookReceiver(config.apiKey, config.apiSecret).receive(body, request.headers.get("Authorization") || undefined);
-    const d1 = await getD1();
-    await enforceRateLimit(d1, { key: `livekit-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const roomName = event.room?.name;
     if (!roomName) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
     const session = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.status, vs.version, vs.actual_started_at, vs.termination_reason,
