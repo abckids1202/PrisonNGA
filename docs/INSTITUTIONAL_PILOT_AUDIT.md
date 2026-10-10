@@ -105,7 +105,7 @@ The current repository already includes:
 
 ### Product and workflow gaps inside the repository
 
-- The full browser journey is not yet a three-party test. Existing E2E tests cover the shell, OTP, persistence, kiosk boundary and session revocation, but not staff approval plus visitor device check plus kiosk presence plus LiveKit completion plus credit settlement.
+- The full browser journey is not yet a three-party test. Existing E2E tests now prove staff approval reaches the visitor UI after navigation and refresh, and cover the shell, OTP, persistence, kiosk boundary and session revocation; they still do not prove visitor device check plus kiosk presence plus LiveKit completion plus credit settlement together.
 - The unimplemented System Settings section is hidden from the pilot Administration navigation; it must be added only when its policy model, permissions, history and operational effects are implemented.
 - Facility → Operating Hours and Visit Policies now open the authoritative persisted policy editor; Restrictions uses the facility-state API with reason capture and existing step-up/audit/idempotency enforcement; Closures uses the persisted closure workflow. Regression tests protect these entry points.
 - Visitation now reuses the persisted policy editor for Availability Rules and Operating Hours, the closure workflow for Closures, and a facility-scoped appointment-type catalog for Appointment Types. Visitor appointment creation rejects inactive or unknown catalog codes.
