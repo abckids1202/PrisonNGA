@@ -45,7 +45,7 @@ const configurationKeys = [
   "PAYMENT_PROVIDER", "PAYMENT_CHECKOUT_URL", "PAYMENT_REFUND_URL", "PAYMENT_PROVIDER_SECRET", "PAYMENT_WEBHOOK_SECRET", "NOTIFICATION_DELIVERY", "NOTIFICATION_EMAIL_DELIVERY", "NOTIFICATION_SMS_DELIVERY", "NOTIFICATION_WEBHOOK_URL", "NOTIFICATION_WEBHOOK_SECRET", "NOTIFICATION_STATUS_WEBHOOK_SECRET",
   "STAFF_AUTH_PROVIDER", "STAFF_OIDC_ISSUER", "STAFF_OIDC_CLIENT_ID", "STAFF_OIDC_CLIENT_SECRET", "STAFF_OIDC_REDIRECT_URI", "STAFF_OIDC_MFA_ACR", "STAFF_OIDC_MFA_AMR",
   "STAFF_SAML_ENTITY_ID", "STAFF_SAML_METADATA_URL", "STAFF_SAML_ENTRY_POINT", "STAFF_SAML_IDP_CERT", "STAFF_SAML_CALLBACK_URI", "STAFF_SAML_MFA_ACR", "PUBLIC_APP_URL",
-  "SECUREVISIT_RELEASE_APPROVAL", "SECUREVISIT_SECURITY_REVIEW", "SECUREVISIT_PRIVACY_REVIEW", "SECUREVISIT_TARIFF_APPROVAL", "SECUREVISIT_REFUND_POLICY_APPROVAL", "SECUREVISIT_BACKUP_RESTORE_DRILL", "SECUREVISIT_WAF", "SECUREVISIT_MONITORING", "SECUREVISIT_OUTAGE_RUNBOOK", "SECUREVISIT_IDENTITY_STAGING", "SECUREVISIT_PAYMENT_STAGING", "SECUREVISIT_NOTIFICATION_STAGING", "SECUREVISIT_EVIDENCE_STAGING", "SECUREVISIT_KIOSK_STAGING", "SECUREVISIT_LIVEKIT_STAGING", "SECUREVISIT_RELEASE_EVIDENCE_ID", "SECUREVISIT_RELEASE_EVIDENCE_EXPIRES_AT", "SECUREVISIT_RELEASE_EVIDENCE_MANIFEST",
+  "SECUREVISIT_RELEASE_APPROVAL", "SECUREVISIT_SECURITY_REVIEW", "SECUREVISIT_PRIVACY_REVIEW", "SECUREVISIT_TARIFF_APPROVAL", "SECUREVISIT_REFUND_POLICY_APPROVAL", "SECUREVISIT_BACKUP_RESTORE_DRILL", "SECUREVISIT_WAF", "SECUREVISIT_MONITORING", "SECUREVISIT_OUTAGE_RUNBOOK", "SECUREVISIT_IDENTITY_STAGING", "SECUREVISIT_PAYMENT_STAGING", "SECUREVISIT_NOTIFICATION_STAGING", "SECUREVISIT_EVIDENCE_STAGING", "SECUREVISIT_KIOSK_STAGING", "SECUREVISIT_LIVEKIT_STAGING", "SECUREVISIT_RELEASE_EVIDENCE_ID", "SECUREVISIT_RELEASE_EVIDENCE_EXPIRES_AT", "SECUREVISIT_RELEASE_EVIDENCE_MANIFEST", "NOTIFICATION_QUEUE_NAME",
 ];
 
 export async function GET() {
@@ -144,6 +144,7 @@ export async function GET() {
       visitorAuth,
       staffIdentity,
       notifications,
+      notificationQueue: environment === "development" || Boolean(configuredString("NOTIFICATION_QUEUE_NAME")),
     };
     const providersReady = Object.values(providerConfiguration).every(Boolean);
     const releaseGates = evaluateReleaseGates(environment, configured);
@@ -151,6 +152,6 @@ export async function GET() {
     return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, releaseGates, tariff: { configured: tariffConfigured, configuredFacilities: Number(tariffRow?.configured_count || 0) }, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
   } catch (error) {
     if (error instanceof Error && error.name === "SecurityError") return securityErrorResponse(error, context.requestId);
-    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
+    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false, notificationQueue: false }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
   }
 }
