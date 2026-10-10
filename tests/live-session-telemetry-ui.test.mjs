@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("Live Sessions exposes persisted participant connectivity without claiming telemetry is unavailable", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../app/features/live-session/LiveSessionsPage.tsx", import.meta.url), "utf8");
   assert.match(source, /PARTICIPANT TELEMETRY/);
   assert.match(source, /selected\.participants\.map\(\(participant\)/);
   assert.match(source, /participantLabel\(participant\.participant_role\)/);
