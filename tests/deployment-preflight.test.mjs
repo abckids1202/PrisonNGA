@@ -8,13 +8,16 @@ function config(overrides = {}) {
     d1_databases: [{ binding: "DB", database_id: "123e4567-e89b-12d3-a456-426614174000" }],
     r2_buckets: [{ binding: "EVIDENCE_BUCKET", bucket_name: "securevisit-staging-evidence" }],
     triggers: { crons: ["*/1 * * * *"] },
-    queues: { producers: [], consumers: [] },
+    queues: {
+      producers: [{ binding: "NOTIFICATION_QUEUE", queue: "securevisit-staging-notifications" }],
+      consumers: [{ queue: "securevisit-staging-notifications", max_batch_size: 25 }],
+    },
     ...overrides,
   };
 }
 
 test("deployment preflight accepts a real staging manifest", () => {
-  const result = evaluateDeploymentConfig(config(), "staging");
+  const result = evaluateDeploymentConfig(config(), "staging", { NOTIFICATION_QUEUE_NAME: "securevisit-staging-notifications" });
   assert.equal(result.ok, true, JSON.stringify(result));
 });
 
@@ -30,10 +33,11 @@ test("deployment preflight rejects development adapters and placeholder infrastr
   assert.match(result.failures.join("\n"), /real database UUID/);
   assert.match(result.failures.join("\n"), /R2 binding/);
   assert.match(result.failures.join("\n"), /scheduled trigger/);
+  assert.match(result.failures.join("\n"), /queue/i);
 });
 
 test("deployment preflight requires queue bindings when a queue is explicitly configured", () => {
-  const result = evaluateDeploymentConfig(config(), "staging", { NOTIFICATION_QUEUE_NAME: "securevisit-staging-notifications" });
+  const result = evaluateDeploymentConfig(config({ queues: { producers: [], consumers: [] } }), "staging", { NOTIFICATION_QUEUE_NAME: "securevisit-staging-notifications" });
   assert.equal(result.ok, false);
   assert.match(result.failures.join("\n"), /queue binding is incomplete/);
 });

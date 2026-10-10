@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 const workerSource = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
 const viteConfigSource = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
 
-test("notification processing supports an optional queue with the durable cron fallback", () => {
+test("notification processing keeps a durable cron fallback for transient queue failures", () => {
   assert.match(workerSource, /NOTIFICATION_QUEUE\?: \{ send\(message: unknown\): Promise<void> \}/);
   assert.match(workerSource, /type: "OUTBOX_DRAIN"/);
   assert.match(workerSource, /NOTIFICATION_QUEUE_DISPATCH_FAILED/);

@@ -43,8 +43,8 @@ export function evaluateDeploymentConfig(config, environment, runtime = {}) {
   else if (!D1_UUID.test(String(d1.database_id || "")) || d1.database_id === PLACEHOLDER_D1_ID) failures.push("generated DB D1 binding must use a real database UUID");
   if (!evidence) failures.push("generated EVIDENCE_BUCKET R2 binding is missing");
   if (!cronConfigured) failures.push("generated scheduled trigger */1 * * * * is missing");
-  if (queueName && (!queueProducer || !queueConsumer)) failures.push("NOTIFICATION_QUEUE_NAME is set but the generated queue binding is incomplete");
-  if (!queueName) warnings.push("NOTIFICATION_QUEUE_NAME is not configured; scheduled outbox draining remains the fallback");
+  if (!queueName) failures.push("NOTIFICATION_QUEUE_NAME is required for staging and production");
+  else if (!queueProducer || !queueConsumer) failures.push("NOTIFICATION_QUEUE_NAME is set but the generated queue binding is incomplete");
   return { ok: failures.length === 0, failures, warnings };
 }
 

@@ -73,7 +73,7 @@ The provider integration is not pilot-ready until sandbox tests prove:
 
 Configure `NOTIFICATION_DELIVERY=webhook` with an HTTPS adapter, or use `NOTIFICATION_EMAIL_DELIVERY=resend` and/or `NOTIFICATION_SMS_DELIVERY=twilio` with the direct provider credentials. Notification requests include a stable idempotency key based on the outbox event and destination channel. The adapter must deduplicate retries and return a failure when it cannot accept the message.
 
-For staging and production, set `NOTIFICATION_QUEUE_NAME` to the provisioned Cloudflare Queue name to dispatch outbox draining through the queue consumer. The scheduled Worker remains a durable fallback for queue-dispatch failures; queue delivery must still be monitored for retry and dead-letter activity.
+For staging and production, `NOTIFICATION_QUEUE_NAME` must identify a provisioned Cloudflare Queue so outbox draining runs through the queue consumer. The scheduled Worker remains a durable fallback for transient queue-dispatch failures; queue delivery must still be monitored for retry and dead-letter activity. The deployment preflight rejects staging/production manifests that omit the queue or its producer/consumer bindings.
 
 ## Pilot go/no-go gates
 
