@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `9e4da7d` (`fix: fail closed on background worker configuration`).
+Latest verified repository commit: `4c0e514` (`fix: prevent notification status regression`).
 The local release verifier passed at this baseline with 513 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -90,6 +90,7 @@ The current repository already includes:
 - Staging readiness now evaluates the same twelve pilot acceptance attestations through the shared release-gate evaluator used by the protected readiness endpoint, CLI audit, and Administration view; missing staging evidence fails closed instead of being treated as production-only.
 - Staging and production readiness now require both OIDC and SAML staff federation paths with separate MFA claims; a single configured institutional provider cannot satisfy the pilot contract.
 - Terminal email/SMS provider status failures now expire the linked visitor OTP challenge immediately, preventing a bounced or undelivered code from remaining usable until its normal ten-minute expiry.
+- Notification provider callbacks now preserve terminal delivery state under out-of-order events; a late failure cannot downgrade a delivered notification, and a late success cannot mark a terminal failure delivered.
 - Notification provider `SENT` callbacks now remain an accepted/in-progress state; only an explicit `DELIVERED` callback marks visitor delivery complete.
 - `SENT` callbacks remain on the accepted status allow-list, so provider acknowledgement is persisted without being rejected or misrepresented as delivery completion.
 - Evidence-retention deletion failures now create a deduplicated, facility-scoped critical privacy alarm with the object key, retention deadline, safe failure reason, correlation ID, and an explicit staff-review/deletion-unconfirmed state.
