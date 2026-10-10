@@ -11,7 +11,9 @@ test("delivery status webhook is signed, replay-safe, and updates both notificat
   assert.match(route, /INSERT OR IGNORE/);
   assert.match(route, /provider_reference/);
   assert.match(route, /nda\.provider = \?/);
-  assert.match(route, /UPDATE notifications SET status = \?/);
+  assert.match(route, /UPDATE notifications SET status = CASE/);
+  assert.match(route, /status IN \('DELIVERED', 'FAILED'\) THEN status/);
+  assert.match(route, /status NOT IN \('DELIVERED', 'FAILED'\)/);
   assert.match(route, /BOUNCED/);
   assert.match(route, /const ACCEPTED_STATUS = "SENT"/);
   assert.match(route, /\[\.\.\.TERMINAL_SUCCESS, ACCEPTED_STATUS, \.\.\.TERMINAL_FAILURE/);
