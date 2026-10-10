@@ -699,7 +699,11 @@ function VisitorCredits({ onAction, onCreditsLoaded }: { onAction: (message: str
       onCreditsLoaded(nextAccounts);
       setPayments(paymentBody.paymentIntents || []);
       setPricingByFacility(paymentBody.pricingByFacility || {});
-      setPaymentProviderAvailable(paymentBody.checkoutAvailable === true || Boolean(paymentBody.pricing));
+      // Pricing and provider availability are separate contracts. A facility
+      // may have a valid tariff while checkout is intentionally unavailable;
+      // keep the purchase controls disabled until the API explicitly confirms
+      // that a provider is ready.
+      setPaymentProviderAvailable(paymentBody.checkoutAvailable === true);
       const nextFacilities = facilityBody.facilities || [];
       setFacilities(nextFacilities);
       setFacilityId((current) => current || nextFacilities[0]?.id || "");

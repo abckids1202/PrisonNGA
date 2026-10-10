@@ -10,3 +10,8 @@ test("visitor credits refreshes delayed payment state without deciding settlemen
   assert.match(source, /setRefreshTick\(\(value\) => value \+ 1\)/);
   assert.match(source, /Credits are added only after its signed confirmation/);
 });
+
+test("visitor credits does not infer checkout availability from pricing alone", () => {
+  assert.match(source, /setPaymentProviderAvailable\(paymentBody\.checkoutAvailable === true\)/);
+  assert.doesNotMatch(source, /setPaymentProviderAvailable\(paymentBody\.checkoutAvailable === true \|\| Boolean\(paymentBody\.pricing\)\)/);
+});
