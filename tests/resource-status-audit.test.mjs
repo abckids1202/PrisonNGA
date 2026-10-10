@@ -27,7 +27,7 @@ test("resource reassignment requires and replays an idempotency claim", async ()
 });
 
 test("resource workspace maintenance control uses the persisted status boundary", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../app/features/resources/ResourcesPage.tsx", import.meta.url), "utf8");
   assert.match(source, /changeMaintenance\(resource/);
   assert.match(source, /command: "set_status"/);
   assert.match(source, /status: nextStatus/);
