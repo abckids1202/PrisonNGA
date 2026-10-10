@@ -448,6 +448,18 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     expect(decisionBody.allocation?.deviceId).toBeTruthy();
     expect(decisionBody.allocation?.deviceId).toBe("kiosk-02");
 
+    // The approval must cross the staff boundary into the visitor product as
+    // persisted state. This guards against an API-only success that the
+    // visitor would lose after navigation or a browser refresh.
+    await page.goto("/visitor");
+    await page.getByRole("button", { name: "Connections", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+    await expect(page.getByText("APPROVED", { exact: true }).first()).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Connections", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+    await expect(page.getByText("APPROVED", { exact: true }).first()).toBeVisible();
+
     // Staff explicitly opens the operational waiting-room record before the
     // scheduled window. This mirrors the real workflow: the visitor may only
     // enter early when the facility has deliberately opened the visit.
