@@ -3,14 +3,14 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `54c4fd8` (`fix: fail closed when video environment is missing`).
-The local release verifier passed at this baseline with 498 application tests, 17
+Latest verified repository commit: `56aad04` (`fix: require notification queue in deployment config`).
+The local release verifier passed at this baseline with 499 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The post-baseline quick suite now reports 498 application tests passing; the
+The current release verifier now reports 499 application tests passing; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
