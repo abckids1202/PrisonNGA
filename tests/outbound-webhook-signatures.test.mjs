@@ -166,3 +166,16 @@ test("notification delivery can use the same verified direct email and SMS adapt
     Object.assign(process.env, previous);
   }
 });
+
+test("notification delivery rejects an explicitly unsupported adapter", async () => {
+  const previous = { ...process.env };
+  Object.assign(process.env, { SECUREVISIT_ENVIRONMENT: "staging", NOTIFICATION_DELIVERY: "unsupported-provider" });
+  try {
+    await assert.rejects(() => deliverNotification({ notificationId: "notification-invalid", email: "visitor@example.test", phone: null, template: "TEST", title: "Test", body: "Test", payload: {} }), /NOTIFICATION_DELIVERY_INVALID/);
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previous)) delete process.env[key];
+    }
+    Object.assign(process.env, previous);
+  }
+});

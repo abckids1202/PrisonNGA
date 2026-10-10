@@ -10,8 +10,14 @@ export async function getNotificationDelivery(channel?: "EMAIL" | "SMS"): Promis
   const channelValue = channel === "EMAIL"
     ? await getRuntimeValue("NOTIFICATION_EMAIL_DELIVERY")
     : channel === "SMS" ? await getRuntimeValue("NOTIFICATION_SMS_DELIVERY") : null;
-  const value = (channelValue || await getRuntimeValue("NOTIFICATION_DELIVERY") || "in_app").toLowerCase();
-  return value === "webhook" || value === "resend" || value === "twilio" ? value : "in_app";
+  const configured = channelValue || await getRuntimeValue("NOTIFICATION_DELIVERY");
+  // No configured adapter is an intentional development default. An
+  // explicitly supplied but unsupported value must fail closed instead of
+  // silently dropping an institutional notification into in-app delivery.
+  if (!configured) return "in_app";
+  const value = configured.toLowerCase();
+  if (value === "in_app" || value === "webhook" || value === "resend" || value === "twilio") return value;
+  throw new Error("NOTIFICATION_DELIVERY_INVALID");
 }
 
 export async function deliverNotification(input: { notificationId: string; email: string | null; phone: string | null; template: string; title: string; body: string; payload: Record<string, unknown> }): Promise<DeliveryReceipt> {
