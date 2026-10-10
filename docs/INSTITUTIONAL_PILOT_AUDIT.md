@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `ec4ecfa` (`fix: harden control timestamp rendering`).
+Latest verified repository commit: `dfd9824` (`test: prove visitor approval survives refresh`).
 The local release verifier passed at this baseline with 496 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
