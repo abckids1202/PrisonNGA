@@ -33,6 +33,8 @@ For one repeatable local release gate, run `npm run verify:release`. It runs the
 
 After building a staging or production Worker, run `npm run validate:deployment -- --environment=staging` (or `production`). This preflight inspects the generated Wrangler manifest and fails if it still contains development adapters, the local D1 placeholder, no protected `EVIDENCE_BUCKET` binding, or no scheduled reconciliation trigger. It does not replace Cloudflare deployment verification or provider acceptance testing.
 
+For a generated staging/production manifest, provide `D1_DATABASE_ID`, `D1_DATABASE_NAME`, and `EVIDENCE_BUCKET_NAME` to the build environment. The build uses those values for the D1 and R2 bindings; if they are absent, it intentionally keeps the local placeholder and the deployment preflight fails closed.
+
 For a redacted readiness summary, run `npm run audit:pilot`. It reports environment configuration, remote D1 identity, protected evidence storage, provider readiness, and release evidence without printing secret values. Add `npm run audit:pilot -- --strict` in a staging or production check when the command should exit non-zero until the pilot gates are satisfied.
 
 To verify the Cloudflare Worker packaging without deploying or changing a remote service, run:

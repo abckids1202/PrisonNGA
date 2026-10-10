@@ -21,6 +21,9 @@ const loadedLocalEnvironment = loadEnv("development", process.cwd(), "");
 const runtimeEnvironmentValue = (key: string): string | undefined => process.env[key] || loadedLocalEnvironment[key] || undefined;
 const isolatedDevelopmentE2E = process.env.SECUREVISIT_E2E_ISOLATED === "true";
 const configuredEnvironment = runtimeEnvironmentValue("SECUREVISIT_ENVIRONMENT") || "";
+const configuredD1DatabaseId = runtimeEnvironmentValue("D1_DATABASE_ID");
+const configuredD1DatabaseName = runtimeEnvironmentValue("D1_DATABASE_NAME") || "site-creator-d1";
+const configuredEvidenceBucketName = runtimeEnvironmentValue("EVIDENCE_BUCKET_NAME");
 const localOnlyProviderSecrets = new Set([
   "LIVEKIT_API_KEY",
   "LIVEKIT_API_SECRET",
@@ -87,16 +90,16 @@ const localBindingConfig = {
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: configuredD1DatabaseName,
+          database_id: configuredD1DatabaseId || SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
         },
       ]
     : [],
-  r2_buckets: r2
+  r2_buckets: (r2 || configuredEvidenceBucketName)
     ? [
         {
-          binding: r2,
-          bucket_name: "site-creator-r2",
+          binding: r2 || "EVIDENCE_BUCKET",
+          bucket_name: configuredEvidenceBucketName || "site-creator-r2",
         },
       ]
     : [],
