@@ -32,6 +32,14 @@ test("visitor authentication enforces the advertised persisted OTP resend cooldo
   assert.match(source, /AUTH_RETRY_TOO_SOON/);
 });
 
+test("visitor sign-in exposes a server-aligned resend cooldown", async () => {
+  const source = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /Retry-After/);
+  assert.match(source, /setRetryAfterSeconds/);
+  assert.match(source, /Resend code in \$\{retryAfterSeconds\}s/);
+  assert.match(source, /disabled=\{busy \|\| retryAfterSeconds > 0\}/);
+});
+
 test("visitor authentication atomically audits login and caps failed-code increments", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/auth/visitor/verify/route.ts", import.meta.url), "utf8");
   assert.match(source, /attempt_count = attempt_count \+ 1 WHERE id = \? AND consumed_at IS NULL/);
