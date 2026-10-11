@@ -5,14 +5,15 @@ Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker +
 
 Latest verified repository commit: `cc8b8de` (`docs: record dynamic timezone labels`).
 The code baseline for that verification is `787cd88` (`fix: derive appointment timezone labels`).
-The local release verifier passed with 524 application tests, 17
+The local release verifier passed before this follow-up; after the notification
+race fix, the focused checks and full quick suite pass with 525 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 524 application tests passing across
-520 subtests; the
+The current quick test baseline now reports 525 application tests passing across
+521 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -94,7 +95,7 @@ The current repository already includes:
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 524 application tests across 520 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server tests and browser smoke tests. Current validation baseline is 525 application tests across 521 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - The release verifier now runs a disposable local backup/restore drill and validates restored schema, foreign-key, credit-ledger, and audit integrity; this is local recovery evidence only and does not replace a remote D1/R2 disaster-recovery exercise.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Visitor checkout and staff refund routes independently enforce those tariff/refund approval attestations outside development, so bypassing the readiness endpoint cannot enable unapproved money movement.
@@ -104,6 +105,7 @@ The current repository already includes:
 - Terminal email/SMS provider status failures now expire the linked visitor OTP challenge immediately, preventing a bounced or undelivered code from remaining usable until its normal ten-minute expiry.
 - Notification provider callbacks now preserve terminal delivery state under out-of-order events; a late failure cannot downgrade a delivered notification, and a late success cannot mark a terminal failure delivered.
 - Notification provider `SENT` callbacks now remain an accepted/in-progress state; only an explicit `DELIVERED` callback marks visitor delivery complete.
+- Notification callbacks that arrive before the outbox worker persists the provider reference are now reconciled after the reference write; the recovered terminal status updates the delivery attempt and notification/OTP state and creates an audit record instead of being lost as an unmatched callback.
 - `SENT` callbacks remain on the accepted status allow-list, so provider acknowledgement is persisted without being rejected or misrepresented as delivery completion.
 - Evidence-retention deletion failures now create a deduplicated, facility-scoped critical privacy alarm with the object key, retention deadline, safe failure reason, correlation ID, and an explicit staff-review/deletion-unconfirmed state.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.

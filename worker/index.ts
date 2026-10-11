@@ -7,6 +7,7 @@ import { finalizeLiveSessionStatements, finalizationCommitted, getExpiredSession
 import { createLiveKitProvider } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
+import { reconcileStoredNotificationProviderEvent } from "../lib/server/notifications/provider-status";
 import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions, reconcileStaleAuthDeliveryAttempts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 import { isSameOriginMutation } from "../lib/server/csrf";
@@ -362,7 +363,13 @@ async function processOutbox(env: Env): Promise<void> {
             const deliveryReceipt = await deliverNotification({ notificationId: row.id, email: channel === "EMAIL" ? visitor.email : null, phone: channel === "SMS" ? visitor.phone : null, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
             await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SENT', 1, ?, NULL, ?, ?)`).bind(`${row.id}:${channel.toLowerCase()}`, row.facility_id, visitorUserId, channel, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, externalNotificationKey, now).run();
-            await env.DB.prepare("UPDATE notification_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PROCESSING'").bind(deliveryReceipt.providerReference, externalAttemptId).run();
+            const providerReference = deliveryReceipt.providerReference;
+            if (!providerReference) throw new Error("NOTIFICATION_DELIVERY_REFERENCE_MISSING");
+            await env.DB.prepare("UPDATE notification_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PROCESSING'").bind(providerReference, externalAttemptId).run();
+            // A provider may callback between accepting the message and this
+            // reference write. Reconcile any callback that the webhook had to
+            // acknowledge as unmatched so a bounce cannot be lost.
+            await reconcileStoredNotificationProviderEvent(env.DB, { provider: notificationDelivery, providerReference, requestId: row.correlation_id });
           }
           await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'SENT', finished_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, externalAttemptId).run();
         } else {
