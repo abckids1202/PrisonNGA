@@ -113,7 +113,7 @@ export async function PUT(request: Request) {
       database.prepare("UPDATE visitor_profiles SET phone = ?, phone_verified_at = ?, version = version + 1, updated_at = ? WHERE user_id = ? AND profile_status = 'ACTIVE'").bind(challenge.destination, now, now, visitor.userId),
       ...auditAndOutboxStatements(database, { actorUserId: visitor.userId, actorRole: "VISITOR", facilityId: null, actionType: "VISITOR_PHONE_VERIFIED", entityType: "visitor_profile", entityId: visitor.userId, reason: "Visitor verified ownership of a phone contact.", oldValues: null, newValues: { phone: "[REDACTED]", phoneVerifiedAt: "[SET]" }, requestId: context.requestId, correlationId, eventType: "VISITOR_PHONE_VERIFIED", payload: { userId: visitor.userId, channel: "SMS" } }),
     ]);
-    if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) throw new SecurityError("CONTACT_VERIFICATION_CONFLICT", 409);
+    if (!results.every((result) => result?.meta.changes === 1)) throw new SecurityError("CONTACT_VERIFICATION_CONFLICT", 409);
     return securityResponse({ verified: true, phoneVerifiedAt: now, correlationId }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
