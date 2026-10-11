@@ -3,17 +3,17 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `127fb4f` (`fix: make reschedule handoff hook-safe`).
+Latest verified repository commit: `fcd8b57` (`fix: make local migration verification noninteractive`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The local release verifier passed after the reschedule handoff fix: 542 application
+The local release verifier passed after the reschedule handoff fix: 543 application
 tests, 17 browser tests, fresh migration verification, a disposable backup/restore
 drill, typecheck, lint, production build, and a zero-vulnerability dependency
 audit all passed.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 542 application tests passing across
-538 subtests; the
+The current quick test baseline now reports 543 application tests passing across
+539 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -102,12 +102,13 @@ The current repository already includes:
 - Visitor cancellation from the Visits list now uses the accessible policy-aware confirmation dialog used by Visit Details instead of a browser-native confirmation prompt.
 - Visit Details now links eligible submitted or under-review appointments into the authoritative reschedule picker, clears the one-time handoff query, and continues to use server-provided availability and version-checked rescheduling.
 - The browser acceptance journey now opens Visit Details for a newly persisted request, verifies the Change time handoff opens the same picker, and confirms the transient `reschedule` query is consumed before continuing through staff approval and Waiting Room readiness.
+- Local disposable migration verification now closes stdin for Wrangler's confirmation prompt, preventing CI/release checks from hanging; remote staging and production migrations remain interactive.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 542 application tests across 538 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server tests and browser smoke tests. Current validation baseline is 543 application tests across 539 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - The release verifier now runs a disposable local backup/restore drill and validates restored schema, foreign-key, credit-ledger, and audit integrity; this is local recovery evidence only and does not replace a remote D1/R2 disaster-recovery exercise.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Visitor checkout and staff refund routes independently enforce those tariff/refund approval attestations outside development, so bypassing the readiness endpoint cannot enable unapproved money movement.
