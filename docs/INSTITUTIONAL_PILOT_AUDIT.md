@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `b7e90b1` (`feat: polish visitor cancellation dialog`).
+Latest verified repository commit: `8e65464` (`feat: link visit details to rescheduling`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
@@ -12,8 +12,8 @@ typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 541 application tests passing across
-537 subtests; the
+The current quick test baseline now reports 542 application tests passing across
+538 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -100,12 +100,13 @@ The current repository already includes:
 - Visit Details now exposes cancellation for eligible visitor-owned appointments through a confirmation dialog and the existing version-checked, idempotent backend transaction; the UI explains that credit and resource release follow the persisted policy.
 - Visitor cancellation from the Visits list now reuses an appointment/version-scoped idempotency key across retries instead of generating a new key after an ambiguous network response.
 - Visitor cancellation from the Visits list now uses the accessible policy-aware confirmation dialog used by Visit Details instead of a browser-native confirmation prompt.
+- Visit Details now links eligible submitted or under-review appointments into the authoritative reschedule picker, clears the one-time handoff query, and continues to use server-provided availability and version-checked rescheduling.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 532 application tests across 528 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server tests and browser smoke tests. Current validation baseline is 542 application tests across 538 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - The release verifier now runs a disposable local backup/restore drill and validates restored schema, foreign-key, credit-ledger, and audit integrity; this is local recovery evidence only and does not replace a remote D1/R2 disaster-recovery exercise.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Visitor checkout and staff refund routes independently enforce those tariff/refund approval attestations outside development, so bypassing the readiness endpoint cannot enable unapproved money movement.
