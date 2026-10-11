@@ -27,8 +27,8 @@ export async function GET() {
   try {
     const account = await currentUser();
     const db = await getDb();
-    const sessions = await db.select({ id: authSessions.id, createdAt: authSessions.createdAt, expiresAt: authSessions.expiresAt, lastSeenAt: authSessions.lastSeenAt, revokedAt: authSessions.revokedAt, tokenHash: authSessions.tokenHash, userAgentKnown: authSessions.userAgentHash }).from(authSessions).where(and(eq(authSessions.userId, account.id), isNull(authSessions.revokedAt), sql`julianday(${authSessions.expiresAt}) > julianday(${new Date().toISOString()})`));
-    return securityResponse({ sessions: sessions.map(({ tokenHash: sessionTokenHash, ...session }) => ({ ...session, deviceLabel: session.userAgentKnown ? "Recognized browser" : "Browser session", current: Boolean(account.tokenHash && sessionTokenHash === account.tokenHash) })) }, 200, context.requestId);
+    const sessions = await db.select({ id: authSessions.id, createdAt: authSessions.createdAt, expiresAt: authSessions.expiresAt, lastSeenAt: authSessions.lastSeenAt, revokedAt: authSessions.revokedAt, tokenHash: authSessions.tokenHash, deviceLabel: authSessions.deviceLabel, userAgentKnown: authSessions.userAgentHash }).from(authSessions).where(and(eq(authSessions.userId, account.id), isNull(authSessions.revokedAt), sql`julianday(${authSessions.expiresAt}) > julianday(${new Date().toISOString()})`));
+    return securityResponse({ sessions: sessions.map(({ tokenHash: sessionTokenHash, userAgentKnown, ...session }) => ({ ...session, deviceLabel: session.deviceLabel || (userAgentKnown ? "Recognized browser" : "Browser session"), current: Boolean(account.tokenHash && sessionTokenHash === account.tokenHash) })) }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
 

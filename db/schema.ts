@@ -127,6 +127,7 @@ export const authSessions = sqliteTable("auth_sessions", {
   expiresAt: text("expires_at").notNull(),
   revokedAt: text("revoked_at"),
   lastSeenAt: text("last_seen_at"),
+  deviceLabel: text("device_label"),
   userAgentHash: text("user_agent_hash"),
   ipHash: text("ip_hash"),
 }, (table) => ({ tokenIdx: uniqueIndex("auth_sessions_token_hash_idx").on(table.tokenHash), userIdx: index("auth_sessions_user_idx").on(table.userId) }));

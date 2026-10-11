@@ -2,6 +2,7 @@ import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { buildSessionCookie } from "../../../../../lib/server/auth/session-cookie";
+import { describeDevice } from "../../../../../lib/server/auth/device-label";
 
 async function sessionCookie(token: string): Promise<string> {
   const secure = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development";
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
     const sessionId = crypto.randomUUID();
     const sessionExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString();
     const userAgentHash = context.userAgent ? await hashIdentifier(context.userAgent, salt) : null;
+    const deviceLabel = describeDevice(context.userAgent);
     const ipHash = context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null;
     const knownDevice = existingAccount?.id && userAgentHash
       ? await d1.prepare(`SELECT 1 AS known FROM auth_sessions WHERE user_id = ? AND user_agent_hash = ? AND julianday(created_at) >= julianday('now', '-30 days') LIMIT 1`).bind(existingAccount.id, userAgentHash).first()
@@ -65,11 +67,11 @@ export async function POST(request: Request) {
         ON CONFLICT(${contactColumn}) DO UPDATE SET ${challenge.channel === "EMAIL" ? "email_verified_at" : "phone_verified_at"} = excluded.${challenge.channel === "EMAIL" ? "email_verified_at" : "phone_verified_at"}, display_name = CASE WHEN users.display_name = users.email OR users.display_name LIKE 'Visitor %' THEN excluded.display_name ELSE users.display_name END, updated_at = excluded.updated_at
         WHERE users.user_type = 'VISITOR' AND users.status = 'ACTIVE' AND EXISTS (SELECT 1 FROM auth_challenges WHERE id = ? AND consumed_at = ?)`)
         .bind(userId, `visitor:${challenge.destination_hash}`, internalEmail, challenge.channel === "SMS" ? challenge.destination : null, displayName, challenge.channel === "EMAIL" ? now : null, challenge.channel === "SMS" ? now : null, now, now, challengeId, now, challengeId, now),
-      d1.prepare(`INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, user_agent_hash, ip_hash)
-        SELECT ?, id, ?, ?, ?, ?, ? FROM users
+      d1.prepare(`INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, device_label, user_agent_hash, ip_hash)
+        SELECT ?, id, ?, ?, ?, ?, ?, ? FROM users
         WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'
           AND EXISTS (SELECT 1 FROM auth_challenges WHERE id = ? AND consumed_at = ?)`)
-        .bind(sessionId, tokenHash, sessionExpiresAt, now, userAgentHash, ipHash, challenge.destination, challengeId, now),
+        .bind(sessionId, tokenHash, sessionExpiresAt, now, deviceLabel, userAgentHash, ipHash, challenge.destination, challengeId, now),
       d1.prepare(`INSERT INTO security_events (id, user_id, event_type, severity, request_id, ip_hash, user_agent_hash, metadata, created_at)
         SELECT ?, id, 'VISITOR_LOGIN', 'INFO', ?, ?, ?, ?, ? FROM users
         WHERE ${contactColumn} = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'
