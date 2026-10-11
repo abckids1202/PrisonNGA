@@ -7,5 +7,5 @@ test("scheduled worker raises durable alarms for active appointment integrity ga
   assert.match(source, /async function reconcileActiveAppointmentInvariants/);
   assert.match(source, /APPOINTMENT_INTEGRITY_RECONCILIATION_REQUIRED/);
   assert.match(source, /activeResources/);
-  assert.match(source, /runScheduledJob\(env, "active-appointment-reconciliation"/);
+  assert.match(source, /runScheduledJob\(env, "active-appointment-reconciliation", \(\) =>/);
 });

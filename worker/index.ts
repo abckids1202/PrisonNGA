@@ -793,9 +793,9 @@ async function recordScheduledJobFailure(env: Env, name: string, error: unknown)
   }
 }
 
-async function runScheduledJob(env: Env, name: string, task: Promise<void>): Promise<void> {
+async function runScheduledJob(env: Env, name: string, task: () => Promise<void>): Promise<void> {
   try {
-    await task;
+    await task();
   } catch (error) {
     operationalLog("error", {
       event: "SCHEDULED_JOB_FAILED",
@@ -830,21 +830,21 @@ const worker = {
       })
       : processOutbox(env);
     ctx.waitUntil(Promise.all([
-      runScheduledJob(env, "notification-outbox", outboxWork),
-      runScheduledJob(env, "credit-account-reconciliation", reconcileCreditAccountInvariants(env)),
-      runScheduledJob(env, "active-appointment-reconciliation", reconcileActiveAppointmentInvariants(env)),
-      runScheduledJob(env, "payment-events", reconcilePaymentEvents(env)),
-      runScheduledJob(env, "abandoned-payments", expireAbandonedPaymentIntents(env)),
-      runScheduledJob(env, "kiosk-health", reconcileStaleKioskHealth(env)),
-      runScheduledJob(env, "waiting-room-no-shows", reconcileWaitingRoomNoShows(env)),
-      runScheduledJob(env, "evidence-retention", purgeExpiredEvidence(env)),
-      runScheduledJob(env, "step-up-expiry", purgeExpiredStepUpAssertions(env)),
-      runScheduledJob(env, "break-glass-expiry", expireBreakGlassRequests(env)),
-      runScheduledJob(env, "auth-delivery-reconciliation", reconcileStaleAuthDeliveryAttempts(env.DB)),
-      runScheduledJob(env, "auth-artifact-cleanup", purgeExpiredAuthArtifacts(env.DB)),
-      runScheduledJob(env, "auth-session-cleanup", purgeExpiredAuthSessions(env.DB)),
-      runScheduledJob(env, "rate-limit-cleanup", purgeStaleRateLimitBuckets(env.DB)),
-      runScheduledJob(env, "live-session-reconciliation", reconcileExpiredSessions(env)),
+      runScheduledJob(env, "notification-outbox", () => outboxWork),
+      runScheduledJob(env, "credit-account-reconciliation", () => reconcileCreditAccountInvariants(env)),
+      runScheduledJob(env, "active-appointment-reconciliation", () => reconcileActiveAppointmentInvariants(env)),
+      runScheduledJob(env, "payment-events", () => reconcilePaymentEvents(env)),
+      runScheduledJob(env, "abandoned-payments", () => expireAbandonedPaymentIntents(env)),
+      runScheduledJob(env, "kiosk-health", () => reconcileStaleKioskHealth(env)),
+      runScheduledJob(env, "waiting-room-no-shows", () => reconcileWaitingRoomNoShows(env)),
+      runScheduledJob(env, "evidence-retention", () => purgeExpiredEvidence(env)),
+      runScheduledJob(env, "step-up-expiry", () => purgeExpiredStepUpAssertions(env)),
+      runScheduledJob(env, "break-glass-expiry", () => expireBreakGlassRequests(env)),
+      runScheduledJob(env, "auth-delivery-reconciliation", () => reconcileStaleAuthDeliveryAttempts(env.DB)),
+      runScheduledJob(env, "auth-artifact-cleanup", () => purgeExpiredAuthArtifacts(env.DB)),
+      runScheduledJob(env, "auth-session-cleanup", () => purgeExpiredAuthSessions(env.DB)),
+      runScheduledJob(env, "rate-limit-cleanup", () => purgeStaleRateLimitBuckets(env.DB)),
+      runScheduledJob(env, "live-session-reconciliation", () => reconcileExpiredSessions(env)),
     ]));
   },
   async queue(batch: NotificationQueueBatch, env: Env): Promise<void> {
