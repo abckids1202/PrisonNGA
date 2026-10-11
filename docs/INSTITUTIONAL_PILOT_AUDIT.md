@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `32b084d` (`fix: scope control records to facility timezone`).
+Latest verified repository commit: `787cd88` (`fix: derive appointment timezone labels`).
 The local release verifier passed at this baseline with 520 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -175,7 +175,7 @@ The current repository already includes:
 - Audit export creation now commits the immutable manifest and its audit/outbox evidence in one D1 batch; a manifest is not acknowledged if the evidence writes do not commit, and a regression test protects that boundary.
 - Data retention and deletion need scheduled-job evidence, exception handling, legal-hold behavior and restore/rollback procedures.
 - The dramatic spin is a product interaction plan, not a completed business feature. The server must decide and persist the result before animation; the animation must never decide the outcome. The deterministic component also honors reduced-motion for both its completion timer and CSS transition.
-- Appointment and People time values are calculated in the persisted facility timezone, but their visible zone abbreviation is still a literal `WIB`; dynamic `WITA`/`WIT` labels remain a small follow-up before multi-timezone facilities are supported.
+- Appointment and People time values now use both the persisted facility timezone and its Indonesian zone label (`WIB`, `WITA`, or `WIT`); unknown valid zones retain the IANA identifier instead of inventing a local abbreviation.
 
 ## Canonical working workflow
 
