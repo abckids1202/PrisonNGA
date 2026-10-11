@@ -12,8 +12,8 @@ typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 528 application tests passing across
-524 subtests; the
+The current quick test baseline now reports 530 application tests passing across
+526 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -90,12 +90,13 @@ The current repository already includes:
 - Staging and production readiness now fail closed unless evidence storage explicitly uses protected R2; development-only local evidence storage cannot make a deployment ready.
 - The failure-handling contract is now covered by automated tests for all required payment, appointment, credit, kiosk, device, LiveKit, notification, provider, and database failure paths plus the non-negotiable idempotency/audit/recording invariants.
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
+- Finance now exposes a facility-scoped payment-provider event queue and a step-up-protected, idempotent replay boundary for failed or dead-lettered events; replay only requeues the event for the worker and never settles money directly from the operator request.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 528 application tests across 524 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server tests and browser smoke tests. Current validation baseline is 530 application tests across 526 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - The release verifier now runs a disposable local backup/restore drill and validates restored schema, foreign-key, credit-ledger, and audit integrity; this is local recovery evidence only and does not replace a remote D1/R2 disaster-recovery exercise.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Visitor checkout and staff refund routes independently enforce those tariff/refund approval attestations outside development, so bypassing the readiness endpoint cannot enable unapproved money movement.
