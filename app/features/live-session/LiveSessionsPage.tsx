@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar, Button, PageHeader, Status } from "../../components/ControlPrimitives";
 import StaffObserverClient from "./StaffObserverClient";
+import { formatDateValue } from "@/lib/date-format";
 
 type NoticeTone = "success" | "warning" | "error" | "info";
 
@@ -35,7 +36,7 @@ type LiveSessionDetail = {
   reconciliation: { required: boolean; id?: string; action_type?: string; reason?: string | null; correlation_id?: string | null; request_id?: string | null; created_at?: string; new_values?: string | null };
 };
 
-export default function LiveSessionsPage({ onNotify }: { onNotify: (message: string, tone?: NoticeTone) => void }) {
+export default function LiveSessionsPage({ onNotify, timeZone = "Asia/Jakarta" }: { onNotify: (message: string, tone?: NoticeTone) => void; timeZone?: string | null }) {
   const [sessions, setSessions] = useState<LiveSessionRow[]>([]);
   const [recentlyEnded, setRecentlyEnded] = useState<LiveSessionRow[]>([]);
   const [selected, setSelected] = useState<LiveSessionRow | null>(null);
@@ -60,7 +61,7 @@ export default function LiveSessionsPage({ onNotify }: { onNotify: (message: str
       setSessions(active);
       setRecentlyEnded(ended);
       setSelected((current) => current ? active.concat(ended).find((row) => row.id === current.id) || null : null);
-      setLastSync(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setLastSync(formatDateValue(new Date(), { hour: "2-digit", minute: "2-digit" }, timeZone, "Time unavailable"));
       setSyncError("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Live Session data could not be loaded.";
@@ -69,7 +70,7 @@ export default function LiveSessionsPage({ onNotify }: { onNotify: (message: str
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [onNotify]);
+  }, [onNotify, timeZone]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
@@ -137,7 +138,7 @@ export default function LiveSessionsPage({ onNotify }: { onNotify: (message: str
   function displayTime(value: string | null) {
     if (!value) return "Not recorded";
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    return Number.isNaN(date.getTime()) ? value : formatDateValue(value, { dateStyle: "medium", timeStyle: "short" }, timeZone, "Date unavailable");
   }
 
   function participantLabel(role: string) {

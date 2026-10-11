@@ -7,7 +7,7 @@ const panel = await readFile(new URL("../app/components/AccessReviewPanel.tsx", 
 
 test("Administration roles tab opens the facility-scoped persisted access review", () => {
   assert.match(page, /import AccessReviewPanel from "\.\/components\/AccessReviewPanel"/);
-  assert.match(page, /tab === "Roles & Permissions" \? <AccessReviewPanel \/>/);
+  assert.match(page, /tab === "Roles & Permissions" \? <AccessReviewPanel timeZone=\{timeZone\} \/>/);
   assert.match(panel, /\/api\/control\/access-review/);
   assert.match(panel, /active_session_count/);
 });
