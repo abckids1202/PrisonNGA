@@ -17,3 +17,9 @@ test("development video transport never sends the invalid local URL to LiveKit",
   assert.match(client, /Development transport · no media provider connected/);
   assert.match(client, /await connectRoom\(serverUrl, token\)/);
 });
+
+test("local development sessions are visibly distinct from real live media", () => {
+  assert.match(client, /developmentTransport \? "TEST" : "LIVE"/);
+  assert.match(client, /Local test transport/);
+  assert.match(client, /Local preview placeholder/);
+});
