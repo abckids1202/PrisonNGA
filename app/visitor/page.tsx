@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import "./visitor-auth.css";
 import { formatDateValue, localDateKey } from "@/lib/date-format";
@@ -431,7 +431,7 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
   const [cancelBusy, setCancelBusy] = useState(false);
   const requestKey = useRef<string | null>(null);
   const cancelKeys = useRef<Record<string, string>>({});
-  const approvedRelationships = relationships.filter((item) => item.status === "APPROVED");
+  const approvedRelationships = useMemo(() => relationships.filter((item) => item.status === "APPROVED"), [relationships]);
   const selectedRelationship = approvedRelationships.find((item) => item.id === relationshipId);
   const availableCredits = credits.find((item) => item.facility_id === selectedRelationship?.facility_id)?.available_credits || 0;
 
@@ -478,7 +478,7 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
     setBookingOpen(true);
   }
 
-  function openReschedule(appointment: VisitorAppointmentRecord) {
+  const openReschedule = useCallback((appointment: VisitorAppointmentRecord) => {
     const relationship = approvedRelationships.find((item) => item.facility_id === appointment.facility_id && item.prisoner_id === appointment.prisoner_id);
     if (!relationship) {
       onAction("This connection is no longer approved. Contact the facility before changing the visit time.", "info");
@@ -496,7 +496,7 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
     requestKey.current = null;
     setView("Requests");
     setBookingOpen(true);
-  }
+  }, [approvedRelationships, onAction]);
 
   useEffect(() => {
     if (loading || bookingOpen || typeof window === "undefined") return;
@@ -506,8 +506,10 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
     const url = new URL(window.location.href);
     url.searchParams.delete("reschedule");
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-    if (target && ["SUBMITTED", "UNDER_REVIEW"].includes(target.status)) openReschedule(target);
-  }, [appointments, bookingOpen, loading]);
+    if (!target || !["SUBMITTED", "UNDER_REVIEW"].includes(target.status)) return;
+    const handoff = window.setTimeout(() => openReschedule(target), 0);
+    return () => window.clearTimeout(handoff);
+  }, [appointments, bookingOpen, loading, openReschedule]);
 
   function closeBooking() {
     setBookingOpen(false);
