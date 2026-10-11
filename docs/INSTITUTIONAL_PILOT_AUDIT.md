@@ -3,8 +3,8 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `cc8b8de` (`docs: record dynamic timezone labels`).
-The code baseline for that verification is `787cd88` (`fix: derive appointment timezone labels`).
+Latest verified repository commit: `7f18e41` (`fix: close legal hold retention race`).
+The code baseline for this verification includes the notification and evidence-retention race fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
