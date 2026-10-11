@@ -428,6 +428,7 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const requestKey = useRef<string | null>(null);
+  const cancelKeys = useRef<Record<string, string>>({});
   const approvedRelationships = relationships.filter((item) => item.status === "APPROVED");
   const selectedRelationship = approvedRelationships.find((item) => item.id === relationshipId);
   const availableCredits = credits.find((item) => item.facility_id === selectedRelationship?.facility_id)?.available_credits || 0;
@@ -545,7 +546,9 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
   async function cancelVisit(appointment: VisitorAppointmentRecord) {
     if (!window.confirm("Cancel this visit request? The facility will see that it was cancelled.")) return;
     try {
-    const response = await fetch("/api/visitor/appointments", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ appointmentId: appointment.id, action: "cancel", expectedVersion: appointment.version }) });
+      const key = `${appointment.id}:${appointment.version}`;
+      cancelKeys.current[key] ||= crypto.randomUUID();
+      const response = await fetch("/api/visitor/appointments", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", "Idempotency-Key": cancelKeys.current[key] }, body: JSON.stringify({ appointmentId: appointment.id, action: "cancel", expectedVersion: appointment.version }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "This visit could not be cancelled.");
       await refreshAppointments();

@@ -55,3 +55,11 @@ test("visitor visit details exposes an idempotent cancellation confirmation", as
   assert.match(source, /The cancellation is recorded in your visit history/);
 });
 
+test("visitor visit list cancellation reuses its idempotency key for retries", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const cancelKeys = useRef<Record<string, string>>\(\{\}\)/);
+  assert.match(source, /cancelKeys\.current\[key\] \|\|= crypto\.randomUUID\(\)/);
+  assert.match(source, /"Idempotency-Key": cancelKeys\.current\[key\]/);
+});
+
