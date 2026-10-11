@@ -179,3 +179,16 @@ test("notification delivery rejects an explicitly unsupported adapter", async ()
     Object.assign(process.env, previous);
   }
 });
+
+test("notification delivery fails closed outside development when no provider is configured", async () => {
+  const previous = { ...process.env };
+  Object.assign(process.env, { SECUREVISIT_ENVIRONMENT: "staging", NOTIFICATION_DELIVERY: "", NOTIFICATION_EMAIL_DELIVERY: "", NOTIFICATION_SMS_DELIVERY: "" });
+  try {
+    await assert.rejects(() => deliverNotification({ notificationId: "notification-missing", email: "visitor@example.test", phone: null, template: "TEST", title: "Test", body: "Test", payload: {} }), /NOTIFICATION_DELIVERY_NOT_CONFIGURED/);
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previous)) delete process.env[key];
+    }
+    Object.assign(process.env, previous);
+  }
+});

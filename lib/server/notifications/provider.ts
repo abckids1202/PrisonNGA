@@ -11,10 +11,14 @@ export async function getNotificationDelivery(channel?: "EMAIL" | "SMS"): Promis
     ? await getRuntimeValue("NOTIFICATION_EMAIL_DELIVERY")
     : channel === "SMS" ? await getRuntimeValue("NOTIFICATION_SMS_DELIVERY") : null;
   const configured = channelValue || await getRuntimeValue("NOTIFICATION_DELIVERY");
-  // No configured adapter is an intentional development default. An
-  // explicitly supplied but unsupported value must fail closed instead of
-  // silently dropping an institutional notification into in-app delivery.
-  if (!configured) return "in_app";
+  // In-app delivery is a development-only fallback. A missing provider in
+  // staging or production must fail closed instead of silently dropping an
+  // institutional email/SMS notification into an in-app record.
+  if (!configured) {
+    const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
+    if (environment === "development") return "in_app";
+    throw new Error("NOTIFICATION_DELIVERY_NOT_CONFIGURED");
+  }
   const value = configured.toLowerCase();
   if (value === "in_app" || value === "webhook" || value === "resend" || value === "twilio") return value;
   throw new Error("NOTIFICATION_DELIVERY_INVALID");
