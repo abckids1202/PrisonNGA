@@ -107,9 +107,12 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [checkInSaving, setCheckInSaving] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelSaving, setCancelSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [now, setNow] = useState<number | null>(null);
   const waitingRoomKey = useRef<string | null>(null);
+  const cancelKey = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -234,6 +237,32 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
     }
   }
 
+  async function cancelAppointment() {
+    if (!appointment || cancelSaving || !["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(appointment.status)) return;
+    setCancelSaving(true);
+    setError("");
+    try {
+      const storageKey = `securevisit:cancel-appointment:${appointment.id}:${appointment.version}`;
+      const idempotencyKey = cancelKey.current || (typeof window !== "undefined" ? window.sessionStorage.getItem(storageKey) : null) || crypto.randomUUID();
+      cancelKey.current = idempotencyKey;
+      if (typeof window !== "undefined") window.sessionStorage.setItem(storageKey, idempotencyKey);
+      const response = await fetch("/api/visitor/appointments", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ appointmentId: appointment.id, action: "cancel", expectedVersion: appointment.version }),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "VISITOR_APPOINTMENT_CANCEL_FAILED");
+      setCancelOpen(false);
+      window.location.reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message.replaceAll("_", " ") : "We couldn’t cancel this visit.");
+    } finally {
+      setCancelSaving(false);
+    }
+  }
+
   if (loading) return <VisitPageMessage title="Loading your visit" body="Checking the latest status in your SecureVisit account." />;
   if ((!appointment && error) || !appointment || !presentation || !state) return <VisitPageMessage title="Visit details unavailable" body={error || "We couldn’t find that visit in your account."} action="Back to My Visits" />;
 
@@ -243,6 +272,7 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
   // first. Visitor entry must depend on this visitor's persisted presence,
   // not on the appointment-wide status transition.
   const visitorAlreadyWaiting = appointment.visitor_presence === "present";
+  const canCancel = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(appointment.status);
   const waitingRoomWindowOpen = appointment.waiting_room_version !== null || (now !== null && now >= Date.parse(appointment.requested_start) - 10 * 60_000 && now < Date.parse(appointment.requested_end));
   const canEnterWaitingRoom = deviceCheckComplete && waitingRoomWindowOpen && ["APPROVED", "WAITING"].includes(appointment.status) && !visitorAlreadyWaiting;
   const waitingRoomOpensLater = deviceCheckComplete && !waitingRoomWindowOpen && ["APPROVED", "WAITING"].includes(appointment.status) && !visitorAlreadyWaiting;
@@ -271,7 +301,9 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
       <section className="sv5-panel sv5-journey-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Saved history</p><h2>What has changed</h2></div><code>{appointment.id}</code></div><div className="sv5-journey-list">{historyRows.length ? historyRows.map((event, index) => <div className="sv5-journey-item sv5-journey-done" key={`${event.to_status}-${event.created_at}-${index}`}><span className="sv5-journey-marker">✓</span><span><strong>{prettyStatus(event.to_status)}</strong><small>{formatDate(event.created_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}</small></span></div>) : <p className="sv5-history-empty">No status changes have been recorded yet.</p>}</div></section>
       {appointment.device_checked_at && <section className="sv5-panel sv5-guidelines-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Device preparation</p><h2>Last check results</h2></div></div><p>Checked {formatDate(appointment.device_checked_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}. These visitor-reported results help you prepare; facility preflight is still required before a call can start.</p><div className="sv5-detail-grid"><Detail label="Camera" value={prettyStatus(appointment.device_camera_result || "unknown")} /><Detail label="Microphone" value={prettyStatus(appointment.device_microphone_result || "unknown")} /><Detail label="Connection" value={`${prettyStatus(appointment.device_network_result || "unknown")}${appointment.device_latency_ms === null ? "" : ` · ${appointment.device_latency_ms} ms`}`} /></div></section>}
       <section className="sv5-guidance-layout"><article className="sv5-panel sv5-guidelines-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Before your visit</p><h2>A few things to remember</h2></div></div><div className="sv5-guideline-list"><Guideline number="01" text="Join from a quiet, well-lit place." /><Guideline number="02" text="Use a working camera, microphone, and stable connection." /><Guideline number="03" text="Only approved participants may be present." /></div></article><article className="sv5-help-panel"><span className="sv5-help-spark">✦</span><p className="sv4-kicker">Need a hand?</p><h2>We’re here for your visit.</h2><p>Contact the facility if the details or status shown here do not look right.</p><Link className="sv4-button" href="/visitor/visits">Back to My Visits →</Link></article></section>
+      {canCancel && <section className="sv5-panel sv5-guidelines-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Manage this visit</p><h2>Plans changed?</h2></div></div><p>If you cancel, SecureVisit will close this visit and release any reserved credit and facility resources according to the saved cancellation policy.</p><button className="sv4-button" type="button" onClick={() => setCancelOpen(true)} disabled={cancelSaving}>Cancel this visit</button></section>}
     </div></main>
+    {cancelOpen && <div className="sv5-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !cancelSaving) setCancelOpen(false); }}><section className="sv5-info-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-visit-title"><button type="button" className="sv5-dialog-close" onClick={() => setCancelOpen(false)} disabled={cancelSaving} aria-label="Close cancellation dialog">×</button><p className="sv4-kicker">Manage your visit</p><h2 id="cancel-visit-title">Cancel this visit?</h2><div className="sv5-dialog-body"><p>This changes the saved appointment to <strong>Cancelled by visitor</strong>. Any credit or room reservation is handled by the server’s cancellation policy.</p><div className="sv5-dialog-fact"><span>Visit</span><strong>{appointment.prisoner_name}</strong></div><div className="sv5-dialog-fact"><span>Scheduled</span><strong>{formatTimeRange(appointment)}</strong></div><div className="sv5-dialog-rule">The cancellation is recorded in your visit history and the facility audit trail.</div></div><div className="sv5-dialog-actions"><button type="button" className="sv4-button" onClick={() => setCancelOpen(false)} disabled={cancelSaving}>Keep visit</button><button type="button" className="sv4-button sv4-button-primary" onClick={() => void cancelAppointment()} disabled={cancelSaving}>{cancelSaving ? "Cancelling…" : "Cancel visit"}</button></div></section></div>}
   </div>;
 }
 

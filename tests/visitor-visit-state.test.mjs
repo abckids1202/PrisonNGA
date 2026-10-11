@@ -46,3 +46,12 @@ test("visitor details keeps waiting-room entry available when the prisoner arriv
   assert.match(source, /waitingRoomOpensLater/);
 });
 
+test("visitor visit details exposes an idempotent cancellation confirmation", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../app/visitor/VisitDetailsClient.tsx", import.meta.url), "utf8");
+  assert.match(source, /action: "cancel", expectedVersion: appointment\.version/);
+  assert.match(source, /securevisit:cancel-appointment:/);
+  assert.match(source, /Cancelled by visitor/);
+  assert.match(source, /The cancellation is recorded in your visit history/);
+});
+
