@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `435c0e0` (`fix: remove local media security ambiguity`).
+Latest verified repository commit: `004c2e8` (`feat: expose staff session device labels`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, and local Live Session transport fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
@@ -158,6 +158,7 @@ The current repository already includes:
 - Notification records and outbox processing exist, but real email/SMS delivery adapters, templates, delivery receipts, retry operations and dead-letter replay need staging proof.
 - Visitor session controls still need production delivery, recovery and device-management validation beyond the development OTP path; suspicious-login auditing and visitor notification behavior are implemented but still require real delivery-provider staging proof.
 - Visitor authentication sessions now persist a coarse privacy-safe device label (for example, Chrome on Windows) and expose it in the visitor session-management view without storing the raw user-agent string; production delivery, recovery, device revocation and real-browser validation remain release gates.
+- Staff OIDC and SAML sessions now persist the same coarse device label, and the facility-scoped access-review panel exposes it while continuing to omit session secrets, raw user agents, and IP addresses.
 - Logout revocation is retry-safe: the session owner is resolved before revocation, and repeated requests for an already-revoked token do not emit duplicate `LOGOUT_REQUESTED` security events.
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
