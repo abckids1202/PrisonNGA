@@ -3,8 +3,8 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `20fffba` (`feat: add visitor otp resend recovery`).
-The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, and visitor OTP recovery fixes.
+Latest verified repository commit: `2634e3f` (`feat: add visitor appointment cancellation`).
+The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
@@ -12,8 +12,8 @@ typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 538 application tests passing across
-534 subtests; the
+The current quick test baseline now reports 539 application tests passing across
+535 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -97,6 +97,7 @@ The current repository already includes:
 - Finance Reconciliation now exposes that persisted payment-provider recovery queue to operators with failure details, a required recovery reason, refresh behavior, and an explicit step-up replay action; the UI does not claim that requeueing settled money.
 - Incident detail actions now require an operator-entered action note for acknowledge, add-note, resolve, and close transitions; persisted incident history, audit, and outbox records therefore contain actual operational context instead of fixed generic text.
 - Visitor sign-in now exposes a resend action backed by the server's `Retry-After` response, with a visible countdown and disabled duplicate requests during the enforced cooldown.
+- Visit Details now exposes cancellation for eligible visitor-owned appointments through a confirmation dialog and the existing version-checked, idempotent backend transaction; the UI explains that credit and resource release follow the persisted policy.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
