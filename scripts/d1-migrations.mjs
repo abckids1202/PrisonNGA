@@ -65,7 +65,12 @@ try {
       : path.join(projectRoot, ".wrangler", "state");
   if (persistPath) args.push("--persist-to", persistPath);
 
-  const result = spawnSync(process.execPath, args, { cwd: projectRoot, stdio: "inherit" });
+  // Local disposable verification must be non-interactive so CI and the
+  // release verifier cannot hang on Wrangler's migration confirmation prompt.
+  // Closing stdin makes Wrangler skip its prompt; remote migrations remain
+  // interactive and explicitly confirmed by the operator.
+  const stdio = action === "apply" && !isRemote ? ["ignore", "inherit", "inherit"] : "inherit";
+  const result = spawnSync(process.execPath, args, { cwd: projectRoot, stdio });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 } finally {

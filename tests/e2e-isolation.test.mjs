@@ -16,3 +16,9 @@ test("release browser checks use disposable isolated D1 state", async () => {
   assert.match(vite, /persistState:/);
   assert.match(vite, /SECUREVISIT_LOCAL_D1_STATE_DIR/);
 });
+
+test("local migration verification closes stdin while remote migrations stay interactive", async () => {
+  const source = await readFile(new URL("../scripts/d1-migrations.mjs", import.meta.url), "utf8");
+  assert.match(source, /action === "apply" && !isRemote/);
+  assert.match(source, /\["ignore", "inherit", "inherit"\]/);
+});
