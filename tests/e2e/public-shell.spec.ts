@@ -430,6 +430,16 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     if (!appointmentBody.appointmentId) throw new Error("Expected appointment id");
     approvedAppointmentId = appointmentBody.appointmentId;
 
+    // Visit Details must hand off to the same persisted reschedule picker as
+    // the Visits list. The one-time query is consumed so refreshing the
+    // resulting page cannot reopen or mutate a stale booking intent.
+    await page.goto(`/visitor/visits/${encodeURIComponent(approvedAppointmentId)}`);
+    await expect(page.getByText(/A\. Rahman/).first()).toBeVisible();
+    await page.getByRole("button", { name: "Change time", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Choose a new time", exact: true })).toBeVisible();
+    expect(new URL(page.url()).searchParams.has("reschedule")).toBe(false);
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+
     const queue = await staff.request.get("/api/control/appointments?status=SUBMITTED");
     expect(queue.status(), await queue.text()).toBe(200);
     const queueBody = await queue.json() as { appointments?: Array<{ id: string; version: number }> };

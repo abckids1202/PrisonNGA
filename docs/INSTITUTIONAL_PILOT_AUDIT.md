@@ -101,6 +101,7 @@ The current repository already includes:
 - Visitor cancellation from the Visits list now reuses an appointment/version-scoped idempotency key across retries instead of generating a new key after an ambiguous network response.
 - Visitor cancellation from the Visits list now uses the accessible policy-aware confirmation dialog used by Visit Details instead of a browser-native confirmation prompt.
 - Visit Details now links eligible submitted or under-review appointments into the authoritative reschedule picker, clears the one-time handoff query, and continues to use server-provided availability and version-checked rescheduling.
+- The browser acceptance journey now opens Visit Details for a newly persisted request, verifies the Change time handoff opens the same picker, and confirms the transient `reschedule` query is consumed before continuing through staff approval and Waiting Room readiness.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
