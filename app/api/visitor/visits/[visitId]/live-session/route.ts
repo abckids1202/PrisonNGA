@@ -30,7 +30,7 @@ export async function POST(request: Request, context: RouteContext) {
     const provider = await createLiveKitProvider();
     const expiresInSeconds = sessionTokenTtlSeconds(session);
     const token = await provider.createParticipantToken({ roomName: session.provider_room_name, identity: `visitor:${session.visitor_user_id}`, name: session.visitor_name, role: "VISITOR", ttlSeconds: expiresInSeconds });
-    return securityResponse({ token, serverUrl: config.url, session: toSessionPayload(session), participantRole: "VISITOR", expiresInSeconds }, 200, requestContext.requestId);
+    return securityResponse({ token, serverUrl: config.url, provider: config.provider, session: toSessionPayload(session), participantRole: "VISITOR", expiresInSeconds }, 200, requestContext.requestId);
   } catch (error) {
     return securityErrorResponse(error, requestContext.requestId);
   }

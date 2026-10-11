@@ -12,8 +12,8 @@ typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 530 application tests passing across
-526 subtests; the
+The current quick test baseline now reports 532 application tests passing across
+528 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -50,6 +50,7 @@ The current repository already includes:
 - Provider-neutral payment checkout boundary, signed payment webhook ingestion, duplicate-event protection, delayed-event retry and credit settlement/refund invariants.
 - Authenticated visitor payment receipts that only expose a settled payment with a matching `PURCHASE` ledger entry.
 - LiveKit token scopes, expiry, participant roles, session creation/finalization, stale-session reconciliation and recording disabled by policy.
+- Development Live Session responses now identify the selected video provider; the local-only provider drives the persisted countdown/status/presence journey without sending its deliberately invalid URL to the LiveKit browser client. Staging and production remain restricted to real LiveKit configuration.
 - A disposable development-only video-provider seam now permits persisted session/token lifecycle tests without a media service; it is rejected outside development and is not evidence of LiveKit staging readiness.
 - LiveKit participant tokens are now derived from each session's authoritative end time, capped at 30 minutes, and issued only for valid session windows; malformed windows fail closed instead of receiving an open-ended provider credential.
 - LiveKit readiness and provider configuration now reject malformed URLs, non-HTTPS/WSS schemes, and credential-bearing URLs before a browser connection or provider client can be created.
@@ -96,7 +97,7 @@ The current repository already includes:
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 530 application tests across 526 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server tests and browser smoke tests. Current validation baseline is 532 application tests across 528 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - The release verifier now runs a disposable local backup/restore drill and validates restored schema, foreign-key, credit-ledger, and audit integrity; this is local recovery evidence only and does not replace a remote D1/R2 disaster-recovery exercise.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Visitor checkout and staff refund routes independently enforce those tariff/refund approval attestations outside development, so bypassing the readiness endpoint cannot enable unapproved money movement.

@@ -63,7 +63,7 @@ export async function POST(request: Request, context: RouteContext) {
     const provider = await createLiveKitProvider();
     const expiresInSeconds = sessionTokenTtlSeconds(sessionRecord);
     const token = await provider.createParticipantToken({ roomName: String(session.provider_room_name), identity: `facility:${kiosk.resourceId}`, name: `Facility kiosk ${kiosk.resourceId}`, role: "FACILITY", ttlSeconds: expiresInSeconds });
-    return securityResponse({ token, serverUrl: config.url, session: toSessionPayload(sessionRecord), participantRole: "FACILITY", kioskId: kiosk.resourceId, expiresInSeconds }, 200, requestContext.requestId);
+    return securityResponse({ token, serverUrl: config.url, provider: config.provider, session: toSessionPayload(sessionRecord), participantRole: "FACILITY", kioskId: kiosk.resourceId, expiresInSeconds }, 200, requestContext.requestId);
   } catch (error) {
     return securityErrorResponse(error, requestContext.requestId);
   }

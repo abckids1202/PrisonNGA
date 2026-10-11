@@ -49,6 +49,7 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
   const [connectionLabel, setConnectionLabel] = useState("Connecting");
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [mediaError, setMediaError] = useState("");
+  const [developmentTransport, setDevelopmentTransport] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [kioskDeviceId, setKioskDeviceId] = useState(kioskId || "");
@@ -192,12 +193,25 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
         if (!tokenResponse.ok) throw new Error(apiError(tokenBody, "Secure video could not start."));
         const token = typeof tokenBody.token === "string" ? tokenBody.token : "";
         const serverUrl = typeof tokenBody.serverUrl === "string" ? tokenBody.serverUrl : "";
+        const provider = typeof tokenBody.provider === "string" ? tokenBody.provider : "livekit";
         const responseSession = tokenBody.session as SessionPayload | undefined;
         if (responseSession && active) {
           setSession(responseSession);
           setRemoteName(remoteSessionPerson(role, responseSession));
         }
         if (!token || !serverUrl) throw new Error("The video session did not return a valid connection.");
+        if (provider === "local_test") {
+          // The development provider intentionally has no media server. Keep
+          // the persisted session journey usable without sending its invalid
+          // development URL to the LiveKit client. Readiness rejects this
+          // provider outside development.
+          if (active) {
+            setDevelopmentTransport(true);
+            setConnectionLabel("Development transport");
+            setStage("active");
+          }
+          return;
+        }
         if (active) setStage("connecting");
         await connectRoom(serverUrl, token);
       } catch (caught) {
@@ -358,7 +372,10 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
 
   async function toggleMicrophone() {
     const room = roomRef.current;
-    if (!room) return;
+    if (!room) {
+      if (developmentTransport) setMicEnabled((value) => !value);
+      return;
+    }
     const next = !micEnabled;
     try {
       await room.localParticipant.setMicrophoneEnabled(next);
@@ -371,7 +388,10 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
 
   async function toggleCamera() {
     const room = roomRef.current;
-    if (!room) return;
+    if (!room) {
+      if (developmentTransport) setCameraEnabled((value) => !value);
+      return;
+    }
     const next = !cameraEnabled;
     try {
       await room.localParticipant.setCameraEnabled(next);
@@ -418,7 +438,7 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
     setStage("left");
   }
 
-  const statusCopy = mediaError || (stage === "reconnecting" ? "Connection interrupted · reconnecting" : remoteConnected ? `${connectionLabel} connection` : "Waiting for the other side");
+  const statusCopy = mediaError || (developmentTransport ? "Development transport · no media provider connected" : stage === "reconnecting" ? "Connection interrupted · reconnecting" : remoteConnected ? `${connectionLabel} connection` : "Waiting for the other side");
 
   if (!isVisitor && !kioskCredential) return <div className="sv9-live-app sv9-kiosk-live"><LiveHeader role={role} /><main className="sv9-state-screen sv9-state-error"><span className="sv9-state-mark">▣</span><p className="sv9-kicker">CONTROLLED FACILITY DEVICE</p><h1>Connect this kiosk</h1><p>Enter the registered device ID and its facility-issued credential. It stays in this page’s memory and is not added to the URL or saved in browser storage.</p>{error && <p role="alert">{error}</p>}<form className="sv9-kiosk-auth-form" onSubmit={(event) => { event.preventDefault(); const id = kioskDeviceIdInput.trim(); const secret = kioskCredentialInput.trim(); if (!id || !secret) return; setKioskDeviceId(id); setKioskCredential(secret); setKioskCredentialInput(""); setError(""); setStage("loading"); }}><label>Registered kiosk ID<input autoComplete="off" value={kioskDeviceIdInput} onChange={(event) => setKioskDeviceIdInput(event.target.value)} required /></label><label>One-time device credential<input type="password" autoComplete="off" spellCheck={false} value={kioskCredentialInput} onChange={(event) => setKioskCredentialInput(event.target.value)} required /></label><button className="sv9-button sv9-button-primary" type="submit" disabled={!kioskDeviceIdInput.trim() || !kioskCredentialInput.trim()}>Authenticate kiosk</button></form></main></div>;
   if (stage === "loading" || stage === "connecting") return <div className={`sv9-live-app ${isVisitor ? "sv9-visitor-live" : "sv9-kiosk-live"}`}><LiveHeader role={role} /><main className="sv9-state-screen"><span className="sv9-state-mark">◌</span><p className="sv9-kicker">SECURE VISIT</p><h1>{stage === "loading" ? "Preparing your secure visit" : "Connecting your secure video"}</h1><p>{stage === "loading" ? "Checking the visit authorization and session window." : "Your camera and microphone stay protected while we connect."}</p><span className="sv9-loading-line" /></main></div>;
