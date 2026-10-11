@@ -3,16 +3,16 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `999c1c7` (`fix: bind live-session cleanup to provider`).
+Latest verified code commit: `fc1e72a` (`fix: bind LiveKit webhooks to provider`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The local release verifier passed after the reschedule handoff fix: 546 application
-tests, 17 browser tests, fresh migration verification, a disposable backup/restore
+The local release verifier passed after the LiveKit webhook provider-boundary fix: 551
+passing test cases across 547 test files/subtests, 17 browser tests, fresh migration verification, a disposable backup/restore
 drill, typecheck, lint, production build, and a zero-vulnerability dependency
 audit all passed.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current release verifier reports 550 passing test cases across 546 test
+The current release verifier reports 551 passing test cases across 547 test
 files/subtests, plus 17 browser tests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
@@ -81,6 +81,7 @@ The current repository already includes:
 - LiveKit, payment, and notification-status webhook traffic is now rate-limited before request-body parsing and signature verification, reducing the cost of invalid or oversized provider traffic while preserving each signed callback boundary.
 - Live Session camera, microphone, and device-switch failures now produce recoverable user-facing status feedback instead of unhandled promise failures that leave the controls appearing to succeed.
 - LiveKit participant joins, disconnects, and reconnect attempts now create immutable facility audit events without notification fan-out, preserving a provider-level connection history.
+- LiveKit webhook callbacks now reject the local-only development transport and bind room lookup to the persisted session provider, preventing a real callback from mutating a session owned by another video adapter.
 - Staff-initiated and scheduled LiveKit room-close failures now create a deduplicated `LIVE_SESSION_PROVIDER_CLOSE_FAILED` audit/outbox record. Provider-client-unavailable failures are recorded for every affected expired session, so no timeout failure disappears into logs only.
 - No-show reconciliation now treats presence as valid only when its persisted heartbeat timestamp is fresh, preventing disconnected clients from blocking terminal appointment cleanup.
 - Scheduled cleanup now normalizes ISO-8601 application timestamps with SQLite `julianday()` before comparing them with the database clock, covering no-shows, abandoned payments, stale provider claims, evidence retention, expired sessions, and authentication artifacts.
@@ -118,7 +119,7 @@ The current repository already includes:
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 546 application tests across 542 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server tests and browser smoke tests. Current validation baseline is 551 passing test cases across 547 test files/subtests and 17 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - Notification delivery now fails closed outside development when no outbound provider is configured; staging and production still require real provider delivery, callbacks and operational replay evidence.
 - Staff verification review now rejects a contradictory decision after a case is already approved or rejected; only a replay of the same terminal decision is idempotent.
 - Staff live-session finalization now rejects a contradictory end mode after a session is already ended, terminated, or cancelled; same-mode retries remain idempotent after settlement is verified.
