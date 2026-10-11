@@ -12,8 +12,8 @@ typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 527 application tests passing across
-523 subtests; the
+The current quick test baseline now reports 528 application tests passing across
+524 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -95,7 +95,7 @@ The current repository already includes:
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 525 application tests across 521 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server tests and browser smoke tests. Current validation baseline is 528 application tests across 524 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - The release verifier now runs a disposable local backup/restore drill and validates restored schema, foreign-key, credit-ledger, and audit integrity; this is local recovery evidence only and does not replace a remote D1/R2 disaster-recovery exercise.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Visitor checkout and staff refund routes independently enforce those tariff/refund approval attestations outside development, so bypassing the readiness endpoint cannot enable unapproved money movement.
@@ -110,6 +110,7 @@ The current repository already includes:
 - Evidence-retention deletion failures now create a deduplicated, facility-scoped critical privacy alarm with the object key, retention deadline, safe failure reason, correlation ID, and an explicit staff-review/deletion-unconfirmed state.
 - Evidence-retention recovery now distinguishes storage deletion from database finalization: if the object was deleted but the D1 transition did not commit, the row remains `PENDING_DELETION` for retry instead of being restored to `AVAILABLE` without an object.
 - Legal-hold creation now refuses evidence already claimed as `PENDING_DELETION`, and the evidence flag update has the same guard, preventing a hold from racing object deletion.
+- Approved appointments now materialize their Waiting Room record automatically when the ten-minute opening window begins; the scheduled transaction copies reserved room/kiosk assignments and is retry-safe with one audit/outbox pair.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 - A canonical production operations runbook now covers database/object recovery, provider outages, kiosk recovery, identity incidents, lockdown, rollback, secret rotation, monitoring, and the required pilot exercises. It is a draft operational artifact until the named owners approve and execute the exercises.
 - `npm run audit:pilot` now verifies that the production operations runbook, pilot evidence register, and route-security matrix are present, so release documentation cannot silently disappear from a deployment baseline.

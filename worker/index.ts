@@ -17,6 +17,7 @@ import { evidenceRetentionFailureStatement, liveSessionFinalizationBlockedStatem
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
 import { assertRequestBodyWithinLimit } from "../lib/server/request-body";
+import { openScheduledWaitingRoomStatements } from "../lib/server/waiting-room-open";
 
 interface Env {
   ASSETS: Fetcher;
@@ -196,6 +197,40 @@ async function reconcileWaitingRoomNoShows(env: Env): Promise<void> {
       if (!committed) operationalLog("error", { event: "WAITING_ROOM_NO_SHOW_INCOMPLETE", appointmentId: row.id, facilityId: row.facility_id, correlationId });
     } catch (error) {
       operationalLog("error", { event: "WAITING_ROOM_NO_SHOW_RECONCILIATION_FAILED", appointmentId: row.id, facilityId: row.facility_id, correlationId, error });
+    }
+  }
+}
+
+async function openScheduledWaitingRooms(env: Env): Promise<void> {
+  const rows = await env.DB.prepare(`SELECT a.id, a.facility_id, a.requested_start, a.requested_end
+    FROM appointments a
+    INNER JOIN facilities f ON f.id = a.facility_id AND f.current_state = 'NORMAL_OPERATIONS'
+    WHERE a.status = 'APPROVED'
+      AND julianday(a.requested_start) <= julianday('now', '+10 minutes')
+      AND julianday(a.requested_end) > julianday('now')
+      AND NOT EXISTS (
+        SELECT 1 FROM waiting_room_sessions w
+        WHERE w.appointment_id = a.id AND w.facility_id = a.facility_id
+      )
+    ORDER BY a.requested_start ASC LIMIT 25`).all<{ id: string; facility_id: string; requested_start: string; requested_end: string }>();
+
+  for (const row of rows.results) {
+    const correlationId = crypto.randomUUID();
+    try {
+      const results = await env.DB.batch(openScheduledWaitingRoomStatements(env.DB, {
+        appointmentId: row.id,
+        facilityId: row.facility_id,
+        requestedStart: row.requested_start,
+        requestedEnd: row.requested_end,
+        now: new Date().toISOString(),
+        requestId: correlationId,
+        correlationId,
+      }));
+      if (!results[0]?.meta.changes || !results[1]?.meta.changes || !results[2]?.meta.changes) {
+        operationalLog("error", { event: "WAITING_ROOM_OPEN_INCOMPLETE", appointmentId: row.id, facilityId: row.facility_id, correlationId });
+      }
+    } catch (error) {
+      operationalLog("error", { event: "WAITING_ROOM_OPEN_FAILED", appointmentId: row.id, facilityId: row.facility_id, correlationId, error });
     }
   }
 }
@@ -859,6 +894,7 @@ const worker = {
       runScheduledJob(env, "payment-events", () => reconcilePaymentEvents(env)),
       runScheduledJob(env, "abandoned-payments", () => expireAbandonedPaymentIntents(env)),
       runScheduledJob(env, "kiosk-health", () => reconcileStaleKioskHealth(env)),
+      runScheduledJob(env, "waiting-room-open", () => openScheduledWaitingRooms(env)),
       runScheduledJob(env, "waiting-room-no-shows", () => reconcileWaitingRoomNoShows(env)),
       runScheduledJob(env, "evidence-retention", () => purgeExpiredEvidence(env)),
       runScheduledJob(env, "step-up-expiry", () => purgeExpiredStepUpAssertions(env)),
