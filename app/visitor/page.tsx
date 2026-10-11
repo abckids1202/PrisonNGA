@@ -498,6 +498,17 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
     setBookingOpen(true);
   }
 
+  useEffect(() => {
+    if (loading || bookingOpen || typeof window === "undefined") return;
+    const requestedId = new URL(window.location.href).searchParams.get("reschedule");
+    if (!requestedId) return;
+    const target = appointments.find((appointment) => appointment.id === requestedId);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("reschedule");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    if (target && ["SUBMITTED", "UNDER_REVIEW"].includes(target.status)) openReschedule(target);
+  }, [appointments, bookingOpen, loading]);
+
   function closeBooking() {
     setBookingOpen(false);
     setSlots([]);

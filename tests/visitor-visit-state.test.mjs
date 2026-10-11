@@ -71,3 +71,12 @@ test("visitor visit list cancellation uses an accessible confirmation dialog", a
   assert.doesNotMatch(source, /window\.confirm\("Cancel this visit request/);
 });
 
+test("visitor visit details can open the authoritative reschedule picker", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const details = await readFile(new URL("../app/visitor/VisitDetailsClient.tsx", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
+  assert.match(details, /visitor\/visits\?reschedule=\$\{encodeURIComponent\(appointment\.id\)\}/);
+  assert.match(page, /searchParams\.get\("reschedule"\)/);
+  assert.match(page, /openReschedule\(target\)/);
+});
+
