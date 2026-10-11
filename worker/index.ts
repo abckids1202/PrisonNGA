@@ -756,7 +756,44 @@ function notificationCopy(eventType: string, payload: Record<string, unknown> = 
   return { title: "SecureVisit update", body: "There is a new update in your SecureVisit account." };
 }
 
-async function runScheduledJob(name: string, task: Promise<void>): Promise<void> {
+async function recordScheduledJobFailure(env: Env, name: string, error: unknown): Promise<void> {
+  const correlationId = crypto.randomUUID();
+  const safeError = safeOperationalErrorMessage(error, "SCHEDULED_JOB_FAILED", 500);
+  const metadata = JSON.stringify({
+    source: "SECUREVISIT_SCHEDULER",
+    jobName: name,
+    error: safeError,
+    requiresStaffReview: true,
+  });
+  try {
+    // Scheduler failures are global runtime events, but staff still need to
+    // see them inside the facility-scoped operations feed. Emit one event per
+    // facility and suppress repeated copies of the same job for 15 minutes.
+    await env.DB.prepare(`INSERT INTO security_events
+      (id, facility_id, event_type, severity, request_id, metadata, created_at)
+      SELECT ?, f.id, 'SCHEDULED_JOB_FAILED', 'CRITICAL', ?, ?, ?
+      FROM facilities f
+      WHERE NOT EXISTS (
+        SELECT 1 FROM security_events se
+        WHERE se.facility_id = f.id
+          AND se.event_type = 'SCHEDULED_JOB_FAILED'
+          AND json_extract(se.metadata, '$.jobName') = ?
+          AND julianday(se.created_at) >= julianday('now', '-15 minutes')
+      )`).bind(crypto.randomUUID(), correlationId, metadata, new Date().toISOString(), name).run();
+  } catch (persistError) {
+    // D1 failure must never hide the original scheduler error. The platform
+    // logging pipeline remains the fallback signal for a database outage.
+    operationalLog("error", {
+      event: "SCHEDULED_JOB_FAILURE_PERSIST_FAILED",
+      actorId: "system:scheduler",
+      jobName: name,
+      correlationId,
+      error: persistError,
+    });
+  }
+}
+
+async function runScheduledJob(env: Env, name: string, task: Promise<void>): Promise<void> {
   try {
     await task;
   } catch (error) {
@@ -766,6 +803,7 @@ async function runScheduledJob(name: string, task: Promise<void>): Promise<void>
       jobName: name,
       error: safeOperationalErrorMessage(error, "SCHEDULED_JOB_FAILED", 500),
     });
+    await recordScheduledJobFailure(env, name, error);
   }
 }
 
@@ -792,21 +830,21 @@ const worker = {
       })
       : processOutbox(env);
     ctx.waitUntil(Promise.all([
-      runScheduledJob("notification-outbox", outboxWork),
-      runScheduledJob("credit-account-reconciliation", reconcileCreditAccountInvariants(env)),
-      runScheduledJob("active-appointment-reconciliation", reconcileActiveAppointmentInvariants(env)),
-      runScheduledJob("payment-events", reconcilePaymentEvents(env)),
-      runScheduledJob("abandoned-payments", expireAbandonedPaymentIntents(env)),
-      runScheduledJob("kiosk-health", reconcileStaleKioskHealth(env)),
-      runScheduledJob("waiting-room-no-shows", reconcileWaitingRoomNoShows(env)),
-      runScheduledJob("evidence-retention", purgeExpiredEvidence(env)),
-      runScheduledJob("step-up-expiry", purgeExpiredStepUpAssertions(env)),
-      runScheduledJob("break-glass-expiry", expireBreakGlassRequests(env)),
-      runScheduledJob("auth-delivery-reconciliation", reconcileStaleAuthDeliveryAttempts(env.DB)),
-      runScheduledJob("auth-artifact-cleanup", purgeExpiredAuthArtifacts(env.DB)),
-      runScheduledJob("auth-session-cleanup", purgeExpiredAuthSessions(env.DB)),
-      runScheduledJob("rate-limit-cleanup", purgeStaleRateLimitBuckets(env.DB)),
-      runScheduledJob("live-session-reconciliation", reconcileExpiredSessions(env)),
+      runScheduledJob(env, "notification-outbox", outboxWork),
+      runScheduledJob(env, "credit-account-reconciliation", reconcileCreditAccountInvariants(env)),
+      runScheduledJob(env, "active-appointment-reconciliation", reconcileActiveAppointmentInvariants(env)),
+      runScheduledJob(env, "payment-events", reconcilePaymentEvents(env)),
+      runScheduledJob(env, "abandoned-payments", expireAbandonedPaymentIntents(env)),
+      runScheduledJob(env, "kiosk-health", reconcileStaleKioskHealth(env)),
+      runScheduledJob(env, "waiting-room-no-shows", reconcileWaitingRoomNoShows(env)),
+      runScheduledJob(env, "evidence-retention", purgeExpiredEvidence(env)),
+      runScheduledJob(env, "step-up-expiry", purgeExpiredStepUpAssertions(env)),
+      runScheduledJob(env, "break-glass-expiry", expireBreakGlassRequests(env)),
+      runScheduledJob(env, "auth-delivery-reconciliation", reconcileStaleAuthDeliveryAttempts(env.DB)),
+      runScheduledJob(env, "auth-artifact-cleanup", purgeExpiredAuthArtifacts(env.DB)),
+      runScheduledJob(env, "auth-session-cleanup", purgeExpiredAuthSessions(env.DB)),
+      runScheduledJob(env, "rate-limit-cleanup", purgeStaleRateLimitBuckets(env.DB)),
+      runScheduledJob(env, "live-session-reconciliation", reconcileExpiredSessions(env)),
     ]));
   },
   async queue(batch: NotificationQueueBatch, env: Env): Promise<void> {

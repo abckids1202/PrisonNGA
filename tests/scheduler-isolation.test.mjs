@@ -6,10 +6,12 @@ test("scheduled maintenance isolates named jobs and records failures", async () 
   const source = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
   assert.match(source, /backgroundEnvironmentReady\(env, "scheduled"\)/);
   assert.match(source, /BACKGROUND_ENVIRONMENT_VALIDATION_FAILED/);
-  assert.match(source, /async function runScheduledJob\(name: string, task: Promise<void>\)/);
+  assert.match(source, /async function runScheduledJob\(env: Env, name: string, task: Promise<void>\)/);
   assert.match(source, /event: "SCHEDULED_JOB_FAILED"/);
   assert.match(source, /jobName: name/);
-  assert.match(source, /runScheduledJob\("payment-events", reconcilePaymentEvents\(env\)\)/);
-  assert.match(source, /runScheduledJob\("live-session-reconciliation", reconcileExpiredSessions\(env\)\)/);
+  assert.match(source, /recordScheduledJobFailure\(env, name, error\)/);
+  assert.match(source, /json_extract\(se\.metadata, '\$\.jobName'\) = \?/);
+  assert.match(source, /runScheduledJob\(env, "payment-events", reconcilePaymentEvents\(env\)\)/);
+  assert.match(source, /runScheduledJob\(env, "live-session-reconciliation", reconcileExpiredSessions\(env\)\)/);
   assert.match(source, /ctx\.waitUntil\(Promise\.all\(\[/);
 });
