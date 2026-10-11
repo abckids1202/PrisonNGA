@@ -78,6 +78,16 @@ export function assertRecordingDisabled(record: Pick<SessionRecord, "recording_p
 }
 
 /**
+ * A session must keep using the provider that created its room. If the
+ * deployment is reconfigured while an old session is still joinable, issuing
+ * credentials from the new provider can produce a token for a room that does
+ * not exist there. Fail closed instead of silently joining the wrong backend.
+ */
+export function assertSessionProvider(record: Pick<SessionRecord, "provider">, configuredProvider: string): void {
+  if (record.provider !== configuredProvider) throw new SecurityError("VIDEO_PROVIDER_MISMATCH", 503);
+}
+
+/**
  * Keep the provider credential within the server-authorized visit window.
  * The extra minute covers clock skew and the existing join grace period;
  * the room is still terminated by the server-side session finalizer.
