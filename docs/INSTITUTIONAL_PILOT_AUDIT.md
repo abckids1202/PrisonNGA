@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `1d577f4` (`fix: label local video transport honestly`).
+Latest verified repository commit: `435c0e0` (`fix: remove local media security ambiguity`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, and local Live Session transport fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
@@ -52,6 +52,7 @@ The current repository already includes:
 - LiveKit token scopes, expiry, participant roles, session creation/finalization, stale-session reconciliation and recording disabled by policy.
 - Development Live Session responses now identify the selected video provider; the local-only provider drives the persisted countdown/status/presence journey without sending its deliberately invalid URL to the LiveKit browser client. Staging and production remain restricted to real LiveKit configuration.
 - Local-only Live Session screens now visibly identify the transport as a test session, local test transport, and a preview placeholder; development UI no longer presents the non-media adapter as a real `LIVE` call.
+- The local Live Session header now also says that no media channel is connected, so development transport cannot be mistaken for an encrypted provider-backed call.
 - A disposable development-only video-provider seam now permits persisted session/token lifecycle tests without a media service; it is rejected outside development and is not evidence of LiveKit staging readiness.
 - LiveKit participant tokens are now derived from each session's authoritative end time, capped at 30 minutes, and issued only for valid session windows; malformed windows fail closed instead of receiving an open-ended provider credential.
 - LiveKit readiness and provider configuration now reject malformed URLs, non-HTTPS/WSS schemes, and credential-bearing URLs before a browser connection or provider client can be created.
