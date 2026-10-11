@@ -3,8 +3,8 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `7f18e41` (`fix: close legal hold retention race`).
-The code baseline for this verification includes the notification and evidence-retention race fixes.
+Latest verified repository commit: `fd03881` (`feat: auto-open scheduled waiting rooms`).
+The code baseline for this verification includes the notification, evidence-retention, and Waiting Room opening fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
