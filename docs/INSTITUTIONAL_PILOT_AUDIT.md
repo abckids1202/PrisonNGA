@@ -3,8 +3,8 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `d5b8967` (`feat: add payment event replay recovery`).
-The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, and payment recovery fixes.
+Latest verified repository commit: `f175426` (`fix: make local live session transport explicit`).
+The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, and local Live Session transport fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
