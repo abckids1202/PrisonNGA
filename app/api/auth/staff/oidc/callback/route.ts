@@ -3,6 +3,7 @@ import { discover, exchangeCode, getOidcConfig, getStaffMfaRequirement, hasRequi
 import { applySecurityHeaders, getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
 import { buildSessionCookie } from "../../../../../../lib/server/auth/session-cookie";
 import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
+import { describeDevice } from "../../../../../../lib/server/auth/device-label";
 
 async function staffCookie(token: string): Promise<string> { return buildSessionCookie("securevisit_staff_session", token, 28800, (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development"); }
 
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
       // predicate prevents a concurrent first-login from rebinding the
       // provisioned staff record after it was read above.
       d1.prepare("UPDATE users SET external_id = ?, display_name = ?, last_login_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND (external_id IS NULL OR external_id = ?)").bind(externalId, displayName, now, now, user.id, user.external_id),
-      d1.prepare("INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, user_agent_hash, ip_hash) SELECT ?, id, ?, ?, ?, ?, ? FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND external_id = ?").bind(crypto.randomUUID(), await hashIdentifier(token, salt), new Date(Date.now() + 8 * 60 * 60_000).toISOString(), now, context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null, user.id, externalId),
+      d1.prepare("INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, device_label, user_agent_hash, ip_hash) SELECT ?, id, ?, ?, ?, ?, ?, ? FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND external_id = ?").bind(crypto.randomUUID(), await hashIdentifier(token, salt), new Date(Date.now() + 8 * 60 * 60_000).toISOString(), now, describeDevice(context.userAgent), context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null, user.id, externalId),
       d1.prepare("INSERT INTO security_events (id, user_id, facility_id, event_type, severity, request_id, metadata, created_at) SELECT ?, id, ?, 'STAFF_OIDC_LOGIN', 'INFO', ?, ?, ? FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND external_id = ?").bind(crypto.randomUUID(), profile.facility_id, context.requestId, JSON.stringify({ issuer: claims.iss }), now, user.id, externalId),
     ]);
     if (!sessionResults[0]?.meta.changes) throw new SecurityError("STAFF_IDENTITY_BINDING_CONFLICT", 409);

@@ -17,6 +17,7 @@ export async function GET() {
         s.created_at,
         s.last_seen_at,
         s.expires_at,
+        s.device_label,
         CASE WHEN s.user_agent_hash IS NULL THEN 0 ELSE 1 END AS recognized_browser
       FROM auth_sessions s
       INNER JOIN users u ON u.id = s.user_id AND u.user_type = 'STAFF'

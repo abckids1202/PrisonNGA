@@ -10,6 +10,7 @@ test("staff session review is facility-scoped and exposes only bounded metadata"
   assert.match(route, /staff_profiles sp ON sp\.user_id = s\.user_id AND sp\.facility_id = \?/);
   assert.match(route, /LIMIT 250/);
   assert.match(route, /recognized_browser/);
+  assert.match(route, /s\.device_label/);
   assert.doesNotMatch(route, /token_hash\s*,/);
   assert.doesNotMatch(route, /ip_hash\s*,/);
 });
@@ -29,4 +30,5 @@ test("access review UI provides staff session visibility and revocation", () => 
   assert.match(panel, /Revocation reason/);
   assert.match(panel, /Revoke/);
   assert.match(panel, /recognized_browser/);
+  assert.match(panel, /session\.device_label/);
 });

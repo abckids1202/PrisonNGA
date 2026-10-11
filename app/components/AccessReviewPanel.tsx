@@ -32,6 +32,7 @@ type StaffSession = {
   created_at: string;
   last_seen_at: string | null;
   expires_at: string;
+  device_label: string | null;
   recognized_browser: number;
 };
 
@@ -119,7 +120,7 @@ export default function AccessReviewPanel({ timeZone = "Asia/Jakarta" }: { timeZ
       <div className="sv3-rule-line"><div><strong id="staff-sessions-title">Active staff sessions</strong><small>Review facility-scoped browser sessions without exposing IP addresses or session secrets.</small></div><button className="sv3-button" onClick={loadSessions} disabled={sessionsLoading}>Refresh</button></div>
       <label className="sv3-policy-reason">Revocation reason<textarea value={sessionReason} maxLength={500} onChange={(event) => setSessionReason(event.target.value)} /></label>
       {sessionsError ? <p className="sv3-policy-feedback error" role="alert">{sessionsError}</p> : null}
-      {sessionsLoading ? <div className="sv3-empty"><strong>Loading active sessions</strong><p>Reading current staff session records.</p></div> : sessions.length ? <div className="sv3-staff-list">{sessions.map((session) => <div className="sv3-notification-failure" key={session.id}><span><strong>{session.display_name}</strong><small>{session.email || "Email unavailable"}</small></span><span><small>{session.recognized_browser ? "Recognized browser" : "Browser session"}</small><small>Last active · {formatDate(session.last_seen_at, timeZone)}</small></span><span><small>Created · {formatDate(session.created_at, timeZone)}</small><small>Expires · {formatDate(session.expires_at, timeZone)}</small></span><button className="sv3-button" onClick={() => void revokeSession(session)} disabled={revokingSessionId === session.id}>{revokingSessionId === session.id ? "Revoking…" : "Revoke"}</button></div>)}</div> : <div className="sv3-empty"><strong>No active staff sessions</strong><p>There are no unexpired sessions in this facility scope.</p></div>}
+      {sessionsLoading ? <div className="sv3-empty"><strong>Loading active sessions</strong><p>Reading current staff session records.</p></div> : sessions.length ? <div className="sv3-staff-list">{sessions.map((session) => <div className="sv3-notification-failure" key={session.id}><span><strong>{session.display_name}</strong><small>{session.email || "Email unavailable"}</small></span><span><small>{session.device_label || (session.recognized_browser ? "Recognized browser" : "Browser session")}</small><small>Last active · {formatDate(session.last_seen_at, timeZone)}</small></span><span><small>Created · {formatDate(session.created_at, timeZone)}</small><small>Expires · {formatDate(session.expires_at, timeZone)}</small></span><button className="sv3-button" onClick={() => void revokeSession(session)} disabled={revokingSessionId === session.id}>{revokingSessionId === session.id ? "Revoking…" : "Revoke"}</button></div>)}</div> : <div className="sv3-empty"><strong>No active staff sessions</strong><p>There are no unexpired sessions in this facility scope.</p></div>}
     </section>
   </div>;
 }
