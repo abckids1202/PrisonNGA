@@ -16,3 +16,9 @@ test("dev:local documents the local product entry points", async () => {
   assert.match(source, /\/control/);
   assert.match(source, /\/kiosk/);
 });
+
+test("the fresh local environment selects the explicit no-media video transport", async () => {
+  const template = await readFile(new URL("../.env.example", import.meta.url), "utf8");
+  assert.match(template, /^VIDEO_PROVIDER=local_test$/m);
+  assert.match(template, /Staging\/production\n# must set VIDEO_PROVIDER=livekit/);
+});
