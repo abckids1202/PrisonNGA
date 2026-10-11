@@ -3,12 +3,12 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `8e65464` (`feat: link visit details to rescheduling`).
+Latest verified repository commit: `127fb4f` (`fix: make reschedule handoff hook-safe`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The local release verifier passed before this follow-up; after the notification
-and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
-browser tests, fresh migration verification, a disposable backup/restore drill,
-typecheck, lint, production build, and a zero-vulnerability dependency audit.
+The local release verifier passed after the reschedule handoff fix: 542 application
+tests, 17 browser tests, fresh migration verification, a disposable backup/restore
+drill, typecheck, lint, production build, and a zero-vulnerability dependency
+audit all passed.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
