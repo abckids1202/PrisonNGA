@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `2c5f589` (`fix: render operations times in facility timezone`).
+Latest verified repository commit: `336113a` (`fix: align live operations timezone rendering`).
 The local release verifier passed at this baseline with 520 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -110,7 +110,7 @@ The current repository already includes:
 - `npm run audit:pilot` now verifies that the production operations runbook, pilot evidence register, and route-security matrix are present, so release documentation cannot silently disappear from a deployment baseline.
 - Shared application security headers now include a configured custom LiveKit host in local/Vinext mode, matching the deployed Worker CSP behavior; the default allow-list remains restricted to approved LiveKit schemes and hosts.
 - Scheduled job failures now create deduplicated, facility-scoped `SCHEDULED_JOB_FAILED` critical security events with unique IDs per facility, safe error text, and correlation IDs; lazy task factories capture synchronous setup failures, malformed historical metadata cannot break deduplication, and D1-batch persistence remains independently recoverable per facility, while retaining platform-log fallback when D1 cannot persist the alarm.
-- Facility policy history, closure windows, resource heartbeats, and kiosk credential activity now render using the persisted facility timezone rather than the operator browser timezone; the same timezone is passed through the Control management and resource workspaces.
+- Facility policy history, closure windows, resource heartbeats, kiosk credential activity, Live Sessions telemetry, Access Review, and Administration staff timestamps now render using the persisted facility timezone rather than the operator browser timezone; the same timezone is passed through the Control management and resource workspaces.
 
 ## What remains incomplete or unproven
 
