@@ -4,5 +4,5 @@ import { readFile } from "node:fs/promises";
 
 test("Facility workspace exposes the authoritative visit policy editor", async () => {
   const source = await readFile(new URL("../app/features/management/FacilityPage.tsx", import.meta.url), "utf8");
-  assert.match(source, /tab === "Visit Policies" \? <VisitPolicyEditor \/>/);
+  assert.match(source, /tab === "Visit Policies" \? <VisitPolicyEditor timeZone=\{facility\?\.timezone\} \/>/);
 });

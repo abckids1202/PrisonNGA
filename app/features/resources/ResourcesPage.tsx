@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import KioskCredentialManager from "../../components/KioskCredentialManager";
 import { Button, EmptyState, PageHeader, Status } from "../../components/ControlPrimitives";
+import { formatDateValue } from "@/lib/date-format";
 
 type NoticeTone = "success" | "warning" | "error" | "info";
 type ResourceReassignment = { appointmentId: string; sourceResourceId: string; targetResourceId: string; expectedSourceVersion: number; expectedTargetVersion: number; expectedWaitingVersion: number; reason: string };
 type ResourceRow = { id: string; resource_type: "ROOM" | "DEVICE"; display_name: string; status: string; room_id?: string | null; health_state: string; last_heartbeat_at?: string | null; active_appointment_id?: string | null; waiting_version?: number | null; has_active_kiosk_credential?: number; kiosk_credential_last_used_at?: string | null; version: number };
 
-export default function ResourcesPage({ initialResourceId, onNotify, onReassign }: { initialResourceId?: string | null; onNotify: (message: string, tone?: NoticeTone) => void; onReassign: (input: ResourceReassignment) => Promise<void> }) {
+export default function ResourcesPage({ initialResourceId, timeZone = "Asia/Jakarta", onNotify, onReassign }: { initialResourceId?: string | null; timeZone?: string | null; onNotify: (message: string, tone?: NoticeTone) => void; onReassign: (input: ResourceReassignment) => Promise<void> }) {
   const [resources, setResources] = useState<ResourceRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reassignTargetId, setReassignTargetId] = useState("");
@@ -123,13 +124,13 @@ export default function ResourcesPage({ initialResourceId, onNotify, onReassign 
                 <Status tone={tone(selected)}>{selected.status}</Status>
                 <dl>
                   <div><dt>Health</dt><dd>{selected.health_state}</dd></div>
-                  <div><dt>Last heartbeat</dt><dd>{selected.last_heartbeat_at ? new Date(selected.last_heartbeat_at).toLocaleString() : "Not recorded"}</dd></div>
+                  <div><dt>Last heartbeat</dt><dd>{selected.last_heartbeat_at ? formatDateValue(selected.last_heartbeat_at, { dateStyle: "medium", timeStyle: "short" }, timeZone, "Date unavailable") : "Not recorded"}</dd></div>
                   <div><dt>Current reservation</dt><dd>{selected.active_appointment_id || "None"}</dd></div>
                   <div><dt>Version</dt><dd className="sv8-mono">{selected.version}</dd></div>
                 </dl>
                 {maintenanceConfirm ? <div className="sv3-resource-warning" role="alert"><strong>{selected.status === "MAINTENANCE" ? "Restore this resource?" : "Place this resource into maintenance?"}</strong><span>{selected.display_name}</span><small>{selected.active_appointment_id ? "An active appointment must be reassigned before maintenance can begin." : selected.status === "MAINTENANCE" ? "The resource will return to its normal available or online state." : "The resource will stop being considered available for new assignments."}</small><div><Button variant="quiet" onClick={() => setMaintenanceConfirm(false)} disabled={maintenanceBusy}>Cancel</Button><Button variant={selected.status === "MAINTENANCE" ? "primary" : "danger"} onClick={() => void changeMaintenance(selected)} disabled={maintenanceBusy || Boolean(selected.active_appointment_id && selected.status !== "MAINTENANCE")}>{maintenanceBusy ? "Saving…" : selected.status === "MAINTENANCE" ? "Restore resource" : "Confirm maintenance"}</Button></div></div> : null}
                 {selected.active_appointment_id && (selected.status === "OFFLINE" || selected.health_state === "FAILED") ? <div className="sv3-resource-warning"><strong>Assignment requires attention</strong><span>{selected.active_appointment_id}</span><small>Move this visit to a healthy {selected.resource_type === "DEVICE" ? "kiosk" : "room"} before admission.</small>{reassignmentTargets.length ? <><label>Healthy target<select value={effectiveReassignTargetId} onChange={(event) => setReassignTargetId(event.target.value)}><option value="">Choose a target</option>{reassignmentTargets.map((resource) => <option key={resource.id} value={resource.id}>{resource.display_name} · v{resource.version}</option>)}</select></label><label>Reason<textarea value={reassignReason} onChange={(event) => setReassignReason(event.target.value)} minLength={8} /></label><Button variant="primary" onClick={() => void submitReassignment()} disabled={reassigning || !effectiveReassignTargetId}>{reassigning ? "Reassigning…" : "Reassign visit"}</Button></> : <small>No healthy unreserved target is currently available.</small>}</div> : <Button onClick={() => sendHeartbeat(selected)}>Record heartbeat</Button>}
-                {selected.resource_type === "DEVICE" ? <KioskCredentialManager key={selected.id} resourceId={selected.id} resourceName={selected.display_name} resourceVersion={selected.version} active={selected.has_active_kiosk_credential === 1} lastUsedAt={selected.kiosk_credential_last_used_at} onRefresh={refresh} onNotify={onNotify} /> : null}
+                {selected.resource_type === "DEVICE" ? <KioskCredentialManager key={selected.id} resourceId={selected.id} resourceName={selected.display_name} resourceVersion={selected.version} active={selected.has_active_kiosk_credential === 1} lastUsedAt={selected.kiosk_credential_last_used_at} timeZone={timeZone} onRefresh={refresh} onNotify={onNotify} /> : null}
               </aside>
             ) : null}
           </div>

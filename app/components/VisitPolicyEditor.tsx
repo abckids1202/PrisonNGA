@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatDateValue } from "@/lib/date-format";
 
 type Policy = {
   id: string;
@@ -21,7 +22,7 @@ type HistoryEntry = { version: number; actor_user_id: string; reason: string; sn
 
 const fallbackError = "Could not load the facility policy. Check your staff session and try again.";
 
-export default function VisitPolicyEditor() {
+export default function VisitPolicyEditor({ timeZone = "Asia/Jakarta" }: { timeZone?: string | null }) {
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [draft, setDraft] = useState<Policy | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -123,6 +124,6 @@ export default function VisitPolicyEditor() {
     {error ? <p role="alert" className="sv3-policy-feedback error">{error}</p> : null}
     {message ? <p role="status" className="sv3-policy-feedback success">{message}</p> : null}
     <button className="sv3-button sv3-button-primary" onClick={() => void save()} disabled={busy || !policy || reason.trim().length < 8}>Save policy · requires supervisor step-up</button>
-    {history.length ? <section className="sv3-policy-history"><h3>Recent changes</h3>{history.map((entry) => <article key={`${entry.version}-${entry.created_at}`}><span>Version {entry.version}</span><time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time><p>{entry.reason}</p></article>)}</section> : null}
+    {history.length ? <section className="sv3-policy-history"><h3>Recent changes</h3>{history.map((entry) => <article key={`${entry.version}-${entry.created_at}`}><span>Version {entry.version}</span><time dateTime={entry.created_at}>{formatDateValue(entry.created_at, { dateStyle: "medium", timeStyle: "short" }, timeZone, "Date unavailable")}</time><p>{entry.reason}</p></article>)}</section> : null}
   </div>;
 }

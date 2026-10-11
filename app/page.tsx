@@ -307,14 +307,14 @@ export default function ControlApp() {
     if (page === "Appointments") return <AppointmentsPage appointments={appointments} onSelect={setSelectedAppointment} onNotify={notify} />;
     if (page === "Waiting Room") return <WaitingRoomPage facilityState={facilityState} onNotify={notify} />;
     if (page === "Live Sessions") return <LiveSessionsPage onNotify={notify} />;
-    if (page === "Resources") return <ResourcesPage initialResourceId={resourceToFocus} onNotify={notify} onReassign={reassignAppointment} />;
+    if (page === "Resources") return <ResourcesPage initialResourceId={resourceToFocus} timeZone={facilityTimezone} onNotify={notify} onReassign={reassignAppointment} />;
     if (page === "Incidents") return <IncidentsPage onNotify={notify} />;
     return <CommandCenterPage appointments={appointments} facilityName={facilityName} facilityTimezone={facilityTimezone} now={now} facilityState={facilityState} backendStatus={backendStatus} demoMode={runtimeEnvironment === "development"} simulationPaused={simulationPaused} simulationTick={simulationTick} onFacilityStateChange={changeFacilityState} onPause={() => setSimulationPaused((current) => !current)} onAdvance={() => { setSimulationTick((current) => current + 1); notify("Development simulation advanced locally; no facility record changed.", "info"); }} onNavigate={navigate} onOpenDrawer={openDrawer} onOpenAppointment={setSelectedAppointment} onOpenPopover={(kind) => setPopover((current) => current === kind ? null : kind)} onNotify={notify} popover={popover} />;
   }
 
   function renderManagementPage() {
     if (page === "People") return <PeoplePage onNotify={notify} />;
-    if (page === "Visitation") return <VisitationPage />;
+    if (page === "Visitation") return <VisitationPage timeZone={facilityTimezone} />;
     if (page === "Finance") return <FinancePage onNotify={notify} />;
     if (page === "Compliance") return <CompliancePageInteractive onNotify={notify} />;
     if (page === "Facility") return <FacilityPage facilityState={facilityState} onFacilityStateChange={changeFacilityState} onOpenResource={openResource} onNotify={notify} />;
@@ -1185,11 +1185,11 @@ function PeoplePage({ onNotify }: { onNotify: (message: string, tone?: Notice["t
     </div>
   </div>;
 }
-function VisitationPage() {
+function VisitationPage({ timeZone }: { timeZone?: string | null }) {
   const [tab, setTab] = useState("Visit Policies");
   const tabs = ["Visit Policies", "Appointment Types", "Availability Rules", "Operating Hours", "Closures"];
   const connected = ["Visit Policies", "Appointment Types", "Availability Rules", "Operating Hours", "Closures"].includes(tab);
-  return <><PageHeader eyebrow="Management · Visitation policy" title="Visitation" description="Control the facility rules used to validate visitor booking requests." /><div className="sv3-policy-layout"><nav className="sv3-policy-nav">{tabs.map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}><span>{item}</span><b>›</b></button>)}</nav><section className="sv3-policy-editor"><div className="sv3-policy-editor-head"><div><span className="sv3-eyebrow">Facility configuration</span><h2>{tab}</h2></div><Status tone={connected ? "green" : "orange"}>{connected ? "BACKEND CONNECTED" : "NOT YET CONNECTED"}</Status></div>{["Visit Policies", "Availability Rules", "Operating Hours"].includes(tab) ? <VisitPolicyEditor /> : tab === "Closures" ? <FacilityClosures /> : tab === "Appointment Types" ? <AppointmentTypesPanel /> : <div className="sv3-settings-surface"><strong>Appointment types need a dedicated policy model</strong><p>This section is intentionally unavailable until appointment-type eligibility, duration, credit cost, and approval rules can be persisted with version history.</p><Button onClick={() => setTab("Visit Policies")}>Open live visit policy</Button></div>}</section></div></>;
+  return <><PageHeader eyebrow="Management · Visitation policy" title="Visitation" description="Control the facility rules used to validate visitor booking requests." /><div className="sv3-policy-layout"><nav className="sv3-policy-nav">{tabs.map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}><span>{item}</span><b>›</b></button>)}</nav><section className="sv3-policy-editor"><div className="sv3-policy-editor-head"><div><span className="sv3-eyebrow">Facility configuration</span><h2>{tab}</h2></div><Status tone={connected ? "green" : "orange"}>{connected ? "BACKEND CONNECTED" : "NOT YET CONNECTED"}</Status></div>{["Visit Policies", "Availability Rules", "Operating Hours"].includes(tab) ? <VisitPolicyEditor timeZone={timeZone} /> : tab === "Closures" ? <FacilityClosures timeZone={timeZone} /> : tab === "Appointment Types" ? <AppointmentTypesPanel /> : <div className="sv3-settings-surface"><strong>Appointment types need a dedicated policy model</strong><p>This section is intentionally unavailable until appointment-type eligibility, duration, credit cost, and approval rules can be persisted with version history.</p><Button onClick={() => setTab("Visit Policies")}>Open live visit policy</Button></div>}</section></div></>;
 }
 
 type FinanceRecord = { id: string; appointment_id?: string | null; entry_type?: string; amount?: number; created_at: string; visitor_name?: string; credit_quantity?: number; amount_minor?: number; currency?: string; status?: string };

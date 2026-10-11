@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatDateValue } from "@/lib/date-format";
 
 type CredentialCommand = "issue_kiosk_credential" | "revoke_kiosk_credential";
 
@@ -10,11 +11,12 @@ type Props = {
   resourceVersion: number;
   active: boolean;
   lastUsedAt?: string | null;
+  timeZone?: string | null;
   onRefresh: () => Promise<void>;
   onNotify: (message: string, tone?: "success" | "error" | "warning" | "info") => void;
 };
 
-export default function KioskCredentialManager({ resourceId, resourceName, resourceVersion, active, lastUsedAt, onRefresh, onNotify }: Props) {
+export default function KioskCredentialManager({ resourceId, resourceName, resourceVersion, active, lastUsedAt, timeZone = "Asia/Jakarta", onRefresh, onNotify }: Props) {
   const [reason, setReason] = useState("");
   const [reviewing, setReviewing] = useState<CredentialCommand | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,7 +90,7 @@ export default function KioskCredentialManager({ resourceId, resourceName, resou
       <p className="sv3-kiosk-credential-copy">
         {active ? "The kiosk uses this secret to prove its device identity before receiving a LiveKit token." : "Issue a device-specific secret before connecting this kiosk to a live visit."}
       </p>
-      {lastUsedAt ? <p className="sv3-kiosk-last-used">Last authenticated <time dateTime={lastUsedAt}>{new Date(lastUsedAt).toLocaleString()}</time></p> : null}
+      {lastUsedAt ? <p className="sv3-kiosk-last-used">Last authenticated <time dateTime={lastUsedAt}>{formatDateValue(lastUsedAt, { dateStyle: "medium", timeStyle: "short" }, timeZone, "Date unavailable")}</time></p> : null}
 
       {oneTimeToken ? (
         <div className="sv3-kiosk-secret" aria-live="polite">

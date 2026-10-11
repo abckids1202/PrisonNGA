@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatDateValue } from "@/lib/date-format";
 
 type Closure = { id: string; startsAt: string; endsAt: string; reason: string; status: "ACTIVE" | "CANCELLED"; version: number; createdAt: string };
 
@@ -11,7 +12,7 @@ function errorMessage(code: string | undefined): string {
   return code || "The closure operation could not be completed.";
 }
 
-export default function FacilityClosures() {
+export default function FacilityClosures({ timeZone = "Asia/Jakarta" }: { timeZone?: string | null }) {
   const [closures, setClosures] = useState<Closure[]>([]);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
@@ -99,6 +100,6 @@ export default function FacilityClosures() {
     {error ? <p role="alert" className="sv3-policy-feedback error">{error}</p> : null}
     {message ? <p role="status" className="sv3-policy-feedback success">{message}</p> : null}
     <button className="sv3-button sv3-button-primary" onClick={() => void create()} disabled={busy || reason.trim().length < 8}>Create closure · requires supervisor step-up</button>
-    <section className="sv3-policy-history"><h3>Closure history</h3>{loading ? <p>Loading persisted closure windows…</p> : !closures.length ? <p>No closure windows are recorded for this facility.</p> : closures.map((closure) => <article key={closure.id}><div><span className="sv3-policy-version">{closure.status}</span><time dateTime={closure.startsAt}>{new Date(closure.startsAt).toLocaleString("en-ID")}</time><span> → {new Date(closure.endsAt).toLocaleString("en-ID")}</span></div><p>{closure.reason}</p>{closure.status === "ACTIVE" ? <button className="sv3-button" disabled={busy} onClick={() => void cancel(closure)}>Cancel closure</button> : null}</article>)}</section>
+    <section className="sv3-policy-history"><h3>Closure history</h3>{loading ? <p>Loading persisted closure windows…</p> : !closures.length ? <p>No closure windows are recorded for this facility.</p> : closures.map((closure) => <article key={closure.id}><div><span className="sv3-policy-version">{closure.status}</span><time dateTime={closure.startsAt}>{formatDateValue(closure.startsAt, { dateStyle: "medium", timeStyle: "short" }, timeZone, "Date unavailable")}</time><span> → {formatDateValue(closure.endsAt, { dateStyle: "medium", timeStyle: "short" }, timeZone, "Date unavailable")}</span></div><p>{closure.reason}</p>{closure.status === "ACTIVE" ? <button className="sv3-button" disabled={busy} onClick={() => void cancel(closure)}>Cancel closure</button> : null}</article>)}</section>
   </div>;
 }
