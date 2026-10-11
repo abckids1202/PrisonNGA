@@ -12,7 +12,9 @@ import LiveSessionsPage from "./features/live-session/LiveSessionsPage";
 import ResourcesPage from "./features/resources/ResourcesPage";
 import FacilityPage from "./features/management/FacilityPage";
 import { mapBackendAppointment, type Appointment, type AppointmentStatus, type CheckState, type ReadinessCheck, type WaitingRecord, type WaitingState } from "./features/control/model";
-import { formatDateValue, safeTimeZone } from "@/lib/date-format";
+import { formatDateValue as formatDateValueWithZone, safeTimeZone } from "@/lib/date-format";
+
+const formatDateValue = formatDateValueWithZone;
 
 type Mode = "operations" | "management";
 type RuntimeEnvironment = "development" | "staging" | "production" | "unknown";
@@ -308,15 +310,15 @@ export default function ControlApp() {
     if (page === "Waiting Room") return <WaitingRoomPage facilityState={facilityState} onNotify={notify} />;
     if (page === "Live Sessions") return <LiveSessionsPage timeZone={facilityTimezone} onNotify={notify} />;
     if (page === "Resources") return <ResourcesPage initialResourceId={resourceToFocus} timeZone={facilityTimezone} onNotify={notify} onReassign={reassignAppointment} />;
-    if (page === "Incidents") return <IncidentsPage onNotify={notify} />;
+    if (page === "Incidents") return <IncidentsPage timeZone={facilityTimezone} onNotify={notify} />;
     return <CommandCenterPage appointments={appointments} facilityName={facilityName} facilityTimezone={facilityTimezone} now={now} facilityState={facilityState} backendStatus={backendStatus} demoMode={runtimeEnvironment === "development"} simulationPaused={simulationPaused} simulationTick={simulationTick} onFacilityStateChange={changeFacilityState} onPause={() => setSimulationPaused((current) => !current)} onAdvance={() => { setSimulationTick((current) => current + 1); notify("Development simulation advanced locally; no facility record changed.", "info"); }} onNavigate={navigate} onOpenDrawer={openDrawer} onOpenAppointment={setSelectedAppointment} onOpenPopover={(kind) => setPopover((current) => current === kind ? null : kind)} onNotify={notify} popover={popover} />;
   }
 
   function renderManagementPage() {
     if (page === "People") return <PeoplePage timeZone={facilityTimezone} onNotify={notify} />;
     if (page === "Visitation") return <VisitationPage timeZone={facilityTimezone} />;
-    if (page === "Finance") return <FinancePage onNotify={notify} />;
-    if (page === "Compliance") return <CompliancePageInteractive onNotify={notify} />;
+    if (page === "Finance") return <FinancePage timeZone={facilityTimezone} onNotify={notify} />;
+    if (page === "Compliance") return <CompliancePageInteractive timeZone={facilityTimezone} onNotify={notify} />;
     if (page === "Facility") return <FacilityPage facilityState={facilityState} onFacilityStateChange={changeFacilityState} onOpenResource={openResource} onNotify={notify} />;
     return <RealAdministrationPage timeZone={facilityTimezone} onNotify={notify} />;
   }
@@ -798,7 +800,8 @@ function WaitingRoomPage({ facilityState, onNotify }: { facilityState: string; o
 type ResourceApiRow = { id: string; resource_type: "ROOM" | "DEVICE"; display_name: string; status: string; room_id?: string | null; health_state: string; last_heartbeat_at?: string | null; active_appointment_id?: string | null; waiting_version?: number | null; has_active_kiosk_credential?: number; kiosk_credential_last_used_at?: string | null; version: number };
 type IncidentApiRow = { id: string; incident_type: string; severity: string; status: string; title: string; description: string; appointment_id?: string | null; resource_id?: string | null; reporter_name?: string; assignee_name?: string | null; assigned_user_id?: string | null; resolution?: string | null; version: number; created_at: string };
 
-function IncidentsPage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function IncidentsPage({ timeZone, onNotify }: { timeZone: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const formatDateValue = (value: string | Date, options: Intl.DateTimeFormatOptions, _unusedTimeZone?: string, fallback = "—") => formatDateValueWithZone(value, options, timeZone, fallback);
   const [incidents, setIncidents] = useState<IncidentApiRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -937,7 +940,8 @@ type VerificationQueueCase = {
 };
 type VerificationEvidence = { id: string; original_filename: string; content_type: string; byte_size: number; status: string; created_at: string };
 
-function VerificationQueue({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function VerificationQueue({ timeZone, onNotify }: { timeZone: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const formatDateValue = (value: string | Date, options: Intl.DateTimeFormatOptions, _unusedTimeZone?: string, fallback = "—") => formatDateValueWithZone(value, options, timeZone, fallback);
   const [cases, setCases] = useState<VerificationQueueCase[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [evidence, setEvidence] = useState<VerificationEvidence[]>([]);
@@ -1157,7 +1161,7 @@ function PeoplePage({ timeZone, onNotify }: { timeZone: string; onNotify: (messa
     return () => { active = false; };
   }, [timeZone]);
 
-  if (tab === "Verifications") return <div className="sv6-people-page"><PageHeader eyebrow="Management · People" title="People" description="Review visitor identity and relationship evidence using facility-scoped records." /><div className="sv3-entity-tabs sv6-entity-tabs">{reviewTabs.map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>{item}</button>)}</div><VerificationQueue onNotify={onNotify} /></div>;
+  if (tab === "Verifications") return <div className="sv6-people-page"><PageHeader eyebrow="Management · People" title="People" description="Review visitor identity and relationship evidence using facility-scoped records." /><div className="sv3-entity-tabs sv6-entity-tabs">{reviewTabs.map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>{item}</button>)}</div><VerificationQueue timeZone={timeZone} onNotify={onNotify} /></div>;
   if (tab === "Prisoners") return <div className="sv6-people-page"><PageHeader eyebrow="Management · People" title="Prisoners" description="Manage facility-scoped prisoner records and explicit visitation eligibility." /><div className="sv3-entity-tabs sv6-entity-tabs">{reviewTabs.map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); setSearch(""); setStatusFilter("All statuses"); setVisitFilter("All visits"); }}>{item}</button>)}</div><PrisonerDirectory onNotify={onNotify} /></div>;
 
   const rows = tab === "Relationships" ? relationshipRows : visitorRows;
@@ -1195,7 +1199,8 @@ function VisitationPage({ timeZone }: { timeZone?: string | null }) {
 type FinanceRecord = { id: string; appointment_id?: string | null; entry_type?: string; amount?: number; created_at: string; visitor_name?: string; credit_quantity?: number; amount_minor?: number; currency?: string; status?: string };
 type FinancePayload = { summary: { credits_purchased?: number; credits_consumed?: number; credits_reserved?: number; refund_cases?: number; pending_payments?: number; settled_amount_minor?: number; last_ledger_activity?: string | null }; ledger: FinanceRecord[]; payments: FinanceRecord[]; providerConfigured: boolean; reconciliation: { available: boolean; workerConfigured?: boolean; issueCount?: number; issues?: Array<{ issue_type: string; payment_intent_id: string | null; provider_event_id: string | null; detail: string }>; reason?: string } };
 
-function FinancePage({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function FinancePage({ timeZone, onNotify }: { timeZone: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const formatDateValue = (value: string | Date, options: Intl.DateTimeFormatOptions, _unusedTimeZone?: string, fallback = "—") => formatDateValueWithZone(value, options, timeZone, fallback);
   const [tab, setTab] = useState("Overview");
   const [data, setData] = useState<FinancePayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1247,7 +1252,8 @@ function ControlCheck({ label, detail, warning = false }: { label: string; detai
   return <div className={`sv3-control-check ${warning ? "warning" : ""}`}><span>{warning ? "!" : "✓"}</span><div><strong>{label}</strong><small>{detail}</small></div><b>{warning ? "Review" : "Passed"}</b></div>;
 }
 
-function CompliancePageInteractive({ onNotify }: { onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function CompliancePageInteractive({ timeZone, onNotify }: { timeZone: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const formatDateValue = (value: string | Date, options: Intl.DateTimeFormatOptions, _unusedTimeZone?: string, fallback = "—") => formatDateValueWithZone(value, options, timeZone, fallback);
   const [tab, setTab] = useState("Audit");
   const [events, setEvents] = useState<Array<{ createdAt: string; actionType: string; actorRole?: string | null; entityId?: string | null; reason?: string | null; correlationId: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -1291,12 +1297,13 @@ function CompliancePageInteractive({ onNotify }: { onNotify: (message: string, t
     }
   }
 
-  return <><PageHeader eyebrow="Management · Compliance" title="Compliance" description="Investigate the record of what changed, who accessed sensitive material, and which reports are ready." actions={<Button variant="primary" disabled={!events.length || exporting} onClick={() => void exportAudit()}>{exporting ? "Preparing export…" : "Export scoped audit CSV"}</Button>} /><div className="sv3-compliance-tabs">{["Audit", "Recording Access", "Reports", "Security Events"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>{tab === "Audit" ? <section className="sv3-audit-layout"><div className="sv3-audit-stream"><div className="sv3-audit-head"><div><span className="sv3-eyebrow">Chronological investigation trail</span><h2>Facility audit</h2></div><span className="sv3-toolbar-meta">{events.length} persisted events</span></div>{loading ? <EmptyState title="Loading audit records" body="Reading the facility-scoped append-only audit stream." /> : error ? <EmptyState title="Audit records unavailable" body={error} /> : events.length ? events.map((event) => <button className="sv3-audit-event" key={event.correlationId} onClick={() => onNotify(`${event.correlationId} is a persisted audit correlation.`)}><time>{formatDateValue(event.createdAt, { dateStyle: "medium", timeStyle: "short" }, undefined, "Date unavailable")}</time><span className="sv3-audit-dot" /><div><strong>{event.actionType}</strong><small>{event.actorRole || "System"} · {event.entityId || "Facility"}</small><p>{event.reason || "Recorded action"}</p><em>Correlation {event.correlationId}</em></div><b>›</b></button>) : <EmptyState title="No audit events recorded" body="No persisted events exist in the current facility scope." />}</div><aside className="sv3-audit-side"><div className="sv3-surface"><span className="sv3-eyebrow">Export controls</span><h2>Auditable by design</h2><p>Exports require facility scope, the audit export permission, and step-up authentication.</p><Button variant="primary" disabled={!events.length || exporting} onClick={() => void exportAudit()}>{exporting ? "Preparing…" : "Download CSV"}</Button></div></aside></section> : <ComplianceTab tab={tab} onNotify={onNotify} />}</>;
+  return <><PageHeader eyebrow="Management · Compliance" title="Compliance" description="Investigate the record of what changed, who accessed sensitive material, and which reports are ready." actions={<Button variant="primary" disabled={!events.length || exporting} onClick={() => void exportAudit()}>{exporting ? "Preparing export…" : "Export scoped audit CSV"}</Button>} /><div className="sv3-compliance-tabs">{["Audit", "Recording Access", "Reports", "Security Events"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>{tab === "Audit" ? <section className="sv3-audit-layout"><div className="sv3-audit-stream"><div className="sv3-audit-head"><div><span className="sv3-eyebrow">Chronological investigation trail</span><h2>Facility audit</h2></div><span className="sv3-toolbar-meta">{events.length} persisted events</span></div>{loading ? <EmptyState title="Loading audit records" body="Reading the facility-scoped append-only audit stream." /> : error ? <EmptyState title="Audit records unavailable" body={error} /> : events.length ? events.map((event) => <button className="sv3-audit-event" key={event.correlationId} onClick={() => onNotify(`${event.correlationId} is a persisted audit correlation.`)}><time>{formatDateValue(event.createdAt, { dateStyle: "medium", timeStyle: "short" }, undefined, "Date unavailable")}</time><span className="sv3-audit-dot" /><div><strong>{event.actionType}</strong><small>{event.actorRole || "System"} · {event.entityId || "Facility"}</small><p>{event.reason || "Recorded action"}</p><em>Correlation {event.correlationId}</em></div><b>›</b></button>) : <EmptyState title="No audit events recorded" body="No persisted events exist in the current facility scope." />}</div><aside className="sv3-audit-side"><div className="sv3-surface"><span className="sv3-eyebrow">Export controls</span><h2>Auditable by design</h2><p>Exports require facility scope, the audit export permission, and step-up authentication.</p><Button variant="primary" disabled={!events.length || exporting} onClick={() => void exportAudit()}>{exporting ? "Preparing…" : "Download CSV"}</Button></div></aside></section> : <ComplianceTab timeZone={timeZone} tab={tab} onNotify={onNotify} />}</>;
 }
 
 type ComplianceSecurityEvent = { id: string; eventType: string; severity: string; requestId: string | null; createdAt: string; metadata?: Record<string, unknown>; linkedIncidentId?: string | null };
 
-function ComplianceTab({ tab, onNotify }: { tab: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+function ComplianceTab({ timeZone, tab, onNotify }: { timeZone: string; tab: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+  const formatDateValue = (value: string | Date, options: Intl.DateTimeFormatOptions, _unusedTimeZone?: string, fallback = "—") => formatDateValueWithZone(value, options, timeZone, fallback);
   const [securityEvents, setSecurityEvents] = useState<ComplianceSecurityEvent[]>([]);
   const [auditCount, setAuditCount] = useState<number | null>(null);
   const [financeSummary, setFinanceSummary] = useState<{ credits_purchased?: number; credits_consumed?: number; credits_reserved?: number; refund_cases?: number } | null>(null);
