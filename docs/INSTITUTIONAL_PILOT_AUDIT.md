@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `05df3c2` (`fix: bind session tokens to room provider`).
+Latest verified code commit: `999c1c7` (`fix: bind live-session cleanup to provider`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The local release verifier passed after the reschedule handoff fix: 546 application
 tests, 17 browser tests, fresh migration verification, a disposable backup/restore
@@ -12,8 +12,8 @@ audit all passed.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 548 application tests passing across
-544 subtests; the
+The current release verifier reports 550 passing test cases across 546 test
+files/subtests, plus 17 browser tests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -125,6 +125,7 @@ The current repository already includes:
 - Visitor phone verification now reports success only when the OTP, user profile, visitor profile, audit, and outbox writes all commit in the same transaction.
 - Live-session creation now persists the selected video provider (`local_test` in explicit development or `livekit` elsewhere) instead of labeling every session as LiveKit; a provider-identity regression test guards the session record against diverging from the room adapter actually used.
 - Visitor, kiosk, and staff-observer token issuance now fails closed when the persisted session provider differs from the configured provider, preventing a credential from being minted against the wrong room backend after configuration drift.
+- Staff-triggered and scheduled Live Session cleanup now apply the same provider binding guard before closing a room; provider drift creates a durable reconciliation failure instead of closing through the wrong adapter.
 - The release verifier now runs a disposable local backup/restore drill and validates restored schema, foreign-key, credit-ledger, and audit integrity; this is local recovery evidence only and does not replace a remote D1/R2 disaster-recovery exercise.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Visitor checkout and staff refund routes independently enforce those tariff/refund approval attestations outside development, so bypassing the readiness endpoint cannot enable unapproved money movement.
