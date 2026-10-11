@@ -769,20 +769,23 @@ async function recordScheduledJobFailure(env: Env, name: string, error: unknown)
     // Scheduler failures are global runtime events, but staff still need to
     // see them inside the facility-scoped operations feed. Emit one event per
     // facility and suppress repeated copies of the same job for 15 minutes.
-    await env.DB.prepare(`INSERT INTO security_events
-      (id, facility_id, event_type, severity, request_id, metadata, created_at)
-      SELECT ?, f.id, 'SCHEDULED_JOB_FAILED', 'CRITICAL', ?, ?, ?
-      FROM facilities f
-      WHERE NOT EXISTS (
-        SELECT 1 FROM security_events se
-        WHERE se.facility_id = f.id
-          AND se.event_type = 'SCHEDULED_JOB_FAILED'
-          AND CASE WHEN json_valid(se.metadata) = 1
-            THEN json_extract(se.metadata, '$.jobName')
-            ELSE NULL
-          END = ?
-          AND julianday(se.created_at) >= julianday('now', '-15 minutes')
-      )`).bind(crypto.randomUUID(), correlationId, metadata, new Date().toISOString(), name).run();
+    const facilities = await env.DB.prepare("SELECT id FROM facilities").all<{ id: string }>();
+    const now = new Date().toISOString();
+    if (facilities.results.length) {
+      await env.DB.batch(facilities.results.map((facility) => env.DB.prepare(`INSERT INTO security_events
+        (id, facility_id, event_type, severity, request_id, metadata, created_at)
+        SELECT ?, ?, 'SCHEDULED_JOB_FAILED', 'CRITICAL', ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM security_events se
+          WHERE se.facility_id = ?
+            AND se.event_type = 'SCHEDULED_JOB_FAILED'
+            AND CASE WHEN json_valid(se.metadata) = 1
+              THEN json_extract(se.metadata, '$.jobName')
+              ELSE NULL
+            END = ?
+            AND julianday(se.created_at) >= julianday('now', '-15 minutes')
+        )`).bind(crypto.randomUUID(), facility.id, correlationId, metadata, now, facility.id, name)));
+    }
   } catch (persistError) {
     // D1 failure must never hide the original scheduler error. The platform
     // logging pipeline remains the fallback signal for a database outage.
