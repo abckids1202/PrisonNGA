@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `352b527` (`fix: reject contradictory verification decisions`).
+Latest verified code commit: `a87ca7a` (`fix: reject contradictory live-session finalization`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The local release verifier passed after the reschedule handoff fix: 545 application
 tests, 17 browser tests, fresh migration verification, a disposable backup/restore
@@ -111,6 +111,7 @@ The current repository already includes:
 - Automated server tests and browser smoke tests. Current validation baseline is 545 application tests across 541 subtests and 17 browser tests passing; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - Notification delivery now fails closed outside development when no outbound provider is configured; staging and production still require real provider delivery, callbacks and operational replay evidence.
 - Staff verification review now rejects a contradictory decision after a case is already approved or rejected; only a replay of the same terminal decision is idempotent.
+- Staff live-session finalization now rejects a contradictory end mode after a session is already ended, terminated, or cancelled; same-mode retries remain idempotent after settlement is verified.
 - The release verifier now runs a disposable local backup/restore drill and validates restored schema, foreign-key, credit-ledger, and audit integrity; this is local recovery evidence only and does not replace a remote D1/R2 disaster-recovery exercise.
 - Production readiness now requires explicit `SECUREVISIT_TARIFF_APPROVAL=approved` and `SECUREVISIT_REFUND_POLICY_APPROVAL=approved` attestations in addition to the existing security, privacy, provider, resilience, and operational gates; a configured price alone cannot enable production checkout.
 - Visitor checkout and staff refund routes independently enforce those tariff/refund approval attestations outside development, so bypassing the readiness endpoint cannot enable unapproved money movement.
