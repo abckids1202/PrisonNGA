@@ -63,3 +63,11 @@ test("visitor visit list cancellation reuses its idempotency key for retries", a
   assert.match(source, /"Idempotency-Key": cancelKeys\.current\[key\]/);
 });
 
+test("visitor visit list cancellation uses an accessible confirmation dialog", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /aria-labelledby="visitor-list-cancel-title"/);
+  assert.match(source, /This visit will be marked as <strong>Cancelled by visitor<\/strong>/);
+  assert.doesNotMatch(source, /window\.confirm\("Cancel this visit request/);
+});
+

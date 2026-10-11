@@ -427,6 +427,8 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
   const [selectedSlot, setSelectedSlot] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [cancelTarget, setCancelTarget] = useState<VisitorAppointmentRecord | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
   const requestKey = useRef<string | null>(null);
   const cancelKeys = useRef<Record<string, string>>({});
   const approvedRelationships = relationships.filter((item) => item.status === "APPROVED");
@@ -544,17 +546,21 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
   }
 
   async function cancelVisit(appointment: VisitorAppointmentRecord) {
-    if (!window.confirm("Cancel this visit request? The facility will see that it was cancelled.")) return;
+    if (cancelBusy) return;
+    setCancelBusy(true);
     try {
       const key = `${appointment.id}:${appointment.version}`;
       cancelKeys.current[key] ||= crypto.randomUUID();
       const response = await fetch("/api/visitor/appointments", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", "Idempotency-Key": cancelKeys.current[key] }, body: JSON.stringify({ appointmentId: appointment.id, action: "cancel", expectedVersion: appointment.version }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "This visit could not be cancelled.");
+      setCancelTarget(null);
       await refreshAppointments();
       onAction("Your visit request has been cancelled.", "success");
     } catch (error) {
       onAction(error instanceof Error ? error.message.replaceAll("_", " ") : "This visit could not be cancelled.", "info");
+    } finally {
+      setCancelBusy(false);
     }
   }
 
@@ -574,7 +580,8 @@ function VisitorVisits({ onAction, onNavigate }: { onAction: (message: string, t
         <div className="sv4-request-actions"><button type="button" className="sv11-back-button" onClick={closeBooking} disabled={submitting}>Not now</button><button className="sv4-button sv4-button-primary" disabled={submitting || availabilityLoading || !selectedSlot || (!rescheduleTarget && availableCredits < 1)}>{submitting ? "Sending request…" : rescheduleTarget ? "Request new time" : "Send visit request"}</button></div>
       </form>
     </section>}
-    {loading ? <div className="sv4-empty-inline">Loading your visits…</div> : visibleAppointments.length ? <div className="sv4-appointment-list">{visibleAppointments.map((appointment) => <article className="sv4-appointment-card" key={appointment.id}><div className="sv4-appointment-date"><strong>{formatDateValue(appointment.requested_start, { day: "2-digit" }, appointment.timezone, "—")}</strong><span>{formatDateValue(appointment.requested_start, { month: "short" }, appointment.timezone, "—")}</span></div><div className="sv4-appointment-copy"><div className="sv4-appointment-title"><h2>{appointment.prisoner_name}</h2><VisitorStatus tone={["APPROVED", "WAITING", "IN_PROGRESS"].includes(appointment.status) ? "green" : ["REJECTED", "CANCELLED_BY_VISITOR", "CANCELLED_BY_FACILITY", "FAILED"].includes(appointment.status) ? "blue" : "orange"}>{visitorVisitStatus(appointment.status)}</VisitorStatus></div><p>{visitorVisitTime(appointment.requested_start, appointment.timezone)} · {Math.round((Date.parse(appointment.requested_end) - Date.parse(appointment.requested_start)) / 60000)} minutes</p><small>Request ID · {appointment.id}</small></div><div className="sv4-appointment-actions"><Link className="muted" href={`/visitor/visits/${encodeURIComponent(appointment.id)}`}>View details</Link>{["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status) && <button className="muted" onClick={() => openReschedule(appointment)}>Change time</button>}{["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(appointment.status) && <button className="muted" onClick={() => void cancelVisit(appointment)}>Cancel</button>}</div></article>)}</div> : <div className="sv4-empty-state"><span>{view === "History" ? "◷" : view === "Requests" ? "↗" : "＋"}</span><h2>{view === "History" ? "No past visits yet" : view === "Requests" ? "No requests in review" : "Nothing scheduled yet"}</h2><p>{view === "History" ? "Completed and cancelled visits will appear here." : view === "Requests" ? "New requests and facility decisions will appear here." : "Start with one of your approved connections to find a time."}</p>{view === "Upcoming" && <VisitorButton primary onClick={openBooking}>Request a visit <span>→</span></VisitorButton>}</div>}
+    {loading ? <div className="sv4-empty-inline">Loading your visits…</div> : visibleAppointments.length ? <div className="sv4-appointment-list">{visibleAppointments.map((appointment) => <article className="sv4-appointment-card" key={appointment.id}><div className="sv4-appointment-date"><strong>{formatDateValue(appointment.requested_start, { day: "2-digit" }, appointment.timezone, "—")}</strong><span>{formatDateValue(appointment.requested_start, { month: "short" }, appointment.timezone, "—")}</span></div><div className="sv4-appointment-copy"><div className="sv4-appointment-title"><h2>{appointment.prisoner_name}</h2><VisitorStatus tone={["APPROVED", "WAITING", "IN_PROGRESS"].includes(appointment.status) ? "green" : ["REJECTED", "CANCELLED_BY_VISITOR", "CANCELLED_BY_FACILITY", "FAILED"].includes(appointment.status) ? "blue" : "orange"}>{visitorVisitStatus(appointment.status)}</VisitorStatus></div><p>{visitorVisitTime(appointment.requested_start, appointment.timezone)} · {Math.round((Date.parse(appointment.requested_end) - Date.parse(appointment.requested_start)) / 60000)} minutes</p><small>Request ID · {appointment.id}</small></div><div className="sv4-appointment-actions"><Link className="muted" href={`/visitor/visits/${encodeURIComponent(appointment.id)}`}>View details</Link>{["SUBMITTED", "UNDER_REVIEW"].includes(appointment.status) && <button className="muted" onClick={() => openReschedule(appointment)}>Change time</button>}{["SUBMITTED", "UNDER_REVIEW", "APPROVED", "WAITING"].includes(appointment.status) && <button className="muted" onClick={() => setCancelTarget(appointment)}>Cancel</button>}</div></article>)}</div> : <div className="sv4-empty-state"><span>{view === "History" ? "◷" : view === "Requests" ? "↗" : "＋"}</span><h2>{view === "History" ? "No past visits yet" : view === "Requests" ? "No requests in review" : "Nothing scheduled yet"}</h2><p>{view === "History" ? "Completed and cancelled visits will appear here." : view === "Requests" ? "New requests and facility decisions will appear here." : "Start with one of your approved connections to find a time."}</p>{view === "Upcoming" && <VisitorButton primary onClick={openBooking}>Request a visit <span>→</span></VisitorButton>}</div>}
+    {cancelTarget && <div className="sv5-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !cancelBusy) setCancelTarget(null); }}><section className="sv5-info-dialog" role="dialog" aria-modal="true" aria-labelledby="visitor-list-cancel-title"><button type="button" className="sv5-dialog-close" onClick={() => setCancelTarget(null)} disabled={cancelBusy} aria-label="Close cancellation dialog">×</button><p className="sv4-kicker">Manage your visit</p><h2 id="visitor-list-cancel-title">Cancel this visit?</h2><div className="sv5-dialog-body"><p>This visit will be marked as <strong>Cancelled by visitor</strong>. Any reserved credit and facility resources will be handled by the saved cancellation policy.</p><div className="sv5-dialog-fact"><span>Visit</span><strong>{cancelTarget.prisoner_name}</strong></div><div className="sv5-dialog-fact"><span>Scheduled</span><strong>{visitorVisitTime(cancelTarget.requested_start, cancelTarget.timezone)}</strong></div></div><div className="sv5-dialog-actions"><button type="button" className="sv4-button" onClick={() => setCancelTarget(null)} disabled={cancelBusy}>Keep visit</button><button type="button" className="sv4-button sv4-button-primary" onClick={() => void cancelVisit(cancelTarget)} disabled={cancelBusy}>{cancelBusy ? "Cancelling…" : "Cancel visit"}</button></div></section></div>}
   </div>;
 }
 
