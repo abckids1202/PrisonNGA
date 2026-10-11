@@ -24,7 +24,10 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const config = await getVideoConfig();
-    if (!config.configured || !config.apiKey || !config.apiSecret) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
+    // The callback is only valid for real LiveKit sessions. The development
+    // local transport is deliberately not a webhook source and must never be
+    // allowed to mutate a persisted visit through this boundary.
+    if (config.provider !== "livekit" || !config.configured || !config.apiKey || !config.apiSecret) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
     const d1 = await getD1();
     // Throttle before reading/parsing untrusted provider payloads so invalid
     // or oversized webhook traffic cannot consume verification work without
@@ -41,7 +44,7 @@ export async function POST(request: Request) {
       (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1) AS kiosk_resource_id
       FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
       LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
-      WHERE vs.provider_room_name = ?`).bind(roomName).first<{ id: string; appointment_id: string; facility_id: string; status: string; version: number; actual_started_at: string | null; termination_reason: string | null; appointment_status: string; appointment_version: number; visitor_user_id: string; credit_account_id: string | null; visitor_joined: number; facility_joined: number; kiosk_resource_id: string | null }>();
+      WHERE vs.provider_room_name = ? AND vs.provider = ?`).bind(roomName, config.provider).first<{ id: string; appointment_id: string; facility_id: string; status: string; version: number; actual_started_at: string | null; termination_reason: string | null; appointment_status: string; appointment_version: number; visitor_user_id: string; credit_account_id: string | null; visitor_joined: number; facility_joined: number; kiosk_resource_id: string | null }>();
     if (!session) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
     const now = new Date().toISOString();
     const eventId = typeof event.id === "string" ? event.id.trim() : "";
