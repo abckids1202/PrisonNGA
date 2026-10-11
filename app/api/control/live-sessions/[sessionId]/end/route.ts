@@ -42,6 +42,12 @@ export async function POST(request: Request, context: RouteContext) {
       .first<{ status: string; version: number; visitor_user_id: string; credit_account_id: string | null }>();
     if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
 
+    const requestedMode = body.mode as EndMode | undefined;
+    if ((session.status === "ENDED" && requestedMode === "terminate")
+      || (session.status === "TERMINATED" && requestedMode === "normal")
+      || (session.status === "CANCELLED" && requestedMode !== undefined)) {
+      throw new SecurityError("SESSION_ALREADY_FINALIZED", 409);
+    }
     if (["ENDED", "TERMINATED", "CANCELLED"].includes(session.status)) {
       if (session.status === "CANCELLED") return finish({ sessionId, status: session.status, idempotent: true });
       const expectedStatus = session.status === "ENDED" ? "COMPLETED" : "TECHNICAL_FAILURE";
@@ -59,7 +65,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (appointment.status !== "IN_PROGRESS") throw new SecurityError("APPOINTMENT_NOT_IN_PROGRESS", 409);
     const mode: EndMode = session.status === "ENDING"
       ? session.termination_reason?.startsWith("STAFF_TERMINATE:") ? "terminate" : "normal"
-      : (body.mode as EndMode | undefined) || "normal";
+      : requestedMode || "normal";
     if (session.status === "ENDING" && body.mode !== undefined && body.mode !== mode) throw new SecurityError("SESSION_END_ALREADY_REQUESTED", 409);
     if (!["CONNECTING", "ACTIVE", "RECONNECTING", "ENDING"].includes(session.status)) throw new SecurityError("SESSION_NOT_ENDABLE", 409);
     if (mode === "normal" && !session.actual_started_at) throw new SecurityError("VISIT_NOT_STARTED_MUST_BE_TERMINATED", 409);
