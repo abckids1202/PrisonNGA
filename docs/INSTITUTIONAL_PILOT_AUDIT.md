@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `d565833` (`fix: persist scheduled job failures`).
+Latest verified repository commit: `010f3b9` (`fix: isolate scheduler task construction`).
 The local release verifier passed at this baseline with 520 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
@@ -109,7 +109,7 @@ The current repository already includes:
 - A canonical production operations runbook now covers database/object recovery, provider outages, kiosk recovery, identity incidents, lockdown, rollback, secret rotation, monitoring, and the required pilot exercises. It is a draft operational artifact until the named owners approve and execute the exercises.
 - `npm run audit:pilot` now verifies that the production operations runbook, pilot evidence register, and route-security matrix are present, so release documentation cannot silently disappear from a deployment baseline.
 - Shared application security headers now include a configured custom LiveKit host in local/Vinext mode, matching the deployed Worker CSP behavior; the default allow-list remains restricted to approved LiveKit schemes and hosts.
-- Scheduled job failures now create deduplicated, facility-scoped `SCHEDULED_JOB_FAILED` critical security events with safe error text and correlation IDs, while retaining platform-log fallback when D1 cannot persist the alarm.
+- Scheduled job failures now create deduplicated, facility-scoped `SCHEDULED_JOB_FAILED` critical security events with safe error text and correlation IDs; lazy task factories also capture synchronous setup failures, while retaining platform-log fallback when D1 cannot persist the alarm.
 
 ## What remains incomplete or unproven
 
