@@ -23,9 +23,14 @@ export type LegalHoldCreateWrite = {
 export function createLegalHoldStatements(d1: D1Database, input: LegalHoldCreateWrite, event: DomainEventInput): D1PreparedStatement[] {
   return [
     d1.prepare(`INSERT INTO legal_holds (id, facility_id, entity_type, entity_id, reason, status, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)`)
-      .bind(input.id, input.facilityId, input.entityType, input.entityId, input.reason, input.actorUserId, input.now, input.now),
-    d1.prepare(`UPDATE evidence_documents SET legal_hold = 1, updated_at = ? WHERE facility_id = ?
+      SELECT ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM evidence_documents
+        WHERE facility_id = ? AND status = 'PENDING_DELETION'
+          AND ((? = 'verification_case' AND verification_case_id = ?) OR (? = 'evidence_document' AND id = ?))
+      )`)
+      .bind(input.id, input.facilityId, input.entityType, input.entityId, input.reason, input.actorUserId, input.now, input.now, input.facilityId, input.entityType, input.entityId, input.entityType, input.entityId),
+    d1.prepare(`UPDATE evidence_documents SET legal_hold = 1, updated_at = ? WHERE facility_id = ? AND status <> 'PENDING_DELETION'
       AND ((? = 'verification_case' AND verification_case_id = ?) OR (? = 'evidence_document' AND id = ?))`)
       .bind(input.now, input.facilityId, input.entityType, input.entityId, input.entityType, input.entityId),
     ...auditAndOutboxStatements(d1, event, {

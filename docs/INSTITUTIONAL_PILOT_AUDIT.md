@@ -6,14 +6,14 @@ Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker +
 Latest verified repository commit: `cc8b8de` (`docs: record dynamic timezone labels`).
 The code baseline for that verification is `787cd88` (`fix: derive appointment timezone labels`).
 The local release verifier passed before this follow-up; after the notification
-race fix, the focused checks and full quick suite pass with 525 application tests, 17
+and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
 browser tests, fresh migration verification, a disposable backup/restore drill,
 typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 525 application tests passing across
-521 subtests; the
+The current quick test baseline now reports 527 application tests passing across
+523 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -109,6 +109,7 @@ The current repository already includes:
 - `SENT` callbacks remain on the accepted status allow-list, so provider acknowledgement is persisted without being rejected or misrepresented as delivery completion.
 - Evidence-retention deletion failures now create a deduplicated, facility-scoped critical privacy alarm with the object key, retention deadline, safe failure reason, correlation ID, and an explicit staff-review/deletion-unconfirmed state.
 - Evidence-retention recovery now distinguishes storage deletion from database finalization: if the object was deleted but the D1 transition did not commit, the row remains `PENDING_DELETION` for retry instead of being restored to `AVAILABLE` without an object.
+- Legal-hold creation now refuses evidence already claimed as `PENDING_DELETION`, and the evidence flag update has the same guard, preventing a hold from racing object deletion.
 - A route-by-route security review index is maintained in [`docs/ROUTE_SECURITY_MATRIX.md`](./ROUTE_SECURITY_MATRIX.md), with separate source, test, provider and staging evidence requirements.
 - A canonical production operations runbook now covers database/object recovery, provider outages, kiosk recovery, identity incidents, lockdown, rollback, secret rotation, monitoring, and the required pilot exercises. It is a draft operational artifact until the named owners approve and execute the exercises.
 - `npm run audit:pilot` now verifies that the production operations runbook, pilot evidence register, and route-security matrix are present, so release documentation cannot silently disappear from a deployment baseline.

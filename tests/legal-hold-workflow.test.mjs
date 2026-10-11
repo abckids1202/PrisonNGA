@@ -8,12 +8,12 @@ class D1 {
   constructor() {
     this.sqlite.exec(`
       CREATE TABLE verification_cases (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL);
-      CREATE TABLE evidence_documents (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, verification_case_id TEXT NOT NULL, legal_hold INTEGER NOT NULL DEFAULT 0, updated_at TEXT);
+      CREATE TABLE evidence_documents (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, verification_case_id TEXT NOT NULL, legal_hold INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'AVAILABLE', updated_at TEXT);
       CREATE TABLE legal_holds (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL, created_by TEXT NOT NULL, released_by TEXT, released_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
       INSERT INTO verification_cases VALUES ('case-1', 'facility-1');
-      INSERT INTO evidence_documents VALUES ('evidence-1', 'facility-1', 'case-1', 0, 'before');
+      INSERT INTO evidence_documents VALUES ('evidence-1', 'facility-1', 'case-1', 0, 'AVAILABLE', 'before');
     `);
   }
   prepare(sql) {
@@ -94,5 +94,16 @@ test("legal-hold release rolls back both hold state and evidence flags when audi
     assert.equal(d1.sqlite.prepare("SELECT status FROM legal_holds WHERE id = 'hold-1'").get().status, "ACTIVE");
     assert.equal(d1.sqlite.prepare("SELECT legal_hold FROM evidence_documents WHERE id = 'evidence-1'").get().legal_hold, 1);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
+  } finally { d1.close(); }
+});
+
+test("legal-hold creation cannot race a pending evidence deletion", async () => {
+  const d1 = new D1();
+  try {
+    d1.sqlite.exec("UPDATE evidence_documents SET status = 'PENDING_DELETION' WHERE id = 'evidence-1';");
+    const results = await create(d1, "hold-pending");
+    assert.equal(results[0].meta.changes, 0);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM legal_holds").get().count, 0);
+    assert.equal(d1.sqlite.prepare("SELECT legal_hold FROM evidence_documents WHERE id = 'evidence-1'").get().legal_hold, 0);
   } finally { d1.close(); }
 });
