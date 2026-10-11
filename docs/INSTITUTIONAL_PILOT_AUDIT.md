@@ -22,6 +22,16 @@ development environment. The report identifies the expected missing deployment
 inputs `PUBLIC_APP_URL` and `D1_DATABASE_ID`, and warns that the development
 hash-salt fallback is active. No secret values are written to the report.
 
+Fresh audit snapshot — 2026-10-11: strict readiness still reports
+`readyForPilot: false`. The local development checks pass because development
+adapters are intentionally allowed, but this must not be interpreted as pilot
+evidence. Before staging can be accepted, the deployment must provide the real
+HTTPS domain and remote D1 identity, then produce evidence for email/SMS,
+institutional OIDC and SAML with MFA, payment checkout and reconciliation,
+protected R2 and malware scanning, kiosk enrollment, three-party LiveKit,
+remote backup/restore, WAF/rate limits, monitoring and runbooks, independent
+security review, and Indonesian privacy/correctional approval.
+
 ## Executive verdict
 
 SecureVisit is a strong persisted workflow prototype with meaningful security and failure-handling foundations. It is not yet an institutional production system. The remaining risk is concentrated in external integrations, multi-party staging proof, operational administration, and release assurance rather than in the basic page designs.
