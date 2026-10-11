@@ -20,7 +20,12 @@ export async function getNotificationDelivery(channel?: "EMAIL" | "SMS"): Promis
     throw new Error("NOTIFICATION_DELIVERY_NOT_CONFIGURED");
   }
   const value = configured.toLowerCase();
-  if (value === "in_app" || value === "webhook" || value === "resend" || value === "twilio") return value;
+  if (value === "in_app") {
+    const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
+    if (environment === "development") return value;
+    throw new Error("NOTIFICATION_DELIVERY_NOT_CONFIGURED");
+  }
+  if (value === "webhook" || value === "resend" || value === "twilio") return value;
   throw new Error("NOTIFICATION_DELIVERY_INVALID");
 }
 

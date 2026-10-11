@@ -192,3 +192,16 @@ test("notification delivery fails closed outside development when no provider is
     Object.assign(process.env, previous);
   }
 });
+
+test("notification delivery rejects an in-app adapter outside development", async () => {
+  const previous = { ...process.env };
+  Object.assign(process.env, { SECUREVISIT_ENVIRONMENT: "production", NOTIFICATION_DELIVERY: "in_app" });
+  try {
+    await assert.rejects(() => deliverNotification({ notificationId: "notification-in-app", email: "visitor@example.test", phone: null, template: "TEST", title: "Test", body: "Test", payload: {} }), /NOTIFICATION_DELIVERY_NOT_CONFIGURED/);
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previous)) delete process.env[key];
+    }
+    Object.assign(process.env, previous);
+  }
+});
