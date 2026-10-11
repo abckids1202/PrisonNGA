@@ -1,6 +1,6 @@
 import { getD1 } from "../../../../db/runtime";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
-import { createLiveKitProvider, createProviderRoomName } from "../../../../lib/server/video/provider";
+import { createLiveKitProvider, createProviderRoomName, getVideoConfig } from "../../../../lib/server/video/provider";
 import { operationalLog } from "../../../../lib/server/observability";
 import { canTransitionWaitingRoom } from "../../../../lib/server/workflow";
 import { evaluateWaitingRoomReadiness, isRecentPresence } from "../../../../lib/server/waiting-room-readiness";
@@ -247,11 +247,12 @@ export async function POST(request: Request) {
     const restrictionState = readiness?.checks.restriction || String(current.restriction_state || "pending");
     const nextAppointmentStatus = command === "start_visit" ? "IN_PROGRESS" : command === "cancel_visit" ? "CANCELLED_BY_FACILITY" : command === "admit_visitor" ? "WAITING" : String(current.appointment_status);
     const correlationId = crypto.randomUUID();
-    let newSession: { id: string; roomName: string; roomSid: string | null } | null = null;
+    let newSession: { id: string; provider: "livekit" | "local_test"; roomName: string; roomSid: string | null } | null = null;
     if (command === "start_visit" && !current.session_id) {
       try {
+        const videoConfig = await getVideoConfig();
         const provider = await createLiveKitProvider();
-        newSession = { id: crypto.randomUUID(), ...(await provider.createSession(createProviderRoomName())) };
+        newSession = { id: crypto.randomUUID(), provider: videoConfig.provider, ...(await provider.createSession(createProviderRoomName())) };
         roomCleanup = { provider, name: newSession.roomName };
       } catch (error) {
         const providerFailure = error instanceof Error ? error.message : "VIDEO_PROVIDER_START_FAILED";
@@ -303,7 +304,7 @@ export async function POST(request: Request) {
     if (newSession) {
       statements.push(d1.prepare(`INSERT INTO visit_sessions (id, appointment_id, facility_id, provider, provider_room_name, provider_room_sid, status, authorized_start_at, authorized_end_at, actual_started_at, created_by, recording_policy, recording_status, version, created_at, updated_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(newSession.id, body.appointmentId, authorization.facilityId, "livekit", newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), null, authorization.userId, "OFF", "NOT_RECORDED", 1, now, now));
+        .bind(newSession.id, body.appointmentId, authorization.facilityId, newSession.provider, newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), null, authorization.userId, "OFF", "NOT_RECORDED", 1, now, now));
       statements.push(d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), newSession.id, "SESSION_CREATED", "SECUREVISIT", "FACILITY", JSON.stringify({ appointmentId: body.appointmentId }), correlationId, now));
