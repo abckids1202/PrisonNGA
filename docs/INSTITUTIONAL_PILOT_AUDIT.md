@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `f175426` (`fix: make local live session transport explicit`).
+Latest verified repository commit: `e0f62e9` (`feat: label visitor authentication devices`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, and local Live Session transport fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
@@ -12,8 +12,8 @@ typecheck, lint, production build, and a zero-vulnerability dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current quick test baseline now reports 532 application tests passing across
-528 subtests; the
+The current quick test baseline now reports 534 application tests passing across
+530 subtests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
@@ -155,6 +155,7 @@ The current repository already includes:
 - The scheduled worker now expires only abandoned pre-checkout payment intents after a bounded window with optimistic concurrency, audit, outbox notification and no effect on provider-created checkouts.
 - Notification records and outbox processing exist, but real email/SMS delivery adapters, templates, delivery receipts, retry operations and dead-letter replay need staging proof.
 - Visitor session controls still need production delivery, recovery and device-management validation beyond the development OTP path; suspicious-login auditing and visitor notification behavior are implemented but still require real delivery-provider staging proof.
+- Visitor authentication sessions now persist a coarse privacy-safe device label (for example, Chrome on Windows) and expose it in the visitor session-management view without storing the raw user-agent string; production delivery, recovery, device revocation and real-browser validation remain release gates.
 - Logout revocation is retry-safe: the session owner is resolved before revocation, and repeated requests for an already-revoked token do not emit duplicate `LOGOUT_REQUESTED` security events.
 - Kiosk identity and device checks have strong boundaries, but real controlled-device enrollment, secure storage of kiosk credentials, rotation procedure and physical-device recovery are not proven.
 - Kiosk presence now clears on page hide/session exit, and the terminal kiosk state has an explicit reset to the credential boundary before the next assignment.
