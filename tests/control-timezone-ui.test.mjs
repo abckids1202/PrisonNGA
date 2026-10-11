@@ -9,6 +9,12 @@ test("Control activity and People timestamps use the persisted facility timezone
   assert.match(source, /<PeoplePage timeZone=\{facilityTimezone\} onNotify=\{notify\} \/>/);
   assert.match(source, /new Intl\.DateTimeFormat\("en-CA", \{ timeZone, year:/);
   assert.doesNotMatch(source, /new Intl\.DateTimeFormat\("en-CA", \{ timeZone: "Asia\/Jakarta"/);
+  assert.match(source, /facilityTimeZoneLabel\(timeZone\)/);
+});
+
+test("appointment time labels come from the persisted appointment timezone", () => {
+  assert.match(source, /appointment\.timezoneLabel \|\| facilityTimeZoneLabel\(appointment\.timezone \|\| "Asia\/Jakarta"\)/);
+  assert.doesNotMatch(source, /appointment\.time\} WIB/);
 });
 
 test("Control record workspaces receive facility-scoped date formatting", () => {

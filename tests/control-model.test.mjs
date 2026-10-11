@@ -16,7 +16,13 @@ test("appointment mapping formats a valid persisted window", () => {
   const appointment = mapBackendAppointment(baseRow);
   assert.equal(appointment.date, "10 Oct 2026");
   assert.equal(appointment.time, "09:00–09:30");
+  assert.equal(appointment.timezoneLabel, "WIB");
   assert.equal(appointment.status, "Approved");
+});
+
+test("appointment mapping exposes the correct Indonesian timezone label", () => {
+  assert.equal(mapBackendAppointment({ ...baseRow, timezone: "Asia/Makassar" }).timezoneLabel, "WITA");
+  assert.equal(mapBackendAppointment({ ...baseRow, timezone: "Asia/Jayapura" }).timezoneLabel, "WIT");
 });
 
 test("appointment mapping fails closed for malformed time data", () => {
@@ -29,5 +35,6 @@ test("appointment mapping fails closed for malformed time data", () => {
   assert.equal(appointment.date, "Date unavailable");
   assert.equal(appointment.time, "Time unavailable");
   assert.equal(appointment.timezone, "Asia/Jakarta");
+  assert.equal(appointment.timezoneLabel, "WIB");
   assert.equal(appointment.status, "Approved");
 });

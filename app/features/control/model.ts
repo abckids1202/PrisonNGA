@@ -3,6 +3,13 @@ export type WaitingState = "NOT_ARRIVED" | "VISITOR_WAITING" | "PRISONER_WAITING
 export type CheckState = "pass" | "warning" | "failed" | "pending";
 export type ReadinessCheck = { key: string; label: string; detail: string; state: CheckState };
 
+export function facilityTimeZoneLabel(timeZone: string): string {
+  if (timeZone === "Asia/Jakarta") return "WIB";
+  if (timeZone === "Asia/Makassar") return "WITA";
+  if (timeZone === "Asia/Jayapura") return "WIT";
+  return timeZone;
+}
+
 export type Appointment = {
   id: string;
   visitor: string;
@@ -19,6 +26,7 @@ export type Appointment = {
   requestedStart?: string;
   requestedEnd?: string;
   timezone?: string;
+  timezoneLabel?: string;
   relationshipType?: string | null;
   relationshipStatus?: string | null;
   prisonerStatus?: string | null;
@@ -90,5 +98,5 @@ export function mapBackendAppointment(row: {
   const hasValidWindow = Number.isFinite(start.getTime()) && Number.isFinite(end.getTime());
   const time = hasValidWindow ? `${timeFormatter.format(start)}–${timeFormatter.format(end)}` : "Time unavailable";
   const date = Number.isFinite(start.getTime()) ? dateFormatter.format(start) : "Date unavailable";
-  return { id: row.id, visitor, visitorInitials: visitor.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), prisoner, time, date, room: row.room_name || "Unassigned", kiosk: row.kiosk_name || "Unassigned", type: row.appointment_type === "LEGAL" ? "Legal" : "Family", status, rawStatus: row.status, version: row.version, createdAt: row.created_at, updatedAt: row.updated_at, requestedStart: row.requested_start, requestedEnd: row.requested_end, timezone: timeZone, relationshipType: row.relationship_type, relationshipStatus: row.relationship_status, prisonerStatus: row.prisoner_status, visitationStatus: row.visitation_status, facilityState: row.facility_state, availableCredits: row.available_credits, reservedCredits: row.reserved_credits, activeCreditReservation: row.active_credit_reservation === 1, issue: status === "Requires action" ? "Visitor request awaits staff review" : undefined };
+  return { id: row.id, visitor, visitorInitials: visitor.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), prisoner, time, date, room: row.room_name || "Unassigned", kiosk: row.kiosk_name || "Unassigned", type: row.appointment_type === "LEGAL" ? "Legal" : "Family", status, rawStatus: row.status, version: row.version, createdAt: row.created_at, updatedAt: row.updated_at, requestedStart: row.requested_start, requestedEnd: row.requested_end, timezone: timeZone, timezoneLabel: facilityTimeZoneLabel(timeZone), relationshipType: row.relationship_type, relationshipStatus: row.relationship_status, prisonerStatus: row.prisoner_status, visitationStatus: row.visitation_status, facilityState: row.facility_state, availableCredits: row.available_credits, reservedCredits: row.reserved_credits, activeCreditReservation: row.active_credit_reservation === 1, issue: status === "Requires action" ? "Visitor request awaits staff review" : undefined };
 }
