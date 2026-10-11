@@ -777,7 +777,10 @@ async function recordScheduledJobFailure(env: Env, name: string, error: unknown)
         SELECT 1 FROM security_events se
         WHERE se.facility_id = f.id
           AND se.event_type = 'SCHEDULED_JOB_FAILED'
-          AND json_extract(se.metadata, '$.jobName') = ?
+          AND CASE WHEN json_valid(se.metadata) = 1
+            THEN json_extract(se.metadata, '$.jobName')
+            ELSE NULL
+          END = ?
           AND julianday(se.created_at) >= julianday('now', '-15 minutes')
       )`).bind(crypto.randomUUID(), correlationId, metadata, new Date().toISOString(), name).run();
   } catch (persistError) {

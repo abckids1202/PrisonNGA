@@ -11,7 +11,7 @@ test("scheduled maintenance isolates named jobs and records failures", async () 
   assert.match(source, /event: "SCHEDULED_JOB_FAILED"/);
   assert.match(source, /jobName: name/);
   assert.match(source, /recordScheduledJobFailure\(env, name, error\)/);
-  assert.match(source, /json_extract\(se\.metadata, '\$\.jobName'\) = \?/);
+  assert.match(source, /CASE WHEN json_valid\(se\.metadata\) = 1[\s\S]*json_extract\(se\.metadata, '\$\.jobName'\)/);
   assert.match(source, /runScheduledJob\(env, "payment-events", \(\) => reconcilePaymentEvents\(env\)\)/);
   assert.match(source, /runScheduledJob\(env, "live-session-reconciliation", \(\) => reconcileExpiredSessions\(env\)\)/);
   assert.match(source, /ctx\.waitUntil\(Promise\.all\(\[/);
