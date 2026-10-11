@@ -22,4 +22,5 @@ test("local development sessions are visibly distinct from real live media", () 
   assert.match(client, /developmentTransport \? "TEST" : "LIVE"/);
   assert.match(client, /Local test transport/);
   assert.match(client, /Local preview placeholder/);
+  assert.match(client, /Development transport · no media channel/);
 });
