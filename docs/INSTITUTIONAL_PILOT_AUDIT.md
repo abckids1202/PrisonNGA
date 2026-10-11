@@ -3,7 +3,7 @@
 Date: 2026-10-11
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified repository commit: `004c2e8` (`feat: expose staff session device labels`).
+Latest verified repository commit: `75dffc8` (`feat: expose payment recovery operations`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, and local Live Session transport fixes.
 The local release verifier passed before this follow-up; after the notification
 and evidence-retention race fixes, the focused checks and full quick suite pass with 527 application tests, 17
@@ -94,6 +94,7 @@ The current repository already includes:
 - The failure-handling contract is now covered by automated tests for all required payment, appointment, credit, kiosk, device, LiveKit, notification, provider, and database failure paths plus the non-negotiable idempotency/audit/recording invariants.
 - Finance reconciliation now surfaces pending and failed refund requests, while the outbox worker sends explicit requested, failed, completed, and disputed payment/refund notifications.
 - Finance now exposes a facility-scoped payment-provider event queue and a step-up-protected, idempotent replay boundary for failed or dead-lettered events; replay only requeues the event for the worker and never settles money directly from the operator request.
+- Finance Reconciliation now exposes that persisted payment-provider recovery queue to operators with failure details, a required recovery reason, refresh behavior, and an explicit step-up replay action; the UI does not claim that requeueing settled money.
 - Audit exports now persist a facility-scoped manifest containing the export actor, range, row count, stable export ID, and SHA-256 digest; the CSV response returns both identifiers for later integrity verification.
 - Worker processing for outbox events, payment reconciliation, no-show/session cleanup, evidence retention and expired authentication/step-up cleanup.
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
