@@ -1,8 +1,8 @@
 import { getD1 } from "@/db/runtime";
 import { finalizeLiveSessionStatements, finalizationCommitted, requestLiveSessionEndStatements } from "@/lib/server/live-session-finalization";
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
-import { getStaffSession } from "@/lib/server/video/session";
-import { createLiveKitProvider } from "@/lib/server/video/provider";
+import { assertSessionProvider, getStaffSession } from "@/lib/server/video/session";
+import { createLiveKitProvider, getVideoConfig } from "@/lib/server/video/provider";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "@/lib/server/idempotency";
 import { auditAndOutboxStatements } from "@/lib/server/events";
 import { operationalLog } from "@/lib/server/observability";
@@ -95,6 +95,9 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     try {
+      const videoConfig = await getVideoConfig();
+      if (!videoConfig.configured) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
+      assertSessionProvider(session, videoConfig.provider);
       const provider = await createLiveKitProvider();
       await provider.endRoom(session.provider_room_name);
     } catch (error) {
@@ -125,6 +128,7 @@ export async function POST(request: Request, context: RouteContext) {
         operationalLog("error", { event: "LIVE_SESSION_PROVIDER_CLOSE_FAILURE_AUDIT_FAILED", sessionId, facilityId: authorization.facilityId, requestId: requestContext.requestId, error: auditError });
       }
       if (error instanceof Error && error.message === "VIDEO_PROVIDER_NOT_CONFIGURED") throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
+      if (error instanceof SecurityError && error.code === "VIDEO_PROVIDER_MISMATCH") throw error;
       throw new SecurityError("VIDEO_PROVIDER_END_FAILED", 502);
     }
 

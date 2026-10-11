@@ -4,7 +4,7 @@ import handler from "vinext/server/app-router-entry";
 import { validateEnvironment } from "../lib/server/config";
 import { appointmentDecisionCommitted, appointmentDecisionStatements } from "../lib/server/appointment-decisions";
 import { finalizeLiveSessionStatements, finalizationCommitted, getExpiredSessionDisposition } from "../lib/server/live-session-finalization";
-import { createLiveKitProvider } from "../lib/server/video/provider";
+import { createLiveKitProvider, getVideoConfig } from "../lib/server/video/provider";
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
 import { reconcileStoredNotificationProviderEvent } from "../lib/server/notifications/provider-status";
@@ -99,7 +99,7 @@ function backgroundEnvironmentReady(env: Env, trigger: "scheduled" | "queue"): b
 }
 
 type OutboxRow = { id: string; event_type: string; aggregate_type: string; aggregate_id: string | null; facility_id: string | null; payload: string; correlation_id: string; attempt_count: number };
-type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; visitor_joined: number; facility_joined: number; provider_room_name: string; credit_account_id: string | null };
+type ExpiredSession = { id: string; appointment_id: string; facility_id: string; visitor_user_id: string; version: number; appointment_version: number; status: string; actual_started_at: string | null; termination_reason: string | null; visitor_joined: number; facility_joined: number; provider: string; provider_room_name: string; credit_account_id: string | null };
 type PaymentRetryEvent = { id: string; facility_id: string | null; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
 type AbandonedPaymentIntent = { id: string; facility_id: string; user_id: string; credit_quantity: number; amount_minor: number; currency: string; version: number };
 
@@ -700,7 +700,7 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
       vs.termination_reason,
       EXISTS (SELECT 1 FROM visit_session_participants vsp WHERE vsp.session_id = vs.id AND vsp.participant_role = 'VISITOR' AND vsp.status IN ('CONNECTED', 'DISCONNECTED', 'RECONNECTING')) AS visitor_joined,
       EXISTS (SELECT 1 FROM visit_session_participants vsp WHERE vsp.session_id = vs.id AND vsp.participant_role = 'FACILITY' AND vsp.status IN ('CONNECTED', 'DISCONNECTED', 'RECONNECTING')) AS facility_joined,
-      vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
+      vs.provider, vs.provider_room_name, a.version AS appointment_version, ca.id AS credit_account_id
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
     LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
     WHERE a.status = 'IN_PROGRESS' AND (
@@ -710,7 +710,10 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
   if (!sessions.results.length) return;
 
   let provider: Awaited<ReturnType<typeof createLiveKitProvider>>;
+  let videoConfig: Awaited<ReturnType<typeof getVideoConfig>>;
   try {
+    videoConfig = await getVideoConfig();
+    if (!videoConfig.configured) throw new Error("VIDEO_PROVIDER_NOT_CONFIGURED");
     provider = await createLiveKitProvider();
   } catch (error) {
     operationalLog("error", { event: "EXPIRED_SESSION_PROVIDER_UNAVAILABLE", actorId: "system:scheduler", error });
@@ -722,6 +725,10 @@ async function reconcileExpiredSessions(env: Env): Promise<void> {
 
   for (const session of sessions.results) {
     const now = new Date().toISOString();
+    if (session.provider !== videoConfig.provider) {
+      await recordSessionProviderCloseFailure(env, session, "The persisted session provider differs from the configured video provider; staff recovery is required before room closure.");
+      continue;
+    }
     try {
       await provider.endRoom(session.provider_room_name);
     } catch (error) {
