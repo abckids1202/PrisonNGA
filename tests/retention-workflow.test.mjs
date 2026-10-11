@@ -95,3 +95,11 @@ test("break-glass evidence access excludes pending-deletion records", async () =
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/control/access/break-glass/route.ts", import.meta.url), "utf8");
   assert.match(source, /FROM evidence_documents WHERE id = \? AND facility_id = \? AND status = 'AVAILABLE'/);
 });
+
+test("retention does not restore an object-deleted row to AVAILABLE after a database failure", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  assert.match(source, /let objectDeleteSucceeded = false/);
+  assert.match(source, /objectDeleteSucceeded = true/);
+  assert.match(source, /if \(!objectDeleteSucceeded\)/);
+  assert.match(source, /EVIDENCE_RETENTION_STATE_NOT_COMMITTED/);
+});

@@ -492,6 +492,7 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
   for (const row of rows.results) {
     const correlationId = crypto.randomUUID();
     const now = new Date().toISOString();
+    let objectDeleteSucceeded = false;
     try {
       if (row.status === "AVAILABLE") {
         const claimed = await env.DB.batch([claimExpiredEvidenceRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now })]);
@@ -503,7 +504,8 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
         continue;
       }
       await env.EVIDENCE_BUCKET.delete(row.storage_key);
-      await env.DB.batch(expiredEvidenceRetentionStatements(env.DB, {
+      objectDeleteSucceeded = true;
+      const finalized = await env.DB.batch(expiredEvidenceRetentionStatements(env.DB, {
         id: row.id,
         facilityId: row.facility_id,
         storageKey: row.storage_key,
@@ -513,8 +515,16 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
         now,
         claimed: true,
       }));
+      // Never acknowledge deletion unless the database transition and its
+      // audit/outbox evidence committed. If storage deletion already
+      // succeeded, leave the claim pending so the next run can retry the
+      // idempotent object delete without exposing an AVAILABLE row that no
+      // longer has an object behind it.
+      if (!finalized.every((result) => Boolean(result?.meta.changes))) throw new Error("EVIDENCE_RETENTION_STATE_NOT_COMMITTED");
     } catch (error) {
-      try { await env.DB.batch([restoreClaimedEvidenceRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now: new Date().toISOString() })]); } catch { /* Keep the original retention error; the next worker run can recover the claim. */ }
+      if (!objectDeleteSucceeded) {
+        try { await env.DB.batch([restoreClaimedEvidenceRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now: new Date().toISOString() })]); } catch { /* Keep the original retention error; the next worker run can recover the claim. */ }
+      }
       try {
         await env.DB.batch([evidenceRetentionFailureStatement(env.DB, {
           facilityId: row.facility_id,
