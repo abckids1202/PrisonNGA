@@ -175,6 +175,7 @@ The current repository already includes:
 - Audit export creation now commits the immutable manifest and its audit/outbox evidence in one D1 batch; a manifest is not acknowledged if the evidence writes do not commit, and a regression test protects that boundary.
 - Data retention and deletion need scheduled-job evidence, exception handling, legal-hold behavior and restore/rollback procedures.
 - The dramatic spin is a product interaction plan, not a completed business feature. The server must decide and persist the result before animation; the animation must never decide the outcome. The deterministic component also honors reduced-motion for both its completion timer and CSS transition.
+- Appointment and People time values are calculated in the persisted facility timezone, but their visible zone abbreviation is still a literal `WIB`; dynamic `WITA`/`WIT` labels remain a small follow-up before multi-timezone facilities are supported.
 
 ## Canonical working workflow
 
