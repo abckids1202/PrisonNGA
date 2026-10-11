@@ -9,6 +9,7 @@ test("verification review decisions are replay-safe for every decision state", a
   assert.match(source, /completeIdempotencyStatement/);
   assert.match(source, /releaseIdempotencyClaim\(d1, idempotency\)/);
   assert.match(source, /verificationDecisionStatements/);
+  assert.match(source, /if \(status !== current\.status\) throw new SecurityError\("VERIFICATION_ALREADY_DECIDED", 409\)/);
   assert.match(source, /VERIFICATION_REVIEW_NOT_PERSISTED/);
 });
 
