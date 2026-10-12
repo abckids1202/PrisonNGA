@@ -41,6 +41,29 @@ test("strict pilot audit fails closed outside development until configuration an
   assert.ok(report.missingStagingEvidence.includes("SECUREVISIT_LIVEKIT_STAGING=verified"));
 });
 
+test("pilot audit does not treat an unbound R2 provider as protected evidence storage", async () => {
+  const result = await runAudit([], {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    EVIDENCE_STORAGE_PROVIDER: "r2",
+    EVIDENCE_BUCKET_NAME: "",
+  });
+  assert.equal(result.code, 0);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.checks.find((check) => check.id === "evidence-storage")?.ok, false);
+  assert.ok(report.nextActions.some((action) => action.includes("EVIDENCE_BUCKET_NAME")));
+});
+
+test("pilot audit accepts R2 storage only when the staging bucket is named", async () => {
+  const result = await runAudit([], {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    EVIDENCE_STORAGE_PROVIDER: "r2",
+    EVIDENCE_BUCKET_NAME: "securevisit-staging-evidence",
+  });
+  assert.equal(result.code, 0);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.checks.find((check) => check.id === "evidence-storage")?.ok, true);
+});
+
 test("environment template declares every pilot evidence gate", async () => {
   const template = await readFile(".env.example", "utf8");
   for (const key of [

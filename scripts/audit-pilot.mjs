@@ -16,6 +16,11 @@ const requiredRepositoryArtifacts = [
 const missingRepositoryArtifacts = requiredRepositoryArtifacts.filter((path) => !existsSync(path));
 
 const present = (key) => typeof values[key] === "string" && values[key].trim().length > 0;
+const realD1Id = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(values.D1_DATABASE_ID || "").trim());
+const evidenceProvider = String(values.EVIDENCE_STORAGE_PROVIDER || "").trim().toLowerCase();
+const protectedEvidenceStorage = environment === "development"
+  ? evidenceProvider === "r2" || evidenceProvider === "local_test"
+  : evidenceProvider === "r2" && present("EVIDENCE_BUCKET_NAME");
 const httpsUrl = (key) => {
   if (!present(key)) return false;
   try {
@@ -29,8 +34,8 @@ const httpsUrl = (key) => {
 const checks = [
   { id: "environment", label: "Explicit runtime environment", ok: environmentCheck.environment !== "invalid", detail: environmentCheck.environment },
   { id: "public-domain", label: "HTTPS public application domain", ok: httpsUrl("PUBLIC_APP_URL"), detail: "PUBLIC_APP_URL" },
-  { id: "remote-database", label: "Remote D1 identity", ok: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(values.D1_DATABASE_ID || "").trim()), detail: "D1_DATABASE_ID" },
-  { id: "evidence-storage", label: "Protected evidence storage", ok: String(values.EVIDENCE_STORAGE_PROVIDER || "").trim().toLowerCase() === "r2", detail: "EVIDENCE_STORAGE_PROVIDER=r2" },
+  { id: "remote-database", label: "Remote D1 identity", ok: realD1Id, detail: "D1_DATABASE_ID" },
+  { id: "evidence-storage", label: "Protected evidence storage", ok: protectedEvidenceStorage, detail: environment === "development" ? "development storage permitted" : "EVIDENCE_STORAGE_PROVIDER=r2 plus EVIDENCE_BUCKET_NAME" },
   { id: "queue", label: "Notification queue binding", ok: environment === "development" || present("NOTIFICATION_QUEUE_NAME"), detail: present("NOTIFICATION_QUEUE_NAME") ? "configured" : environment === "development" ? "development-only cron fallback" : "required for staging/production" },
   { id: "environment-config", label: "Provider and secret configuration", ok: environmentCheck.ok, detail: environmentCheck.ok ? "validated" : `${environmentCheck.missing.length} requirement(s) missing` },
   { id: "release-gates", label: "Institutional release evidence", ok: environment === "development" || releaseGates.ready, detail: environment === "development" ? "development-only gates not evaluated" : releaseGates.ready ? "all required gates attested" : `${releaseGates.missing.length} gate(s) missing` },
@@ -41,7 +46,7 @@ const checks = [
 const operationalActions = {
   "public-domain": "Set PUBLIC_APP_URL to the deployed HTTPS application URL",
   "remote-database": "Set D1_DATABASE_ID to the real remote database UUID",
-  "evidence-storage": "Configure EVIDENCE_STORAGE_PROVIDER=r2 and the protected evidence bucket",
+  "evidence-storage": "Configure EVIDENCE_STORAGE_PROVIDER=r2 and EVIDENCE_BUCKET_NAME for the protected evidence bucket",
   queue: "Configure NOTIFICATION_QUEUE_NAME for the deployed environment",
   "release-artifacts": "Restore the required release documentation artifacts before accepting pilot evidence",
 };
