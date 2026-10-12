@@ -82,10 +82,11 @@ export default function LiveSessionsPage({ onNotify, timeZone = "Asia/Jakarta" }
   async function endSession(session: LiveSessionRow) {
     setEnding(true);
     try {
+      const mode = session.actual_started_at ? "normal" : "terminate";
       const response = await fetch(`/api/control/live-sessions/${session.id}/end`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `live-session-end-${crypto.randomUUID()}` },
-        body: JSON.stringify({ expectedVersion: session.version, reason: "Staff ended the authorized visit from Live Sessions." }),
+        body: JSON.stringify({ expectedVersion: session.version, mode, reason: mode === "terminate" ? "Staff terminated a session before both visit participants connected." : "Staff ended the authorized visit from Live Sessions." }),
       });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "The session could not be ended.");

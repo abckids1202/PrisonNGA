@@ -18,4 +18,6 @@ test("Live Sessions carries the persisted session version into staff end request
   assert.match(route, /vs\.status, vs\.version, vs\.provider/);
   assert.match(page, /version: number;/);
   assert.match(page, /expectedVersion: session\.version/);
+  assert.match(page, /const mode = session\.actual_started_at \? "normal" : "terminate"/);
+  assert.match(page, /mode, reason: mode === "terminate"/);
 });
