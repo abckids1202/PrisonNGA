@@ -20,6 +20,28 @@ test("control workspace renders its operational shell", async ({ browser }) => {
   }
 });
 
+test("control workspace preserves deep links across reload and browser history", async ({ browser }) => {
+  const staff = await browser.newContext({ extraHTTPHeaders: {
+    "oai-authenticated-user-id": "staff-local-supervisor",
+    "oai-authenticated-user-email": "staff.local@example.test",
+  } });
+  try {
+    const page = await staff.newPage();
+    await page.goto("/?workspace=management&page=Compliance");
+    await expect(page).toHaveURL(/workspace=management&page=Compliance/);
+    await expect(page.locator("nav.sv3-nav button.active")).toContainText("Compliance");
+    await page.reload();
+    await expect(page.locator("nav.sv3-nav button.active")).toContainText("Compliance");
+    await page.getByRole("button", { name: "Operations", exact: true }).click();
+    await expect(page).toHaveURL(/workspace=operations&page=Command%20Center/);
+    await page.goBack();
+    await expect(page).toHaveURL(/workspace=management&page=Compliance/);
+    await expect(page.locator("nav.sv3-nav button.active")).toContainText("Compliance");
+  } finally {
+    await staff.close();
+  }
+});
+
 test("management facility resources open the selected operational record", async ({ browser }) => {
   const staff = await browser.newContext({ extraHTTPHeaders: {
     "oai-authenticated-user-id": "staff-local-supervisor",
