@@ -1,18 +1,20 @@
 # SecureVisit Institutional Pilot Audit and Completion Plan
 
-Date: 2026-10-11
+Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `fc1e72a` (`fix: bind LiveKit webhooks to provider`).
+Latest verified code commit: `c44cd50` (`fix: make fresh local video transport explicit`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The local release verifier passed after the LiveKit webhook provider-boundary fix: 551
-passing test cases across 547 test files/subtests, 17 browser tests, fresh migration verification, a disposable backup/restore
-drill, typecheck, lint, production build, and a zero-vulnerability dependency
-audit all passed.
+The post-change split verification passed: 551 server test cases across 547 test
+files/subtests, 17 browser tests on the alternate local E2E port, fresh migration
+verification, a disposable backup/restore drill, typecheck, lint, production
+build, and a zero-vulnerability production dependency audit. The combined
+release-verifier process was interrupted by the Windows host during its server
+test stage, so this record does not claim that aggregate command passed.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current release verifier reports 551 passing test cases across 547 test
+The current split verification reports 551 passing test cases across 547 test
 files/subtests, plus 17 browser tests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
@@ -120,6 +122,7 @@ The current repository already includes:
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
 - Automated server tests and browser smoke tests. Current validation baseline is 551 passing test cases across 547 test files/subtests and 17 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Fresh local development now defaults to the explicit `local_test` video transport, allowing the persisted appointment-to-session workflow to be exercised without presenting an unconfigured LiveKit connection as a real call; staging and production continue to require real LiveKit credentials.
 - Notification delivery now fails closed outside development when no outbound provider is configured; staging and production still require real provider delivery, callbacks and operational replay evidence.
 - Staff verification review now rejects a contradictory decision after a case is already approved or rejected; only a replay of the same terminal decision is idempotent.
 - Staff live-session finalization now rejects a contradictory end mode after a session is already ended, terminated, or cancelled; same-mode retries remain idempotent after settlement is verified.
