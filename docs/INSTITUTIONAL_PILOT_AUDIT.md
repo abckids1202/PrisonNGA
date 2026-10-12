@@ -34,6 +34,15 @@ protected R2 and malware scanning, kiosk enrollment, three-party LiveKit,
 remote backup/restore, WAF/rate limits, monitoring and runbooks, independent
 security review, and Indonesian privacy/correctional approval.
 
+Fresh audit snapshot — 2026-10-12: `npm run audit:pilot` again reports
+`readyForPilot: false` in development. The only missing deployment inputs are
+`PUBLIC_APP_URL` and `D1_DATABASE_ID`; the development hash-salt fallback is
+also warned about. Development-only checks report the configured R2 adapter,
+cron fallback, environment validation, and release artifacts as available,
+but those results are not staging or production evidence. No external provider,
+hardware, remote recovery, security-review, or institutional approval gate is
+considered satisfied by this local snapshot.
+
 ## Executive verdict
 
 SecureVisit is a strong persisted workflow prototype with meaningful security and failure-handling foundations. It is not yet an institutional production system. The remaining risk is concentrated in external integrations, multi-party staging proof, operational administration, and release assurance rather than in the basic page designs.
