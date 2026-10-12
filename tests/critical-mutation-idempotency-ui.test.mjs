@@ -12,6 +12,7 @@ test("critical staff mutations use deterministic entity/version idempotency keys
   const notifications = await readFile(new URL("../app/features/management/NotificationOperationsPanel.tsx", import.meta.url), "utf8");
   const appointmentTypes = await readFile(new URL("../app/components/AppointmentTypesPanel.tsx", import.meta.url), "utf8");
   const accessReview = await readFile(new URL("../app/components/AccessReviewPanel.tsx", import.meta.url), "utf8");
+  const visitor = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
 
   assert.match(shell, /facility-state:\$\{nextState\}:\$\{facilityVersion\}`/);
   assert.match(shell, /appointment-decision-\$\{id\}-\$\{command\}-\$\{appointment\.version\}`/);
@@ -25,4 +26,7 @@ test("critical staff mutations use deterministic entity/version idempotency keys
   assert.match(notifications, /outbox-replay-\$\{event\.id\}`/);
   assert.match(appointmentTypes, /appointment-type-\$\{currentType\.id\}-\$\{currentType\.version\}`/);
   assert.match(accessReview, /staff-session-revoke-\$\{session\.id\}`/);
+  assert.match(visitor, /\"Idempotency-Key\": key/);
+  assert.match(visitor, /revokeAll \? \"session-revoke-all\" : `session-revoke-\$\{sessionId\}`/);
+  assert.match(visitor, /notificationBatchKeys\.current\.get\(fingerprint\)/);
 });

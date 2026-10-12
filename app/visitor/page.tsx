@@ -861,6 +861,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
   const [phoneCode, setPhoneCode] = useState("");
   const [phoneVerificationBusy, setPhoneVerificationBusy] = useState(false);
   const [phoneVerificationError, setPhoneVerificationError] = useState("");
+  const profileSaveKey = useRef<{ fingerprint: string; key: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -897,16 +898,22 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
     event.preventDefault();
     setSaving(true);
     setError("");
+    const fingerprint = `${legalName}\u0000${preferredName}\u0000${phone}`;
+    const key = profileSaveKey.current?.fingerprint === fingerprint
+      ? profileSaveKey.current.key
+      : `visitor-profile-${crypto.randomUUID()}`;
+    profileSaveKey.current = { fingerprint, key };
     try {
       const response = await fetch("/api/visitor/profile", {
         method: "PUT",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visitor-profile-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": key },
         body: JSON.stringify({ legalName, preferredName, phone }),
       });
       const body = await response.json() as { profile?: VisitorProfile; error?: string };
       if (!response.ok || !body.profile) throw new Error(body.error || "Your profile could not be saved.");
       setProfile(body.profile);
+      profileSaveKey.current = null;
       onNameChange(body.profile.preferredName || body.profile.legalName);
       onAction("Your profile was saved securely.");
     } catch (reason) {
@@ -960,7 +967,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
     setSessionsBusy(true);
     setSessionsError("");
     try {
-      const response = await fetch("/api/auth/sessions", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `session-revoke-${crypto.randomUUID()}` }, body: JSON.stringify(revokeAll ? { revokeAll: true } : { sessionId }) });
+      const response = await fetch("/api/auth/sessions", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": revokeAll ? "session-revoke-all" : `session-revoke-${sessionId}` }, body: JSON.stringify(revokeAll ? { revokeAll: true } : { sessionId }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not revoke the session.");
       if (revokeAll) { await onSignOut(); return; }
@@ -1008,6 +1015,7 @@ function notificationDestination(notification: VisitorNotification): { tab: Tab 
 
 function VisitorNotifications({ onAction, onNavigate, onUnreadChange }: { onAction: (message: string, tone?: NoticeTone) => void; onNavigate: (tab: Tab) => void; onUnreadChange: (count: number) => void }) {
   const [notifications, setNotifications] = useState<VisitorNotification[]>([]);
+  const notificationBatchKeys = useRef(new Map<string, string>());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1034,14 +1042,18 @@ function VisitorNotifications({ onAction, onNavigate, onUnreadChange }: { onActi
   async function markRead(ids: string[]) {
     if (!ids.length || busy) return;
     setBusy(true);
+    const fingerprint = [...ids].sort().join("|");
+    const idempotencyKey = notificationBatchKeys.current.get(fingerprint) || `visitor-notifications-${crypto.randomUUID()}`;
+    notificationBatchKeys.current.set(fingerprint, idempotencyKey);
     try {
-      const response = await fetch("/api/visitor/notifications", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visitor-notifications-${crypto.randomUUID()}` }, body: JSON.stringify({ notificationIds: ids }) });
+      const response = await fetch("/api/visitor/notifications", { method: "PATCH", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ notificationIds: ids }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not update your inbox.");
       const readAt = new Date().toISOString();
       const next = notifications.map((item) => ids.includes(item.id) ? { ...item, read_at: item.read_at || readAt } : item);
       setNotifications(next);
       onUnreadChange(next.filter((item) => !item.read_at).length);
+      notificationBatchKeys.current.delete(fingerprint);
       onAction(ids.length === 1 ? "Notification marked as read." : "Notifications marked as read.", "success");
     } catch (reason) {
       onAction(reason instanceof Error ? reason.message : "Could not update your inbox.", "info");
