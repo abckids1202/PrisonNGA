@@ -3,10 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PrisonerDirectory from "./components/PrisonerDirectory";
-import VisitPolicyEditor from "./components/VisitPolicyEditor";
-import FacilityClosures from "./components/FacilityClosures";
 import AccessReviewPanel from "./components/AccessReviewPanel";
-import AppointmentTypesPanel from "./components/AppointmentTypesPanel";
 import { Avatar, Button, EmptyState, Metric, PageHeader, SectionLabel, SecureVisitLogo, Status } from "./components/ControlPrimitives";
 import LiveSessionsPage from "./features/live-session/LiveSessionsPage";
 import ResourcesPage from "./features/resources/ResourcesPage";
@@ -15,6 +12,7 @@ import CompliancePageInteractive from "./features/management/CompliancePageInter
 import FinancePage from "./features/management/FinancePage";
 import IntegrationReadinessPanel from "./features/management/IntegrationReadinessPanel";
 import NotificationOperationsPanel from "./features/management/NotificationOperationsPanel";
+import VisitationPage from "./features/management/VisitationPage";
 import CommandPalette from "./features/control/CommandPalette";
 import AppointmentsPage from "./features/control/AppointmentsPage";
 import { AlertDialog, ImpactDialog } from "./features/control/DecisionDialogs";
@@ -1059,13 +1057,6 @@ function PeoplePage({ timeZone, onNotify }: { timeZone: string; onNotify: (messa
     </div>
   </div>;
 }
-function VisitationPage({ timeZone }: { timeZone?: string | null }) {
-  const [tab, setTab] = useState("Visit Policies");
-  const tabs = ["Visit Policies", "Appointment Types", "Availability Rules", "Operating Hours", "Closures"];
-  const connected = ["Visit Policies", "Appointment Types", "Availability Rules", "Operating Hours", "Closures"].includes(tab);
-  return <><PageHeader eyebrow="Management · Visitation policy" title="Visitation" description="Control the facility rules used to validate visitor booking requests." /><div className="sv3-policy-layout"><nav className="sv3-policy-nav">{tabs.map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}><span>{item}</span><b>›</b></button>)}</nav><section className="sv3-policy-editor"><div className="sv3-policy-editor-head"><div><span className="sv3-eyebrow">Facility configuration</span><h2>{tab}</h2></div><Status tone={connected ? "green" : "orange"}>{connected ? "BACKEND CONNECTED" : "NOT YET CONNECTED"}</Status></div>{["Visit Policies", "Availability Rules", "Operating Hours"].includes(tab) ? <VisitPolicyEditor timeZone={timeZone} /> : tab === "Closures" ? <FacilityClosures timeZone={timeZone} /> : tab === "Appointment Types" ? <AppointmentTypesPanel /> : <div className="sv3-settings-surface"><strong>Appointment types need a dedicated policy model</strong><p>This section is intentionally unavailable until appointment-type eligibility, duration, credit cost, and approval rules can be persisted with version history.</p><Button onClick={() => setTab("Visit Policies")}>Open live visit policy</Button></div>}</section></div></>;
-}
-
 type StaffRecord = { id: string; email: string; display_name: string; status: string; last_login_at: string | null; version: number; employee_reference: string; job_title: string; department: string | null; roles: string | null };
 
 function RealAdministrationPage({ timeZone, onNotify }: { timeZone?: string | null; onNotify: (message: string, tone?: Notice["tone"]) => void }) {

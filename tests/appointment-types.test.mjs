@@ -6,7 +6,7 @@ const migration = await readFile(new URL("../drizzle/0045_appointment_types.sql"
 const visitorRoute = await readFile(new URL("../app/api/visitor/appointments/route.ts", import.meta.url), "utf8");
 const visitorTypes = await readFile(new URL("../app/api/visitor/appointment-types/route.ts", import.meta.url), "utf8");
 const controlTypes = await readFile(new URL("../app/api/control/appointment-types/route.ts", import.meta.url), "utf8");
-const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+const page = await readFile(new URL("../app/features/management/VisitationPage.tsx", import.meta.url), "utf8");
 
 test("appointment types are facility-scoped, seeded, exposed, and enforced", () => {
   assert.match(migration, /CREATE TABLE IF NOT EXISTS appointment_types/);
