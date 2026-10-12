@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Metric, PageHeader, Status } from "../../components/ControlPrimitives";
 import { formatDateValue as formatDateValueWithZone } from "@/lib/date-format";
 
@@ -20,6 +20,7 @@ export default function FinancePage({ timeZone, onNotify }: { timeZone: string; 
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [recoveryError, setRecoveryError] = useState("");
   const [replayingEvent, setReplayingEvent] = useState("");
+  const paymentReplayKeys = useRef(new Map<string, string>());
   const [recoveryReason, setRecoveryReason] = useState("Provider event requires a controlled finance retry after operational review.");
   const [refundPayment, setRefundPayment] = useState<FinanceRecord | null>(null);
   const [refundReason, setRefundReason] = useState("Refund approved after facility review.");
@@ -83,9 +84,13 @@ export default function FinancePage({ timeZone, onNotify }: { timeZone: string; 
     }
     setReplayingEvent(event.id);
     try {
-      const response = await fetch("/api/control/finance/payment-events", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `payment-event-replay-${event.id}` }, body: JSON.stringify({ paymentEventId: event.id, reason: recoveryReason }) });
+      const fingerprint = `${event.id}:${event.status}:${event.attempt_count}:${recoveryReason.trim()}`;
+      const idempotencyKey = paymentReplayKeys.current.get(fingerprint) || `payment-event-replay-${event.id}-${event.status.toLowerCase()}-${event.attempt_count}-${crypto.randomUUID()}`;
+      paymentReplayKeys.current.set(fingerprint, idempotencyKey);
+      const response = await fetch("/api/control/finance/payment-events", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ paymentEventId: event.id, reason: recoveryReason }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Unable to replay payment provider event.");
+      paymentReplayKeys.current.delete(fingerprint);
       onNotify(`${event.event_type} returned to the payment worker queue.`, "success");
       await Promise.all([loadRecoveryEvents(), load()]);
     } catch (reason) {

@@ -24,10 +24,12 @@ test("critical staff mutations use deterministic entity/version idempotency keys
   assert.match(waiting, /waiting-room-\$\{record\.id\}-\$\{record\.backendVersion\}-\$\{command\}`/);
   assert.match(resources, /resource-status-\$\{resource\.id\}-\$\{resource\.version\}-\$\{nextStatus\}`/);
   assert.match(people, /verification-\$\{selected\.id\}-\$\{selected\.version\}-\$\{status\}`/);
-  assert.match(finance, /payment-event-replay-\$\{event\.id\}`/);
+  assert.match(finance, /paymentReplayKeys\.current\.get\(fingerprint\)/);
+  assert.match(finance, /payment-event-replay-\$\{event\.id\}-\$\{event\.status\.toLowerCase\(\)\}-\$\{event\.attempt_count\}/);
   assert.match(finance, /finance-refund-\$\{refundPayment\.id\}`/);
   assert.match(administration, /staff-status-\$\{record\.id\}-\$\{record\.version\}-\$\{next\}`/);
-  assert.match(notifications, /outbox-replay-\$\{event\.id\}`/);
+  assert.match(notifications, /replayKeys\.current\.get\(fingerprint\)/);
+  assert.match(notifications, /outbox-replay-\$\{event\.id\}-\$\{event\.status\.toLowerCase\(\)\}-\$\{event\.attempt_count\}/);
   assert.match(appointmentTypes, /appointment-type-\$\{currentType\.id\}-\$\{currentType\.version\}`/);
   assert.match(accessReview, /staff-session-revoke-\$\{session\.id\}`/);
   assert.match(visitor, /\"Idempotency-Key\": key/);
