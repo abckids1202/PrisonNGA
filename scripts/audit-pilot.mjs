@@ -90,6 +90,8 @@ const externalIntegrationChecks = [
   },
 ];
 
+const externalIntegrationsReady = externalIntegrationChecks.every((check) => check.configured);
+
 const checks = [
   { id: "environment", label: "Explicit runtime environment", ok: environmentCheck.environment !== "invalid", detail: environmentCheck.environment },
   { id: "public-domain", label: "HTTPS public application domain", ok: httpsUrl("PUBLIC_APP_URL"), detail: "PUBLIC_APP_URL" },
@@ -100,6 +102,7 @@ const checks = [
   { id: "release-gates", label: "Institutional release evidence", ok: environment === "development" || releaseGates.ready, detail: environment === "development" ? "development-only gates not evaluated" : releaseGates.ready ? "all required gates attested" : `${releaseGates.missing.length} gate(s) missing` },
   { id: "staging-evidence", label: "Staging acceptance evidence", ok: environment !== "staging" || missingStagingEvidence.length === 0, detail: environment !== "staging" ? "not required outside staging" : missingStagingEvidence.length ? `${missingStagingEvidence.length} attestation(s) missing` : "all pilot attestations present" },
   { id: "release-artifacts", label: "Release documentation artifacts", ok: missingRepositoryArtifacts.length === 0, detail: missingRepositoryArtifacts.length ? `${missingRepositoryArtifacts.length} required artifact(s) missing` : "runbook, evidence register, and route matrix present" },
+  { id: "external-integrations", label: "External provider integrations", ok: environment === "development" || externalIntegrationsReady, detail: environment === "development" ? "development-only integrations not evaluated" : externalIntegrationsReady ? "all required providers configured" : `${externalIntegrationChecks.filter((check) => !check.configured).length} provider integration(s) missing` },
 ];
 
 const operationalActions = {
@@ -109,8 +112,6 @@ const operationalActions = {
   queue: "Configure NOTIFICATION_QUEUE_NAME for the deployed environment",
   "release-artifacts": "Restore the required release documentation artifacts before accepting pilot evidence",
 };
-
-const externalIntegrationsReady = externalIntegrationChecks.every((check) => check.configured);
 
 const report = {
   generatedAt: new Date().toISOString(),
