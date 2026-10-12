@@ -43,3 +43,7 @@ export function DrawerSection({ title, children }: { title: string; children: Re
 export function DrawerFooter({ children }: { children: ReactNode }) {
   return <div className="sv3-drawer-actions">{children}</div>;
 }
+
+export function CopyableId({ value }: { value: string }) {
+  return <span className="sv3-copyable-id"><span>{value}</span><button type="button" aria-label={`Copy ${value}`} onClick={(event) => { event.stopPropagation(); void navigator.clipboard?.writeText(value); }}>⧉</button></span>;
+}
