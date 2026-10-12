@@ -3,18 +3,18 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `c44cd50` (`fix: make fresh local video transport explicit`).
+Latest verified code commit: `027f71d` (`fix: stabilize release verification gates`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The post-change split verification passed: 551 server test cases across 547 test
-files/subtests, 17 browser tests on the alternate local E2E port, fresh migration
-verification, a disposable backup/restore drill, typecheck, lint, production
-build, and a zero-vulnerability production dependency audit. The combined
-release-verifier process was interrupted by the Windows host during its server
-test stage, so this record does not claim that aggregate command passed.
+The release verifier now passes after separating the production build from the
+server suite and assigning the isolated browser gate to port 4174 by default:
+551 server test cases across 547 test files/subtests, 17 browser tests, fresh
+migration verification, a disposable backup/restore drill, typecheck, lint,
+production build, and a zero-vulnerability production dependency audit all
+passed.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current split verification reports 551 passing test cases across 547 test
+The current release verification reports 551 passing test cases across 547 test
 files/subtests, plus 17 browser tests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
