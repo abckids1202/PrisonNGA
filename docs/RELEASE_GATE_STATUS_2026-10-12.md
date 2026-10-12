@@ -64,6 +64,9 @@ Evidence retention recovery now restores legal-hold rows in bounded batches,
 preventing a large privacy backlog from becoming one oversized Worker update.
 Scheduled-job failure alarms now fan out across facilities in bounded D1
 batches instead of constructing one unbounded batch.
+Notification outbox recovery now resets at most 25 stale processing claims per
+worker invocation, matching the drain batch size and preventing a large stale
+queue from turning one scheduled run into an unbounded write.
 
 ## Pilot gate status
 

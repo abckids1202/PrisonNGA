@@ -340,7 +340,15 @@ async function expireAbandonedPaymentIntents(env: Env): Promise<void> {
 }
 
 async function processOutbox(env: Env): Promise<void> {
-  await env.DB.prepare("UPDATE outbox_events SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, processing_started_at = NULL, last_error = 'Recovered stale processing claim.' WHERE status = 'PROCESSING' AND processing_started_at IS NOT NULL AND processing_started_at < datetime('now', '-5 minutes')").run();
+  await env.DB.prepare(`UPDATE outbox_events
+    SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, processing_started_at = NULL, last_error = 'Recovered stale processing claim.'
+    WHERE rowid IN (
+      SELECT rowid FROM outbox_events
+      WHERE status = 'PROCESSING'
+        AND processing_started_at IS NOT NULL
+        AND processing_started_at < datetime('now', '-5 minutes')
+      LIMIT 25
+    )`).run();
   await env.DB.prepare(`UPDATE notification_delivery_attempts
     SET status = 'FAILED', error_message = 'Recovered stale outbox claim.', finished_at = CURRENT_TIMESTAMP
     WHERE status = 'PROCESSING'
