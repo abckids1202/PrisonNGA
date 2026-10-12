@@ -12,6 +12,10 @@ test("staging fixture refuses unsafe environments and requires explicit confirma
   assert.match(script, /localPlaceholder/);
   assert.match(script, /--remote/);
   assert.doesNotMatch(script, /--local/);
+  assert.match(script, /bootstrap-staff-email/);
+  assert.match(script, /pending:staff-staging-bootstrap/);
+  assert.match(script, /role-supervisor/);
+  assert.doesNotMatch(script, /securevisit_staff_session/);
 });
 
 test("staging fixture contains synthetic infrastructure but no credentials or private evidence", () => {
