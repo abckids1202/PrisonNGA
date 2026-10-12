@@ -26,6 +26,20 @@ for (const line of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
     : rawValue;
 }
 
+// Keep local callback/origin URLs aligned when a developer overrides the
+// server port. Never rewrite a non-local URL; production-like values must be
+// supplied explicitly and are outside this development convenience.
+const configuredPublicUrl = process.env.PUBLIC_APP_URL || "";
+try {
+  const publicUrl = new URL(configuredPublicUrl);
+  if (["localhost", "127.0.0.1", "::1"].includes(publicUrl.hostname)) {
+    publicUrl.port = localPort;
+    process.env.PUBLIC_APP_URL = publicUrl.toString().replace(/\/$/, "");
+  }
+} catch {
+  // Environment validation reports malformed URLs; do not hide that error.
+}
+
 if (process.env.SECUREVISIT_ENVIRONMENT !== "development") {
   throw new Error("dev:local requires SECUREVISIT_ENVIRONMENT=development; refusing to start with staging or production settings.");
 }

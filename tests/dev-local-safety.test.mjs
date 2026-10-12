@@ -12,6 +12,8 @@ test("dev:local documents the local product entry points", async () => {
   const source = await readFile(new URL("../scripts/dev-local.mjs", import.meta.url), "utf8");
   assert.match(source, /const localPort/);
   assert.match(source, /: "5174";/);
+  assert.match(source, /process\.env\.PUBLIC_APP_URL = publicUrl\.toString\(\)\.replace/);
+  assert.match(source, /Never rewrite a non-local URL/);
   assert.match(source, /http:\/\/localhost:\$\{localPort\}/);
   assert.match(source, /\/visitor/);
   assert.match(source, /\/control/);
