@@ -53,3 +53,16 @@ test("expired sessions are purged while active and recently revoked sessions rem
   await purgeExpiredAuthSessions(d1);
   assert.deepEqual(d1.database.prepare("SELECT id FROM auth_sessions ORDER BY id").all().map((row) => row.id), ["active", "recent-revoked"]);
 });
+
+test("authentication session cleanup removes a bounded batch per run", async () => {
+  const d1 = new D1();
+  const expired = new Date(Date.now() - 60_000).toISOString();
+  d1.database.exec("CREATE TABLE auth_sessions (id TEXT PRIMARY KEY, expires_at TEXT, revoked_at TEXT);");
+  const insert = d1.database.prepare("INSERT INTO auth_sessions VALUES (?, ?, NULL)");
+  for (let index = 0; index < 251; index += 1) insert.run(`expired-${index}`, expired);
+
+  await purgeExpiredAuthSessions(d1);
+  assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_sessions").get().count, 1);
+  await purgeExpiredAuthSessions(d1);
+  assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_sessions").get().count, 0);
+});

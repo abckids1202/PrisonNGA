@@ -29,7 +29,20 @@ export async function reconcileStaleAuthDeliveryAttempts(db: Pick<D1Database, "p
 
 /** Keep revoked session history available for a bounded period, but do not
  * retain expired authentication tokens indefinitely. Token hashes are not
- * useful after expiry and the session table is operational security data. */
+ * useful after expiry and the session table is operational security data.
+ *
+ * This intentionally removes one bounded batch per scheduled invocation.
+ * Authentication cleanup must not turn into an unbounded D1 transaction as
+ * the session table grows; the next scheduled run continues from the
+ * remaining rows. `rowid` is SQLite's stable internal key and is available
+ * for this table even though the application uses a UUID as its public ID.
+ */
 export async function purgeExpiredAuthSessions(db: Pick<D1Database, "prepare">): Promise<void> {
-  await db.prepare("DELETE FROM auth_sessions WHERE julianday(expires_at) <= julianday('now') OR (revoked_at IS NOT NULL AND julianday(revoked_at) <= julianday('now', '-30 days'))").run();
+  await db.prepare(`DELETE FROM auth_sessions
+    WHERE rowid IN (
+      SELECT rowid FROM auth_sessions
+      WHERE julianday(expires_at) <= julianday('now')
+         OR (revoked_at IS NOT NULL AND julianday(revoked_at) <= julianday('now', '-30 days'))
+      LIMIT 250
+    )`).run();
 }
