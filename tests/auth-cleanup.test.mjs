@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions } from "../lib/server/auth/cleanup.ts";
+import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions, purgeExpiredIdempotencyRecords } from "../lib/server/auth/cleanup.ts";
 
 class Statement {
   constructor(database, sql) { this.database = database; this.sql = sql; }
@@ -92,4 +92,27 @@ test("authentication session cleanup removes a bounded batch per run", async () 
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_sessions").get().count, 1);
   await purgeExpiredAuthSessions(d1);
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_sessions").get().count, 0);
+});
+
+test("idempotency cleanup retains recent replay records and removes abandoned claims in bounded batches", async () => {
+  const d1 = new D1();
+  const oldCompleted = new Date(Date.now() - 91 * 24 * 60 * 60_000).toISOString();
+  const recentCompleted = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
+  const oldProcessing = new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString();
+  const recentProcessing = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();
+  d1.database.exec(`
+    CREATE TABLE idempotency_records (
+      id TEXT PRIMARY KEY, scope TEXT, idempotency_key TEXT, request_hash TEXT,
+      status TEXT, response_status INTEGER, response_body TEXT,
+      processing_started_at TEXT, created_at TEXT, completed_at TEXT
+    );
+    INSERT INTO idempotency_records VALUES
+      ('old-completed', 'scope', 'old', 'hash', 'COMPLETED', 200, '{}', NULL, '${oldCompleted}', '${oldCompleted}'),
+      ('recent-completed', 'scope', 'recent', 'hash', 'COMPLETED', 200, '{}', NULL, '${recentCompleted}', '${recentCompleted}'),
+      ('old-processing', 'scope', 'processing-old', 'hash', 'PROCESSING', NULL, NULL, '${oldProcessing}', '${oldProcessing}', NULL),
+      ('recent-processing', 'scope', 'processing-recent', 'hash', 'PROCESSING', NULL, NULL, '${recentProcessing}', '${recentProcessing}', NULL);
+  `);
+
+  await purgeExpiredIdempotencyRecords(d1);
+  assert.deepEqual(d1.database.prepare("SELECT id FROM idempotency_records ORDER BY id").all().map((row) => row.id), ["recent-completed", "recent-processing"]);
 });

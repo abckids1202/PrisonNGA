@@ -8,7 +8,7 @@ import { createLiveKitProvider, getVideoConfig } from "../lib/server/video/provi
 import { deliverNotification, getNotificationDelivery } from "../lib/server/notifications/provider";
 import { resolveOutboxVisitorRecipient } from "../lib/server/notifications/outbox";
 import { reconcileStoredNotificationProviderEvent } from "../lib/server/notifications/provider-status";
-import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions, reconcileStaleAuthDeliveryAttempts } from "../lib/server/auth/cleanup";
+import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions, purgeExpiredIdempotencyRecords, reconcileStaleAuthDeliveryAttempts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
@@ -925,6 +925,7 @@ const worker = {
       runScheduledJob(env, "auth-delivery-reconciliation", () => reconcileStaleAuthDeliveryAttempts(env.DB)),
       runScheduledJob(env, "auth-artifact-cleanup", () => purgeExpiredAuthArtifacts(env.DB)),
       runScheduledJob(env, "auth-session-cleanup", () => purgeExpiredAuthSessions(env.DB)),
+      runScheduledJob(env, "idempotency-cleanup", () => purgeExpiredIdempotencyRecords(env.DB)),
       runScheduledJob(env, "rate-limit-cleanup", () => purgeStaleRateLimitBuckets(env.DB)),
       runScheduledJob(env, "live-session-reconciliation", () => reconcileExpiredSessions(env)),
     ]));

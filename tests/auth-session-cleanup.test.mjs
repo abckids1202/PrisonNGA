@@ -5,4 +5,5 @@ import { readFile } from "node:fs/promises";
 test("scheduled worker runs bounded authentication session cleanup", async () => {
   const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
   assert.match(worker, /purgeExpiredAuthSessions\(env\.DB\)/);
+  assert.match(worker, /purgeExpiredIdempotencyRecords\(env\.DB\)/);
 });

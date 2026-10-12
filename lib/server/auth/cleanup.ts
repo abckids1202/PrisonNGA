@@ -81,3 +81,20 @@ export async function purgeExpiredAuthSessions(db: Pick<D1Database, "prepare">):
       LIMIT 250
     )`).run();
 }
+
+/**
+ * Idempotency records are replay protection, not an audit archive. Retain
+ * completed keys long enough to absorb delayed client retries, but prevent
+ * the table from growing forever. Abandoned processing claims are retained
+ * briefly for the normal reclaim path and then removed if the originating
+ * invocation never returned.
+ */
+export async function purgeExpiredIdempotencyRecords(db: Pick<D1Database, "prepare">): Promise<void> {
+  await db.prepare(`DELETE FROM idempotency_records
+    WHERE rowid IN (
+      SELECT rowid FROM idempotency_records
+      WHERE (status = 'COMPLETED' AND completed_at IS NOT NULL AND julianday(completed_at) <= julianday('now', '-90 days'))
+         OR (status = 'PROCESSING' AND julianday(COALESCE(processing_started_at, created_at)) <= julianday('now', '-7 days'))
+      LIMIT ${AUTH_CLEANUP_BATCH_SIZE}
+    )`).run();
+}

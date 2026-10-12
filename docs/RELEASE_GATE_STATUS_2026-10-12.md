@@ -53,6 +53,9 @@ does not collide with a stale config and that the restore uses the application's
 actual local D1 state rather than an empty alternate database.
 Authentication challenge, delivery-attempt, federation-state, and SAML-cache
 purges are also bounded and covered by foreign-key-order regression tests.
+Idempotency replay records now have bounded scheduled retention: completed
+records remain for 90 days and abandoned processing claims for 7 days, with
+the cleanup covered by regression tests and the Worker schedule.
 
 ## Pilot gate status
 
