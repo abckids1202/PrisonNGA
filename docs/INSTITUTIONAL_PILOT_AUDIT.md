@@ -3,8 +3,8 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest full-release-verified code commit: `c7274a2` (`refactor: extract visitation workspace`).
-The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, and Visitation workspace extractions; it passed the full release verifier.
+Latest full-release-verified code commit: `be1972a` (`refactor: extract people workspace`).
+The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, and People workspace extractions; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
@@ -16,7 +16,7 @@ This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
 The current release verification reports 568 passing server test cases plus 17
-browser tests on `c7274a2`; this is the authoritative repository evidence
+browser tests on `be1972a`; this is the authoritative repository evidence
 record for the current baseline.
 
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the
