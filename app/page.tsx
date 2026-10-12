@@ -15,6 +15,7 @@ import CommandPalette from "./features/control/CommandPalette";
 import { AlertDialog, ImpactDialog } from "./features/control/DecisionDialogs";
 import AppointmentDrawer from "./features/control/AppointmentDrawer";
 import ContextDrawer, { type DrawerPayload } from "./features/control/ContextDrawer";
+import { CapacityPopover, SessionPopover, WaitingPopover, type OperationalLiveSession, type OperationalWaitingVisit } from "./features/control/OperationalPopovers";
 import { facilityTimeZoneLabel, mapBackendAppointment, type Appointment, type AppointmentStatus, type CheckState, type ReadinessCheck, type WaitingRecord, type WaitingState } from "./features/control/model";
 import { formatDateValue as formatDateValueWithZone, safeTimeZone } from "@/lib/date-format";
 
@@ -51,8 +52,6 @@ type AuditEvent = {
 };
 type SecurityNotification = { id: string; eventType: string; severity: string; createdAt: string; requestId?: string | null };
 type StaffShellIdentity = { displayName?: string; userType?: string; scope?: { facilityName?: string; jobTitle?: string } | null };
-type CommandWaitingVisit = { id: string; visitor_name?: string | null; prisoner_name?: string | null; state?: string | null; readiness?: { state?: string | null } };
-type CommandLiveSession = { id: string; appointment_id: string; status: string; recovery_required?: number | boolean; visitor_name?: string | null; prisoner_name?: string | null; room_name?: string | null; kiosk_name?: string | null; participants?: Array<{ participant_role?: string; status?: string }> };
 type ResourceReassignment = { appointmentId: string; sourceResourceId: string; targetResourceId: string; expectedSourceVersion: number; expectedTargetVersion: number; expectedWaitingVersion: number; reason: string };
 type PopoverKind = "capacity" | "waiting" | "session" | "demo" | null;
 type DrawerInput = DrawerPayload | { kind: "appointment" | "activity"; appointment?: Appointment; event?: string; source?: string; relatedId?: string };
@@ -355,10 +354,10 @@ function CommandCenterPage({ appointments, facilityName, facilityTimezone, now, 
   const [resources, setResources] = useState<ResourceApiRow[]>([]);
   const [resourcesLoading, setResourcesLoading] = useState(true);
   const [resourcesError, setResourcesError] = useState(false);
-  const [waitingVisits, setWaitingVisits] = useState<CommandWaitingVisit[]>([]);
+  const [waitingVisits, setWaitingVisits] = useState<OperationalWaitingVisit[]>([]);
   const [waitingLoading, setWaitingLoading] = useState(true);
   const [waitingError, setWaitingError] = useState(false);
-  const [liveSessions, setLiveSessions] = useState<CommandLiveSession[]>([]);
+  const [liveSessions, setLiveSessions] = useState<OperationalLiveSession[]>([]);
   const [liveSessionsLoading, setLiveSessionsLoading] = useState(true);
   const [liveSessionsError, setLiveSessionsError] = useState(false);
   useEffect(() => {
@@ -385,7 +384,7 @@ function CommandCenterPage({ appointments, facilityName, facilityTimezone, now, 
       try {
         const response = await fetch("/api/control/live-sessions", { cache: "no-store", headers: { accept: "application/json" } });
         if (!response.ok) throw new Error("LIVE_SESSIONS_UNAVAILABLE");
-        const body = await response.json() as { sessions?: CommandLiveSession[] };
+        const body = await response.json() as { sessions?: OperationalLiveSession[] };
         if (active) { setLiveSessions(Array.isArray(body.sessions) ? body.sessions : []); setLiveSessionsError(false); }
       } catch {
         if (active) { setLiveSessions([]); setLiveSessionsError(true); }
@@ -403,7 +402,7 @@ function CommandCenterPage({ appointments, facilityName, facilityTimezone, now, 
       try {
         const response = await fetch("/api/control/waiting-room", { cache: "no-store", headers: { accept: "application/json" } });
         if (!response.ok) throw new Error("WAITING_ROOM_UNAVAILABLE");
-        const body = await response.json() as { visits?: CommandWaitingVisit[] };
+        const body = await response.json() as { visits?: OperationalWaitingVisit[] };
         if (active) { setWaitingVisits(Array.isArray(body.visits) ? body.visits : []); setWaitingError(false); }
       } catch {
         if (active) { setWaitingVisits([]); setWaitingError(true); }
@@ -853,22 +852,6 @@ function IncidentsPage({ timeZone, onNotify }: { timeZone: string; onNotify: (me
     finally { setCreating(false); }
   }
   return <><PageHeader eyebrow="Operations · Case management" title="Incidents" description="Persisted operational cases, append-only event history, and controlled resolution actions." actions={<><Status tone="red">{incidents.filter((incident) => !["RESOLVED", "CLOSED"].includes(incident.status)).length} OPEN</Status><Button variant="primary" onClick={() => setShowCreate(true)}>+ Report incident</Button></>} />{loading ? <div className="sv3-empty"><span>◌</span><strong>Loading incident register</strong><p>Reading facility-scoped operational cases.</p></div> : !incidents.length ? <EmptyState title="No incidents recorded" body="Operational problems will appear here when staff create a persisted incident case." /> : <div className="sv3-incident-layout"><section className="sv3-incident-list"><div className="sv3-incident-list-head"><span>OPEN INCIDENTS</span><button onClick={() => refresh().catch(() => undefined)}>Refresh</button></div>{incidents.map((incident) => <button className={`sv3-incident-row ${selected?.id === incident.id ? "active" : ""}`} key={incident.id} onClick={() => setSelectedId(incident.id)}><span className={`sv3-severity severity-${incident.severity.toLowerCase()}`}>{incident.severity}</span><strong>{incident.title}</strong><small>{incident.id} · {formatDateValue(incident.created_at, { dateStyle: "medium", timeStyle: "short" }, undefined, "Date unavailable")}</small><span className="sv3-incident-meta">{incident.appointment_id || incident.resource_id || "Facility-wide"} · {incident.status}</span><b>›</b></button>)}</section>{selected ? <article className="sv3-incident-detail"><div className="sv3-incident-detail-head"><div><span className={`sv3-severity severity-${selected.severity.toLowerCase()}`}>{selected.severity}</span><span className="sv3-eyebrow">INCIDENT {selected.id}</span><h2>{selected.title}</h2><p>{selected.description}</p></div><Status tone={selected.status === "OPEN" ? "red" : selected.status === "RESOLVED" || selected.status === "CLOSED" ? "green" : "orange"}>{selected.status}</Status></div><div className="sv3-incident-columns"><div><SectionLabel>Case facts</SectionLabel><dl><div><dt>Type</dt><dd>{selected.incident_type}</dd></div><div><dt>Reporter</dt><dd>{selected.reporter_name || "Staff"}</dd></div><div><dt>Assignee</dt><dd>{selected.assignee_name || "Unassigned"}</dd></div><div><dt>Related visit</dt><dd>{selected.appointment_id || "None"}</dd></div></dl></div><div><SectionLabel>Resolution</SectionLabel><p>{selected.resolution || "No resolution recorded."}</p><label className="sv3-policy-reason">Action note<textarea value={actionReason} minLength={8} maxLength={2000} onChange={(event) => setActionReason(event.target.value)} placeholder="Record what was checked, what changed, and the next action." /></label><div className="sv3-header-actions"><Button onClick={() => command("acknowledge")} disabled={selected.status !== "OPEN" || actionReason.trim().length < 8}>Acknowledge</Button><Button onClick={() => command("add_note")} disabled={actionReason.trim().length < 8}>Add note</Button><Button variant="primary" onClick={() => command("resolve")} disabled={actionReason.trim().length < 8 || ["RESOLVED", "CLOSED"].includes(selected.status)}>Resolve</Button><Button variant="quiet" onClick={() => command("close")} disabled={selected.status !== "RESOLVED" || actionReason.trim().length < 8}>Close</Button></div></div></div></article> : null}</div>}{showCreate ? <div className="sv3-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !creating) setShowCreate(false); }}><form className="sv3-dialog" role="dialog" aria-modal="true" aria-labelledby="incident-create-title" onSubmit={createIncident}><div className="sv3-dialog-head"><div><span className="sv3-eyebrow">OPERATIONS · NEW CASE</span><h2 id="incident-create-title">Report an incident</h2><p>Create a facility-scoped case. The record, audit event, and notification outbox entry are committed together.</p></div><button type="button" aria-label="Close incident form" onClick={() => setShowCreate(false)} disabled={creating}>×</button></div><label className="sv3-dialog-field">Title<input required minLength={4} maxLength={160} value={createForm.title} onChange={(event) => setCreateForm({ ...createForm, title: event.target.value })} placeholder="e.g. Kiosk camera unavailable" /></label><label className="sv3-dialog-field">Incident type<select value={createForm.incidentType} onChange={(event) => setCreateForm({ ...createForm, incidentType: event.target.value })}><option value="OPERATIONAL">Operational</option><option value="TECHNICAL">Technical</option><option value="SAFETY">Safety</option><option value="SECURITY">Security</option><option value="VISITOR">Visitor support</option></select></label><label className="sv3-dialog-field">Severity<select value={createForm.severity} onChange={(event) => setCreateForm({ ...createForm, severity: event.target.value })}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="CRITICAL">Critical</option></select></label><label className="sv3-dialog-field">Description<textarea required minLength={8} maxLength={2000} value={createForm.description} onChange={(event) => setCreateForm({ ...createForm, description: event.target.value })} placeholder="Describe what happened, who is affected, and what staff observed." /></label><div className="sv3-dialog-actions"><Button type="button" variant="quiet" onClick={() => setShowCreate(false)} disabled={creating}>Cancel</Button><Button type="submit" variant="primary" disabled={creating}>{creating ? "Creating…" : "Create incident"}</Button></div></form></div> : null}</>;
-}
-
-function CapacityPopover({ resources, loading, unavailable = false, onOpen }: { resources: ResourceApiRow[]; loading: boolean; unavailable?: boolean; onOpen: () => void }) {
-  const rooms = resources.filter((resource) => resource.resource_type === "ROOM");
-  const occupied = rooms.filter((resource) => resource.active_appointment_id || resource.status === "IN_USE").length;
-  return <div className="sv3-popover sv3-metric-popover"><span className="sv3-eyebrow">Facility capacity</span><strong>{loading ? "Loading room status" : unavailable ? "Room status unavailable" : rooms.length ? `${occupied} / ${rooms.length} rooms assigned` : "Room status unavailable"}</strong>{loading ? <p>Reading the protected resource register.</p> : unavailable ? <p>The protected resource register could not be reached. No capacity value is being inferred.</p> : rooms.length ? <div className="sv3-popover-list">{rooms.slice(0, 6).map((room) => <span key={room.id}><b>{room.display_name}</b><em>{room.active_appointment_id ? "In use" : room.status.toLowerCase().replaceAll("_", " ")}</em></span>)}</div> : <p>No facility room records were returned for this staff scope.</p>}<button type="button" onClick={onOpen}>Open Resources →</button></div>;
-}
-
-function WaitingPopover({ visits, loading, unavailable = false, onOpen }: { visits: CommandWaitingVisit[]; loading: boolean; unavailable?: boolean; onOpen: () => void }) {
-  const stateLabel = (visit: CommandWaitingVisit) => (visit.state || visit.readiness?.state || "NOT_ARRIVED").replaceAll("_", " ");
-  return <div className="sv3-popover sv3-metric-popover"><span className="sv3-eyebrow">Waiting room</span><strong>{loading ? "Loading readiness lanes" : unavailable ? "Waiting Room unavailable" : `${visits.length} linked visits`}</strong>{loading ? <p>Reading persisted presence and readiness.</p> : unavailable ? <p>The protected Waiting Room register could not be reached. No empty queue is being inferred.</p> : visits.length ? <div className="sv3-popover-list">{visits.slice(0, 4).map((visit) => <span key={visit.id}><b>{visit.visitor_name || "Visitor name unavailable"}</b><em>{stateLabel(visit)}</em></span>)}</div> : <p>No approved visits are currently in the Waiting Room window.</p>}<button type="button" onClick={onOpen}>Open Waiting Room →</button></div>;
-}
-
-function SessionPopover({ sessions, loading, unavailable = false, onOpen }: { sessions: CommandLiveSession[]; loading: boolean; unavailable?: boolean; onOpen: () => void }) {
-  const participantCount = (session: CommandLiveSession) => session.participants?.filter((participant) => participant.status !== "DISCONNECTED").length || 0;
-  return <div className="sv3-popover sv3-metric-popover"><span className="sv3-eyebrow">Session status</span><strong>{loading ? "Loading session status" : unavailable ? "Session status unavailable" : sessions.length ? `${sessions.length} active session${sessions.length === 1 ? "" : "s"}` : "No active sessions"}</strong>{loading ? <p>Reading the protected Live Session register.</p> : unavailable ? <p>The protected Live Session register could not be reached. No zero-session state is being inferred.</p> : sessions.length ? <div className="sv3-popover-list">{sessions.slice(0, 4).map((session) => <span key={session.id}><b>{session.visitor_name || "Visitor name unavailable"} ↔ {session.prisoner_name || "Prisoner name unavailable"}</b><em>{session.status} · {participantCount(session)} connected</em></span>)}</div> : <p>No active LiveKit sessions are currently recorded for this facility.</p>}<button type="button" onClick={onOpen}>Open live sessions →</button></div>;
 }
 
 type VerificationQueueCase = {
