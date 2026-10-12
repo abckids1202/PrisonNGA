@@ -3,7 +3,7 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `e41b6c4` (`fix: scope scheduled payment retries through intents`).
+Latest verified code commit: `fca3716` (`fix: avoid duplicate payment retry matches`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
@@ -130,6 +130,7 @@ The current repository already includes:
 - Control Live Sessions now selects the safe `terminate` transition for sessions that never actually started, while preserving normal completion for sessions with an actual start; this prevents a one-sided or pre-call failure from being incorrectly submitted as a completed visit.
 - The Live Sessions recovery drawer now exposes an explicit `Retry settlement` action for an `ENDING` session with persisted reconciliation evidence; it reuses the idempotent provider-close/finalization boundary and distinguishes recovery success from normal visit completion.
 - Scheduled payment-event retries now derive facility scope by joining the event payload to its immutable payment intent; this removes an invalid `payment_provider_events.facility_id` assumption and preserves facility-scoped dead-letter alarms, while malformed payloads remain eligible for retry/dead-letter handling.
+- The scheduled payment retry lookup now uses bounded scalar lookups—payment-intent ID first, provider reference second—so a duplicated external reference cannot multiply one provider event into multiple retry attempts.
 - Notification delivery now fails closed outside development when no outbound provider is configured; staging and production still require real provider delivery, callbacks and operational replay evidence.
 - Staff verification review now rejects a contradictory decision after a case is already approved or rejected; only a replay of the same terminal decision is idempotent.
 - Staff live-session finalization now rejects a contradictory end mode after a session is already ended, terminated, or cancelled; same-mode retries remain idempotent after settlement is verified.
