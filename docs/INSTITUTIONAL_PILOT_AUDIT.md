@@ -3,7 +3,7 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `ac9b35f` (`fix: guard live session end with version`).
+Latest verified code commit: `449ac42` (`fix: terminate unstarted live sessions from control`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
@@ -127,6 +127,7 @@ The current repository already includes:
 - When a custom localhost port is supplied, the local launcher now synchronizes `PUBLIC_APP_URL` so callback and origin-sensitive development flows target the actual server port; non-local URLs are never rewritten.
 - Existing development checkouts with an older unconfigured LiveKit template now fall back to `local_test`; a deliberately configured local LiveKit instance is preserved.
 - Live Sessions now reads the persisted session version and sends it with staff end requests, making stale drawers fail explicitly through the existing optimistic-concurrency boundary.
+- Control Live Sessions now selects the safe `terminate` transition for sessions that never actually started, while preserving normal completion for sessions with an actual start; this prevents a one-sided or pre-call failure from being incorrectly submitted as a completed visit.
 - Notification delivery now fails closed outside development when no outbound provider is configured; staging and production still require real provider delivery, callbacks and operational replay evidence.
 - Staff verification review now rejects a contradictory decision after a case is already approved or rejected; only a replay of the same terminal decision is idempotent.
 - Staff live-session finalization now rejects a contradictory end mode after a session is already ended, terminated, or cancelled; same-mode retries remain idempotent after settlement is verified.
