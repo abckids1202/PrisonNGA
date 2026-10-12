@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("Waiting Room window selector is controlled and filters persisted appointment times", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../app/features/control/WaitingRoomPage.tsx", import.meta.url), "utf8");
 
   assert.match(source, /const \[windowFilter, setWindowFilter\] = useState<"next_2_hours" \| "today" \| "all_approved">\("next_2_hours"\)/);
   assert.match(source, /value=\{windowFilter\} onChange=\{\(event\) => setWindowFilter\(event\.target\.value as typeof windowFilter\)\}/);
