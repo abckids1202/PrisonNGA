@@ -13,7 +13,7 @@ test("Control notification button reads persisted facility security events", asy
 });
 
 test("notification operations expose persisted channel attempt outcomes", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../app/features/management/NotificationOperationsPanel.tsx", import.meta.url), "utf8");
 
   assert.match(source, /type NotificationDeliveryAttempt/);
   assert.match(source, /deliveryAttempts\?: NotificationDeliveryAttempt\[\]/);
