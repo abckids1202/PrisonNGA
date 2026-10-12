@@ -6,7 +6,7 @@ repository evidence from staging evidence and external institutional approvals.
 ## Verified repository baseline
 
 The following command completed successfully on the current `main` baseline
-commit `4eaffec`:
+commit after the backup-drill hardening:
 
 ```text
 npm run verify:release
@@ -31,7 +31,7 @@ provider without naming the protected `EVIDENCE_BUCKET_NAME` binding.
 This is engineering evidence only. It does not prove external provider,
 hardware, deployment, resilience, legal, or institutional readiness.
 
-The full verifier was rerun on `4eaffec` after visitor profile, session,
+The full verifier was rerun on the current baseline after visitor profile, session,
 notification, facility closure, kiosk credential, visit policy, prisoner, and
 payment/outbox recovery mutation paths were given retry-safe idempotency
 boundaries. Replay keys now remain stable for one network retry but rotate
@@ -45,11 +45,12 @@ engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
 institutional gates.
 
-Since that full verifier run, commit `862f24b` bounded authentication-session
-purging to 250 rows per scheduled invocation and added a regression test for
-multi-run cleanup. The targeted authentication-cleanup tests, typecheck, and
-lint pass on the current commit. A complete `verify:release` rerun remains
-recommended before the next release candidate.
+The current baseline also includes commit `862f24b`, which bounds
+authentication-session purging to 250 rows per scheduled invocation, and the
+backup-drill fix that gives each Wrangler config a unique project-root path.
+The full verifier now proves that an interrupted or repeated local backup run
+does not collide with a stale config and that the restore uses the application's
+actual local D1 state rather than an empty alternate database.
 
 ## Pilot gate status
 

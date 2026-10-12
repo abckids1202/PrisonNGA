@@ -61,7 +61,10 @@ if (!databaseId || !uuidPattern.test(databaseId) || (remote && databaseId === lo
   fail(remote ? "Remote backup requires D1_DATABASE_ID set to the real Cloudflare database UUID." : "The local D1 database ID is invalid.");
 }
 
-const configPath = path.join(projectRoot, ".wrangler", `d1-backup-${process.pid}.jsonc`);
+// Give each drill its own project-root config file so Wrangler keeps using the
+// application's normal `.wrangler/state` directory. A random name prevents a
+// previous interrupted run from causing EEXIST when a process id is reused.
+const configPath = path.join(projectRoot, `.d1-backup-${crypto.randomUUID()}.jsonc`);
 const config = JSON.stringify({ compatibility_date: "2026-09-22", d1_databases: [{ binding: "DB", database_name: databaseName, database_id: databaseId }] }, null, 2);
 const outputPath = option("--output");
 const inputPath = option("--input");
@@ -71,9 +74,11 @@ if (action === "backup") {
   const resolvedOutput = path.resolve(outputPath);
   if (!resolvedOutput.toLowerCase().endsWith(".sql")) fail("Backup output must be a .sql file.");
   const args = [wranglerCli, "d1", "export", "DB", local ? "--local" : "--remote", "--output", resolvedOutput, "--skip-confirmation", "--config", configPath];
+  // Keep Wrangler's working directory anchored at the project so local
+  // exports use the same persisted state as the application.
+  args.push("--cwd", projectRoot);
   const { mkdir, writeFile } = await import("node:fs/promises");
   await mkdir(path.dirname(resolvedOutput), { recursive: true });
-  await mkdir(path.dirname(configPath), { recursive: true });
   await writeFile(configPath, `${config}\n`, { flag: "wx" });
   try {
     const result = spawnSync(process.execPath, args, { cwd: projectRoot, stdio: "inherit" });
@@ -88,7 +93,7 @@ if (action === "backup") {
   const resolvedInput = path.resolve(inputPath);
   if (!existsSync(resolvedInput)) fail(`Backup file not found: ${resolvedInput}`);
   const persistTo = await mkdtemp(path.join(os.tmpdir(), "securevisit-restore-drill-"));
-  await import("node:fs/promises").then(({ mkdir, writeFile }) => mkdir(path.dirname(configPath), { recursive: true }).then(() => writeFile(configPath, `${config}\n`, { flag: "wx" })));
+  await writeFile(configPath, `${config}\n`, { flag: "wx" });
   try {
     const restoreInput = path.join(persistTo, "restore.sql");
     const exportedSql = await readFile(resolvedInput, "utf8");
