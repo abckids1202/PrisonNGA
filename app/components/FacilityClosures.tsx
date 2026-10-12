@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDateValue } from "@/lib/date-format";
 
 type Closure = { id: string; startsAt: string; endsAt: string; reason: string; status: "ACTIVE" | "CANCELLED"; version: number; createdAt: string };
@@ -21,6 +21,7 @@ export default function FacilityClosures({ timeZone = "Asia/Jakarta" }: { timeZo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const createKey = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,11 +48,16 @@ export default function FacilityClosures({ timeZone = "Asia/Jakarta" }: { timeZo
     setBusy(true);
     setError("");
     setMessage("");
+    const fingerprint = `${startsAt}\u0000${endsAt}\u0000${reason.trim()}`;
+    const idempotencyKey = createKey.current?.fingerprint === fingerprint
+      ? createKey.current.key
+      : `facility-closure-${crypto.randomUUID()}`;
+    createKey.current = { fingerprint, key: idempotencyKey };
     try {
       const response = await fetch("/api/control/facility-closures", {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-closure-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyKey },
         body: JSON.stringify({ startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString(), reason }),
       });
       const body = await response.json() as { error?: string };
@@ -59,6 +65,7 @@ export default function FacilityClosures({ timeZone = "Asia/Jakarta" }: { timeZo
       setStartsAt("");
       setEndsAt("");
       setReason("");
+      createKey.current = null;
       setMessage("Closure saved. Affected visitor slots are no longer bookable.");
       await load();
     } catch (cause) {
@@ -76,7 +83,7 @@ export default function FacilityClosures({ timeZone = "Asia/Jakarta" }: { timeZo
       const response = await fetch("/api/control/facility-closures", {
         method: "DELETE",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-closure-cancel-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-closure-cancel-${closure.id}-${closure.version}` },
         body: JSON.stringify({ closureId: closure.id, expectedVersion: closure.version, reason: "Staff reopened this facility window." }),
       });
       const body = await response.json() as { error?: string };

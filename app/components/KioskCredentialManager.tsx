@@ -29,7 +29,7 @@ export default function KioskCredentialManager({ resourceId, resourceName, resou
     try {
       const response = await fetch("/api/control/resources", {
         method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `kiosk-credential-${resourceId}-${command}-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `kiosk-credential-${resourceId}-${resourceVersion}-${command}` },
         credentials: "include",
         body: JSON.stringify({ resourceId, command, expectedVersion: resourceVersion, reason: reason.trim() }),
       });

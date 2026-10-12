@@ -64,7 +64,7 @@ export default function VisitPolicyEditor({ timeZone = "Asia/Jakarta" }: { timeZ
     try {
       const response = await fetch("/api/control/visit-policy", {
         method: "PUT",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visit-policy-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `visit-policy-${policy.id}-${policy.version}` },
         body: JSON.stringify({
           expectedVersion: policy.version,
           reason,
