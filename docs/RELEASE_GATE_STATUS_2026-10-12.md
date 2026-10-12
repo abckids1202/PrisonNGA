@@ -13,7 +13,7 @@ npm run verify:release
 
 It verified:
 
-- 74 API route files represented in the security matrix, with no uncovered routes.
+- 75 API route files represented in the security matrix, with no uncovered routes.
 - Fresh local D1 migrations and seed verification.
 - Disposable local D1 backup/restore with schema, foreign-key, credit-ledger, and audit-integrity checks.
 - TypeScript typecheck.
@@ -22,6 +22,9 @@ It verified:
 - 555 server test cases.
 - 17 browser tests.
 - Production dependency audit with 0 vulnerabilities.
+
+The pilot audit also fails closed when staging/production declare the R2 storage
+provider without naming the protected `EVIDENCE_BUCKET_NAME` binding.
 
 This is engineering evidence only. It does not prove external provider,
 hardware, deployment, resilience, legal, or institutional readiness.
