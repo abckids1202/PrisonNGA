@@ -52,6 +52,7 @@ This matrix is the release-review index for the current API surface. “Implemen
 | `/api/webhooks/livekit` | LiveKit webhook signature | Room/session facility binding | Event reconciliation and participant upsert | Participant/session audit evidence | Real provider webhook delivery and outage tests |
 | `/api/health/live` | Public liveness probe | None | None | `{ status: "ok" }` | Deployment probe only; no configuration detail |
 | `/api/health/readiness` | Authenticated staff facility scope | `facility.read` | Read-only | Structured readiness response | Cloudflare deployment secrets, alert routing and backup checks |
+| `/api/diagnostics/client-error` | Public, privacy-safe boundary signal | None; no facility or user data accepted | Rate-limited, bounded payload; no business mutation | Structured redacted operational log with request/correlation ID | External log sink, alert routing, and retention policy |
 
 ## Release-review use
 

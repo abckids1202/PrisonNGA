@@ -2,10 +2,12 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { reportClientError } from "../components/report-client-error";
 
 export default function ControlError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error("SecureVisit control route error", { digest: error.digest });
+    reportClientError("control", error.digest);
   }, [error.digest]);
 
   return <main style={{ alignItems: "center", background: "#f4f7f6", color: "#092638", display: "flex", justifyContent: "center", minHeight: "100vh", padding: "24px" }}>

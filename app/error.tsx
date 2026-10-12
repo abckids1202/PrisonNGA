@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { reportClientError } from "./components/report-client-error";
 
 type BoundaryError = Error & { digest?: string };
 
@@ -10,6 +11,7 @@ export default function ErrorBoundary({ error, reset }: { error: BoundaryError; 
     // Keep the visitor-facing message generic. The runtime can be connected
     // to an error-monitoring provider later without exposing server details.
     console.error("SecureVisit route error", { digest: error.digest });
+    reportClientError("root", error.digest);
   }, [error.digest]);
 
   return <main style={{ alignItems: "center", background: "#f7f5f1", color: "#173346", display: "flex", fontFamily: "system-ui, sans-serif", justifyContent: "center", minHeight: "100vh", padding: "24px" }}>

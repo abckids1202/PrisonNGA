@@ -2,10 +2,12 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { reportClientError } from "../components/report-client-error";
 
 export default function VisitorError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error("SecureVisit visitor route error", { digest: error.digest });
+    reportClientError("visitor", error.digest);
   }, [error.digest]);
 
   return <main style={{ alignItems: "center", background: "#fffaf6", color: "#092638", display: "flex", justifyContent: "center", minHeight: "100vh", padding: "24px" }}>
