@@ -79,6 +79,15 @@ const externalIntegrationChecks = [
     detail: "non-development scanner with signed callback",
     action: "Configure a protected malware-scanning adapter and quarantine callback",
   },
+  {
+    id: "notification-delivery",
+    label: "Operational notification delivery",
+    configured: nonLocal("NOTIFICATION_EMAIL_DELIVERY", "", "in_app")
+      || nonLocal("NOTIFICATION_SMS_DELIVERY", "", "in_app")
+      || (present("NOTIFICATION_WEBHOOK_URL") && present("NOTIFICATION_WEBHOOK_SECRET")),
+    detail: "real email/SMS adapter or signed notification delivery webhook",
+    action: "Configure operational email/SMS delivery, signed callbacks, retry, and dead-letter replay",
+  },
 ];
 
 const checks = [

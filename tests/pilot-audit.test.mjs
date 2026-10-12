@@ -30,6 +30,7 @@ test("pilot audit emits a redacted actionable report without failing normal deve
   assert.ok(report.nextActions.some((action) => action.includes("D1_DATABASE_ID")));
   assert.equal(report.checks.find((check) => check.id === "release-artifacts")?.ok, true);
   assert.equal(report.externalIntegrationChecks.find((check) => check.id === "payment-provider")?.configured, false);
+  assert.equal(report.externalIntegrationChecks.find((check) => check.id === "notification-delivery")?.configured, false);
   assert.ok(report.nextActions.some((action) => action.includes("payment provider")));
   assert.doesNotMatch(result.stdout, /must-not-appear/);
 });
@@ -52,6 +53,8 @@ test("pilot audit reports real integration readiness without exposing provider s
     EVIDENCE_SCAN_PROVIDER: "webhook",
     EVIDENCE_SCAN_WEBHOOK_URL: "https://scanner.example.test/callback",
     EVIDENCE_SCAN_WEBHOOK_SECRET: "scanner-secret-must-not-appear",
+    NOTIFICATION_EMAIL_DELIVERY: "resend",
+    NOTIFICATION_SMS_DELIVERY: "twilio",
   });
   const report = JSON.parse(result.stdout);
   assert.equal(report.externalIntegrationChecks.every((check) => check.configured), true);
