@@ -1,9 +1,44 @@
+const AUTH_CLEANUP_BATCH_SIZE = 250;
+
 export async function purgeExpiredAuthArtifacts(db: Pick<D1Database, "prepare" | "batch">): Promise<void> {
   await db.batch([
-    db.prepare("DELETE FROM auth_challenge_delivery_attempts WHERE challenge_id IN (SELECT id FROM auth_challenges WHERE julianday(expires_at) <= julianday('now') OR (consumed_at IS NOT NULL AND julianday(consumed_at) <= julianday('now', '-1 day')) )"),
-    db.prepare("DELETE FROM auth_challenges WHERE julianday(expires_at) <= julianday('now') OR (consumed_at IS NOT NULL AND julianday(consumed_at) <= julianday('now', '-1 day'))"),
-    db.prepare("DELETE FROM auth_federation_states WHERE julianday(expires_at) <= julianday('now') OR (consumed_at IS NOT NULL AND julianday(consumed_at) <= julianday('now', '-1 day'))"),
-    db.prepare("DELETE FROM saml_request_cache WHERE julianday(created_at) <= julianday('now', '-1 day')"),
+    db.prepare(`DELETE FROM auth_challenge_delivery_attempts
+      WHERE rowid IN (
+        SELECT rowid FROM auth_challenge_delivery_attempts
+        WHERE challenge_id IN (
+          SELECT id FROM auth_challenges
+          WHERE julianday(expires_at) <= julianday('now')
+             OR (consumed_at IS NOT NULL AND julianday(consumed_at) <= julianday('now', '-1 day'))
+        )
+        LIMIT ${AUTH_CLEANUP_BATCH_SIZE}
+      )`),
+    // The child delete above is bounded too. Only remove parent challenges
+    // that no longer have delivery attempts, so foreign-key enforcement never
+    // turns a large backlog into a failed all-or-nothing cleanup transaction.
+    db.prepare(`DELETE FROM auth_challenges
+      WHERE rowid IN (
+        SELECT challenge.rowid FROM auth_challenges AS challenge
+        WHERE (julianday(challenge.expires_at) <= julianday('now')
+           OR (challenge.consumed_at IS NOT NULL AND julianday(challenge.consumed_at) <= julianday('now', '-1 day')))
+          AND NOT EXISTS (
+            SELECT 1 FROM auth_challenge_delivery_attempts AS attempt
+            WHERE attempt.challenge_id = challenge.id
+          )
+        LIMIT ${AUTH_CLEANUP_BATCH_SIZE}
+      )`),
+    db.prepare(`DELETE FROM auth_federation_states
+      WHERE rowid IN (
+        SELECT rowid FROM auth_federation_states
+        WHERE julianday(expires_at) <= julianday('now')
+           OR (consumed_at IS NOT NULL AND julianday(consumed_at) <= julianday('now', '-1 day'))
+        LIMIT ${AUTH_CLEANUP_BATCH_SIZE}
+      )`),
+    db.prepare(`DELETE FROM saml_request_cache
+      WHERE rowid IN (
+        SELECT rowid FROM saml_request_cache
+        WHERE julianday(created_at) <= julianday('now', '-1 day')
+        LIMIT ${AUTH_CLEANUP_BATCH_SIZE}
+      )`),
   ]);
 }
 

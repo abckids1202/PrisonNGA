@@ -51,6 +51,8 @@ backup-drill fix that gives each Wrangler config a unique project-root path.
 The full verifier now proves that an interrupted or repeated local backup run
 does not collide with a stale config and that the restore uses the application's
 actual local D1 state rather than an empty alternate database.
+Authentication challenge, delivery-attempt, federation-state, and SAML-cache
+purges are also bounded and covered by foreign-key-order regression tests.
 
 ## Pilot gate status
 

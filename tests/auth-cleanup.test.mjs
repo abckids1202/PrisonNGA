@@ -40,6 +40,33 @@ test("expired authentication artifacts are purged while recent state remains", a
   assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM saml_request_cache").get().count, 1);
 });
 
+test("authentication artifact cleanup is bounded and preserves foreign-key order", async () => {
+  const d1 = new D1();
+  const expired = new Date(Date.now() - 60_000).toISOString();
+  const recent = new Date(Date.now() + 60 * 60_000).toISOString();
+  d1.database.exec(`
+    CREATE TABLE auth_challenges (id TEXT PRIMARY KEY, expires_at TEXT, consumed_at TEXT);
+    CREATE TABLE auth_challenge_delivery_attempts (id TEXT PRIMARY KEY, challenge_id TEXT NOT NULL REFERENCES auth_challenges(id));
+    CREATE TABLE auth_federation_states (id TEXT PRIMARY KEY, expires_at TEXT, consumed_at TEXT);
+    CREATE TABLE saml_request_cache (request_id TEXT PRIMARY KEY, created_at TEXT);
+  `);
+  const challengeInsert = d1.database.prepare("INSERT INTO auth_challenges VALUES (?, ?, NULL)");
+  const attemptInsert = d1.database.prepare("INSERT INTO auth_challenge_delivery_attempts VALUES (?, ?)");
+  for (let index = 0; index < 251; index += 1) {
+    const challengeId = `expired-${index}`;
+    challengeInsert.run(challengeId, expired);
+    attemptInsert.run(`attempt-${index}`, challengeId);
+  }
+  challengeInsert.run("recent", recent);
+
+  await purgeExpiredAuthArtifacts(d1);
+  assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_challenges WHERE expires_at = ?").get(expired).count, 1);
+  assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_challenge_delivery_attempts").get().count, 1);
+  await purgeExpiredAuthArtifacts(d1);
+  assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_challenges WHERE expires_at = ?").get(expired).count, 0);
+  assert.equal(d1.database.prepare("SELECT COUNT(*) AS count FROM auth_challenge_delivery_attempts").get().count, 0);
+});
+
 test("expired sessions are purged while active and recently revoked sessions remain", async () => {
   const d1 = new D1();
   const expired = new Date(Date.now() - 60_000).toISOString();
