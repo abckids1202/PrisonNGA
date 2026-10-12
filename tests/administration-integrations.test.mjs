@@ -7,6 +7,8 @@ test("Administration integrations tab reads protected readiness state", async ()
   assert.match(source, /function IntegrationReadinessPanel/);
   assert.match(source, /fetch\("\/api\/health\/readiness"/);
   assert.match(source, /providerConfiguration/);
+  assert.match(source, /providerAdapters/);
+  assert.match(source, /Active adapters/);
   assert.match(source, /releaseGates/);
   assert.match(source, /Institutional launch gates/);
   assert.match(source, /Launch remains blocked/);
