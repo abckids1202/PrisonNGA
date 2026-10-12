@@ -239,7 +239,17 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
   await env.DB.prepare(`UPDATE payment_provider_events
     SET status = 'FAILED', available_at = CURRENT_TIMESTAMP, processing_started_at = NULL, last_error = 'Recovered stale processing claim.'
     WHERE status = 'PROCESSING' AND processing_started_at IS NOT NULL AND julianday(processing_started_at) < julianday('now', '-5 minutes')`).run();
-  const rows = await env.DB.prepare("SELECT id, facility_id, provider, event_key, event_type, payload, attempt_count FROM payment_provider_events WHERE status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now') ORDER BY created_at ASC LIMIT 25").all<PaymentRetryEvent>();
+  // payment_provider_events is intentionally provider-scoped and does not
+  // duplicate facility ownership. Resolve it through the immutable payment
+  // intent so scheduled retries can still raise a facility-scoped dead-letter
+  // alarm without relying on a column that is not part of the schema.
+  const rows = await env.DB.prepare(`SELECT ppe.id, pi.facility_id, ppe.provider, ppe.event_key, ppe.event_type, ppe.payload, ppe.attempt_count
+    FROM payment_provider_events ppe
+    LEFT JOIN payment_intents pi ON pi.provider = ppe.provider AND json_valid(ppe.payload) = 1
+      AND (pi.id = json_extract(ppe.payload, '$.paymentIntentId')
+        OR pi.provider_reference = json_extract(ppe.payload, '$.providerReference'))
+    WHERE ppe.status IN ('RECEIVED', 'FAILED') AND julianday(ppe.available_at) <= julianday('now')
+    ORDER BY ppe.created_at ASC LIMIT 25`).all<PaymentRetryEvent>();
   for (const row of rows.results) {
     const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now')").bind(row.id).run();
     if (!claim.meta.changes) continue;
