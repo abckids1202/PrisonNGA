@@ -860,19 +860,26 @@ async function recordScheduledJobFailure(env: Env, name: string, error: unknown)
     const facilities = await env.DB.prepare("SELECT id FROM facilities").all<{ id: string }>();
     const now = new Date().toISOString();
     if (facilities.results.length) {
-      await env.DB.batch(facilities.results.map((facility) => env.DB.prepare(`INSERT INTO security_events
-        (id, facility_id, event_type, severity, request_id, metadata, created_at)
-        SELECT ?, ?, 'SCHEDULED_JOB_FAILED', 'CRITICAL', ?, ?, ?
-        WHERE NOT EXISTS (
-          SELECT 1 FROM security_events se
-          WHERE se.facility_id = ?
-            AND se.event_type = 'SCHEDULED_JOB_FAILED'
-            AND CASE WHEN json_valid(se.metadata) = 1
-              THEN json_extract(se.metadata, '$.jobName')
-              ELSE NULL
-            END = ?
-            AND julianday(se.created_at) >= julianday('now', '-15 minutes')
-        )`).bind(crypto.randomUUID(), facility.id, correlationId, metadata, now, facility.id, name)));
+      // D1 batches have a bounded statement budget. Keep failure fan-out
+      // incremental so a multi-facility deployment can still persist the
+      // operational alarm without exceeding one batch's limit.
+      const batchSize = 25;
+      for (let offset = 0; offset < facilities.results.length; offset += batchSize) {
+        const statements = facilities.results.slice(offset, offset + batchSize).map((facility) => env.DB.prepare(`INSERT INTO security_events
+          (id, facility_id, event_type, severity, request_id, metadata, created_at)
+          SELECT ?, ?, 'SCHEDULED_JOB_FAILED', 'CRITICAL', ?, ?, ?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM security_events se
+            WHERE se.facility_id = ?
+              AND se.event_type = 'SCHEDULED_JOB_FAILED'
+              AND CASE WHEN json_valid(se.metadata) = 1
+                THEN json_extract(se.metadata, '$.jobName')
+                ELSE NULL
+              END = ?
+              AND julianday(se.created_at) >= julianday('now', '-15 minutes')
+          )`).bind(crypto.randomUUID(), facility.id, correlationId, metadata, now, facility.id, name));
+        await env.DB.batch(statements);
+      }
     }
   } catch (persistError) {
     // D1 failure must never hide the original scheduler error. The platform

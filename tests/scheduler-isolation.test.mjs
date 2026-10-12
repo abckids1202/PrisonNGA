@@ -12,7 +12,9 @@ test("scheduled maintenance isolates named jobs and records failures", async () 
   assert.match(source, /jobName: name/);
   assert.match(source, /recordScheduledJobFailure\(env, name, error\)/);
   assert.match(source, /SELECT id FROM facilities/);
-  assert.match(source, /env\.DB\.batch\(facilities\.results\.map/);
+  assert.match(source, /const batchSize = 25/);
+  assert.match(source, /facilities\.results\.slice\(offset, offset \+ batchSize\)\.map/);
+  assert.match(source, /for \(let offset = 0; offset < facilities\.results\.length; offset \+= batchSize\)/);
   assert.match(source, /crypto\.randomUUID\(\), facility\.id/);
   assert.match(source, /CASE WHEN json_valid\(se\.metadata\) = 1[\s\S]*json_extract\(se\.metadata, '\$\.jobName'\)/);
   assert.match(source, /runScheduledJob\(env, "payment-events", \(\) => reconcilePaymentEvents\(env\)\)/);

@@ -62,6 +62,8 @@ session is revoked, avoiding stale credentials after sign-out-all or targeted
 session termination.
 Evidence retention recovery now restores legal-hold rows in bounded batches,
 preventing a large privacy backlog from becoming one oversized Worker update.
+Scheduled-job failure alarms now fan out across facilities in bounded D1
+batches instead of constructing one unbounded batch.
 
 ## Pilot gate status
 
