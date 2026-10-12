@@ -5,6 +5,7 @@ import test from "node:test";
 const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const appointmentsSource = await readFile(new URL("../app/features/control/AppointmentsPage.tsx", import.meta.url), "utf8");
 const financeSource = await readFile(new URL("../app/features/management/FinancePage.tsx", import.meta.url), "utf8");
+const complianceSource = await readFile(new URL("../app/features/management/CompliancePageInteractive.tsx", import.meta.url), "utf8");
 
 test("Control activity and People timestamps use the persisted facility timezone", () => {
   assert.match(source, /formatAuditTime\(event\.createdAt, facilityTimezone\)/);
@@ -20,11 +21,14 @@ test("appointment time labels come from the persisted appointment timezone", () 
 });
 
 test("Control record workspaces receive facility-scoped date formatting", () => {
-  for (const workspace of ["IncidentsPage", "VerificationQueue", "CompliancePageInteractive", "ComplianceTab"]) {
+  for (const workspace of ["IncidentsPage", "VerificationQueue"]) {
     assert.match(source, new RegExp(`function ${workspace}\\(\\{ timeZone`));
     assert.match(source, new RegExp(`${workspace}[\\s\\S]{0,500}formatDateValueWithZone`));
   }
   assert.match(financeSource, /function FinancePage\(\{ timeZone/);
   assert.match(financeSource, /formatDateValueWithZone/);
-  assert.match(source, /<ComplianceTab timeZone=\{timeZone\}/);
+  assert.match(complianceSource, /function CompliancePageInteractive\(\{ timeZone/);
+  assert.match(complianceSource, /function ComplianceTab\(\{ timeZone/);
+  assert.match(complianceSource, /formatDateValueWithZone/);
+  assert.match(complianceSource, /<ComplianceTab timeZone=\{timeZone\}/);
 });

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("Compliance security events refresh from the protected API and fail closed", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../app/features/management/CompliancePageInteractive.tsx", import.meta.url), "utf8");
   assert.match(source, /const \[securityError, setSecurityError\] = useState\(false\)/);
   assert.match(source, /const \[refreshNonce, setRefreshNonce\] = useState\(0\)/);
   assert.match(source, /\[tab, refreshNonce\]/);
