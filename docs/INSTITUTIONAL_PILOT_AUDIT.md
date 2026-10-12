@@ -3,7 +3,7 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `fca3716` (`fix: avoid duplicate payment retry matches`).
+Latest verified code commit: `cd95c90` (`fix: surface live session provider recovery`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
@@ -129,6 +129,7 @@ The current repository already includes:
 - Live Sessions now reads the persisted session version and sends it with staff end requests, making stale drawers fail explicitly through the existing optimistic-concurrency boundary.
 - Control Live Sessions now selects the safe `terminate` transition for sessions that never actually started, while preserving normal completion for sessions with an actual start; this prevents a one-sided or pre-call failure from being incorrectly submitted as a completed visit.
 - The Live Sessions recovery drawer now exposes an explicit `Retry settlement` action for an `ENDING` session with persisted reconciliation evidence; it reuses the idempotent provider-close/finalization boundary and distinguishes recovery success from normal visit completion.
+- Live Sessions now treats both provider-close failures and blocked finalization as recovery-required, exposing the same staff retry path instead of leaving provider-close failures invisible in the queue and drawer.
 - Scheduled payment-event retries now derive facility scope by joining the event payload to its immutable payment intent; this removes an invalid `payment_provider_events.facility_id` assumption and preserves facility-scoped dead-letter alarms, while malformed payloads remain eligible for retry/dead-letter handling.
 - The scheduled payment retry lookup now uses bounded scalar lookups—payment-intent ID first, provider reference second—so a duplicated external reference cannot multiply one provider event into multiple retry attempts.
 - Notification delivery now fails closed outside development when no outbound provider is configured; staging and production still require real provider delivery, callbacks and operational replay evidence.
