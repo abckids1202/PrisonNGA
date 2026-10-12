@@ -3,20 +3,20 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest full-release-verified code commit: `cd2cc71` (`fix: harden facility mutation retries`).
+Latest full-release-verified code commit: `a4c959b` (`test: align prisoner retry contract`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
-568 server test cases, 17 browser tests, fresh
+573 server test cases, 17 browser tests, fresh
 migration verification, a disposable backup/restore drill, typecheck, lint,
 production build, and a zero-vulnerability production dependency audit all
 passed.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current release verification reports 568 passing server test cases plus 17
-browser tests on `cd2cc71`; this is the authoritative repository evidence
+The current release verification reports 573 passing server test cases plus 17
+browser tests on `a4c959b`; this is the authoritative repository evidence
 record for the current baseline.
 
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the

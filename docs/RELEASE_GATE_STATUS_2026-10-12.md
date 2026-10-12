@@ -6,7 +6,7 @@ repository evidence from staging evidence and external institutional approvals.
 ## Verified repository baseline
 
 The following command completed successfully on the current `main` baseline
-commit `cd2cc71`:
+commit `a4c959b`:
 
 ```text
 npm run verify:release
@@ -21,7 +21,7 @@ It verified:
 - TypeScript typecheck.
 - ESLint.
 - Production build.
-- 568 server test cases.
+- 573 server test cases.
 - 17 browser tests.
 - Production dependency audit with 0 vulnerabilities.
 
@@ -31,9 +31,11 @@ provider without naming the protected `EVIDENCE_BUCKET_NAME` binding.
 This is engineering evidence only. It does not prove external provider,
 hardware, deployment, resilience, legal, or institutional readiness.
 
-The full verifier was rerun on `cd2cc71` after visitor profile, session,
-notification, facility closure, kiosk credential, visit policy, and prisoner
-mutation paths were given retry-safe idempotency boundaries. The
+The full verifier was rerun on `a4c959b` after visitor profile, session,
+notification, facility closure, kiosk credential, visit policy, prisoner, and
+payment/outbox recovery mutation paths were given retry-safe idempotency
+boundaries. Replay keys now remain stable for one network retry but rotate
+when persisted recovery status or attempt state changes. The
 current repository baseline is therefore release-verified locally. This remains
 engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
