@@ -45,6 +45,12 @@ engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
 institutional gates.
 
+Since that full verifier run, commit `862f24b` bounded authentication-session
+purging to 250 rows per scheduled invocation and added a regression test for
+multi-run cleanup. The targeted authentication-cleanup tests, typecheck, and
+lint pass on the current commit. A complete `verify:release` rerun remains
+recommended before the next release candidate.
+
 ## Pilot gate status
 
 | Gate | Current status | Required evidence before pilot |
