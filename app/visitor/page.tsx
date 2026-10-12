@@ -157,7 +157,7 @@ export default function VisitorPage({ initialTab = "Home" }: { initialTab?: Visi
             </button>
           </div>
         </div>
-        {notificationsOpen && <VisitorNotifications onAction={action} onUnreadChange={updateUnreadNotifications} />}
+        {notificationsOpen && <VisitorNotifications onAction={action} onNavigate={navigate} onUnreadChange={updateUnreadNotifications} />}
       </header>
 
       <main className="sv4-main">
@@ -989,7 +989,24 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
   </div>;
 }
 
-function VisitorNotifications({ onAction, onUnreadChange }: { onAction: (message: string, tone?: NoticeTone) => void; onUnreadChange: (count: number) => void }) {
+function notificationDestination(notification: VisitorNotification): { tab: Tab } | null {
+  let payload: Record<string, unknown> = {};
+  if (typeof notification.payload === "string") {
+    try {
+      const parsed = JSON.parse(notification.payload) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+    } catch {
+      // Older notification rows may contain a non-JSON payload; use the template fallback.
+    }
+  } else if (notification.payload && typeof notification.payload === "object") payload = notification.payload;
+  const template = notification.template.toLowerCase();
+  if (typeof payload.appointmentId === "string" || typeof payload.appointment_id === "string" || template.includes("appointment") || template.includes("visit")) return { tab: "Visits" };
+  if (typeof payload.paymentIntentId === "string" || typeof payload.payment_intent_id === "string" || template.includes("payment") || template.includes("credit")) return { tab: "Credits" };
+  if (typeof payload.relationshipId === "string" || typeof payload.relationship_id === "string" || template.includes("verification") || template.includes("relationship")) return { tab: "Connections" };
+  return null;
+}
+
+function VisitorNotifications({ onAction, onNavigate, onUnreadChange }: { onAction: (message: string, tone?: NoticeTone) => void; onNavigate: (tab: Tab) => void; onUnreadChange: (count: number) => void }) {
   const [notifications, setNotifications] = useState<VisitorNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1031,9 +1048,16 @@ function VisitorNotifications({ onAction, onUnreadChange }: { onAction: (message
     } finally { setBusy(false); }
   }
 
+  async function openNotification(notification: VisitorNotification) {
+    if (!notification.read_at) await markRead([notification.id]);
+    const destination = notificationDestination(notification);
+    if (destination) onNavigate(destination.tab);
+    else onAction(notification.title, "info");
+  }
+
   return <aside className="sv4-notifications" aria-label="Notifications"><div className="sv4-notifications-head"><div><p className="sv4-kicker">Your inbox</p><h2>Notifications</h2></div><span>{notifications.filter((item) => !item.read_at).length} unread</span></div>
     {loading ? <p className="sv4-notification-empty">Loading your notifications…</p> : error ? <div className="sv4-notification-empty" role="alert">{error}<button type="button" onClick={() => void load()}>Try again</button></div> : notifications.length ? <>
-      {notifications.map((notification) => <button className={notification.read_at ? "sv4-notification-read" : ""} key={notification.id} disabled={busy} onClick={() => { if (!notification.read_at) void markRead([notification.id]); else onAction(notification.title, "info"); }}><span className={`sv4-notification-icon ${notification.read_at ? "sage" : "orange"}`}>{notification.template.toLowerCase().includes("payment") ? "◇" : notification.template.toLowerCase().includes("visit") ? "◷" : "i"}</span><span><strong>{notification.title}</strong><small>{notification.body}</small><em>{notification.status === "FAILED" ? "Delivery issue · " : notification.status === "SENT" ? "Accepted for delivery · " : notification.status === "DELIVERED" ? "Delivered · " : ""}{formatDateValue(notification.created_at, { dateStyle: "medium", timeStyle: "short" }, undefined, "Date unavailable")}</em></span>{!notification.read_at && <b aria-label="Unread">●</b>}</button>)}
+      {notifications.map((notification) => <button className={notification.read_at ? "sv4-notification-read" : ""} key={notification.id} disabled={busy} onClick={() => void openNotification(notification)}><span className={`sv4-notification-icon ${notification.read_at ? "sage" : "orange"}`}>{notification.template.toLowerCase().includes("payment") ? "◇" : notification.template.toLowerCase().includes("visit") ? "◷" : "i"}</span><span><strong>{notification.title}</strong><small>{notification.body}</small><em>{notification.status === "FAILED" ? "Delivery issue · " : notification.status === "SENT" ? "Accepted for delivery · " : notification.status === "DELIVERED" ? "Delivered · " : ""}{formatDateValue(notification.created_at, { dateStyle: "medium", timeStyle: "short" }, undefined, "Date unavailable")}</em></span>{!notification.read_at && <b aria-label="Unread">●</b>}</button>)}
       {notifications.some((item) => !item.read_at) && <button type="button" className="sv4-notifications-all" disabled={busy} onClick={() => void markRead(notifications.filter((item) => !item.read_at).map((item) => item.id))}>Mark all as read</button>}
     </> : <p className="sv4-notification-empty">You’re all caught up. New visit and credit updates will appear here.</p>}
   </aside>;
