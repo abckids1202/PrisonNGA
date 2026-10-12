@@ -56,6 +56,7 @@ purges are also bounded and covered by foreign-key-order regression tests.
 Idempotency replay records now have bounded scheduled retention: completed
 records remain for 90 days and abandoned processing claims for 7 days, with
 the cleanup covered by regression tests and the Worker schedule.
+Step-up assertion expiry is also bounded to 250 rows per scheduled run.
 
 ## Pilot gate status
 

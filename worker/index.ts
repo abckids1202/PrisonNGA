@@ -596,7 +596,15 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
 }
 
 async function purgeExpiredStepUpAssertions(env: Env): Promise<void> {
-  await env.DB.prepare("DELETE FROM step_up_assertions WHERE julianday(expires_at) <= julianday('now')").run();
+  // Step-up assertions are deliberately short-lived, but cleanup still needs
+  // a bounded transaction if a deployment has been offline or its scheduler
+  // has been delayed for a long period.
+  await env.DB.prepare(`DELETE FROM step_up_assertions
+    WHERE rowid IN (
+      SELECT rowid FROM step_up_assertions
+      WHERE julianday(expires_at) <= julianday('now')
+      LIMIT 250
+    )`).run();
 }
 
 async function expireBreakGlassRequests(env: Env): Promise<void> {
