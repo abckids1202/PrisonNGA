@@ -18,7 +18,7 @@ export async function GET(_request: Request, context: RouteContext) {
     const reconciliation = await d1.prepare(`SELECT id, action_type, reason, correlation_id, request_id, created_at, new_values
       FROM audit_events
       WHERE facility_id = ? AND entity_type = 'visit_session' AND entity_id = ?
-        AND action_type = 'LIVE_SESSION_FINALIZATION_BLOCKED'
+        AND action_type IN ('LIVE_SESSION_FINALIZATION_BLOCKED', 'LIVE_SESSION_PROVIDER_CLOSE_FAILED')
       ORDER BY created_at DESC LIMIT 1`).bind(authorization.facilityId, sessionId).first();
     return securityResponse({
       session: toSessionPayload(session),

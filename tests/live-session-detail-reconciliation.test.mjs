@@ -7,7 +7,7 @@ test("live-session detail exposes facility-scoped settlement recovery evidence",
   assert.match(source, /facility_id = \? AND entity_type = 'visit_session'/);
   assert.match(source, /INNER JOIN visit_sessions vs ON vs\.id = vse\.session_id AND vs\.facility_id = \?/);
   assert.match(source, /\.bind\(authorization\.facilityId, sessionId\)\.all\(\)/);
-  assert.match(source, /action_type = 'LIVE_SESSION_FINALIZATION_BLOCKED'/);
+  assert.match(source, /action_type IN \('LIVE_SESSION_FINALIZATION_BLOCKED', 'LIVE_SESSION_PROVIDER_CLOSE_FAILED'\)/);
   assert.match(source, /reconciliation: reconciliation \? \{ required: true/);
   assert.match(source, /reconciliation: reconciliation \? \{ required: true[\s\S]*required: false/);
 });
@@ -17,6 +17,7 @@ test("live-session drawer loads and presents persisted evidence and settlement r
   assert.match(source, /loadSessionDetail\(sessionId: string\)/);
   assert.match(source, /\/api\/control\/live-sessions\/\$\{encodeURIComponent\(sessionId\)\}/);
   assert.match(source, /MANUAL REVIEW REQUIRED/);
+  assert.match(source, /selected\.recovery_required \? "RECOVERY REQUIRED"/);
   assert.match(source, /selected\.status === "ENDING" && selectedDetail\?\.reconciliation\.required \? "Retry settlement"/);
   assert.match(source, /retried provider closure and settlement/);
   assert.match(source, /selectedDetail\?\.events\.slice\(0, 4\)/);
