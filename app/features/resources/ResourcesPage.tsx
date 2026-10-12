@@ -74,7 +74,7 @@ export default function ResourcesPage({ initialResourceId, timeZone = "Asia/Jaka
     try {
       const response = await fetch("/api/control/resources", {
         method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `resource-status-${resource.id}-${resource.version}-${nextStatus}-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `resource-status-${resource.id}-${resource.version}-${nextStatus}` },
         credentials: "include",
         body: JSON.stringify({ resourceId: resource.id, command: "set_status", status: nextStatus, expectedVersion: resource.version, reason: nextStatus === "MAINTENANCE" ? "Staff requested controlled maintenance for this facility resource." : "Staff completed maintenance and returned this resource to service." }),
       });

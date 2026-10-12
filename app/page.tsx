@@ -187,7 +187,7 @@ export default function ControlApp() {
     if (facilityState === "UNKNOWN" || backendStatus !== "connected") {
       throw new Error("The facility state cannot change until the protected facility record is available.");
     }
-    const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-state:${nextState}:${facilityVersion}:${crypto.randomUUID()}` }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: reason || (nextState === "LOCKDOWN" ? "Staff supervisor declared a controlled facility lockdown." : "Staff supervisor restored normal operations.") }) });
+    const response = await fetch("/api/facility/state", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `facility-state:${nextState}:${facilityVersion}` }, body: JSON.stringify({ state: nextState, expectedVersion: facilityVersion, reason: reason || (nextState === "LOCKDOWN" ? "Staff supervisor declared a controlled facility lockdown." : "Staff supervisor restored normal operations.") }) });
     if (!response.ok) throw new Error("The protected staff API rejected the facility state change.");
     const body = await response.json() as { facility?: { version?: number } };
     setFacilityState(nextState);
@@ -200,7 +200,7 @@ export default function ControlApp() {
     try {
       const appointment = appointments.find((item) => item.id === id);
       if (!appointment || !Number.isSafeInteger(appointment.version)) throw new Error("APPOINTMENT_VERSION_UNAVAILABLE");
-      const response = await fetch("/api/control/appointments", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `appointment-decision-${id}-${command}-${appointment.version}-${crypto.randomUUID()}` }, credentials: "include", body: JSON.stringify({ appointmentId: id, command, expectedVersion: appointment.version, reason: `Staff selected ${command.replaceAll("_", " ")} from the appointment review workflow.` }) });
+      const response = await fetch("/api/control/appointments", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `appointment-decision-${id}-${command}-${appointment.version}` }, credentials: "include", body: JSON.stringify({ appointmentId: id, command, expectedVersion: appointment.version, reason: `Staff selected ${command.replaceAll("_", " ")} from the appointment review workflow.` }) });
       const body = await response.json() as { status?: string; error?: string; version?: number; idempotent?: boolean; allocation?: { roomName?: string; deviceName?: string } | null };
       if (!response.ok) throw new Error(body.error || "APPOINTMENT_DECISION_FAILED");
       setBackendStatus("connected");
@@ -217,7 +217,7 @@ export default function ControlApp() {
   }
 
   async function reassignAppointment(input: ResourceReassignment) {
-    const response = await fetch("/api/control/resources", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `resource-reassign:${input.appointmentId}:${input.sourceResourceId}:${input.expectedSourceVersion}:${crypto.randomUUID()}` }, credentials: "include", body: JSON.stringify({
+      const response = await fetch("/api/control/resources", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `resource-reassign:${input.appointmentId}:${input.sourceResourceId}:${input.expectedSourceVersion}:${input.targetResourceId}:${input.expectedTargetVersion}:${input.expectedWaitingVersion}` }, credentials: "include", body: JSON.stringify({
       resourceId: input.sourceResourceId,
       command: "reassign_appointment",
       appointmentId: input.appointmentId,
