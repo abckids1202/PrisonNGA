@@ -11,3 +11,11 @@ test("Live Sessions exposes persisted participant connectivity without claiming 
   assert.match(source, /Media-quality metrics are not supplied by the current provider webhook/);
   assert.doesNotMatch(source, /Participant connectivity and media-quality telemetry are not yet exposed in this workspace/);
 });
+
+test("Live Sessions carries the persisted session version into staff end requests", async () => {
+  const route = await readFile(new URL("../app/api/control/live-sessions/route.ts", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/features/live-session/LiveSessionsPage.tsx", import.meta.url), "utf8");
+  assert.match(route, /vs\.status, vs\.version, vs\.provider/);
+  assert.match(page, /version: number;/);
+  assert.match(page, /expectedVersion: session\.version/);
+});

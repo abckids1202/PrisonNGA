@@ -11,6 +11,7 @@ type LiveSessionRow = {
   id: string;
   appointment_id: string;
   status: string;
+  version: number;
   provider: string;
   authorized_start_at: string;
   authorized_end_at: string;
@@ -84,7 +85,7 @@ export default function LiveSessionsPage({ onNotify, timeZone = "Asia/Jakarta" }
       const response = await fetch(`/api/control/live-sessions/${session.id}/end`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `live-session-end-${crypto.randomUUID()}` },
-        body: JSON.stringify({ reason: "Staff ended the authorized visit from Live Sessions." }),
+        body: JSON.stringify({ expectedVersion: session.version, reason: "Staff ended the authorized visit from Live Sessions." }),
       });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "The session could not be ended.");

@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const authorization = await requirePermission("session.monitor");
     const d1 = await getD1();
-    const rows = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.status, vs.provider, vs.authorized_start_at, vs.authorized_end_at,
+    const rows = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.status, vs.version, vs.provider, vs.authorized_start_at, vs.authorized_end_at,
         vs.actual_started_at, vs.actual_ended_at, vs.recording_policy, vs.recording_status, vs.termination_reason,
         u.display_name AS visitor_name, p.display_name AS prisoner_name, p.prisoner_number,
         a.requested_start, a.requested_end, a.appointment_type,
