@@ -126,7 +126,8 @@ const report = {
     configured: check.configured,
     detail: check.detail,
     requiredOutsideDevelopment: true,
-    ok: environment === "development" || check.configured,
+    developmentWaived: environment === "development",
+    ok: check.configured,
   })),
   nextActions: [
     ...environmentCheck.missing.map((item) => `Configure ${item}`),
