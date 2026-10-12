@@ -10,3 +10,11 @@ test("Finance reconciliation refreshes authoritative data and exposes open issue
   assert.match(source, /Open reconciliation issues/);
   assert.match(source, /data\.reconciliation\.issues\.map/);
 });
+
+test("Finance exposes controlled provider refunds without bypassing step-up or webhook settlement", () => {
+  assert.match(source, /\/api\/control\/finance\/refunds/);
+  assert.match(source, /finance-refund-\$\{refundPayment\.id\}/);
+  assert.match(source, /fresh supervisor step-up check is required/);
+  assert.match(source, /Settlement remains webhook-driven/);
+  assert.match(source, /Request provider refund/);
+});
