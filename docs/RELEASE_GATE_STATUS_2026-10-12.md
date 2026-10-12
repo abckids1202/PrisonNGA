@@ -6,7 +6,7 @@ repository evidence from staging evidence and external institutional approvals.
 ## Verified repository baseline
 
 The following command completed successfully on the current `main` baseline
-commit `bcb8727`:
+commit `4116ba4`:
 
 ```text
 npm run verify:release
@@ -31,8 +31,8 @@ provider without naming the protected `EVIDENCE_BUCKET_NAME` binding.
 This is engineering evidence only. It does not prove external provider,
 hardware, deployment, resilience, legal, or institutional readiness.
 
-The full verifier was rerun on `bcb8727` after the Waiting Room workspace was
-extracted from the Control shell and its source-boundary test was updated. The
+The full verifier was rerun on `4116ba4` after Live Session end retries were
+given a deterministic session-version idempotency boundary. The
 current repository baseline is therefore release-verified locally. This remains
 engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
