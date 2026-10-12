@@ -14,6 +14,8 @@ test("dev:local documents the local product entry points", async () => {
   assert.match(source, /: "5174";/);
   assert.match(source, /process\.env\.PUBLIC_APP_URL = publicUrl\.toString\(\)\.replace/);
   assert.match(source, /Never rewrite a non-local URL/);
+  assert.match(source, /VIDEO_PROVIDER = "local_test"/);
+  assert.match(source, /LiveKit credentials are incomplete/);
   assert.match(source, /http:\/\/localhost:\$\{localPort\}/);
   assert.match(source, /\/visitor/);
   assert.match(source, /\/control/);

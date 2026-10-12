@@ -44,6 +44,15 @@ if (process.env.SECUREVISIT_ENVIRONMENT !== "development") {
   throw new Error("dev:local requires SECUREVISIT_ENVIRONMENT=development; refusing to start with staging or production settings.");
 }
 
+// Existing checkouts may still have the older LiveKit template in .env.local.
+// Use the local persisted transport only when that provider is incomplete;
+// preserve a deliberately configured local LiveKit instance.
+const liveKitConfigured = Boolean(process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET);
+if ((process.env.VIDEO_PROVIDER || "").toLowerCase() === "livekit" && !liveKitConfigured) {
+  process.env.VIDEO_PROVIDER = "local_test";
+  console.log("LiveKit credentials are incomplete; using the development local video transport.");
+}
+
 function runScript(script, args = []) {
   return new Promise((resolve, reject) => {
     const child = spawn(npmCommand, ["run", script, ...(args.length ? ["--", ...args] : [])], {
