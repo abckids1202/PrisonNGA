@@ -7,7 +7,7 @@ import { formatDateValue as formatDateValueWithZone } from "@/lib/date-format";
 type Notice = { id: number; message: string; tone?: "success" | "warning" | "error" | "info" };
 type IncidentApiRow = { id: string; incident_type: string; severity: string; status: string; title: string; description: string; appointment_id?: string | null; resource_id?: string | null; reporter_name?: string; assignee_name?: string | null; assigned_user_id?: string | null; resolution?: string | null; version: number; created_at: string };
 
-function IncidentsPage({ timeZone, onNotify }: { timeZone: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+export default function IncidentsPage({ timeZone, onNotify }: { timeZone: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const formatDateValue = (value: string | Date, options: Intl.DateTimeFormatOptions, _unusedTimeZone?: string, fallback = "—") => formatDateValueWithZone(value, options, timeZone, fallback);
   const [incidents, setIncidents] = useState<IncidentApiRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
