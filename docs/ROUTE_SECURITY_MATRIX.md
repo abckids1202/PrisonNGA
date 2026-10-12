@@ -65,3 +65,11 @@ For every row, the reviewer must attach evidence from source, automated tests, a
 6. A provider or operational failure test when the route depends on an external service.
 
 The remaining external gates and canonical visitor/staff/kiosk workflow remain tracked in [INSTITUTIONAL_PILOT_AUDIT.md](./INSTITUTIONAL_PILOT_AUDIT.md).
+
+## Drift check
+
+Run `npm run audit:routes` after adding or moving an API route. The command
+scans `app/api/**/route.ts`, understands parameterized and family patterns, and
+fails when a route is not represented by a matrix row. This is a documentation
+coverage check; it does not replace the authorization, facility-isolation,
+mutation, and staging evidence requirements above.
