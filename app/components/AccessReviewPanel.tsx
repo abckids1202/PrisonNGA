@@ -93,7 +93,7 @@ export default function AccessReviewPanel({ timeZone = "Asia/Jakarta" }: { timeZ
       const response = await fetch("/api/control/access-review/sessions", {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `staff-session-revoke-${session.id}-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `staff-session-revoke-${session.id}` },
         body: JSON.stringify({ userId: session.user_id, sessionId: session.id, reason: sessionReason }),
       });
       const body = await response.json() as { error?: string };

@@ -98,7 +98,7 @@ function VerificationQueue({ timeZone, onNotify }: { timeZone: string; onNotify:
     try {
       const response = await fetch("/api/control/verification", {
         method: "POST", credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `verification-${selected.id}-${selected.version}-${status}-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `verification-${selected.id}-${selected.version}-${status}` },
         body: JSON.stringify({ verificationCaseId: selected.id, status, reason: reason.trim(), expectedVersion: selected.version }),
       });
       const body = await response.json() as { error?: string };

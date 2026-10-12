@@ -33,7 +33,7 @@ export default function AppointmentTypesPanel() {
     const currentType = types.find((item) => item.id === type.id) || type;
     setError("");
     try {
-      const response = await fetch("/api/control/appointment-types", { method: "PUT", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `appointment-type-${currentType.id}-${crypto.randomUUID()}` }, body: JSON.stringify({ id: currentType.id, expectedVersion: currentType.version, displayName: currentType.display_name, description: currentType.description, durationMinutes: currentType.duration_minutes, creditCost: currentType.credit_cost, status: currentType.status, reason }) });
+      const response = await fetch("/api/control/appointment-types", { method: "PUT", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `appointment-type-${currentType.id}-${currentType.version}` }, body: JSON.stringify({ id: currentType.id, expectedVersion: currentType.version, displayName: currentType.display_name, description: currentType.description, durationMinutes: currentType.duration_minutes, creditCost: currentType.credit_cost, status: currentType.status, reason }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Appointment type could not be saved.");
       setEditing("");

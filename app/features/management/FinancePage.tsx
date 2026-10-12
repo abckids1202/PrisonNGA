@@ -83,7 +83,7 @@ export default function FinancePage({ timeZone, onNotify }: { timeZone: string; 
     }
     setReplayingEvent(event.id);
     try {
-      const response = await fetch("/api/control/finance/payment-events", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `payment-event-replay-${event.id}-${crypto.randomUUID()}` }, body: JSON.stringify({ paymentEventId: event.id, reason: recoveryReason }) });
+      const response = await fetch("/api/control/finance/payment-events", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `payment-event-replay-${event.id}` }, body: JSON.stringify({ paymentEventId: event.id, reason: recoveryReason }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Unable to replay payment provider event.");
       onNotify(`${event.event_type} returned to the payment worker queue.`, "success");
@@ -104,7 +104,7 @@ export default function FinancePage({ timeZone, onNotify }: { timeZone: string; 
       const response = await fetch("/api/control/finance/refunds", {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `finance-refund-${refundPayment.id}-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `finance-refund-${refundPayment.id}` },
         body: JSON.stringify({ paymentIntentId: refundPayment.id, reason: refundReason.trim() }),
       });
       const body = await response.json() as { status?: string; error?: string };
