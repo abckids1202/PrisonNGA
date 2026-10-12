@@ -111,7 +111,14 @@ const report = {
   warnings: environmentCheck.warnings,
   missingReleaseEvidence: releaseGates.missing,
   missingStagingEvidence,
-  externalIntegrationChecks: externalIntegrationChecks.map(({ action, ...check }) => ({ ...check, requiredOutsideDevelopment: true, ok: environment === "development" || check.configured })),
+  externalIntegrationChecks: externalIntegrationChecks.map((check) => ({
+    id: check.id,
+    label: check.label,
+    configured: check.configured,
+    detail: check.detail,
+    requiredOutsideDevelopment: true,
+    ok: environment === "development" || check.configured,
+  })),
   nextActions: [
     ...environmentCheck.missing.map((item) => `Configure ${item}`),
     ...releaseGates.missing.map((item) => `Record release evidence for ${item}`),
