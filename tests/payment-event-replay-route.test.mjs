@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = await readFile(new URL("../app/api/control/finance/payment-events/route.ts", import.meta.url), "utf8");
-const financePage = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+const financePage = await readFile(new URL("../app/features/management/FinancePage.tsx", import.meta.url), "utf8");
 
 test("payment provider event replay is finance-scoped, step-up protected, and facility-scoped", () => {
   assert.match(source, /requirePermission\("finance\.read"\)/);
