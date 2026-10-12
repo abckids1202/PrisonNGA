@@ -3,11 +3,12 @@ export function financeSummaryStatement(d1: D1Database, facilityId: string) {
       COALESCE((SELECT SUM(cle.amount) FROM credit_ledger_entries cle INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id INNER JOIN users u ON u.id = ca.user_id AND u.user_type = 'VISITOR' WHERE ca.facility_id = ? AND cle.entry_type = 'PURCHASE'), 0) AS credits_purchased,
       COALESCE((SELECT SUM(ABS(cle.amount)) FROM credit_ledger_entries cle INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id INNER JOIN users u ON u.id = ca.user_id AND u.user_type = 'VISITOR' WHERE ca.facility_id = ? AND cle.entry_type = 'CONSUMPTION'), 0) AS credits_consumed,
       COALESCE((SELECT SUM(ca.reserved_credits) FROM credit_accounts ca INNER JOIN users u ON u.id = ca.user_id AND u.user_type = 'VISITOR' WHERE ca.facility_id = ?), 0) AS credits_reserved,
-      (SELECT COUNT(*) FROM payment_intents pi INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR' WHERE pi.facility_id = ? AND pi.status IN ('REFUNDED', 'DISPUTED')) AS refund_cases,
+      ((SELECT COUNT(*) FROM payment_refund_requests pr INNER JOIN payment_intents pi ON pi.id = pr.payment_intent_id AND pi.facility_id = pr.facility_id INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR' WHERE pr.facility_id = ? AND pr.status IN ('REQUESTED', 'FAILED', 'COMPLETED')) +
+       (SELECT COUNT(*) FROM payment_intents pi INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR' WHERE pi.facility_id = ? AND pi.status IN ('REFUNDED', 'DISPUTED') AND NOT EXISTS (SELECT 1 FROM payment_refund_requests pr WHERE pr.payment_intent_id = pi.id AND pr.facility_id = pi.facility_id))) AS refund_cases,
       (SELECT COUNT(*) FROM payment_intents pi INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR' WHERE pi.facility_id = ? AND pi.status IN ('PENDING', 'CHECKOUT_CREATED')) AS pending_payments,
       COALESCE((SELECT SUM(pi.amount_minor) FROM payment_intents pi INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR' WHERE pi.facility_id = ? AND pi.status = 'SUCCEEDED'), 0) AS settled_amount_minor,
       (SELECT MAX(created_at) FROM credit_ledger_entries cle INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id INNER JOIN users u ON u.id = ca.user_id AND u.user_type = 'VISITOR' WHERE ca.facility_id = ?) AS last_ledger_activity`)
-    .bind(facilityId, facilityId, facilityId, facilityId, facilityId, facilityId, facilityId);
+    .bind(facilityId, facilityId, facilityId, facilityId, facilityId, facilityId, facilityId, facilityId);
 }
 
 export function financeLedgerStatement(d1: D1Database, facilityId: string) {

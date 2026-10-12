@@ -28,7 +28,7 @@ function seeded() {
     INSERT INTO credit_accounts VALUES ('credits-a', 'facility-a', 'visitor-a', 1), ('credits-b', 'facility-b', 'visitor-b', 4), ('credits-staff', 'facility-a', 'staff-a', 99);
     INSERT INTO credit_ledger_entries VALUES ('entry-1', 'credits-a', NULL, 'PURCHASE', 3, 'Payment settled', '2026-09-23T01:00:00.000Z'), ('entry-2', 'credits-a', 'visit-a', 'RESERVATION', -1, 'Appointment approved', '2026-09-23T02:00:00.000Z'), ('entry-3', 'credits-a', 'visit-old', 'CONSUMPTION', 0, 'Visit completed', '2026-09-22T02:00:00.000Z'), ('entry-4', 'credits-b', NULL, 'PURCHASE', 99, 'Other facility', '2026-09-23T03:00:00.000Z'), ('entry-staff', 'credits-staff', NULL, 'PURCHASE', 99, 'Invalid staff account', '2026-09-23T05:00:00.000Z');
     INSERT INTO payment_intents VALUES ('payment-1', 'facility-a', 'visitor-a', 'sandbox', 3, 150000, 'IDR', 'SUCCEEDED', 'provider-1', '2026-09-23T01:00:00.000Z', '2026-09-23T01:00:00.000Z'), ('payment-2', 'facility-a', 'visitor-a', 'sandbox', 1, 50000, 'IDR', 'REFUNDED', 'provider-2', '2026-09-22T01:00:00.000Z', '2026-09-22T01:00:00.000Z'), ('payment-3', 'facility-b', 'visitor-b', 'sandbox', 99, 1, 'IDR', 'SUCCEEDED', 'provider-3', '2026-09-23T04:00:00.000Z', '2026-09-23T04:00:00.000Z'), ('payment-staff', 'facility-a', 'staff-a', 'sandbox', 99, 1, 'IDR', 'SUCCEEDED', 'provider-staff', '2026-09-23T05:00:00.000Z', '2026-09-23T05:00:00.000Z');
-    INSERT INTO payment_refund_requests VALUES ('refund-1', 'payment-2', 'facility-a', 'REQUESTED', 'Visitor cancellation approved', '2026-09-22T02:00:00.000Z');
+    INSERT INTO payment_refund_requests VALUES ('refund-1', 'payment-2', 'facility-a', 'REQUESTED', 'Visitor cancellation approved', '2026-09-22T02:00:00.000Z'), ('refund-2', 'payment-1', 'facility-a', 'FAILED', 'Provider timeout', '2026-09-23T02:00:00.000Z');
   `);
   return d1;
 }
@@ -37,7 +37,7 @@ test("finance summary and records stay facility-scoped and derive from the appen
   const d1 = seeded();
   try {
     const summary = await financeSummaryStatement(d1, "facility-a").first();
-    assert.deepEqual({ ...summary }, { credits_purchased: 3, credits_consumed: 0, credits_reserved: 1, refund_cases: 1, pending_payments: 0, settled_amount_minor: 150000, last_ledger_activity: "2026-09-23T02:00:00.000Z" });
+    assert.deepEqual({ ...summary }, { credits_purchased: 3, credits_consumed: 0, credits_reserved: 1, refund_cases: 2, pending_payments: 0, settled_amount_minor: 150000, last_ledger_activity: "2026-09-23T02:00:00.000Z" });
     const ledger = await financeLedgerStatement(d1, "facility-a").all();
     assert.equal(ledger.results.length, 3);
     assert.ok(ledger.results.every((row) => row.visitor_name === "Alya Pratama"));
