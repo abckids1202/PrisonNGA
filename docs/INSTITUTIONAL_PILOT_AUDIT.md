@@ -3,8 +3,8 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest full-release-verified code commit: `83728ab` (`fix: count pending refund cases`).
-The subsequent focused UI correction is `eb7f27a` (`fix: make compliance report destinations actionable`); it passed its targeted regression test, typecheck, lint, and diff validation.
+Latest full-release-verified code commit: `ffe6ad3` (`feat: report external pilot readiness`).
+The subsequent lint-only cleanup is `c77e60a` (`fix: clear pilot audit lint warning`); it passed lint and the focused pilot-audit suite.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
@@ -36,8 +36,10 @@ remote backup/restore, WAF/rate limits, monitoring and runbooks, independent
 security review, and Indonesian privacy/correctional approval.
 
 Fresh audit snapshot — 2026-10-12: `npm run audit:pilot` again reports
-`readyForPilot: false` in development. The only missing deployment inputs are
-`PUBLIC_APP_URL` and `D1_DATABASE_ID`; the development hash-salt fallback is
+`readyForPilot: false` in development. The report identifies missing deployment
+inputs `PUBLIC_APP_URL`, `D1_DATABASE_ID`, and `D1_DATABASE_NAME`, plus the
+unconfigured real email/SMS, institutional federation, payment, LiveKit, and
+malware-scanning integrations; the development hash-salt fallback is
 also warned about. Development-only checks report the configured R2 adapter,
 cron fallback, environment validation, and release artifacts as available,
 but those results are not staging or production evidence. No external provider,
