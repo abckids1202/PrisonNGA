@@ -28,9 +28,13 @@ export default function ContextDrawer({ payload, onClose, onOpenAppointment, onR
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (payload.kind === "appointment" || payload.kind === "activity") return;
+    const requiresRemoteRecord = payload.kind !== "appointment" && payload.kind !== "activity";
+    if (!requiresRemoteRecord) return;
     let active = true;
     const load = async () => {
+      setRemote(null);
+      setError("");
+      setLoading(true);
       try {
         const endpoint = payload.kind === "device" ? "/api/control/resources" : payload.kind === "waiting" ? "/api/control/waiting-room" : "/api/control/incidents";
         const response = await fetch(endpoint, { credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
