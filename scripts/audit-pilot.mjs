@@ -110,11 +110,13 @@ const operationalActions = {
   "release-artifacts": "Restore the required release documentation artifacts before accepting pilot evidence",
 };
 
+const externalIntegrationsReady = externalIntegrationChecks.every((check) => check.configured);
+
 const report = {
   generatedAt: new Date().toISOString(),
   environment: environmentCheck.environment,
   strict,
-  readyForPilot: environmentCheck.environment !== "development" && environmentCheck.ok && releaseGates.ready && checks.every((check) => check.ok),
+  readyForPilot: environmentCheck.environment !== "development" && environmentCheck.ok && releaseGates.ready && externalIntegrationsReady && checks.every((check) => check.ok),
   checks,
   missingConfiguration: environmentCheck.missing,
   warnings: environmentCheck.warnings,

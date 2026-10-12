@@ -71,6 +71,8 @@ test("strict pilot audit fails closed outside development until configuration an
   assert.equal(report.readyForPilot, false);
   assert.ok(report.missingConfiguration.length > 0);
   assert.ok(report.missingStagingEvidence.includes("SECUREVISIT_LIVEKIT_STAGING=verified"));
+  assert.equal(report.externalIntegrationChecks.every((check) => check.configured), false);
+  assert.equal(report.readyForPilot, false);
 });
 
 test("pilot audit does not treat an unbound R2 provider as protected evidence storage", async () => {
