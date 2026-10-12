@@ -16,7 +16,7 @@ test("Control workspace refreshes appointments and facility state from protected
 });
 
 test("lockdown preserves authoritative live-session and appointment state for staff review", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../app/features/control/CommandCenterPage.tsx", import.meta.url), "utf8");
 
   assert.match(source, /const activeSessions = liveSessions;/);
   assert.doesNotMatch(source, /const activeSessions = lockdown \? \[\] : liveSessions;/);
@@ -25,7 +25,7 @@ test("lockdown preserves authoritative live-session and appointment state for st
 });
 
 test("every non-normal facility state is visible as an operational restriction", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../app/features/control/CommandCenterPage.tsx", import.meta.url), "utf8");
 
   assert.match(source, /const facilityRestricted = facilityState !== "NORMAL_OPERATIONS" && facilityState !== "UNKNOWN"/);
   assert.match(source, /facilityState\.replaceAll\("_", " "\)/);
