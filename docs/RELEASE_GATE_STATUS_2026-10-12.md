@@ -6,7 +6,7 @@ repository evidence from staging evidence and external institutional approvals.
 ## Verified repository baseline
 
 The following command completed successfully on the current `main` baseline
-commit `4eb75a0`:
+commit `50f2623`:
 
 ```text
 npm run verify:release
@@ -16,6 +16,7 @@ It verified:
 
 - 75 API route files represented in the security matrix, with no uncovered routes.
 - Fresh local D1 migrations and seed verification.
+- Disposable fresh-schema execution of the synthetic staging fixture.
 - Disposable local D1 backup/restore with schema, foreign-key, credit-ledger, and audit-integrity checks.
 - TypeScript typecheck.
 - ESLint.
@@ -30,9 +31,9 @@ provider without naming the protected `EVIDENCE_BUCKET_NAME` binding.
 This is engineering evidence only. It does not prove external provider,
 hardware, deployment, resilience, legal, or institutional readiness.
 
-The full verifier was rerun on `4eb75a0` after the People, verification, Incidents, and
+The full verifier was rerun on `50f2623` after the People, verification, Incidents, and
 Administration workspaces were extracted from the Control shell and the guarded staging
-fixture workflow was added. The current repository baseline is therefore
+fixture workflow gained a fresh-schema compatibility check. The current repository baseline is therefore
 release-verified locally. This remains engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
 institutional gates.
