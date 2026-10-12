@@ -3,7 +3,7 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `f7830ef` (`fix: recover existing local video configuration`).
+Latest verified code commit: `ac9b35f` (`fix: guard live session end with version`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
@@ -126,6 +126,7 @@ The current repository already includes:
 - The local launcher now defaults to port `5174`, matching `PUBLIC_APP_URL` in the development template; callers can still override it with `--port`.
 - When a custom localhost port is supplied, the local launcher now synchronizes `PUBLIC_APP_URL` so callback and origin-sensitive development flows target the actual server port; non-local URLs are never rewritten.
 - Existing development checkouts with an older unconfigured LiveKit template now fall back to `local_test`; a deliberately configured local LiveKit instance is preserved.
+- Live Sessions now reads the persisted session version and sends it with staff end requests, making stale drawers fail explicitly through the existing optimistic-concurrency boundary.
 - Notification delivery now fails closed outside development when no outbound provider is configured; staging and production still require real provider delivery, callbacks and operational replay evidence.
 - Staff verification review now rejects a contradictory decision after a case is already approved or rejected; only a replay of the same terminal decision is idempotent.
 - Staff live-session finalization now rejects a contradictory end mode after a session is already ended, terminated, or cancelled; same-mode retries remain idempotent after settlement is verified.
