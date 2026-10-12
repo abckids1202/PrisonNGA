@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const script = "scripts/staging-smoke.mjs";
+
+test("staging smoke is scheduled for public monitoring and keeps authenticated readiness manual", async () => {
+  const workflow = await readFile(".github/workflows/staging-smoke.yml", "utf8");
+  assert.match(workflow, /schedule:[\s\S]*- cron: ["']\*\/15 \* \* \* \*["']/);
+  assert.match(workflow, /STAGING_SMOKE_REQUIRE_READINESS: \$\{\{ github\.event_name == 'workflow_dispatch'/);
+});
 
 function runSmoke(baseUrl, extra = {}) {
   return new Promise((resolve, reject) => {

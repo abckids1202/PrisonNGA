@@ -2,6 +2,10 @@ name: SecureVisit staging smoke
 
 on:
   workflow_dispatch:
+  schedule:
+    # Keep public staging reachability observable between releases. Manual
+    # dispatch additionally runs the authenticated readiness gate below.
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: read
@@ -15,7 +19,7 @@ jobs:
     env:
       STAGING_DOMAIN: ${{ secrets.STAGING_DOMAIN }}
       STAGING_READINESS_COOKIE: ${{ secrets.STAGING_READINESS_COOKIE }}
-      STAGING_SMOKE_REQUIRE_READINESS: "true"
+      STAGING_SMOKE_REQUIRE_READINESS: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
       STAGING_SMOKE_ALLOW_INSECURE: "false"
       STAGING_SMOKE_TIMEOUT_MS: "10000"
     steps:
