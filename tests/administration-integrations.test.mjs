@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("Administration integrations tab reads protected readiness state", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../app/features/management/AdministrationPage.tsx", import.meta.url), "utf8");
   const readinessSource = await readFile(new URL("../app/features/management/IntegrationReadinessPanel.tsx", import.meta.url), "utf8");
   const complianceSource = await readFile(new URL("../app/features/management/CompliancePageInteractive.tsx", import.meta.url), "utf8");
   assert.match(readinessSource, /function IntegrationReadinessPanel/);
