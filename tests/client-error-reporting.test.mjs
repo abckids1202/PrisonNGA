@@ -15,5 +15,6 @@ test("client error reporting is bounded, rate-limited, and privacy-safe", () => 
   assert.doesNotMatch(route, /body\.stack/);
   assert.match(reporter, /keepalive: true/);
   assert.match(reporter, /pathname/);
+  assert.match(reporter, /\.catch\(\(\) => undefined\)/);
   assert.doesNotMatch(reporter, /error\.message/);
 });

@@ -15,7 +15,7 @@ export function reportClientError(surface: ClientErrorSurface, digest?: string):
       keepalive: true,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ surface, digest: safeDigest, pathname }),
-    });
+    }).catch(() => undefined);
   } catch {
     // Error reporting must never create a second user-facing failure.
   }
