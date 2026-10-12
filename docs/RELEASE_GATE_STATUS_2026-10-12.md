@@ -6,7 +6,7 @@ repository evidence from staging evidence and external institutional approvals.
 ## Verified repository baseline
 
 The following command completed successfully at the full-release baseline commit
-`83728ab`:
+`87ec0fe`:
 
 ```text
 npm run verify:release
@@ -20,7 +20,7 @@ It verified:
 - TypeScript typecheck.
 - ESLint.
 - Production build.
-- 565 server test cases.
+- 568 server test cases.
 - 17 browser tests.
 - Production dependency audit with 0 vulnerabilities.
 
@@ -30,9 +30,11 @@ provider without naming the protected `EVIDENCE_BUCKET_NAME` binding.
 This is engineering evidence only. It does not prove external provider,
 hardware, deployment, resilience, legal, or institutional readiness.
 
-Since that full verifier run, focused validation has passed with 567 server test
-cases after the visitor notification and external-integration audit changes.
-The full verifier should be rerun before treating this commit as release-verified.
+The full verifier was rerun on `87ec0fe` after the Appointments workspace
+extraction and the fail-closed external-integration audit change. The current
+repository baseline is therefore release-verified locally. This remains
+engineering evidence only and does not satisfy external provider, staging,
+hardware, resilience, legal, or institutional gates.
 
 ## Pilot gate status
 
