@@ -538,7 +538,12 @@ async function reconcileActiveAppointmentInvariants(env: Env): Promise<void> {
 
 async function purgeExpiredEvidence(env: Env): Promise<void> {
   if (!env.EVIDENCE_BUCKET) return;
-  await env.DB.prepare("UPDATE evidence_documents SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE status = 'PENDING_DELETION' AND legal_hold = 1").run();
+  await env.DB.prepare(`UPDATE evidence_documents SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP
+    WHERE rowid IN (
+      SELECT rowid FROM evidence_documents
+      WHERE status = 'PENDING_DELETION' AND legal_hold = 1
+      LIMIT 50
+    )`).run();
   const rows = await env.DB.prepare("SELECT id, facility_id, storage_key, retention_until, status FROM evidence_documents WHERE legal_hold = 0 AND ((status = 'AVAILABLE' AND julianday(retention_until) <= julianday('now')) OR status = 'PENDING_DELETION') LIMIT 50").all<{ id: string; facility_id: string; storage_key: string; retention_until: string; status: string }>();
   for (const row of rows.results) {
     const correlationId = crypto.randomUUID();

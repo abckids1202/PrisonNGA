@@ -60,6 +60,8 @@ Step-up assertion expiry is also bounded to 250 rows per scheduled run.
 Visitor session revocation now also clears the browser cookie when the current
 session is revoked, avoiding stale credentials after sign-out-all or targeted
 session termination.
+Evidence retention recovery now restores legal-hold rows in bounded batches,
+preventing a large privacy backlog from becoming one oversized Worker update.
 
 ## Pilot gate status
 
