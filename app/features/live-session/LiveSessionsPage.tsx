@@ -86,7 +86,7 @@ export default function LiveSessionsPage({ onNotify, timeZone = "Asia/Jakarta" }
       const retryingRecovery = session.status === "ENDING" && Boolean(selectedDetail?.reconciliation.required);
       const response = await fetch(`/api/control/live-sessions/${session.id}/end`, {
         method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `live-session-end-${crypto.randomUUID()}` },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": `live-session-end-${session.id}-${session.version}` },
         body: JSON.stringify({ expectedVersion: session.version, mode, reason: retryingRecovery ? "Staff retried provider closure and settlement after the previous recovery attempt was not confirmed." : mode === "terminate" ? "Staff terminated a session before both visit participants connected." : "Staff ended the authorized visit from Live Sessions." }),
       });
       const body = await response.json() as { error?: string };
