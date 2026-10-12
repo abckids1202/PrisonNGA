@@ -12,7 +12,8 @@ test("appointment decisions are replay-safe across approval and recovery branche
   assert.match(source, /getAssignedResources/);
   const clientSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(clientSource, /appointment-decision-\$\{id\}-\$\{command\}/);
-  assert.match(clientSource, /staff-provision-\$\{crypto\.randomUUID\(\)\}/);
+  const administrationSource = await readFile(new URL("../app/features/management/AdministrationPage.tsx", import.meta.url), "utf8");
+  assert.match(administrationSource, /staff-provision-\$\{crypto\.randomUUID\(\)\}/);
   const peopleSource = await readFile(new URL("../app/features/management/PeoplePage.tsx", import.meta.url), "utf8");
   assert.match(peopleSource, /verification-\$\{selected\.id\}-\$\{selected\.version\}/);
   const prisonerSource = await readFile(new URL("../app/components/PrisonerDirectory.tsx", import.meta.url), "utf8");
