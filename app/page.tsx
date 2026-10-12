@@ -21,10 +21,11 @@ import AppointmentDrawer from "./features/control/AppointmentDrawer";
 import ContextDrawer, { type DrawerPayload } from "./features/control/ContextDrawer";
 import { mapBackendAppointment, type Appointment, type AppointmentStatus } from "./features/control/model";
 import { formatDateValue as formatDateValueWithZone, safeTimeZone } from "@/lib/date-format";
+import { controlNavigationUrl, parseControlNavigation, type ControlMode } from "@/lib/control-navigation";
 
 const formatDateValue = formatDateValueWithZone;
 
-type Mode = "operations" | "management";
+type Mode = ControlMode;
 type RuntimeEnvironment = "development" | "staging" | "production" | "unknown";
 type Notice = { id: number; message: string; tone?: "success" | "warning" | "error" | "info" };
 type SecurityNotification = { id: string; eventType: string; severity: string; createdAt: string; requestId?: string | null };
@@ -92,6 +93,20 @@ export default function ControlApp() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const next = parseControlNavigation(window.location.search);
+      setMode(next.mode);
+      setPage(next.page);
+      setSelectedAppointment(null);
+      setSelectedDrawer(null);
+      setPopover(null);
+    };
+    syncFromUrl();
+    window.addEventListener("popstate", syncFromUrl);
+    return () => window.removeEventListener("popstate", syncFromUrl);
   }, []);
 
   useEffect(() => {
@@ -268,7 +283,8 @@ export default function ControlApp() {
     setSelectedAppointment(null);
     setSelectedDrawer(null);
     setPopover(null);
-    window.history.replaceState(null, "", `/?workspace=${nextMode}&page=${encodeURIComponent(nextPage)}`);
+    const nextUrl = controlNavigationUrl(nextMode, nextPage);
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) window.history.pushState(null, "", nextUrl);
   }
 
   function openResource(resourceId: string) {
