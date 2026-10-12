@@ -3,25 +3,26 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `3ec425e` (`fix: keep client error reporting non-disruptive`).
+Latest full-release-verified code commit: `83728ab` (`fix: count pending refund cases`).
+The subsequent focused UI correction is `eb7f27a` (`fix: make compliance report destinations actionable`); it passed its targeted regression test, typecheck, lint, and diff validation.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
-555 server test cases across 550 test files/subtests, 17 browser tests, fresh
+565 server test cases, 17 browser tests, fresh
 migration verification, a disposable backup/restore drill, typecheck, lint,
 production build, and a zero-vulnerability production dependency audit all
 passed.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current release verification reports 555 passing test cases across 550 test
-files/subtests, plus 17 browser tests; the
+The current release verification reports 565 passing server test cases plus 17
+browser tests; the
 older count retained in a historical evidence bullet below is superseded by
 this current verification record.
 
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the
 development environment. The report identifies the expected missing deployment
-inputs `PUBLIC_APP_URL` and `D1_DATABASE_ID`, and warns that the development
+inputs `PUBLIC_APP_URL`, `D1_DATABASE_ID`, and `D1_DATABASE_NAME`, and warns that the development
 hash-salt fallback is active. No secret values are written to the report.
 
 Fresh audit snapshot — 2026-10-11: strict readiness still reports
@@ -130,8 +131,8 @@ The current repository already includes:
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 555 passing test cases across 550 test files/subtests and 17 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
-- `npm run audit:routes` now scans all 75 API route files and fails if a route is absent from `docs/ROUTE_SECURITY_MATRIX.md`; the matcher understands combined rows, parameterized segments, and wildcard route families. The release verifier passes with the resulting 555 server test cases across 550 test files/subtests and 17 browser tests.
+- Automated server tests and browser smoke tests. Current validation baseline is 565 passing server test cases and 17 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- `npm run audit:routes` now scans all 75 API route files and fails if a route is absent from `docs/ROUTE_SECURITY_MATRIX.md`; the matcher understands combined rows, parameterized segments, and wildcard route families. The release verifier passes with the resulting 565 server test cases and 17 browser tests.
 - Client-side root, global, Control, and Visitor error boundaries now send only a bounded surface, pathname, and digest to a rate-limited diagnostics endpoint; the endpoint emits a redacted structured operational event and never accepts error messages, stacks, cookies, tokens, or user data. This improves local observability, but an external log sink and alert routing remain deployment gates.
 - The release verifier now runs the API route security-matrix audit as an explicit named gate before migrations, so route-review coverage cannot disappear silently if the test command changes.
 - Client error reporting now consumes failed telemetry requests, so a monitoring outage cannot create an unhandled browser rejection or alter the user-facing recovery boundary.
