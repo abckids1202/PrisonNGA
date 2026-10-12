@@ -8,6 +8,7 @@ import { getNotificationDelivery } from "../../../../lib/server/notifications/pr
 import { isSecureHttpsEndpoint } from "../../../../lib/server/endpoint";
 import { isDeliveryConfigured } from "../../../../lib/server/delivery-readiness";
 import { evaluateReleaseGates } from "../../../../lib/server/release-gates";
+import { parseVisitorAuthChannels } from "../../../../lib/server/visitor-auth/channels";
 
 const requiredTables = [
   "users", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "roles", "permissions", "user_roles", "role_permissions",
@@ -40,7 +41,7 @@ const requiredColumns: Record<string, string[]> = {
 };
 
 const configurationKeys = [
-  "SECUREVISIT_ENVIRONMENT", "SECUREVISIT_HASH_SALT", "STAFF_STEP_UP_SECRET", "VISITOR_AUTH_DELIVERY", "VISITOR_EMAIL_DELIVERY", "VISITOR_SMS_DELIVERY", "VISITOR_AUTH_WEBHOOK_URL", "VISITOR_AUTH_WEBHOOK_SECRET", "RESEND_API_KEY", "VISITOR_EMAIL_FROM", "VISITOR_SMS_TWILIO_ACCOUNT_SID", "VISITOR_SMS_TWILIO_AUTH_TOKEN", "VISITOR_SMS_TWILIO_FROM", "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID",
+  "SECUREVISIT_ENVIRONMENT", "SECUREVISIT_HASH_SALT", "STAFF_STEP_UP_SECRET", "VISITOR_AUTH_CHANNELS", "SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL", "VISITOR_AUTH_DELIVERY", "VISITOR_EMAIL_DELIVERY", "VISITOR_SMS_DELIVERY", "VISITOR_AUTH_WEBHOOK_URL", "VISITOR_AUTH_WEBHOOK_SECRET", "RESEND_API_KEY", "VISITOR_EMAIL_FROM", "VISITOR_SMS_TWILIO_ACCOUNT_SID", "VISITOR_SMS_TWILIO_AUTH_TOKEN", "VISITOR_SMS_TWILIO_FROM", "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID",
   "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "EVIDENCE_STORAGE_PROVIDER", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
   "PAYMENT_PROVIDER", "PAYMENT_CHECKOUT_URL", "PAYMENT_REFUND_URL", "PAYMENT_PROVIDER_SECRET", "XENDIT_SECRET_KEY", "XENDIT_API_BASE_URL", "XENDIT_WEBHOOK_TOKEN", "PAYMENT_WEBHOOK_SECRET", "NOTIFICATION_DELIVERY", "NOTIFICATION_EMAIL_DELIVERY", "NOTIFICATION_SMS_DELIVERY", "NOTIFICATION_WEBHOOK_URL", "NOTIFICATION_WEBHOOK_SECRET", "NOTIFICATION_STATUS_WEBHOOK_SECRET",
   "STAFF_AUTH_PROVIDER", "STAFF_OIDC_ISSUER", "STAFF_OIDC_CLIENT_ID", "STAFF_OIDC_CLIENT_SECRET", "STAFF_OIDC_REDIRECT_URI", "STAFF_OIDC_MFA_ACR", "STAFF_OIDC_MFA_AMR",
@@ -97,6 +98,7 @@ export async function GET() {
     const environmentConfig = validateEnvironment({ DB: d1, EVIDENCE_BUCKET: evidenceBucket, ...Object.fromEntries(configurationKeys.map((key, index) => [key, configurationValues[index]])) });
     const configured = Object.fromEntries(await Promise.all(configurationKeys.map(async (key) => [key, await getRuntimeValue(key)] as const)));
     const configuredString = (key: string) => typeof configured[key] === "string" ? configured[key].trim() : "";
+    const visitorAuthChannels = parseVisitorAuthChannels(configuredString("VISITOR_AUTH_CHANNELS"));
     const deliveryConfigured = (delivery: string, channel: "EMAIL" | "SMS", webhookUrl: string | null, webhookSecret: string | null) => {
       return isDeliveryConfigured({
         environment,
@@ -115,8 +117,10 @@ export async function GET() {
     const configuredVisitorEmailDelivery = (configuredString("VISITOR_EMAIL_DELIVERY") || configuredString("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
     const configuredVisitorSmsDelivery = (configuredString("VISITOR_SMS_DELIVERY") || configuredString("VISITOR_AUTH_DELIVERY") || "").toLowerCase();
     const visitorAuth = environment === "development"
-      || (deliveryConfigured(configuredVisitorEmailDelivery, "EMAIL", configuredString("VISITOR_AUTH_WEBHOOK_URL") || visitorAuthWebhookUrl, configuredString("VISITOR_AUTH_WEBHOOK_SECRET") || visitorAuthWebhookSecret)
-        && deliveryConfigured(configuredVisitorSmsDelivery, "SMS", configuredString("VISITOR_AUTH_WEBHOOK_URL") || visitorAuthWebhookUrl, configuredString("VISITOR_AUTH_WEBHOOK_SECRET") || visitorAuthWebhookSecret));
+      || (visitorAuthChannels.valid
+        && (!visitorAuthChannels.emailOnly || configuredString("SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL").toLowerCase() === "approved")
+        && (!visitorAuthChannels.channels.includes("EMAIL") || deliveryConfigured(configuredVisitorEmailDelivery, "EMAIL", configuredString("VISITOR_AUTH_WEBHOOK_URL") || visitorAuthWebhookUrl, configuredString("VISITOR_AUTH_WEBHOOK_SECRET") || visitorAuthWebhookSecret))
+        && (!visitorAuthChannels.channels.includes("SMS") || deliveryConfigured(configuredVisitorSmsDelivery, "SMS", configuredString("VISITOR_AUTH_WEBHOOK_URL") || visitorAuthWebhookUrl, configuredString("VISITOR_AUTH_WEBHOOK_SECRET") || visitorAuthWebhookSecret)));
     const evidenceScanning = evidenceScanProvider === "webhook" && Boolean(evidenceScanWebhookUrl && isSecureHttpsEndpoint(evidenceScanWebhookUrl)) && Boolean(evidenceScanWebhookSecret);
     const paymentWebhook = Boolean(paymentProvider) && Boolean(paymentWebhookSecret);
     const oidcReady = Boolean(staffOidcIssuer && isSecureHttpsEndpoint(staffOidcIssuer)) && Boolean(staffOidcClientId) && Boolean(staffOidcClientSecret) && Boolean(staffOidcRedirectUri && isSecureHttpsEndpoint(staffOidcRedirectUri))
@@ -142,6 +146,7 @@ export async function GET() {
       evidenceStorage: Boolean(evidenceBucket) && (environment === "development" ? evidenceStorageProvider === "local_test" || evidenceStorageProvider === "r2" : evidenceStorageProvider === "r2"),
       evidenceScanning,
       visitorAuth,
+      visitorAuthChannels: visitorAuthChannels.valid && visitorAuthChannels.channels.length > 0,
       staffIdentity,
       notifications,
       notificationQueue: environment === "development" || Boolean(configuredString("NOTIFICATION_QUEUE_NAME")),
@@ -153,6 +158,7 @@ export async function GET() {
       video: videoConfig.provider,
       visitorEmail: configuredVisitorEmailDelivery || null,
       visitorSms: configuredVisitorSmsDelivery || null,
+      visitorAuthChannels: visitorAuthChannels.valid ? visitorAuthChannels.channels : null,
       notificationsEmail: configuredNotificationEmailDelivery || null,
       notificationsSms: configuredNotificationSmsDelivery || null,
       evidenceScanner: evidenceScanProvider || null,
@@ -164,6 +170,6 @@ export async function GET() {
     return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, providerAdapters, releaseGates, tariff: { configured: tariffConfigured, configuredFacilities: Number(tariffRow?.configured_count || 0) }, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
   } catch (error) {
     if (error instanceof Error && error.name === "SecurityError") return securityErrorResponse(error, context.requestId);
-    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false, notificationQueue: false }, providerAdapters: { payment: null, video: null, visitorEmail: null, visitorSms: null, notificationsEmail: null, notificationsSms: null, evidenceScanner: null, staffFederation: null }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
+    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, visitorAuthChannels: false, staffIdentity: false, notifications: false, notificationQueue: false }, providerAdapters: { payment: null, video: null, visitorEmail: null, visitorSms: null, visitorAuthChannels: null, notificationsEmail: null, notificationsSms: null, evidenceScanner: null, staffFederation: null }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
   }
 }

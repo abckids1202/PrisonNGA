@@ -1,5 +1,6 @@
 export type RuntimeConfig = Record<string, unknown>;
 import { isSecureHttpsEndpoint } from "./endpoint";
+import { parseVisitorAuthChannels } from "./visitor-auth/channels";
 
 export type EnvironmentCheck = {
   environment: "development" | "staging" | "production" | "invalid";
@@ -48,23 +49,30 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (!isSecureHttpsEndpoint(value(env, "PUBLIC_APP_URL"))) missing.push("PUBLIC_APP_URL (must be an https:// URL without credentials or fragments)");
   if (!value(env, "NOTIFICATION_QUEUE_NAME")) missing.push("NOTIFICATION_QUEUE_NAME (required for staging/production)");
   const legacyVisitorDelivery = value(env, "VISITOR_AUTH_DELIVERY");
+  const visitorAuthChannels = parseVisitorAuthChannels(value(env, "VISITOR_AUTH_CHANNELS"));
+  if (!visitorAuthChannels.valid || visitorAuthChannels.channels.length === 0) missing.push("VISITOR_AUTH_CHANNELS=EMAIL,SMS, EMAIL, or SMS");
+  if (visitorAuthChannels.emailOnly && value(env, "SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL").toLowerCase() !== "approved") missing.push("SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL=approved");
   const visitorEmailDelivery = value(env, "VISITOR_EMAIL_DELIVERY") || legacyVisitorDelivery;
   const visitorSmsDelivery = value(env, "VISITOR_SMS_DELIVERY") || legacyVisitorDelivery;
-  const visitorDeliveries = [visitorEmailDelivery, visitorSmsDelivery];
-  if (!legacyVisitorDelivery && !visitorEmailDelivery && !visitorSmsDelivery) {
+  const visitorDeliveries = [visitorEmailDelivery, visitorSmsDelivery].filter(Boolean);
+  const visitorChannelsValid = visitorAuthChannels.channels.every((channel) => {
+    const delivery = channel === "EMAIL" ? visitorEmailDelivery : visitorSmsDelivery;
+    return ["webhook", "resend", "twilio"].includes(delivery) && (channel === "EMAIL" ? ["webhook", "resend"].includes(delivery) : ["webhook", "twilio"].includes(delivery));
+  });
+  if (!visitorDeliveries.length) {
     missing.push("VISITOR_AUTH_DELIVERY=webhook");
-  } else if (!visitorEmailDelivery || !visitorSmsDelivery || !visitorDeliveries.every((delivery) => ["webhook", "resend", "twilio"].includes(delivery)) || !["webhook", "resend"].includes(visitorEmailDelivery) || !["webhook", "twilio"].includes(visitorSmsDelivery)) {
+  } else if (!visitorChannelsValid) {
     missing.push("VISITOR_AUTH_DELIVERY=webhook, or configure VISITOR_EMAIL_DELIVERY/VISITOR_SMS_DELIVERY");
   }
-  if (visitorDeliveries.includes("webhook")) {
+  if (visitorAuthChannels.channels.some((channel) => (channel === "EMAIL" ? visitorEmailDelivery : visitorSmsDelivery) === "webhook")) {
     if (!isSecureHttpsEndpoint(value(env, "VISITOR_AUTH_WEBHOOK_URL"))) missing.push("VISITOR_AUTH_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
     requireSecret(env, "VISITOR_AUTH_WEBHOOK_SECRET", missing);
   }
-  if (visitorEmailDelivery === "resend") {
+  if (visitorAuthChannels.channels.includes("EMAIL") && visitorEmailDelivery === "resend") {
     if (!value(env, "RESEND_API_KEY")) missing.push("RESEND_API_KEY");
     if (!value(env, "VISITOR_EMAIL_FROM")) missing.push("VISITOR_EMAIL_FROM");
   }
-  if (visitorSmsDelivery === "twilio") {
+  if (visitorAuthChannels.channels.includes("SMS") && visitorSmsDelivery === "twilio") {
     if (!value(env, "VISITOR_SMS_TWILIO_ACCOUNT_SID")) missing.push("VISITOR_SMS_TWILIO_ACCOUNT_SID");
     requireSecret(env, "VISITOR_SMS_TWILIO_AUTH_TOKEN", missing);
     if (!value(env, "VISITOR_SMS_TWILIO_FROM") && !value(env, "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID")) missing.push("VISITOR_SMS_TWILIO_FROM or VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID");
@@ -116,7 +124,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
     requireSecret(env, "VISITOR_SMS_TWILIO_AUTH_TOKEN", missing);
     if (!value(env, "VISITOR_SMS_TWILIO_FROM") && !value(env, "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID")) missing.push("VISITOR_SMS_TWILIO_FROM or VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID");
   }
-  if (notificationDeliveries.some((delivery) => ["resend", "twilio"].includes(delivery)) || visitorDeliveries.some((delivery) => ["resend", "twilio"].includes(delivery))) {
+  if (notificationDeliveries.some((delivery) => ["resend", "twilio"].includes(delivery)) || visitorChannelsValid && visitorAuthChannels.channels.some((channel) => ["resend", "twilio"].includes(channel === "EMAIL" ? visitorEmailDelivery : visitorSmsDelivery))) {
     requireSecret(env, "NOTIFICATION_STATUS_WEBHOOK_SECRET", missing);
   }
   const staffProvider = value(env, "STAFF_AUTH_PROVIDER").toLowerCase();

@@ -52,6 +52,8 @@ for (const key of [
   // Production deployments must use Wrangler/Cloudflare secrets instead.
   "LIVEKIT_API_KEY",
   "LIVEKIT_API_SECRET",
+  "VISITOR_AUTH_CHANNELS",
+  "SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL",
   "VISITOR_AUTH_DELIVERY",
   "PAYMENT_PROVIDER",
   "PAYMENT_CHECKOUT_URL",

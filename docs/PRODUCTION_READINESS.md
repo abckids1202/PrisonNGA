@@ -42,7 +42,7 @@ This evidence proves the repository workflows and local failure handling remain 
 
 ### Visitor email/SMS delivery
 
-Configure either the signed HTTPS adapter (`VISITOR_AUTH_DELIVERY=webhook`) or the direct adapters (`VISITOR_EMAIL_DELIVERY=resend` and/or `VISITOR_SMS_DELIVERY=twilio`). The signed adapter receives:
+Configure either the signed HTTPS adapter (`VISITOR_AUTH_DELIVERY=webhook`) or the direct adapters (`VISITOR_EMAIL_DELIVERY=resend` and/or `VISITOR_SMS_DELIVERY=twilio`). Both email and SMS are required by default. A formally approved email-only pilot may set `VISITOR_AUTH_CHANNELS=EMAIL` and `SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL=approved`; the backend and visitor sign-in UI then disable SMS rather than advertising an unavailable channel. The signed adapter receives:
 
 - `x-securevisit-timestamp`: Unix timestamp in seconds.
 - `x-securevisit-signature`: `sha256=<HMAC-SHA256(timestamp + "." + raw body)>`.

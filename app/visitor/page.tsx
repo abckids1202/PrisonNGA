@@ -185,6 +185,7 @@ export default function VisitorPage({ initialTab = "Home" }: { initialTab?: Visi
 
 function VisitorAuthGate({ loading, onAuthenticated }: { loading: boolean; onAuthenticated: (displayName: string) => void }) {
   const [channel, setChannel] = useState<"EMAIL" | "SMS">("EMAIL");
+  const [allowedChannels, setAllowedChannels] = useState<Array<"EMAIL" | "SMS">>(["EMAIL", "SMS"]);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -193,6 +194,18 @@ function VisitorAuthGate({ loading, onAuthenticated }: { loading: boolean; onAut
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [retryAfterSeconds, setRetryAfterSeconds] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/visitor/request", { credentials: "include", cache: "no-store", headers: { accept: "application/json" } }).then(async (response) => {
+      const body = await response.json() as { channels?: string[] };
+      const channels = (body.channels || []).filter((value): value is "EMAIL" | "SMS" => value === "EMAIL" || value === "SMS");
+      if (!active || !channels.length) return;
+      setAllowedChannels(channels);
+      setChannel((current) => channels.includes(current) ? current : channels[0]);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (retryAfterSeconds <= 0) return;
@@ -240,7 +253,7 @@ function VisitorAuthGate({ loading, onAuthenticated }: { loading: boolean; onAut
     }
   }
 
-  return <main className="sv11-auth-shell"><section className="sv11-auth-card"><div className="sv11-auth-mark">+</div><span className="sv4-kicker">SECUREVISIT VISITOR</span><h1>{loading ? "Checking your secure session" : "Welcome back"}</h1><p>{loading ? "One moment while we check your visitor account." : "Sign in with a one-time code to manage visits and connections."}</p>{!loading && !challengeId ? <form onSubmit={requestCode} className="sv11-auth-form"><div className="sv11-auth-methods" role="tablist" aria-label="Sign-in method"><button type="button" className={channel === "EMAIL" ? "active" : ""} onClick={() => setChannel("EMAIL")}>Email</button><button type="button" className={channel === "SMS" ? "active" : ""} onClick={() => setChannel("SMS")}>Phone</button></div>{channel === "EMAIL" ? <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label> : <label>Mobile number<input type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+62 812 3456 7890" required /></label>}<label>Your name <span>(optional)</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="How should we greet you?" /></label><button className="sv4-button sv4-button-primary" disabled={busy}>{busy ? "Sending…" : "Send me a sign-in code"}</button></form> : null}{!loading && challengeId ? <form onSubmit={verifyCode} className="sv11-auth-form"><label>Six-digit code<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" required /></label><button className="sv4-button sv4-button-primary" disabled={busy}>{busy ? "Checking…" : "Continue to SecureVisit"}</button><button type="button" className="sv4-button" onClick={() => void requestCode()} disabled={busy || retryAfterSeconds > 0}>{retryAfterSeconds > 0 ? `Resend code in ${retryAfterSeconds}s` : "Resend code"}</button><button type="button" className="sv11-back-button" onClick={() => { setChallengeId(null); setCode(""); setMessage(""); setRetryAfterSeconds(0); }}>Use another contact</button></form> : null}{message && <p className="sv11-auth-message" role="status">{message}</p>}<small className="sv11-auth-footnote">Your visit details are protected. SecureVisit will never ask for your password.</small></section></main>;
+  return <main className="sv11-auth-shell"><section className="sv11-auth-card"><div className="sv11-auth-mark">+</div><span className="sv4-kicker">SECUREVISIT VISITOR</span><h1>{loading ? "Checking your secure session" : "Welcome back"}</h1><p>{loading ? "One moment while we check your visitor account." : "Sign in with a one-time code to manage visits and connections."}</p>{!loading && !challengeId ? <form onSubmit={requestCode} className="sv11-auth-form">{allowedChannels.length > 1 ? <div className="sv11-auth-methods" role="tablist" aria-label="Sign-in method">{allowedChannels.includes("EMAIL") ? <button type="button" className={channel === "EMAIL" ? "active" : ""} onClick={() => setChannel("EMAIL")}>Email</button> : null}{allowedChannels.includes("SMS") ? <button type="button" className={channel === "SMS" ? "active" : ""} onClick={() => setChannel("SMS")}>Phone</button> : null}</div> : null}{channel === "EMAIL" ? <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label> : <label>Mobile number<input type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+62 812 3456 7890" required /></label>}<label>Your name <span>(optional)</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="How should we greet you?" /></label><button className="sv4-button sv4-button-primary" disabled={busy}>{busy ? "Sending…" : "Send me a sign-in code"}</button></form> : null}{!loading && challengeId ? <form onSubmit={verifyCode} className="sv11-auth-form"><label>Six-digit code<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" required /></label><button className="sv4-button sv4-button-primary" disabled={busy}>{busy ? "Checking…" : "Continue to SecureVisit"}</button><button type="button" className="sv4-button" onClick={() => void requestCode()} disabled={busy || retryAfterSeconds > 0}>{retryAfterSeconds > 0 ? `Resend code in ${retryAfterSeconds}s` : "Resend code"}</button><button type="button" className="sv11-back-button" onClick={() => { setChallengeId(null); setCode(""); setMessage(""); setRetryAfterSeconds(0); }}>Use another contact</button></form> : null}{message && <p className="sv11-auth-message" role="status">{message}</p>}<small className="sv11-auth-footnote">Your visit details are protected. SecureVisit will never ask for your password.</small></section></main>;
 }
 
 function VisitorHome({

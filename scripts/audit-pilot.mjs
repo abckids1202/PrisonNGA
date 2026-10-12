@@ -32,6 +32,9 @@ const httpsUrl = (key) => {
 };
 
 const configuredValue = (key) => String(values[key] || "").trim().toLowerCase();
+const visitorAuthChannels = String(values.VISITOR_AUTH_CHANNELS || "EMAIL,SMS").trim().toUpperCase();
+const visitorSmsRequired = visitorAuthChannels !== "EMAIL";
+const visitorEmailOnlyApproved = visitorAuthChannels === "EMAIL" && configuredValue("SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL") === "approved";
 const nonLocal = (key, ...localValues) => {
   const value = configuredValue(key);
   return Boolean(value) && !localValues.includes(value);
@@ -47,9 +50,9 @@ const externalIntegrationChecks = [
   {
     id: "visitor-sms-provider",
     label: "Visitor SMS delivery provider",
-    configured: nonLocal("VISITOR_SMS_DELIVERY", "", "console") || (present("VISITOR_AUTH_WEBHOOK_URL") && present("VISITOR_AUTH_WEBHOOK_SECRET")),
-    detail: "VISITOR_SMS_DELIVERY or signed delivery webhook",
-    action: "Configure a real visitor SMS provider or formally approve email-only pilot scope",
+    configured: !visitorSmsRequired ? visitorEmailOnlyApproved : nonLocal("VISITOR_SMS_DELIVERY", "", "console") || (present("VISITOR_AUTH_WEBHOOK_URL") && present("VISITOR_AUTH_WEBHOOK_SECRET")),
+    detail: visitorSmsRequired ? "VISITOR_SMS_DELIVERY or signed delivery webhook" : "Email-only scope must have explicit approval",
+    action: visitorSmsRequired ? "Configure a real visitor SMS provider or formally approve email-only pilot scope" : "Keep the email-only approval current and verify the email provider",
   },
   {
     id: "staff-federation",

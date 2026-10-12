@@ -2,6 +2,7 @@ import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { deliverVisitorChallenge, getVisitorAuthDelivery } from "../../../../../lib/server/visitor-auth/delivery";
+import { isVisitorAuthChannelEnabled, parseVisitorAuthChannels } from "../../../../../lib/server/visitor-auth/channels";
 
 function normalizeEmail(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -32,6 +33,17 @@ function generateCode(): string {
   return String(bytes[0] % 1_000_000).padStart(6, "0");
 }
 
+export async function GET() {
+  const context = await getRequestContext();
+  try {
+    const policy = parseVisitorAuthChannels(await getRuntimeValue("VISITOR_AUTH_CHANNELS"));
+    if (!policy.valid || !policy.channels.length) throw new SecurityError("AUTH_CHANNEL_POLICY_INVALID", 503);
+    return securityResponse({ channels: policy.channels }, 200, context.requestId);
+  } catch (error) {
+    return securityErrorResponse(error, context.requestId);
+  }
+}
+
 export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
@@ -40,6 +52,8 @@ export async function POST(request: Request) {
     const email = normalizeEmail(body.email);
     const phone = normalizePhone(body.phone);
     const channel = requestedChannel || "EMAIL";
+    const channelPolicy = parseVisitorAuthChannels(await getRuntimeValue("VISITOR_AUTH_CHANNELS"));
+    if (!channelPolicy.valid || !isVisitorAuthChannelEnabled(channelPolicy, channel as "EMAIL" | "SMS")) throw new SecurityError("AUTH_CHANNEL_DISABLED", 403);
     const destination = channel === "EMAIL" ? email : phone;
     if (channel === "EMAIL" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new SecurityError("VALID_EMAIL_REQUIRED", 400);
     if (channel === "SMS" && !/^\+[1-9]\d{7,14}$/.test(phone)) throw new SecurityError("VALID_PHONE_REQUIRED", 400);
