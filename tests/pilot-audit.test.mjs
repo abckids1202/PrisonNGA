@@ -29,7 +29,33 @@ test("pilot audit emits a redacted actionable report without failing normal deve
   assert.ok(report.nextActions.some((action) => action.includes("PUBLIC_APP_URL")));
   assert.ok(report.nextActions.some((action) => action.includes("D1_DATABASE_ID")));
   assert.equal(report.checks.find((check) => check.id === "release-artifacts")?.ok, true);
+  assert.equal(report.externalIntegrationChecks.find((check) => check.id === "payment-provider")?.configured, false);
+  assert.ok(report.nextActions.some((action) => action.includes("payment provider")));
   assert.doesNotMatch(result.stdout, /must-not-appear/);
+});
+
+test("pilot audit reports real integration readiness without exposing provider secrets", async () => {
+  const result = await runAudit([], {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    VISITOR_EMAIL_DELIVERY: "resend",
+    VISITOR_SMS_DELIVERY: "twilio",
+    VISITOR_AUTH_WEBHOOK_URL: "",
+    STAFF_AUTH_PROVIDER: "institutional",
+    STAFF_OIDC_ISSUER: "https://idp.example.test",
+    STAFF_SAML_METADATA_URL: "https://idp.example.test/metadata",
+    PAYMENT_PROVIDER: "xendit",
+    XENDIT_SECRET_KEY: "provider-secret-must-not-appear",
+    VIDEO_PROVIDER: "livekit",
+    LIVEKIT_URL: "wss://example.livekit.cloud",
+    LIVEKIT_API_KEY: "lk-key",
+    LIVEKIT_API_SECRET: "lk-secret-must-not-appear",
+    EVIDENCE_SCAN_PROVIDER: "webhook",
+    EVIDENCE_SCAN_WEBHOOK_URL: "https://scanner.example.test/callback",
+    EVIDENCE_SCAN_WEBHOOK_SECRET: "scanner-secret-must-not-appear",
+  });
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.externalIntegrationChecks.every((check) => check.configured), true);
+  assert.doesNotMatch(result.stdout, /provider-secret-must-not-appear|lk-secret-must-not-appear|scanner-secret-must-not-appear/);
 });
 
 test("strict pilot audit fails closed outside development until configuration and evidence exist", async () => {

@@ -31,6 +31,56 @@ const httpsUrl = (key) => {
   }
 };
 
+const configuredValue = (key) => String(values[key] || "").trim().toLowerCase();
+const nonLocal = (key, ...localValues) => {
+  const value = configuredValue(key);
+  return Boolean(value) && !localValues.includes(value);
+};
+const externalIntegrationChecks = [
+  {
+    id: "visitor-email-provider",
+    label: "Visitor email delivery provider",
+    configured: nonLocal("VISITOR_EMAIL_DELIVERY", "", "console") || (present("VISITOR_AUTH_WEBHOOK_URL") && present("VISITOR_AUTH_WEBHOOK_SECRET")),
+    detail: "VISITOR_EMAIL_DELIVERY or signed delivery webhook",
+    action: "Configure a real visitor email provider and delivery-status callback",
+  },
+  {
+    id: "visitor-sms-provider",
+    label: "Visitor SMS delivery provider",
+    configured: nonLocal("VISITOR_SMS_DELIVERY", "", "console") || (present("VISITOR_AUTH_WEBHOOK_URL") && present("VISITOR_AUTH_WEBHOOK_SECRET")),
+    detail: "VISITOR_SMS_DELIVERY or signed delivery webhook",
+    action: "Configure a real visitor SMS provider or formally approve email-only pilot scope",
+  },
+  {
+    id: "staff-federation",
+    label: "Institutional staff federation",
+    configured: configuredValue("STAFF_AUTH_PROVIDER") !== "none" && present("STAFF_OIDC_ISSUER") && present("STAFF_SAML_METADATA_URL"),
+    detail: "OIDC and SAML configuration with MFA claims",
+    action: "Connect institutional OIDC and SAML providers with MFA claims and facility mapping",
+  },
+  {
+    id: "payment-provider",
+    label: "Payment provider",
+    configured: nonLocal("PAYMENT_PROVIDER", "local_test") && (configuredValue("PAYMENT_PROVIDER") !== "xendit" || present("XENDIT_SECRET_KEY")),
+    detail: "non-local payment adapter with sandbox credentials",
+    action: "Select a payment provider and configure sandbox checkout, webhooks, refunds, and reconciliation",
+  },
+  {
+    id: "livekit-provider",
+    label: "LiveKit provider",
+    configured: configuredValue("VIDEO_PROVIDER") === "livekit" && present("LIVEKIT_URL") && present("LIVEKIT_API_KEY") && present("LIVEKIT_API_SECRET"),
+    detail: "VIDEO_PROVIDER=livekit with server credentials",
+    action: "Configure LiveKit staging credentials and execute the visitor/kiosk/staff three-party test",
+  },
+  {
+    id: "evidence-scanner",
+    label: "Evidence malware scanner",
+    configured: nonLocal("EVIDENCE_SCAN_PROVIDER", "development") && present("EVIDENCE_SCAN_WEBHOOK_URL") && present("EVIDENCE_SCAN_WEBHOOK_SECRET"),
+    detail: "non-development scanner with signed callback",
+    action: "Configure a protected malware-scanning adapter and quarantine callback",
+  },
+];
+
 const checks = [
   { id: "environment", label: "Explicit runtime environment", ok: environmentCheck.environment !== "invalid", detail: environmentCheck.environment },
   { id: "public-domain", label: "HTTPS public application domain", ok: httpsUrl("PUBLIC_APP_URL"), detail: "PUBLIC_APP_URL" },
@@ -61,11 +111,13 @@ const report = {
   warnings: environmentCheck.warnings,
   missingReleaseEvidence: releaseGates.missing,
   missingStagingEvidence,
+  externalIntegrationChecks: externalIntegrationChecks.map(({ action, ...check }) => ({ ...check, requiredOutsideDevelopment: true, ok: environment === "development" || check.configured })),
   nextActions: [
     ...environmentCheck.missing.map((item) => `Configure ${item}`),
     ...releaseGates.missing.map((item) => `Record release evidence for ${item}`),
     ...missingRepositoryArtifacts.map((path) => `Restore required repository artifact ${path}`),
     ...checks.filter((check) => !check.ok && operationalActions[check.id]).map((check) => operationalActions[check.id]),
+    ...externalIntegrationChecks.filter((check) => !check.configured).map((check) => check.action),
   ],
 };
 
