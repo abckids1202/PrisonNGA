@@ -6,7 +6,7 @@ const forwardedArgs = process.argv.slice(2);
 const portFlagIndex = forwardedArgs.findIndex((argument) => argument === "--port" || argument === "-p");
 const localPort = portFlagIndex >= 0 && /^\d+$/.test(forwardedArgs[portFlagIndex + 1] || "")
   ? forwardedArgs[portFlagIndex + 1]
-  : "5173";
+  : "5174";
 
 if (!existsSync(".env.local") || statSync(".env.local").size === 0) {
   copyFileSync(".env.example", ".env.local");

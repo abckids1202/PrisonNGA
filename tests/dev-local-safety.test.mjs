@@ -11,6 +11,7 @@ test("dev:local refuses non-development environment settings", async () => {
 test("dev:local documents the local product entry points", async () => {
   const source = await readFile(new URL("../scripts/dev-local.mjs", import.meta.url), "utf8");
   assert.match(source, /const localPort/);
+  assert.match(source, /: "5174";/);
   assert.match(source, /http:\/\/localhost:\$\{localPort\}/);
   assert.match(source, /\/visitor/);
   assert.match(source, /\/control/);
