@@ -16,7 +16,7 @@ test("staging validation fails closed with named configuration requirements", ()
   assert.equal(result.ok, false);
   assert.equal(result.environment, "staging");
   assert.ok(result.missing.includes("SECUREVISIT_HASH_SALT"));
-  assert.ok(result.missing.includes("PAYMENT_PROVIDER=webhook"));
+  assert.ok(result.missing.includes("PAYMENT_PROVIDER=webhook or xendit"));
   assert.ok(result.missing.includes("STAFF_AUTH_PROVIDER"));
   assert.doesNotMatch(JSON.stringify(result), /secret-value|otp|token/i);
 });

@@ -43,6 +43,13 @@ export async function getPaymentProvider(): Promise<PaymentProvider | null> {
     if (!url || !isSecureEndpoint(url, { allowLocalHttp: isLocalDevelopment }) || !refundUrl || !isSecureEndpoint(refundUrl, { allowLocalHttp: isLocalDevelopment }) || !secret) return null;
     return new WebhookCheckoutProvider(url, refundUrl, secret);
   }
+  if (provider === "xendit") {
+    const secretKey = await runtimeValue("XENDIT_SECRET_KEY");
+    const apiBaseUrl = (await runtimeValue("XENDIT_API_BASE_URL")) || "https://api.xendit.co";
+    const isLocalDevelopment = environment === "development";
+    if (!secretKey || !isSecureEndpoint(apiBaseUrl, { allowLocalHttp: isLocalDevelopment })) return null;
+    return new XenditPaymentProvider(apiBaseUrl, secretKey);
+  }
   return null;
 }
 
@@ -116,6 +123,119 @@ class WebhookCheckoutProvider implements PaymentProvider {
     } finally {
       clearTimeout(timeout);
     }
+  }
+}
+
+type XenditSessionResponse = {
+  payment_session_id?: unknown;
+  payment_request_id?: unknown;
+  payment_link_url?: unknown;
+};
+
+/**
+ * Xendit hosted-checkout adapter. The SecureVisit payment intent remains the
+ * merchant reference; provider webhooks must still be normalized into the
+ * canonical /api/webhooks/payments contract before settlement.
+ */
+class XenditPaymentProvider implements PaymentProvider {
+  readonly name = "xendit";
+
+  constructor(private readonly apiBaseUrl: string, private readonly secretKey: string) {}
+
+  private authorizationHeader(): string {
+    return `Basic ${btoa(`${this.secretKey}:`)}`;
+  }
+
+  private async request(path: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      return await fetch(`${this.apiBaseUrl.replace(/\/$/, "")}${path}`, {
+        ...init,
+        headers: {
+          accept: "application/json",
+          authorization: this.authorizationHeader(),
+          ...(init.headers || {}),
+        },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string; successUrl?: string; cancelUrl?: string }): Promise<PaymentCheckout> {
+    if (!input.email && !input.phone) throw new Error("PAYMENT_CONTACT_REQUIRED");
+    if (!input.successUrl || !input.cancelUrl) throw new Error("PAYMENT_RETURN_URL_REQUIRED");
+    const response = await this.request("/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        reference_id: input.paymentIntentId,
+        session_type: "PAY",
+        mode: "PAYMENT_LINK",
+        amount: input.amountMinor,
+        currency: input.currency,
+        country: "ID",
+        locale: "en",
+        customer: {
+          reference_id: `visitor${input.paymentIntentId.replaceAll("-", "")}`,
+          type: "INDIVIDUAL",
+          ...(input.email ? { email: input.email } : {}),
+          ...(input.phone ? { mobile_number: input.phone } : {}),
+        },
+        items: [{
+          reference_id: `credit${input.paymentIntentId.replaceAll("-", "")}`,
+          name: `${input.creditQuantity} SecureVisit Visit Credit${input.creditQuantity === 1 ? "" : "s"}`,
+          type: "DIGITAL_SERVICE",
+          net_unit_amount: input.amountMinor,
+          quantity: 1,
+          currency: input.currency,
+        }],
+        description: `SecureVisit Visit Credit purchase ${input.paymentIntentId}`,
+        success_return_url: input.successUrl,
+        cancel_return_url: input.cancelUrl,
+      }),
+    });
+    if (!response.ok) throw new Error(`PAYMENT_CHECKOUT_FAILED_${response.status}`);
+    const text = await readBoundedResponseText(response);
+    let result: XenditSessionResponse;
+    try { result = JSON.parse(text) as XenditSessionResponse; } catch { throw new Error("PAYMENT_CHECKOUT_INVALID_RESPONSE"); }
+    const sessionId = typeof result.payment_session_id === "string" ? result.payment_session_id.trim() : "";
+    const checkoutUrl = typeof result.payment_link_url === "string" ? result.payment_link_url.trim() : "";
+    if (!sessionId || !checkoutUrl) throw new Error("PAYMENT_CHECKOUT_INVALID_RESPONSE");
+    if (!isSecureEndpoint(checkoutUrl)) throw new Error("PAYMENT_CHECKOUT_INVALID_URL");
+    return { provider: this.name, providerReference: sessionId, checkoutUrl };
+  }
+
+  async requestRefund(input: { paymentIntentId: string; providerReference: string; amountMinor: number; currency: string; reason: string }): Promise<PaymentRefundRequest> {
+    // SecureVisit stores the session ID at checkout time. Xendit requires the
+    // payment_request_id for refunds, so resolve the completed session first.
+    const sessionResponse = await this.request(`/sessions/${encodeURIComponent(input.providerReference)}`, { method: "GET" });
+    if (!sessionResponse.ok) throw new Error(`PAYMENT_SESSION_LOOKUP_FAILED_${sessionResponse.status}`);
+    const sessionText = await readBoundedResponseText(sessionResponse);
+    let session: XenditSessionResponse;
+    try { session = JSON.parse(sessionText) as XenditSessionResponse; } catch { throw new Error("PAYMENT_SESSION_INVALID_RESPONSE"); }
+    const paymentRequestId = typeof session.payment_request_id === "string" ? session.payment_request_id.trim() : "";
+    if (!paymentRequestId) throw new Error("PAYMENT_REQUEST_NOT_AVAILABLE");
+    const refundResponse = await this.request("/refunds", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        reference_id: input.paymentIntentId,
+        payment_request_id: paymentRequestId,
+        currency: input.currency,
+        amount: input.amountMinor,
+        reason: input.reason.toUpperCase().includes("CANCEL") ? "CANCELLATION" : "REQUESTED_BY_CUSTOMER",
+      }),
+    });
+    if (!refundResponse.ok) throw new Error(`PAYMENT_REFUND_REQUEST_FAILED_${refundResponse.status}`);
+    const refundText = await readBoundedResponseText(refundResponse);
+    let refund: { id?: unknown };
+    try { refund = JSON.parse(refundText) as { id?: unknown }; } catch { throw new Error("PAYMENT_REFUND_INVALID_RESPONSE"); }
+    const refundId = typeof refund.id === "string" ? refund.id.trim() : "";
+    if (!refundId) throw new Error("PAYMENT_REFUND_INVALID_RESPONSE");
+    return { provider: this.name, providerReference: refundId };
   }
 }
 

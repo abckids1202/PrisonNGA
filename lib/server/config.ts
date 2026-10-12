@@ -83,10 +83,18 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
     if (!isSecureHttpsEndpoint(value(env, "EVIDENCE_SCAN_WEBHOOK_URL"))) missing.push("EVIDENCE_SCAN_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
     requireSecret(env, "EVIDENCE_SCAN_WEBHOOK_SECRET", missing);
   }
-  if (value(env, "PAYMENT_PROVIDER") !== "webhook") missing.push("PAYMENT_PROVIDER=webhook");
-  if (!isSecureHttpsEndpoint(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL (must be an https:// URL without credentials or fragments)");
-  if (!isSecureHttpsEndpoint(value(env, "PAYMENT_REFUND_URL"))) missing.push("PAYMENT_REFUND_URL (must be an https:// URL without credentials or fragments)");
-  requireSecret(env, "PAYMENT_PROVIDER_SECRET", missing);
+  const paymentProvider = value(env, "PAYMENT_PROVIDER").toLowerCase();
+  if (!["webhook", "xendit"].includes(paymentProvider)) missing.push("PAYMENT_PROVIDER=webhook or xendit");
+  if (paymentProvider === "webhook") {
+    if (!isSecureHttpsEndpoint(value(env, "PAYMENT_CHECKOUT_URL"))) missing.push("PAYMENT_CHECKOUT_URL (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "PAYMENT_REFUND_URL"))) missing.push("PAYMENT_REFUND_URL (must be an https:// URL without credentials or fragments)");
+    requireSecret(env, "PAYMENT_PROVIDER_SECRET", missing);
+  }
+  if (paymentProvider === "xendit") {
+    requireSecret(env, "XENDIT_SECRET_KEY", missing);
+    const xenditBaseUrl = value(env, "XENDIT_API_BASE_URL") || "https://api.xendit.co";
+    if (!isSecureHttpsEndpoint(xenditBaseUrl)) missing.push("XENDIT_API_BASE_URL (must be an https:// URL without credentials or fragments)");
+  }
   requireSecret(env, "PAYMENT_WEBHOOK_SECRET", missing);
   const legacyNotificationDelivery = value(env, "NOTIFICATION_DELIVERY");
   const notificationEmailDelivery = value(env, "NOTIFICATION_EMAIL_DELIVERY") || legacyNotificationDelivery;
