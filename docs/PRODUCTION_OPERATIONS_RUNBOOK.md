@@ -162,6 +162,12 @@ The deployed environment must alert on:
 - R2 scanner failures, retention deletion failures, legal-hold conflicts, and unauthorized access
 - Offline/failed kiosks and resource reassignment conflicts
 
+The GitHub Actions staging-smoke workflow runs every 15 minutes for public
+reachability, security headers, camera/microphone permissions, and LiveKit CSP
+coverage. Manual dispatch additionally supplies a short-lived staff cookie to
+validate authenticated readiness; the scheduled check is not a substitute for
+the full acceptance journey or provider exercises below.
+
 For every alert, perform one synthetic or controlled test, capture acknowledgement time and recovery time, and link the result to the pilot evidence register.
 
 ## 14. Required exercises before pilot approval
