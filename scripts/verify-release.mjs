@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const checks = [
   ["working-tree patch validation", ["diff", "--check"], "git"],
+  ["API route security matrix", ["run", "audit:routes"]],
   ["fresh local D1 migrations", ["run", "db:test:migrations:local"]],
   ["local backup and restore drill", ["scripts/verify-local-backup-drill.mjs"], "node"],
   ["typecheck", ["run", "typecheck"]],
