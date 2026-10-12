@@ -3,8 +3,9 @@ import { cookies } from "next/headers";
 import { getDb } from "../../../../db";
 import { getD1 } from "../../../../db/runtime";
 import { authSessions, users } from "../../../../db/schema";
+import { clearSessionCookie } from "../../../../lib/server/auth/session-cookie";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
-import { getRequestContext, getSecuritySalt, getVisitorSessionIdentity, getWorkspaceIdentity, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { getRequestContext, getRuntimeValue, getSecuritySalt, getVisitorSessionIdentity, getWorkspaceIdentity, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 async function currentUser() {
   const visitor = await getVisitorSessionIdentity();
@@ -44,10 +45,21 @@ export async function POST(request: Request) {
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     d1 = await getD1();
+    const targetSession = !normalized.revokeAll
+      ? await d1.prepare("SELECT token_hash FROM auth_sessions WHERE id = ? AND user_id = ?").bind(normalized.sessionId, account.id).first<{ token_hash: string }>()
+      : null;
+    const clearsCurrentVisitorCookie = Boolean(account.tokenHash && (normalized.revokeAll || targetSession?.token_hash === account.tokenHash));
     const scope = `auth-session-revoke:${account.id}`;
     const requestHash = await hashIdempotencyPayload(normalized);
     const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
-    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    if ("replay" in claimed) {
+      const response = securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+      if (clearsCurrentVisitorCookie) {
+        const secureCookie = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development";
+        response.headers.set("Set-Cookie", clearSessionCookie("securevisit_session", secureCookie));
+      }
+      return response;
+    }
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const now = new Date().toISOString();
     const responseBody = { ok: true, revokedAt: now };
@@ -72,7 +84,12 @@ export async function POST(request: Request) {
       if (!results[1]?.meta?.changes || !results[2]?.meta?.changes) throw new SecurityError("SESSION_REVOCATION_INCOMPLETE", 503);
     }
     idempotency = null;
-    return securityResponse(responseBody, 200, context.requestId);
+    const response = securityResponse(responseBody, 200, context.requestId);
+    if (clearsCurrentVisitorCookie) {
+      const secureCookie = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development";
+      response.headers.set("Set-Cookie", clearSessionCookie("securevisit_session", secureCookie));
+    }
+    return response;
   } catch (error) {
     if (d1 && idempotency) {
       try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original session error. */ }

@@ -57,6 +57,9 @@ Idempotency replay records now have bounded scheduled retention: completed
 records remain for 90 days and abandoned processing claims for 7 days, with
 the cleanup covered by regression tests and the Worker schedule.
 Step-up assertion expiry is also bounded to 250 rows per scheduled run.
+Visitor session revocation now also clears the browser cookie when the current
+session is revoked, avoiding stale credentials after sign-out-all or targeted
+session termination.
 
 ## Pilot gate status
 
