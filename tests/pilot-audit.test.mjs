@@ -64,6 +64,18 @@ test("pilot audit accepts R2 storage only when the staging bucket is named", asy
   assert.equal(report.checks.find((check) => check.id === "evidence-storage")?.ok, true);
 });
 
+test("pilot audit requires the remote D1 database name as well as its UUID", async () => {
+  const result = await runAudit([], {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    D1_DATABASE_ID: "11111111-1111-4111-8111-111111111111",
+    D1_DATABASE_NAME: "",
+  });
+  assert.equal(result.code, 0);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.checks.find((check) => check.id === "remote-database")?.ok, false);
+  assert.ok(report.nextActions.some((action) => action.includes("D1_DATABASE_NAME")));
+});
+
 test("environment template declares every pilot evidence gate", async () => {
   const template = await readFile(".env.example", "utf8");
   for (const key of [
