@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+const appointmentsSource = await readFile(new URL("../app/features/control/AppointmentsPage.tsx", import.meta.url), "utf8");
 
 test("Control activity and People timestamps use the persisted facility timezone", () => {
   assert.match(source, /formatAuditTime\(event\.createdAt, facilityTimezone\)/);
@@ -13,8 +14,8 @@ test("Control activity and People timestamps use the persisted facility timezone
 });
 
 test("appointment time labels come from the persisted appointment timezone", () => {
-  assert.match(source, /appointment\.timezoneLabel \|\| facilityTimeZoneLabel\(appointment\.timezone \|\| "Asia\/Jakarta"\)/);
-  assert.doesNotMatch(source, /appointment\.time\} WIB/);
+  assert.match(appointmentsSource, /appointment\.timezoneLabel \|\| facilityTimeZoneLabel\(appointment\.timezone \|\| "Asia\/Jakarta"\)/);
+  assert.doesNotMatch(appointmentsSource, /appointment\.time\} WIB/);
 });
 
 test("Control record workspaces receive facility-scoped date formatting", () => {
