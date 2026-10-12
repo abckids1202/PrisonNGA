@@ -19,17 +19,15 @@ import IncidentsPage from "./features/control/IncidentsPage";
 import { ImpactDialog } from "./features/control/DecisionDialogs";
 import AppointmentDrawer from "./features/control/AppointmentDrawer";
 import ContextDrawer, { type DrawerPayload } from "./features/control/ContextDrawer";
-import { mapBackendAppointment, type Appointment, type AppointmentStatus } from "./features/control/model";
-import { formatDateValue as formatDateValueWithZone, safeTimeZone } from "@/lib/date-format";
+import { type Appointment, type AppointmentStatus } from "./features/control/model";
+import { formatDateValue as formatDateValueWithZone } from "@/lib/date-format";
 import { controlNavigationUrl, parseControlNavigation, type ControlMode } from "@/lib/control-navigation";
+import { useControlWorkspaceData } from "./features/control/useControlWorkspaceData";
 
 const formatDateValue = formatDateValueWithZone;
 
 type Mode = ControlMode;
-type RuntimeEnvironment = "development" | "staging" | "production" | "unknown";
 type Notice = { id: number; message: string; tone?: "success" | "warning" | "error" | "info" };
-type SecurityNotification = { id: string; eventType: string; severity: string; createdAt: string; requestId?: string | null };
-type StaffShellIdentity = { displayName?: string; userType?: string; scope?: { facilityName?: string; jobTitle?: string } | null };
 type ResourceReassignment = { appointmentId: string; sourceResourceId: string; targetResourceId: string; expectedSourceVersion: number; expectedTargetVersion: number; expectedWaitingVersion: number; reason: string };
 type PopoverKind = "capacity" | "waiting" | "session" | "demo" | null;
 type DrawerInput = DrawerPayload | { kind: "appointment" | "activity"; appointment?: Appointment; event?: string; source?: string; relatedId?: string };
@@ -55,15 +53,19 @@ const managementNav = [
 
 export default function ControlApp() {
   const router = useRouter();
+  const {
+    appointments, setAppointments,
+    facilityState, setFacilityState,
+    facilityVersion, setFacilityVersion,
+    facilityName, facilityTimezone,
+    backendStatus, setBackendStatus,
+    runtimeEnvironment,
+    securityNotifications, notificationLoading, notificationError,
+    staffIdentity, now,
+    openNotifications,
+  } = useControlWorkspaceData();
   const [mode, setMode] = useState<Mode>("operations");
   const [page, setPage] = useState("Command Center");
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [facilityState, setFacilityState] = useState("UNKNOWN");
-  const [facilityVersion, setFacilityVersion] = useState(1);
-  const [facilityName, setFacilityName] = useState("Facility workspace");
-  const [facilityTimezone, setFacilityTimezone] = useState("Asia/Jakarta");
-  const [backendStatus, setBackendStatus] = useState<"connected" | "unavailable">("unavailable");
-  const [runtimeEnvironment, setRuntimeEnvironment] = useState<RuntimeEnvironment>("unknown");
   const [simulationPaused, setSimulationPaused] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [resourceToFocus, setResourceToFocus] = useState<string | null>(null);
@@ -73,12 +75,7 @@ export default function ControlApp() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
-  const [securityNotifications, setSecurityNotifications] = useState<SecurityNotification[]>([]);
-  const [notificationLoading, setNotificationLoading] = useState(false);
-  const [notificationError, setNotificationError] = useState(false);
   const [simulationTick, setSimulationTick] = useState(0);
-  const [staffIdentity, setStaffIdentity] = useState<StaffShellIdentity | null>(null);
-  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -109,69 +106,6 @@ export default function ControlApp() {
     return () => window.removeEventListener("popstate", syncFromUrl);
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    fetch("/api/auth/me", { headers: { accept: "application/json" }, credentials: "include", cache: "no-store" }).then(async (response) => {
-      if (!response.ok) return;
-      const body = await response.json() as { identity?: StaffShellIdentity };
-      if (active && body.identity) setStaffIdentity(body.identity);
-    }).catch(() => undefined);
-    const timer = window.setInterval(() => setNow(new Date()), 30000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/health/readiness", { headers: { accept: "application/json" }, cache: "no-store" }).then(async (response) => {
-      const body = await response.json() as { environment?: RuntimeEnvironment };
-      if (!active) return;
-      const environment = body.environment;
-      setRuntimeEnvironment(environment === "development" || environment === "staging" || environment === "production" ? environment : "unknown");
-    }).catch(() => { if (active) setRuntimeEnvironment("unknown"); });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const loadAppointments = async () => {
-      try {
-        const response = await fetch("/api/control/appointments", { headers: { accept: "application/json" }, credentials: "include", cache: "no-store" });
-        if (!response.ok) throw new Error("APPOINTMENTS_UNAVAILABLE");
-        const body = await response.json() as { appointments?: Array<{ id: string; visitor_name?: string; prisoner_name?: string; requested_start: string; requested_end: string; timezone?: string | null; appointment_type?: string; status: string; version?: number; room_name?: string | null; kiosk_name?: string | null; relationship_type?: string | null; relationship_status?: string | null; prisoner_status?: string | null; visitation_status?: string | null; facility_state?: string | null; available_credits?: number; reserved_credits?: number; active_credit_reservation?: number }> };
-        if (!active) return;
-        setAppointments((body.appointments || []).map(mapBackendAppointment));
-        setBackendStatus("connected");
-      } catch {
-        if (active) setBackendStatus("unavailable");
-      }
-    };
-    void loadAppointments();
-    const timer = window.setInterval(() => { void loadAppointments(); }, 15000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const loadFacilityState = async () => {
-      try {
-        const response = await fetch("/api/facility/state", { headers: { accept: "application/json" }, credentials: "include", cache: "no-store" });
-        if (!response.ok) throw new Error("FACILITY_STATE_UNAVAILABLE");
-        const body = await response.json() as { facility?: { name?: string; timezone?: string; currentState: string; version: number } };
-        if (active && body.facility) {
-          setFacilityName(body.facility.name || "Facility workspace");
-          setFacilityTimezone(safeTimeZone(body.facility.timezone));
-          setFacilityState(body.facility.currentState);
-          setFacilityVersion(body.facility.version);
-          setBackendStatus("connected");
-        }
-      } catch {
-        if (active) setBackendStatus("unavailable");
-      }
-    };
-    void loadFacilityState();
-    const timer = window.setInterval(() => { void loadFacilityState(); }, 15000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, []);
 
   function notify(message: string, tone: Notice["tone"] = "info") {
     const id = Date.now();
@@ -179,23 +113,10 @@ export default function ControlApp() {
     window.setTimeout(() => setNotices((current) => current.filter((notice) => notice.id !== id)), 4200);
   }
 
-  async function openNotifications() {
+  function toggleNotifications() {
     const nextOpen = !notificationPanelOpen;
     setNotificationPanelOpen(nextOpen);
-    if (!nextOpen) return;
-    setNotificationLoading(true);
-    setNotificationError(false);
-    try {
-      const response = await fetch("/api/control/security-events", { credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
-      if (!response.ok) throw new Error("SECURITY_NOTIFICATIONS_UNAVAILABLE");
-      const body = await response.json() as { events?: SecurityNotification[] };
-      setSecurityNotifications(Array.isArray(body.events) ? body.events.slice(0, 8) : []);
-    } catch {
-      setSecurityNotifications([]);
-      setNotificationError(true);
-    } finally {
-      setNotificationLoading(false);
-    }
+    if (nextOpen) void openNotifications();
   }
 
   async function changeFacilityState(nextState: string, reason?: string) {
@@ -323,7 +244,7 @@ export default function ControlApp() {
       <div className="sv3-sidebar-foot"><div className="sv3-connection"><span className={backendStatus === "connected" ? "online" : "demo"} />{backendStatus === "connected" ? "Protected API connected" : "Protected API unavailable"}</div><button className="sv3-user"><Avatar initials={(staffIdentity?.displayName || "Staff").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()} tone="orange" /><span><strong>{staffIdentity?.displayName || "Staff session"}</strong><small>{staffIdentity?.scope?.jobTitle || "Facility operator"}</small></span><span>···</span></button></div>
     </aside>
     <main className="sv3-main">
-      <div className="sv3-topbar"><div className="sv3-breadcrumb"><span>SecureVisit Control</span><i>/</i><strong>{mode === "operations" ? "Operations" : "Management"}</strong><i>/</i><strong>{page}</strong></div><div className="sv3-top-actions"><button type="button" className="sv3-demo-badge" aria-label={`Runtime environment: ${runtimeEnvironment}`} onClick={() => runtimeEnvironment === "development" && setPopover(popover === "demo" ? null : "demo")}><i />{runtimeEnvironment === "unknown" ? "CHECKING ENVIRONMENT" : `${runtimeEnvironment.toUpperCase()} ENVIRONMENT`}</button><span className="sv3-clock" suppressHydrationWarning>{formatDateValue(now, { dateStyle: "medium", timeStyle: "short" }, facilityTimezone, "Time unavailable")} {facilityTimezone}</span><button className="sv3-icon-button" aria-label="Open command palette" onClick={() => setCommandOpen(true)}>⌕</button><button className="sv3-visitor-link" aria-label="Open Visitor Portal" onClick={() => router.push("/visitor")}><span>↗</span> Visitor Portal</button><button className={`sv3-icon-button ${notificationPanelOpen ? "active" : ""}`} aria-label="Notifications" aria-expanded={notificationPanelOpen} onClick={() => void openNotifications()}>◔</button></div></div>
+      <div className="sv3-topbar"><div className="sv3-breadcrumb"><span>SecureVisit Control</span><i>/</i><strong>{mode === "operations" ? "Operations" : "Management"}</strong><i>/</i><strong>{page}</strong></div><div className="sv3-top-actions"><button type="button" className="sv3-demo-badge" aria-label={`Runtime environment: ${runtimeEnvironment}`} onClick={() => runtimeEnvironment === "development" && setPopover(popover === "demo" ? null : "demo")}><i />{runtimeEnvironment === "unknown" ? "CHECKING ENVIRONMENT" : `${runtimeEnvironment.toUpperCase()} ENVIRONMENT`}</button><span className="sv3-clock" suppressHydrationWarning>{formatDateValue(now, { dateStyle: "medium", timeStyle: "short" }, facilityTimezone, "Time unavailable")} {facilityTimezone}</span><button className="sv3-icon-button" aria-label="Open command palette" onClick={() => setCommandOpen(true)}>⌕</button><button className="sv3-visitor-link" aria-label="Open Visitor Portal" onClick={() => router.push("/visitor")}><span>↗</span> Visitor Portal</button><button className={`sv3-icon-button ${notificationPanelOpen ? "active" : ""}`} aria-label="Notifications" aria-expanded={notificationPanelOpen} onClick={toggleNotifications}>◔</button></div></div>
       <div className="sv3-page-scroll">{pageContent}</div>{notificationPanelOpen ? <div className="sv3-top-popover sv3-notification-popover" role="dialog" aria-label="Security notifications"><header><strong>Security notifications</strong><button type="button" aria-label="Close notifications" onClick={() => setNotificationPanelOpen(false)}>×</button></header>{notificationLoading ? <p>Loading facility security events…</p> : notificationError ? <p role="alert">Security events are unavailable. No empty notification state is being inferred.</p> : securityNotifications.length ? securityNotifications.map((event) => <button type="button" className="sv3-notification-row" key={event.id} onClick={() => { setNotificationPanelOpen(false); navigate("Compliance", "management"); }}><span className={event.severity === "CRITICAL" ? "critical" : event.severity === "WARNING" ? "warning" : ""}>{event.severity === "CRITICAL" ? "!" : event.severity === "WARNING" ? "!" : "✓"}</span><strong>{event.eventType.replaceAll("_", " ")}</strong><small>{formatDateValue(event.createdAt, { dateStyle: "medium", timeStyle: "short" }, facilityTimezone, "Date unavailable")}</small></button>) : <p>No security events recorded for this facility.</p>}</div> : null}
     </main>
     {runtimeEnvironment === "development" && popover === "demo" ? <div className="sv3-top-popover"><span className="sv3-eyebrow">Development environment</span><strong>Local simulation controls are enabled</strong><span>Scenario · Normal day</span><span>Simulation · {simulationPaused ? "Paused" : "Running"}</span><Button variant="quiet" onClick={() => { setPopover(null); notify("Development simulation reset. No facility record changed."); }}>Reset simulation</Button></div> : null}
