@@ -34,6 +34,9 @@ test("pilot audit emits a redacted actionable report without failing normal deve
   assert.equal(report.externalIntegrationChecks.find((check) => check.id === "notification-delivery")?.configured, false);
   assert.equal(report.externalIntegrationChecks.find((check) => check.id === "payment-provider")?.ok, false);
   assert.equal(report.externalIntegrationChecks.find((check) => check.id === "payment-provider")?.developmentWaived, true);
+  assert.equal(report.externalIntegrationChecks.find((check) => check.id === "payment-provider")?.evaluation, "waived");
+  assert.ok(report.waivedExternalIntegrations.includes("payment-provider"));
+  assert.match(report.checks.find((check) => check.id === "external-integrations")?.detail || "", /waived in development/);
   assert.ok(report.nextActions.some((action) => action.includes("payment provider")));
   assert.doesNotMatch(result.stdout, /must-not-appear/);
 });
@@ -62,6 +65,7 @@ test("pilot audit reports real integration readiness without exposing provider s
   const report = JSON.parse(result.stdout);
   assert.equal(report.externalIntegrationChecks.every((check) => check.configured), true);
   assert.equal(report.externalIntegrationChecks.every((check) => check.ok), true);
+  assert.equal(report.externalIntegrationChecks.every((check) => check.evaluation === "configured"), true);
   assert.doesNotMatch(result.stdout, /provider-secret-must-not-appear|lk-secret-must-not-appear|scanner-secret-must-not-appear/);
 });
 

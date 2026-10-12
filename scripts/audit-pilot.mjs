@@ -94,6 +94,9 @@ const externalIntegrationChecks = [
 ];
 
 const externalIntegrationsReady = externalIntegrationChecks.every((check) => check.configured);
+const waivedExternalIntegrations = environment === "development"
+  ? externalIntegrationChecks.filter((check) => !check.configured).map((check) => check.id)
+  : [];
 
 const checks = [
   { id: "environment", label: "Explicit runtime environment", ok: environmentCheck.environment !== "invalid", detail: environmentCheck.environment },
@@ -105,7 +108,7 @@ const checks = [
   { id: "release-gates", label: "Institutional release evidence", ok: environment === "development" || releaseGates.ready, detail: environment === "development" ? "development-only gates not evaluated" : releaseGates.ready ? "all required gates attested" : `${releaseGates.missing.length} gate(s) missing` },
   { id: "staging-evidence", label: "Staging acceptance evidence", ok: environment !== "staging" || missingStagingEvidence.length === 0, detail: environment !== "staging" ? "not required outside staging" : missingStagingEvidence.length ? `${missingStagingEvidence.length} attestation(s) missing` : "all pilot attestations present" },
   { id: "release-artifacts", label: "Release documentation artifacts", ok: missingRepositoryArtifacts.length === 0, detail: missingRepositoryArtifacts.length ? `${missingRepositoryArtifacts.length} required artifact(s) missing` : "runbook, evidence register, and route matrix present" },
-  { id: "external-integrations", label: "External provider integrations", ok: environment === "development" || externalIntegrationsReady, detail: environment === "development" ? "development-only integrations not evaluated" : externalIntegrationsReady ? "all required providers configured" : `${externalIntegrationChecks.filter((check) => !check.configured).length} provider integration(s) missing` },
+  { id: "external-integrations", label: "External provider integrations", ok: environment === "development" || externalIntegrationsReady, detail: environment === "development" ? `${waivedExternalIntegrations.length} integration(s) explicitly waived in development; not pilot evidence` : externalIntegrationsReady ? "all required providers configured" : `${externalIntegrationChecks.filter((check) => !check.configured).length} provider integration(s) missing` },
 ];
 
 const operationalActions = {
@@ -126,6 +129,7 @@ const report = {
   warnings: environmentCheck.warnings,
   missingReleaseEvidence: releaseGates.missing,
   missingStagingEvidence,
+  waivedExternalIntegrations,
   externalIntegrationChecks: externalIntegrationChecks.map((check) => ({
     id: check.id,
     label: check.label,
@@ -133,6 +137,7 @@ const report = {
     detail: check.detail,
     requiredOutsideDevelopment: true,
     developmentWaived: environment === "development",
+    evaluation: environment === "development" && !check.configured ? "waived" : check.configured ? "configured" : "missing",
     ok: check.configured,
   })),
   nextActions: [
