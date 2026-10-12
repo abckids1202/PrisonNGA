@@ -6,7 +6,7 @@ repository evidence from staging evidence and external institutional approvals.
 ## Verified repository baseline
 
 The following command completed successfully on the current `main` baseline
-commit `5810818`:
+commit `4eaffec`:
 
 ```text
 npm run verify:release
@@ -31,13 +31,15 @@ provider without naming the protected `EVIDENCE_BUCKET_NAME` binding.
 This is engineering evidence only. It does not prove external provider,
 hardware, deployment, resilience, legal, or institutional readiness.
 
-The full verifier was rerun on `5810818` after visitor profile, session,
+The full verifier was rerun on `4eaffec` after visitor profile, session,
 notification, facility closure, kiosk credential, visit policy, prisoner, and
 payment/outbox recovery mutation paths were given retry-safe idempotency
 boundaries. Replay keys now remain stable for one network retry but rotate
 when persisted recovery status or attempt state changes. Visitor authentication
 channels are now an explicit policy: dual-channel by default, or an approved
-email-only scope that disables SMS in both the API and visitor UI. The
+email-only scope that disables SMS in both the API and visitor UI. Visitor
+global session revocation keys now rotate with the active-session snapshot so
+later sign-in cycles create fresh audited revocations. The
 current repository baseline is therefore release-verified locally. This remains
 engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
