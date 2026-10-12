@@ -280,8 +280,8 @@ export default function ControlApp() {
       setSelectedDrawer({ kind: "activity", event, source, relatedId });
       return;
     }
-    if (payload.kind === "device") setSelectedDrawer({ kind: "device", device: payload.device });
-    else if (payload.kind === "waiting") setSelectedDrawer({ kind: "waiting", visitor: payload.visitor });
+    if (payload.kind === "device") setSelectedDrawer({ kind: "device", deviceId: payload.deviceId, deviceLabel: payload.deviceLabel });
+    else if (payload.kind === "waiting") setSelectedDrawer({ kind: "waiting", visitId: payload.visitId, visitorLabel: payload.visitorLabel });
     else if (payload.kind === "incident") setSelectedDrawer({ kind: "incident", id: payload.id });
   }
 
