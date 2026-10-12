@@ -17,6 +17,8 @@ test("live-session drawer loads and presents persisted evidence and settlement r
   assert.match(source, /loadSessionDetail\(sessionId: string\)/);
   assert.match(source, /\/api\/control\/live-sessions\/\$\{encodeURIComponent\(sessionId\)\}/);
   assert.match(source, /MANUAL REVIEW REQUIRED/);
+  assert.match(source, /selected\.status === "ENDING" && selectedDetail\?\.reconciliation\.required \? "Retry settlement"/);
+  assert.match(source, /retried provider closure and settlement/);
   assert.match(source, /selectedDetail\?\.events\.slice\(0, 4\)/);
   assert.match(source, /setSelectedDetail\(null\)/);
 });

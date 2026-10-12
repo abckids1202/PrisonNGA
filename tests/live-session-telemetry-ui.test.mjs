@@ -19,5 +19,6 @@ test("Live Sessions carries the persisted session version into staff end request
   assert.match(page, /version: number;/);
   assert.match(page, /expectedVersion: session\.version/);
   assert.match(page, /const mode = session\.actual_started_at \? "normal" : "terminate"/);
-  assert.match(page, /mode, reason: mode === "terminate"/);
+  assert.ok(page.includes('mode, reason: retryingRecovery ? "Staff retried provider closure and settlement'));
+  assert.ok(page.includes('mode === "terminate" ? "Staff terminated a session before both visit participants connected'));
 });
