@@ -7,7 +7,8 @@ const checks = [
   ["local backup and restore drill", ["scripts/verify-local-backup-drill.mjs"], "node"],
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint"]],
-  ["build and server tests", ["test"]],
+  ["production build", ["run", "build"]],
+  ["server tests", ["run", "test:quick"]],
   ["browser tests", ["run", "test:e2e"]],
   ["production dependency audit", ["audit", "--omit=dev", "--audit-level=high"]],
 ];
@@ -24,7 +25,7 @@ for (const [label, args] of checks) {
   const command = commandKind === "git" ? "git" : commandKind === "node" ? process.execPath : npmCommand;
   const commandArgs = commandKind === "node" ? args : args;
   const environment = label === "browser tests"
-    ? { ...process.env, SECUREVISIT_E2E_ISOLATED: "true" }
+    ? { ...process.env, SECUREVISIT_E2E_ISOLATED: "true", PLAYWRIGHT_PORT: process.env.PLAYWRIGHT_PORT || "4174" }
     : process.env;
   const result = spawnSync(command, commandArgs, { stdio: "inherit", shell: process.platform === "win32" && commandKind !== "node", env: environment });
   if (result.error) {
