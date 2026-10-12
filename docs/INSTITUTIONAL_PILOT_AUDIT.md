@@ -3,7 +3,7 @@
 Date: 2026-10-12
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `027f71d` (`fix: stabilize release verification gates`).
+Latest verified code commit: `67dda20` (`fix: align local development port`).
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier now passes after separating the production build from the
 server suite and assigning the isolated browser gate to port 4174 by default:
@@ -123,6 +123,7 @@ The current repository already includes:
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
 - Automated server tests and browser smoke tests. Current validation baseline is 551 passing test cases across 547 test files/subtests and 17 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - Fresh local development now defaults to the explicit `local_test` video transport, allowing the persisted appointment-to-session workflow to be exercised without presenting an unconfigured LiveKit connection as a real call; staging and production continue to require real LiveKit credentials.
+- The local launcher now defaults to port `5174`, matching `PUBLIC_APP_URL` in the development template; callers can still override it with `--port`.
 - Notification delivery now fails closed outside development when no outbound provider is configured; staging and production still require real provider delivery, callbacks and operational replay evidence.
 - Staff verification review now rejects a contradictory decision after a case is already approved or rejected; only a replay of the same terminal decision is idempotent.
 - Staff live-session finalization now rejects a contradictory end mode after a session is already ended, terminated, or cancelled; same-mode retries remain idempotent after settlement is verified.
