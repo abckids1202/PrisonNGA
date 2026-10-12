@@ -5,6 +5,7 @@ const checks = [
   ["working-tree patch validation", ["diff", "--check"], "git"],
   ["API route security matrix", ["run", "audit:routes"]],
   ["fresh local D1 migrations", ["run", "db:test:migrations:local"]],
+  ["staging fixture schema compatibility", ["run", "db:test:staging-fixture"]],
   ["local backup and restore drill", ["scripts/verify-local-backup-drill.mjs"], "node"],
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint"]],

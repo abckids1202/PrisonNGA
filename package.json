@@ -33,7 +33,8 @@
     "db:backup:local": "node --env-file-if-exists=.env.local scripts/db-backup-drill.mjs backup --local",
     "db:backup:remote": "node --env-file-if-exists=.env.local scripts/db-backup-drill.mjs backup --remote",
     "db:restore:drill": "node scripts/db-backup-drill.mjs restore",
-    "db:test:migrations:local": "node scripts/test-local-migrations.mjs"
+    "db:test:migrations:local": "node scripts/test-local-migrations.mjs",
+    "db:test:staging-fixture": "node scripts/test-staging-fixture.mjs"
   },
   "dependencies": {
     "@node-saml/node-saml": "^5.1.0",
