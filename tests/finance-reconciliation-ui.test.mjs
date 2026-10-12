@@ -18,3 +18,9 @@ test("Finance exposes controlled provider refunds without bypassing step-up or w
   assert.match(source, /Settlement remains webhook-driven/);
   assert.match(source, /Request provider refund/);
 });
+
+test("Finance keeps pending and failed refund cases visible for operational recovery", () => {
+  assert.match(source, /Boolean\(payment\.refund_status\)/);
+  assert.match(source, /row\.refund_status === "FAILED"/);
+  assert.match(source, /Retry refund/);
+});

@@ -21,7 +21,10 @@ export function financeLedgerStatement(d1: D1Database, facilityId: string) {
 
 export function financePaymentsStatement(d1: D1Database, facilityId: string) {
   return d1.prepare(`SELECT pi.id, pi.provider, pi.credit_quantity, pi.amount_minor, pi.currency, pi.status,
-      pi.provider_reference, pi.created_at, pi.updated_at, u.display_name AS visitor_name
+      pi.provider_reference, pi.created_at, pi.updated_at, u.display_name AS visitor_name,
+      (SELECT pr.id FROM payment_refund_requests pr WHERE pr.payment_intent_id = pi.id AND pr.facility_id = pi.facility_id ORDER BY pr.created_at DESC, pr.id DESC LIMIT 1) AS refund_request_id,
+      (SELECT pr.status FROM payment_refund_requests pr WHERE pr.payment_intent_id = pi.id AND pr.facility_id = pi.facility_id ORDER BY pr.created_at DESC, pr.id DESC LIMIT 1) AS refund_status,
+      (SELECT pr.reason FROM payment_refund_requests pr WHERE pr.payment_intent_id = pi.id AND pr.facility_id = pi.facility_id ORDER BY pr.created_at DESC, pr.id DESC LIMIT 1) AS refund_reason
     FROM payment_intents pi INNER JOIN users u ON u.id = pi.user_id AND u.user_type = 'VISITOR'
     WHERE pi.facility_id = ? ORDER BY pi.created_at DESC LIMIT 50`).bind(facilityId);
 }
