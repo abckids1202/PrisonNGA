@@ -875,6 +875,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
   const [phoneVerificationBusy, setPhoneVerificationBusy] = useState(false);
   const [phoneVerificationError, setPhoneVerificationError] = useState("");
   const profileSaveKey = useRef<{ fingerprint: string; key: string } | null>(null);
+  const sessionActionKeys = useRef(new Map<string, string>());
 
   useEffect(() => {
     let active = true;
@@ -980,9 +981,13 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
     setSessionsBusy(true);
     setSessionsError("");
     try {
-      const response = await fetch("/api/auth/sessions", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": revokeAll ? "session-revoke-all" : `session-revoke-${sessionId}` }, body: JSON.stringify(revokeAll ? { revokeAll: true } : { sessionId }) });
+      const fingerprint = revokeAll ? `all:${sessions.map((session) => session.id).sort().join(",")}` : `one:${sessionId || ""}`;
+      const idempotencyKey = sessionActionKeys.current.get(fingerprint) || `session-revoke-${revokeAll ? "all" : sessionId}-${crypto.randomUUID()}`;
+      sessionActionKeys.current.set(fingerprint, idempotencyKey);
+      const response = await fetch("/api/auth/sessions", { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(revokeAll ? { revokeAll: true } : { sessionId }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not revoke the session.");
+      sessionActionKeys.current.delete(fingerprint);
       if (revokeAll) { await onSignOut(); return; }
       await loadSessions();
       onAction("The selected browser session was revoked.", "success");

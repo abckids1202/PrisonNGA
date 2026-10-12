@@ -33,7 +33,8 @@ test("critical staff mutations use deterministic entity/version idempotency keys
   assert.match(appointmentTypes, /appointment-type-\$\{currentType\.id\}-\$\{currentType\.version\}`/);
   assert.match(accessReview, /staff-session-revoke-\$\{session\.id\}`/);
   assert.match(visitor, /\"Idempotency-Key\": key/);
-  assert.match(visitor, /revokeAll \? \"session-revoke-all\" : `session-revoke-\$\{sessionId\}`/);
+  assert.match(visitor, /sessionActionKeys\.current\.get\(fingerprint\)/);
+  assert.match(visitor, /session-revoke-\$\{revokeAll \? \"all\" : sessionId\}/);
   assert.match(visitor, /notificationBatchKeys\.current\.get\(fingerprint\)/);
   assert.match(closures, /facility-closure-cancel-\$\{closure\.id\}-\$\{closure\.version\}`/);
   assert.match(closures, /createKey\.current\?\.fingerprint === fingerprint/);
