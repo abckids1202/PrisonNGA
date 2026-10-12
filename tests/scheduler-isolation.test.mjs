@@ -16,9 +16,11 @@ test("scheduled maintenance isolates named jobs and records failures", async () 
   assert.match(source, /crypto\.randomUUID\(\), facility\.id/);
   assert.match(source, /CASE WHEN json_valid\(se\.metadata\) = 1[\s\S]*json_extract\(se\.metadata, '\$\.jobName'\)/);
   assert.match(source, /runScheduledJob\(env, "payment-events", \(\) => reconcilePaymentEvents\(env\)\)/);
-  assert.match(source, /FROM payment_provider_events ppe[\s\S]*LEFT JOIN payment_intents pi ON pi\.provider = ppe\.provider/);
+  assert.match(source, /SELECT ppe\.id,[\s\S]*SELECT pi\.facility_id FROM payment_intents pi/);
+  assert.match(source, /FROM payment_provider_events ppe/);
   assert.match(source, /json_valid\(ppe\.payload\) = 1/);
   assert.match(source, /pi\.id = json_extract\(ppe\.payload, '\$\.paymentIntentId'\)/);
+  assert.match(source, /pi\.provider_reference = json_extract\(ppe\.payload, '\$\.providerReference'\)/);
   assert.match(source, /runScheduledJob\(env, "live-session-reconciliation", \(\) => reconcileExpiredSessions\(env\)\)/);
   assert.match(source, /ctx\.waitUntil\(Promise\.all\(\[/);
 });

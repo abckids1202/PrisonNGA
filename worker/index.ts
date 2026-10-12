@@ -243,11 +243,17 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
   // duplicate facility ownership. Resolve it through the immutable payment
   // intent so scheduled retries can still raise a facility-scoped dead-letter
   // alarm without relying on a column that is not part of the schema.
-  const rows = await env.DB.prepare(`SELECT ppe.id, pi.facility_id, ppe.provider, ppe.event_key, ppe.event_type, ppe.payload, ppe.attempt_count
+  const rows = await env.DB.prepare(`SELECT ppe.id,
+      COALESCE(
+        (SELECT pi.facility_id FROM payment_intents pi
+          WHERE json_valid(ppe.payload) = 1 AND pi.provider = ppe.provider
+            AND pi.id = json_extract(ppe.payload, '$.paymentIntentId') LIMIT 1),
+        (SELECT pi.facility_id FROM payment_intents pi
+          WHERE json_valid(ppe.payload) = 1 AND pi.provider = ppe.provider
+            AND pi.provider_reference = json_extract(ppe.payload, '$.providerReference') LIMIT 1)
+      ) AS facility_id,
+      ppe.provider, ppe.event_key, ppe.event_type, ppe.payload, ppe.attempt_count
     FROM payment_provider_events ppe
-    LEFT JOIN payment_intents pi ON pi.provider = ppe.provider AND json_valid(ppe.payload) = 1
-      AND (pi.id = json_extract(ppe.payload, '$.paymentIntentId')
-        OR pi.provider_reference = json_extract(ppe.payload, '$.providerReference'))
     WHERE ppe.status IN ('RECEIVED', 'FAILED') AND julianday(ppe.available_at) <= julianday('now')
     ORDER BY ppe.created_at ASC LIMIT 25`).all<PaymentRetryEvent>();
   for (const row of rows.results) {
