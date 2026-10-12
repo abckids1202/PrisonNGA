@@ -4,7 +4,7 @@ import test from "node:test";
 
 test("Command Center does not present unavailable appointment data as zero attention", async () => {
   const [pageSource, popoverSource] = await Promise.all([
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/features/control/CommandCenterPage.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/features/control/OperationalPopovers.tsx", import.meta.url), "utf8"),
   ]);
   const source = `${pageSource}\n${popoverSource}`;
