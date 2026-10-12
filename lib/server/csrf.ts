@@ -3,6 +3,7 @@ const FEDERATION_CALLBACKS = new Set([
   "/api/auth/staff/saml/callback",
   "/api/webhooks/livekit",
   "/api/webhooks/payments",
+  "/api/webhooks/xendit",
   "/api/webhooks/notifications/status",
 ]);
 

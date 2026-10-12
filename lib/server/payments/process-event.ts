@@ -66,6 +66,40 @@ export async function processPaymentProviderEvent(d1: D1Database, input: { provi
   if (payload.currency && payload.currency.toUpperCase() !== intent.currency.toUpperCase()) {
     throw new SecurityError("PAYMENT_CURRENCY_MISMATCH", 409);
   }
+  // A provider refund failure is an operational outcome for the refund
+  // request, not a failure of the original successful payment. Keep the
+  // payment intent settled so finance can retry the refund without revoking
+  // the visitor's purchase ledger entry.
+  if (payload.eventType === "PAYMENT_REFUND_FAILED") {
+    const refundRequest = await d1.prepare("SELECT id FROM payment_refund_requests WHERE payment_intent_id = ? AND facility_id = ? AND status = 'REQUESTED' ORDER BY created_at DESC LIMIT 1").bind(intent.id, intent.facility_id).first<{ id: string }>();
+    if (!refundRequest) {
+      await d1.prepare("UPDATE payment_provider_events SET status = 'IGNORED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey).run();
+      return { status: intent.status, paymentIntentId: intent.id, ignored: "REFUND_REQUEST_NOT_FOUND" };
+    }
+    const correlationId = crypto.randomUUID();
+    const evidence = auditAndOutboxStatements(d1, {
+      actorUserId: "system:payment-webhook",
+      actorRole: "PAYMENT_PROVIDER",
+      facilityId: intent.facility_id,
+      actionType: "PAYMENT_REFUND_FAILED",
+      entityType: "payment_refund_request",
+      entityId: refundRequest.id,
+      reason: `Payment provider refund event ${eventKey} failed.`,
+      oldValues: { status: "REQUESTED", paymentIntentId: intent.id },
+      newValues: { status: "FAILED", paymentIntentId: intent.id },
+      requestId: eventKey,
+      correlationId,
+      eventType: "PAYMENT_REFUND_FAILED",
+      payload: { paymentIntentId: intent.id, refundRequestId: refundRequest.id, providerEventKey: eventKey },
+    }, { sql: "EXISTS (SELECT 1 FROM payment_refund_requests WHERE id = ? AND status = 'FAILED')", values: [refundRequest.id] });
+    const results = await d1.batch([
+      d1.prepare("UPDATE payment_refund_requests SET status = 'FAILED', updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'REQUESTED'").bind(now, refundRequest.id, intent.facility_id),
+      ...evidence,
+      d1.prepare("UPDATE payment_provider_events SET status = 'PROCESSED', processed_at = ?, last_error = NULL WHERE provider = ? AND event_key = ?").bind(now, provider, eventKey),
+    ]);
+    if (!results[0]?.meta.changes || !results.slice(1).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("PAYMENT_REFUND_FAILURE_INCOMPLETE", 503);
+    return { status: intent.status, paymentIntentId: intent.id, ignored: "REFUND_FAILED" };
+  }
   const suppliedStatus = payload.status || "";
   if ((successfulEvents.has(payload.eventType) && suppliedStatus && !successfulStatuses.has(suppliedStatus))
     || (failedEvents.has(payload.eventType) && suppliedStatus && !failedStatuses.has(suppliedStatus))) {

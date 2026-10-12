@@ -37,7 +37,7 @@ hardware, deployment, resilience, legal, or institutional readiness.
 | Staff SAML | CODE READY / NOT PROVEN | Signed metadata/assertion, MFA context, replay protection and logout tests |
 | Visit tariff | NOT APPROVED | Signed Indonesian tariff decision and facility policy record |
 | Refund/cancellation policy | NOT APPROVED | Signed policy covering cancellation, no-show, technical failure, refund and dispute outcomes |
-| Payment checkout | ADAPTER READY / NOT PROVEN | One selected provider sandbox checkout and callback evidence |
+| Payment checkout | XENDIT ADAPTER + CALLBACK READY / NOT PROVEN | Xendit sandbox checkout, callback, refund, dispute and reconciliation evidence |
 | Payment reconciliation | CODE READY / NOT PROVEN | Duplicate, delayed, disputed, refunded and provider-outage reconciliation evidence |
 | Protected evidence storage | CODE READY / NOT PROVEN | Private R2, scanner quarantine/rejection, signed staff access, purge and legal-hold evidence |
 | Kiosk enrollment | CODE READY / NOT PROVEN | Real device enrollment, credential rotation/revocation, replacement and offline recovery |

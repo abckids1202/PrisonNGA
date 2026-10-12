@@ -92,6 +92,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   }
   if (paymentProvider === "xendit") {
     requireSecret(env, "XENDIT_SECRET_KEY", missing);
+    requireSecret(env, "XENDIT_WEBHOOK_TOKEN", missing);
     const xenditBaseUrl = value(env, "XENDIT_API_BASE_URL") || "https://api.xendit.co";
     if (!isSecureHttpsEndpoint(xenditBaseUrl)) missing.push("XENDIT_API_BASE_URL (must be an https:// URL without credentials or fragments)");
   }
