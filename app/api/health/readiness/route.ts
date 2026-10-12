@@ -146,12 +146,24 @@ export async function GET() {
       notifications,
       notificationQueue: environment === "development" || Boolean(configuredString("NOTIFICATION_QUEUE_NAME")),
     };
+    // Expose adapter identities, never credentials, so operators can tell
+    // whether readiness is evaluating the intended provider in a deployment.
+    const providerAdapters = {
+      payment: paymentProvider?.name || null,
+      video: videoConfig.provider,
+      visitorEmail: configuredVisitorEmailDelivery || null,
+      visitorSms: configuredVisitorSmsDelivery || null,
+      notificationsEmail: configuredNotificationEmailDelivery || null,
+      notificationsSms: configuredNotificationSmsDelivery || null,
+      evidenceScanner: evidenceScanProvider || null,
+      staffFederation: String(staffAuthProvider || "").toLowerCase() || null,
+    };
     const providersReady = Object.values(providerConfiguration).every(Boolean);
     const releaseGates = evaluateReleaseGates(environment, configured);
     const ready = schemaReady && environmentConfig.ok && (environment === "development" || providersReady && releaseGates.ready);
-    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, releaseGates, tariff: { configured: tariffConfigured, configuredFacilities: Number(tariffRow?.configured_count || 0) }, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
+    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, providerAdapters, releaseGates, tariff: { configured: tariffConfigured, configuredFacilities: Number(tariffRow?.configured_count || 0) }, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
   } catch (error) {
     if (error instanceof Error && error.name === "SecurityError") return securityErrorResponse(error, context.requestId);
-    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false, notificationQueue: false }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
+    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, staffIdentity: false, notifications: false, notificationQueue: false }, providerAdapters: { payment: null, video: null, visitorEmail: null, visitorSms: null, notificationsEmail: null, notificationsSms: null, evidenceScanner: null, staffFederation: null }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
   }
 }

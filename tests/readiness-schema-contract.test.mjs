@@ -30,4 +30,8 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /String\(staffAuthProvider \|\| ""\)\.toLowerCase\(\) === "both" && oidcReady && samlReady/);
   assert.match(source, /"NOTIFICATION_QUEUE_NAME"/);
   assert.match(source, /notificationQueue: environment === "development" \|\| Boolean\(configuredString\("NOTIFICATION_QUEUE_NAME"\)\)/);
+  assert.match(source, /const providerAdapters =/);
+  assert.match(source, /payment: paymentProvider\?\.name \|\| null/);
+  assert.match(source, /video: videoConfig\.provider/);
+  assert.match(source, /evidenceScanner: evidenceScanProvider \|\| null/);
 });
