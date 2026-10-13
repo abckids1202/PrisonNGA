@@ -52,7 +52,9 @@ const configurationKeys = [
 async function readConfiguredNotificationDelivery(channel: "EMAIL" | "SMS") {
   try {
     return await getNotificationDelivery(channel);
-  } catch {
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (!["NOTIFICATION_DELIVERY_NOT_CONFIGURED", "NOTIFICATION_DELIVERY_INVALID"].includes(code)) throw error;
     // Readiness is a diagnostic endpoint. A missing or invalid provider must
     // be represented by the providerConfiguration check instead of collapsing
     // the whole response into the generic database/schema failure envelope.

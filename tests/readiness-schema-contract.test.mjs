@@ -37,6 +37,8 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /async function readConfiguredNotificationDelivery/);
   assert.match(source, /readConfiguredNotificationDelivery\("EMAIL"\)/);
   assert.match(source, /readConfiguredNotificationDelivery\("SMS"\)/);
+  assert.match(source, /NOTIFICATION_DELIVERY_NOT_CONFIGURED.*NOTIFICATION_DELIVERY_INVALID/);
+  assert.match(source, /if \(!\[.*\]\.includes\(code\)\) throw error/);
   assert.match(source, /notificationsEmail: notificationEmailDelivery/);
   assert.match(source, /notificationsSms: notificationSmsDelivery/);
 });
