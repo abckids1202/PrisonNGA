@@ -64,7 +64,11 @@ export async function POST(request: Request) {
       throw new SecurityError("AUTH_DELIVERY_ATTEMPT_NOT_PERSISTED", 503);
     }
     if (delivery === "console" && environment === "development") {
-      await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ?").bind(new Date().toISOString(), attemptId).run();
+      const finalized = await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), attemptId).run();
+      if (!finalized.meta.changes) {
+        await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
+        throw new SecurityError("AUTH_DELIVERY_STATE_NOT_PERSISTED", 503);
+      }
       return securityResponse({ challengeId, destination: maskPhone(phone), expiresAt, retryAfterSeconds: 60, devCode: code }, 201, context.requestId);
     }
     if (delivery !== "webhook" && delivery !== "twilio") {
@@ -88,7 +92,13 @@ export async function POST(request: Request) {
       ]);
       throw new SecurityError("AUTH_DELIVERY_UNAVAILABLE", 503);
     }
-    await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), attemptId).run();
+    const finalized = await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), attemptId).run();
+    if (!finalized.meta.changes) {
+      const current = await d1.prepare("SELECT status FROM auth_challenge_delivery_attempts WHERE id = ?").bind(attemptId).first<{ status: string }>();
+      if (current?.status === "DELIVERED") return securityResponse({ challengeId, destination: maskPhone(phone), expiresAt, retryAfterSeconds: 60 }, 201, context.requestId);
+      await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
+      throw new SecurityError(current?.status === "FAILED" ? "AUTH_DELIVERY_UNAVAILABLE" : "AUTH_DELIVERY_STATE_NOT_PERSISTED", 503);
+    }
     return securityResponse({ challengeId, destination: maskPhone(phone), expiresAt, retryAfterSeconds: 60 }, 201, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);

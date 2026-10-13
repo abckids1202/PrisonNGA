@@ -95,7 +95,11 @@ export async function POST(request: Request) {
     }
     if (delivery === "console" && environment === "development") {
       responseBody.devCode = code;
-      await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
+      const finalized = await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
+      if (!finalized.meta.changes) {
+        await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
+        throw new SecurityError("AUTH_DELIVERY_STATE_NOT_PERSISTED", 503);
+      }
     } else if (delivery === "webhook" || delivery === "resend" || delivery === "twilio") {
       try {
         const deliveryReceipt = await deliverVisitorChallenge({ channel: channel as "EMAIL" | "SMS", challengeId, destination, code, expiresAt });
@@ -109,7 +113,13 @@ export async function POST(request: Request) {
         await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
         throw new SecurityError("AUTH_DELIVERY_UNAVAILABLE", 503);
       }
-      await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
+      const finalized = await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
+      if (!finalized.meta.changes) {
+        const current = await d1.prepare("SELECT status FROM auth_challenge_delivery_attempts WHERE id = ?").bind(deliveryAttemptId).first<{ status: string }>();
+        if (current?.status === "DELIVERED") return securityResponse(responseBody, 201, context.requestId);
+        await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
+        throw new SecurityError(current?.status === "FAILED" ? "AUTH_DELIVERY_UNAVAILABLE" : "AUTH_DELIVERY_STATE_NOT_PERSISTED", 503);
+      }
     } else {
       await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'FAILED', error_code = 'AUTH_DELIVERY_NOT_CONFIGURED', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
       await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();

@@ -7,6 +7,8 @@ test("visitor OTP requests persist delivery attempts without storing the code", 
   const migration = await readFile(new URL("../drizzle/0037_auth_challenge_delivery_attempts.sql", import.meta.url), "utf8");
   assert.match(route, /auth_challenge_delivery_attempts/);
   assert.match(route, /AUTH_DELIVERY_ATTEMPT_NOT_PERSISTED/);
+  assert.match(route, /AUTH_DELIVERY_STATE_NOT_PERSISTED/);
+  assert.match(route, /SELECT status FROM auth_challenge_delivery_attempts/);
   assert.match(route, /UPDATE auth_challenges SET expires_at/);
   assert.match(route, /status = 'SENT'/);
   assert.match(route, /status = 'FAILED'/);

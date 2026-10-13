@@ -48,6 +48,9 @@ The release verifier verified:
 - The signed notification-status webhook now fails closed when an OTP delivery
   update reports no persisted row change, instead of acknowledging a callback
   without proving the challenge delivery record was updated.
+- Visitor sign-in and phone-verification delivery flows now verify the final
+  delivery-attempt transition; an unpersisted or failed terminal state expires
+  the challenge instead of returning a usable OTP response.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,
