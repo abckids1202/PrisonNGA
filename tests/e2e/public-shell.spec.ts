@@ -65,6 +65,25 @@ test("management facility resources open the selected operational record", async
   }
 });
 
+test("management visitation exposes persisted weekly operating hours", async ({ browser }) => {
+  const staff = await browser.newContext({ extraHTTPHeaders: {
+    "oai-authenticated-user-id": "staff-local-supervisor",
+    "oai-authenticated-user-email": "staff.local@example.test",
+  } });
+  try {
+    const page = await staff.newPage();
+    await page.goto("/?workspace=management&page=Visitation");
+    await expect(page.locator("nav.sv3-nav button.active")).toContainText("Visitation");
+    await page.locator("nav.sv3-policy-nav").getByRole("button", { name: /Operating Hours/ }).click();
+    await expect(page.getByRole("group", { name: "Weekly operating hours" })).toBeVisible();
+    await expect(page.getByText("Sunday", { exact: true })).toBeVisible();
+    await expect(page.getByText("Saturday", { exact: true })).toBeVisible();
+    await expect(page.getByText("Closed days are excluded from visitor availability and staff approval.")).toBeVisible();
+  } finally {
+    await staff.close();
+  }
+});
+
 test("staff can create a persisted incident through the protected operational boundary", async ({ browser }) => {
   const staff = await browser.newContext({ extraHTTPHeaders: {
     "oai-authenticated-user-id": "staff-local-supervisor",

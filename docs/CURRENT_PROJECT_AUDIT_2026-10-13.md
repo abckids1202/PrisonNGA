@@ -21,7 +21,7 @@ polish items.
 - Disposable staging-fixture schema compatibility.
 - Local backup/restore drill with schema, foreign-key, credit-ledger, and audit-integrity checks.
 - TypeScript typecheck, ESLint, and production build.
-- 589 server test cases and 18 browser tests.
+- 589 server test cases and 19 browser tests.
 - Production dependency audit with 0 vulnerabilities.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - Versioned weekly operating hours with closed-day and weekday-specific validation
