@@ -1,16 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-const environment = process.env.SECUREVISIT_ENVIRONMENT?.trim() || "";
-if (environment === "development") process.exit(0);
-
-const manifestPath = path.resolve("dist/server/wrangler.json");
-if (!fs.existsSync(manifestPath)) {
-  console.error(`Deployment manifest not found: ${manifestPath}`);
-  process.exit(1);
-}
-
-const nonSecretDeploymentKeys = [
+export const nonSecretDeploymentKeys = [
   "SECUREVISIT_ENVIRONMENT",
   "VIDEO_PROVIDER",
   "LIVEKIT_URL",
@@ -72,7 +64,7 @@ const nonSecretDeploymentKeys = [
   "SECUREVISIT_RELEASE_EVIDENCE_MANIFEST",
 ];
 
-const forbiddenManifestSecrets = [
+export const forbiddenManifestSecrets = [
   "SECUREVISIT_HASH_SALT",
   "STAFF_STEP_UP_SECRET",
   "VISITOR_AUTH_WEBHOOK_SECRET",
@@ -91,14 +83,28 @@ const forbiddenManifestSecrets = [
   "STAFF_SAML_IDP_CERT",
 ];
 
-const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-const vars = manifest.vars && typeof manifest.vars === "object" ? manifest.vars : {};
+export function sanitizeDeploymentManifest(manifest, runtime = {}) {
+  const sanitized = { ...manifest };
+  const vars = sanitized.vars && typeof sanitized.vars === "object" ? { ...sanitized.vars } : {};
 
-// Wrangler can merge .env/.dev.vars into its emitted manifest. Re-apply only
-// deployment-process values so local adapters never cross into staging or
-// production. Empty values intentionally remain fail-closed for runtime checks.
-for (const key of nonSecretDeploymentKeys) vars[key] = process.env[key]?.trim() || "";
-for (const key of forbiddenManifestSecrets) delete vars[key];
-manifest.vars = vars;
-fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  // Wrangler can merge .env/.dev.vars into its emitted manifest. Re-apply only
+  // deployment-process values so local adapters never cross into staging or
+  // production. Empty values intentionally remain fail-closed for runtime checks.
+  for (const key of nonSecretDeploymentKeys) vars[key] = String(runtime[key] || "").trim();
+  for (const key of forbiddenManifestSecrets) delete vars[key];
+  sanitized.vars = vars;
+  return sanitized;
+}
+
+const environment = process.env.SECUREVISIT_ENVIRONMENT?.trim() || "";
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (isMain && environment !== "development") {
+  const manifestPath = path.resolve("dist/server/wrangler.json");
+  if (!fs.existsSync(manifestPath)) {
+    console.error(`Deployment manifest not found: ${manifestPath}`);
+    process.exit(1);
+  }
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  fs.writeFileSync(manifestPath, JSON.stringify(sanitizeDeploymentManifest(manifest, process.env)));
+}
 
