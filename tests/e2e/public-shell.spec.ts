@@ -552,6 +552,15 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     expect(preflightBody).toMatchObject({ state: "READY_TO_START" });
     expect(preflightBody.version).toBeGreaterThan(waitingVisit.version);
 
+    // Staff readiness must cross back into the visitor product through the
+    // persisted appointment, including after a full navigation and refresh.
+    await page.goto(`/visitor/visits/${encodeURIComponent(approvedAppointmentId)}`);
+    await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
+    await expect(page.getByText("Facility readiness", { exact: true })).toBeVisible();
+    await expect(page.getByText("Ready", { exact: true }).first()).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
+
     const providerStart = await staff.request.post("/api/control/waiting-room", {
       headers: { origin: testOrigin, "Idempotency-Key": `waiting-start-provider-outage-${Date.now()}-e2e` },
       data: { appointmentId: approvedAppointmentId, command: "start_visit", expectedVersion: preflightBody.version, reason: "Pilot acceptance provider-outage check." },
