@@ -48,3 +48,13 @@ test("staff observer and room events cannot start credit-consuming sessions", as
   assert.match(source, /participantReconnecting = \(event\.event === "participant_connection_aborted" \|\| event\.event === "participant_left"\) && \(participantRole === "VISITOR" \|\| participantRole === "FACILITY"\)/);
   assert.doesNotMatch(source, /event\.event === "room_started" \|\| event\.event === "participant_joined" \? "ACTIVE"/);
 });
+
+test("LiveKit event-id replays reject conflicting provider metadata", async () => {
+  const source = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
+
+  assert.match(source, /participant_role, metadata FROM visit_session_events WHERE id = \?/);
+  assert.match(source, /eventMetadataSnapshot = JSON\.stringify\(eventMetadata\)/);
+  assert.match(source, /priorEvent\.participant_role !== participantRole/);
+  assert.match(source, /priorEvent\.metadata !== eventMetadataSnapshot/);
+  assert.match(source, /LIVEKIT_EVENT_REPLAY_CONFLICT/);
+});

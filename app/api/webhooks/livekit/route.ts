@@ -52,6 +52,19 @@ export async function POST(request: Request) {
     const eventType = `PROVIDER_${String(event.event || "UNKNOWN").toUpperCase()}`;
     const participantIdentity = event.participant?.identity || null;
     const participantRole = roleForParticipant(participantIdentity || undefined);
+    const eventMetadata = { roomName, participantIdentity, participantSid: event.participant?.sid || null };
+    const eventMetadataSnapshot = JSON.stringify(eventMetadata);
+    const priorEvent = await d1.prepare("SELECT session_id, event_type, participant_role, metadata FROM visit_session_events WHERE id = ?")
+      .bind(eventId)
+      .first<{ session_id: string; event_type: string; participant_role: string | null; metadata: string }>();
+    if (priorEvent) {
+      if (priorEvent.session_id !== session.id || priorEvent.event_type !== eventType || priorEvent.participant_role !== participantRole || priorEvent.metadata !== eventMetadataSnapshot) {
+        throw new SecurityError("LIVEKIT_EVENT_REPLAY_CONFLICT", 409);
+      }
+      if (event.event !== "room_finished" || ["ENDED", "TERMINATED", "CANCELLED"].includes(session.status)) {
+        return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
+      }
+    }
     const expectedParticipant = participantRole === "VISITOR"
       ? `visitor:${session.visitor_user_id}`
       : participantRole === "FACILITY" && session.kiosk_resource_id
@@ -62,14 +75,6 @@ export async function POST(request: Request) {
     }
     if ((participantRole === "VISITOR" || participantRole === "FACILITY") && !expectedParticipant) {
       return securityResponse({ accepted: true, ignored: true, reason: "PARTICIPANT_ASSIGNMENT_UNAVAILABLE", sessionId: session.id }, 200, context.requestId);
-    }
-    const eventMetadata = { roomName, participantIdentity, participantSid: event.participant?.sid || null };
-    const priorEvent = await d1.prepare("SELECT session_id, event_type FROM visit_session_events WHERE id = ?").bind(eventId).first<{ session_id: string; event_type: string }>();
-    if (priorEvent) {
-      if (priorEvent.session_id !== session.id || priorEvent.event_type !== eventType) throw new SecurityError("LIVEKIT_EVENT_ID_REUSED", 409);
-      if (event.event !== "room_finished" || ["ENDED", "TERMINATED", "CANCELLED"].includes(session.status)) {
-        return securityResponse({ accepted: true, idempotent: true, event: event.event, sessionId: session.id }, 200, context.requestId);
-      }
     }
 
     if (event.event === "room_finished") {
