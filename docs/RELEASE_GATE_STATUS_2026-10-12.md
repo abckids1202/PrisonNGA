@@ -45,7 +45,7 @@ engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
 institutional gates.
 
-The current baseline is commit `3bcdee3`; it retains the earlier hardening
+The current baseline is commit `1105393`; it retains the earlier hardening
 that bounds authentication-session purging to 250 rows per scheduled
 invocation and gives each Wrangler backup config a unique project-root path.
 The disposable restore phase now uses Node's temporary SQLite engine rather
