@@ -193,6 +193,38 @@ export function evidenceRetentionFailureStatement(
   );
 }
 
+export function evidenceUploadCleanupFailureStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    evidenceId: string;
+    storageKey: string;
+    error: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    VALUES (?, ?, 'EVIDENCE_UPLOAD_CLEANUP_FAILED', 'CRITICAL', ?, ?, ?)`).bind(
+    `evidence-upload-cleanup-failed:${input.evidenceId}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "evidence_document",
+      entityId: input.evidenceId,
+      operation: "EVIDENCE_UPLOAD_CLEANUP",
+      storageKey: input.storageKey,
+      error: input.error,
+      correlationId: input.correlationId,
+      requiresStaffReview: true,
+      deletionUnconfirmed: true,
+    }),
+    input.now,
+  );
+}
+
 /**
  * Record a durable operational alarm when a compensating workflow write could
  * not restore its previous snapshot. The primary request must still fail

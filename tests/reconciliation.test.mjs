@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { evidenceRetentionFailureStatement, liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
+import { evidenceRetentionFailureStatement, evidenceUploadCleanupFailureStatement, liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement, recordResourceReconciliationRequired, recordWaitingRoomReconciliationRequired } from "../lib/server/reconciliation.ts";
 
 class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
@@ -351,6 +351,39 @@ test("evidence retention failures create one durable critical privacy alarm", as
       retentionUntil: "2026-10-08T00:00:00.000Z",
       error: "R2 delete timed out",
       correlationId: "correlation-retention-1",
+      requiresStaffReview: true,
+      deletionUnconfirmed: true,
+    });
+  } finally {
+    d1.close();
+  }
+});
+
+test("evidence upload cleanup failures create one durable critical privacy alarm", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    const statement = evidenceUploadCleanupFailureStatement(d1, {
+    facilityId: "facility-1",
+    evidenceId: "evidence-1",
+    storageKey: "facility-1/verification/case-1/evidence-1",
+    error: "storage unavailable",
+    requestId: "request-1",
+    correlationId: "correlation-1",
+    now: "2026-10-13T00:00:00.000Z",
+    });
+    assert.equal((await statement.run()).meta.changes, 1);
+    const event = d1.sqlite.prepare("SELECT facility_id, event_type, severity, request_id, metadata FROM security_events WHERE event_type = 'EVIDENCE_UPLOAD_CLEANUP_FAILED'").get();
+    assert.equal(event.facility_id, "facility-1");
+    assert.equal(event.event_type, "EVIDENCE_UPLOAD_CLEANUP_FAILED");
+    assert.equal(event.severity, "CRITICAL");
+    assert.equal(event.request_id, "request-1");
+    assert.deepEqual(JSON.parse(event.metadata), {
+      entityType: "evidence_document",
+      entityId: "evidence-1",
+      operation: "EVIDENCE_UPLOAD_CLEANUP",
+      storageKey: "facility-1/verification/case-1/evidence-1",
+      error: "storage unavailable",
+      correlationId: "correlation-1",
       requiresStaffReview: true,
       deletionUnconfirmed: true,
     });

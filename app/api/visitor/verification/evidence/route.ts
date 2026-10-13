@@ -6,6 +6,7 @@ import { scanEvidence } from "../../../../../lib/server/evidence-scanner";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { getEvidenceStore } from "../../../../../lib/server/evidence-storage";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../lib/server/idempotency";
+import { evidenceUploadCleanupFailureStatement } from "../../../../../lib/server/reconciliation";
 
 function safeFilename(value: string): string {
   const cleaned = value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
     const retentionUntil = new Date(now.getTime() + retentionDays * 86400000).toISOString();
     let scanVerdict: Awaited<ReturnType<typeof scanEvidence>>;
     let evidenceCommitted = false;
+    let evidenceUploaded = false;
     try {
       scanVerdict = await scanEvidence({ bytes, contentType: file.type, sha256, byteSize: bytes.length });
     } catch (error) {
@@ -80,6 +82,7 @@ export async function POST(request: Request) {
     }
     if (scanVerdict === "INFECTED") throw new SecurityError("EVIDENCE_MALWARE_DETECTED", 422);
     await bucket.put(storageKey, bytes, { httpMetadata: { contentType: file.type } });
+    evidenceUploaded = true;
     const correlationId = crypto.randomUUID();
     const responseBody = { evidenceId: id, status: "AVAILABLE", retentionUntil, correlationId };
     try {
@@ -130,7 +133,26 @@ export async function POST(request: Request) {
       evidenceCommitted = true;
       idempotency = null;
     } catch (error) {
-      if (!evidenceCommitted) await bucket.delete(storageKey);
+      if (!evidenceCommitted && evidenceUploaded) {
+        try {
+          await bucket.delete(storageKey);
+        } catch (cleanupError) {
+          try {
+            await d1!.batch([evidenceUploadCleanupFailureStatement(d1!, {
+              facilityId: ownedCase.facility_id,
+              evidenceId: id,
+              storageKey,
+              error: cleanupError instanceof Error ? cleanupError.message : "EVIDENCE_UPLOAD_CLEANUP_FAILED",
+              requestId: context.requestId,
+              correlationId,
+              now: new Date().toISOString(),
+            })]);
+          } catch {
+            // Preserve the privacy-safe failure response if the alarm cannot be stored.
+          }
+          throw new SecurityError("EVIDENCE_UPLOAD_CLEANUP_REQUIRED", 503);
+        }
+      }
       throw error;
     }
     return securityResponse(responseBody, 201, context.requestId);
