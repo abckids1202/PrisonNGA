@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     const retentionDays = Math.max(1, Number(await getRuntimeValue("EVIDENCE_RETENTION_DAYS") || "365") || 365);
     const retentionUntil = new Date(now.getTime() + retentionDays * 86400000).toISOString();
     let scanVerdict: Awaited<ReturnType<typeof scanEvidence>>;
-    let evidencePersisted = false;
+    let evidenceCommitted = false;
     try {
       scanVerdict = await scanEvidence({ bytes, contentType: file.type, sha256, byteSize: bytes.length });
     } catch (error) {
@@ -107,8 +107,7 @@ export async function POST(request: Request) {
         }, { sql: "changes() > 0", values: [] }),
         completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status = 'AVAILABLE')", values: [id, verificationCaseId, visitor.userId] } }),
       ]);
-      evidencePersisted = Boolean(inserted[0]?.meta.changes);
-      if (!evidencePersisted) {
+      if (!inserted[0]?.meta.changes) {
         await bucket.delete(storageKey);
         await releaseIdempotencyClaim(d1, idempotency);
         idempotency = null;
@@ -125,12 +124,13 @@ export async function POST(request: Request) {
         throw new SecurityError("EVIDENCE_UPLOAD_NOT_PERSISTED", 409);
       }
       if (!inserted[inserted.length - 1]?.meta.changes) throw new SecurityError("EVIDENCE_IDEMPOTENCY_CONFLICT", 409);
+      // Mark the object durable only after the domain row, audit/outbox
+      // evidence, and idempotency completion all report success. If any
+      // later write fails, the R2 object is otherwise an untracked orphan.
+      evidenceCommitted = true;
       idempotency = null;
     } catch (error) {
-      // Once the row is durable, preserve the object. Deleting it here would
-      // leave an AVAILABLE database record pointing at missing evidence when a
-      // later idempotency response/guard reports a race.
-      if (!evidencePersisted) await bucket.delete(storageKey);
+      if (!evidenceCommitted) await bucket.delete(storageKey);
       throw error;
     }
     return securityResponse(responseBody, 201, context.requestId);
