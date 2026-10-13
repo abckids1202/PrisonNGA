@@ -51,3 +51,11 @@ test("deployment preflight rejects placeholder D1 and R2 resource names", () => 
   assert.match(result.failures.join("\n"), /real database name/);
   assert.match(result.failures.join("\n"), /real bucket name/);
 });
+
+test("deployment preflight rejects credentials embedded in Worker vars", () => {
+  const result = evaluateDeploymentConfig(config({
+    vars: { SECUREVISIT_ENVIRONMENT: "staging", VIDEO_PROVIDER: "livekit", LIVEKIT_API_SECRET: "should-not-be-here" },
+  }), "staging", { NOTIFICATION_QUEUE_NAME: "securevisit-staging-notifications" });
+  assert.equal(result.ok, false);
+  assert.match(result.failures.join("\n"), /must not contain secret LIVEKIT_API_SECRET/);
+});
