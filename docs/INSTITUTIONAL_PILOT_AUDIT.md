@@ -1,19 +1,19 @@
 # SecureVisit Institutional Pilot Audit and Completion Plan
 
-Date: 2026-10-12
+Date: 2026-10-13
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest full-release-verified code commit: `1105393` (`ops: log waiting room command failures`).
+Latest verified code commit: `91431e7` (`feat: persist weekly visitation hours`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The release verifier now passes with 586 server test cases, 18 browser tests,
+The release verifier baseline now has 589 server test cases and 18 browser tests,
 fresh migration verification, a disposable backup/restore drill, typecheck,
 lint, production build, and a zero-vulnerability production dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The current release verification reports 586 passing server test cases plus 18
-browser tests on `1105393`; this is the authoritative repository evidence
+The current repository verification reports 589 passing server test cases plus 18
+browser tests on `91431e7`; this is the authoritative repository evidence
 record for the current baseline.
 
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the

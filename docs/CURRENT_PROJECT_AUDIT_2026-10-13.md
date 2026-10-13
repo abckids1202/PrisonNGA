@@ -14,16 +14,18 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `30da7ad` and verified:
+`npm run build`, `npm run test:e2e`, and `npm run test:quick` passed on commit `91431e7` and verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.
 - Disposable staging-fixture schema compatibility.
 - Local backup/restore drill with schema, foreign-key, credit-ledger, and audit-integrity checks.
 - TypeScript typecheck, ESLint, and production build.
-- 586 server test cases and 18 browser tests.
+- 589 server test cases and 18 browser tests.
 - Production dependency audit with 0 vulnerabilities.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
+- Versioned weekly operating hours with closed-day and weekday-specific validation
+  shared by visitor availability, rescheduling, and staff approval.
 
 `npm run audit:pilot` reports `readyForPilot: false`. Development currently
 waives visitor email, visitor SMS, staff federation, payments, LiveKit, and
