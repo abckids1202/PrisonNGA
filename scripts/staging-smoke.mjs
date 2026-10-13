@@ -76,6 +76,16 @@ try {
   check("liveness status", liveResponse.status === 200 && liveBody?.status === "ok", `HTTP ${liveResponse.status}`);
   check("content type hardening", header(liveResponse, "x-content-type-options") === "nosniff", header(liveResponse, "x-content-type-options") || "missing");
   check("referrer policy", Boolean(header(liveResponse, "referrer-policy")), header(liveResponse, "referrer-policy") || "missing");
+  if (parsedBaseUrl.protocol === "https:") {
+    const transportSecurity = header(liveResponse, "strict-transport-security");
+    check(
+      "strict transport security",
+      /max-age=\d+/.test(transportSecurity) && transportSecurity.includes("includesubdomains"),
+      transportSecurity || "missing",
+    );
+  } else {
+    skip("strict transport security", "HTTP smoke checks intentionally do not require HSTS");
+  }
 
   const permissionsPolicy = header(liveResponse, "permissions-policy");
   check("camera permission policy", permissionsPolicy.includes("camera=(self)"), permissionsPolicy || "missing");
