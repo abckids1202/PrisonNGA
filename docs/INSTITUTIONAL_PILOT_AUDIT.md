@@ -3,7 +3,7 @@
 Date: 2026-10-13
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `8626b83` (`feat: alarm on failed evidence cleanup`).
+Latest verified code commit: `f69c642` (`docs: update current release audit`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier baseline now has 592 server test cases and 19 browser tests,
