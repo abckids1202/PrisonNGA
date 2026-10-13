@@ -14,9 +14,10 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `d6ad7c2`; the follow-up manifest
-sanitizer test, staging-build assertion, and payment-provider timeout fix were
-verified through commit `12f891e`.
+`npm run verify:release` passed on commit `c7f096a`; the current release
+baseline includes the follow-up manifest sanitizer, provider timeout, OTP
+delivery race, terminal delivery-state, write-mismatch, finalization, and
+provider-error hardening changes.
 The release verifier verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
@@ -24,7 +25,7 @@ The release verifier verified:
 - Disposable staging-fixture schema compatibility.
 - Local backup/restore drill with schema, foreign-key, credit-ledger, and audit-integrity checks.
 - TypeScript typecheck, ESLint, and production build.
-- 592 server test cases and 19 browser tests.
+- 602 server test cases and 19 browser tests.
 - Production dependency audit with 0 vulnerabilities.
 - Deployment-manifest unit coverage verifies local adapters are replaced by
   deployment values, omitted values are cleared fail-closed, and forbidden
@@ -74,7 +75,7 @@ The release verifier verified:
   local `.env` merge cannot reintroduce development adapters into staging or
   production output; a valid staging manifest was proven to emit empty
   fail-closed legacy adapter keys rather than `console` or `in_app`.
-- Follow-up evidence-upload cleanup verification on commit `8626b83`: 592 server test cases passed; uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit, and failed storage cleanup creates a critical privacy alarm.
+- Follow-up evidence-upload cleanup verification remains covered: uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit, and failed storage cleanup creates a critical privacy alarm.
 - Versioned weekly operating hours with closed-day and weekday-specific validation
 - Facility pricing can be explicitly cleared to pause Visit Credit checkout
   shared by visitor availability, rescheduling, and staff approval.
