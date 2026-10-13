@@ -9,6 +9,8 @@ test("delivery status webhook is signed, replay-safe, and updates both notificat
   assert.match(route, /verifyPaymentWebhookSignature/);
   assert.match(route, /notification_provider_events/);
   assert.match(route, /INSERT OR IGNORE/);
+  assert.match(route, /NOTIFICATION_STATUS_REPLAY_CONFLICT/);
+  assert.match(route, /existing\.payload !== snapshot/);
   assert.match(route, /provider_reference/);
   assert.match(route, /nda\.provider = \?/);
   assert.match(route, /UPDATE notifications SET status = CASE/);

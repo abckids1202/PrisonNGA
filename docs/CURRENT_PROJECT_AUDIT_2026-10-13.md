@@ -58,6 +58,9 @@ The release verifier verified:
 - Provider delivery state is now immutable after a terminal `DELIVERED` or
   `FAILED` result, so late accepted/failure callbacks cannot overwrite the
   authoritative terminal provider evidence.
+- Notification callbacks now distinguish exact idempotent retries from signed
+  event-ID replay conflicts; conflicting provider reference, status, or
+  normalized payload is rejected instead of silently acknowledged.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,

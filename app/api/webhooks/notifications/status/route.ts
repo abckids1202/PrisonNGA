@@ -56,7 +56,11 @@ export async function POST(request: Request) {
     const snapshot = JSON.stringify(payload);
     const inserted = await d1.prepare(`INSERT OR IGNORE INTO notification_provider_events (id, provider, event_key, provider_reference, status, payload, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), payload.provider, payload.eventId, payload.providerReference, payload.status, snapshot, new Date().toISOString()).run();
-    if (!inserted.meta.changes) return securityResponse({ accepted: true, idempotent: true, eventId: payload.eventId }, 200, context.requestId);
+    if (!inserted.meta.changes) {
+      const existing = await d1.prepare("SELECT provider_reference, status, payload FROM notification_provider_events WHERE provider = ? AND event_key = ?").bind(payload.provider, payload.eventId).first<{ provider_reference: string; status: string; payload: string }>();
+      if (!existing || existing.provider_reference !== payload.providerReference || existing.status !== payload.status || existing.payload !== snapshot) throw new SecurityError("NOTIFICATION_STATUS_REPLAY_CONFLICT", 409);
+      return securityResponse({ accepted: true, idempotent: true, eventId: payload.eventId }, 200, context.requestId);
+    }
     const nextStatus = notificationStatus(payload.status);
     const now = new Date().toISOString();
     const notification = await d1.prepare(`SELECT nda.id, nda.notification_id, nda.status, oe.facility_id, oe.event_type
