@@ -14,7 +14,7 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `01edc8d` and verified:
+`npm run verify:release` passed on commit `7b85bda` and verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.
@@ -39,6 +39,10 @@ polish items.
 - Deployment preflight rejects manifests containing credentials or signing
   material such as LiveKit, payment, OTP, webhook, federation, or security
   secrets in Worker `vars`.
+- The build now runs an explicit post-build manifest sanitizer so Wrangler's
+  local `.env` merge cannot reintroduce development adapters into staging or
+  production output; a valid staging manifest was proven to emit empty
+  fail-closed legacy adapter keys rather than `console` or `in_app`.
 - Follow-up evidence-upload cleanup verification on commit `8626b83`: 592 server test cases passed; uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit, and failed storage cleanup creates a critical privacy alarm.
 - Versioned weekly operating hours with closed-day and weekday-specific validation
 - Facility pricing can be explicitly cleared to pause Visit Credit checkout
