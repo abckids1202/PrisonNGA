@@ -5,7 +5,7 @@ export type EditableVisitPolicy = {
   maxAdvanceDays: number;
   dailyStartTime: string;
   dailyEndTime: string;
-  creditPriceMinor: number;
+  creditPriceMinor: number | null;
   creditCurrency: string;
   weeklyHoursJson: string | null;
 };
@@ -13,9 +13,11 @@ export type EditableVisitPolicy = {
 export function parseEditableVisitPolicy(value: unknown): EditableVisitPolicy | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const body = value as Record<string, unknown>;
-  const fields = [body.minDurationMinutes, body.maxDurationMinutes, body.minAdvanceMinutes, body.maxAdvanceDays, body.creditPriceMinor];
-  if (!fields.every((field) => typeof field === "number" && Number.isInteger(field))) return null;
-  const [minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays, creditPriceMinor] = fields as number[];
+  const requiredIntegerFields = [body.minDurationMinutes, body.maxDurationMinutes, body.minAdvanceMinutes, body.maxAdvanceDays];
+  if (!requiredIntegerFields.every((field) => typeof field === "number" && Number.isInteger(field))) return null;
+  if (body.creditPriceMinor !== null && !(typeof body.creditPriceMinor === "number" && Number.isInteger(body.creditPriceMinor))) return null;
+  const [minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays] = requiredIntegerFields as number[];
+  const creditPriceMinor = body.creditPriceMinor as number | null;
   const creditCurrency = typeof body.creditCurrency === "string" ? body.creditCurrency.trim().toUpperCase() : "";
   const dailyStartTime = typeof body.dailyStartTime === "string" ? body.dailyStartTime : "";
   const dailyEndTime = typeof body.dailyEndTime === "string" ? body.dailyEndTime : "";
@@ -51,7 +53,7 @@ export function parseEditableVisitPolicy(value: unknown): EditableVisitPolicy | 
     minAdvanceMinutes < 0 || minAdvanceMinutes > 10080 ||
     maxAdvanceDays < 1 || maxAdvanceDays > 365 ||
     (weeklyHoursJson === null && (start === null || end === null || start >= end)) ||
-    creditPriceMinor < 1 || creditPriceMinor > 1_000_000_000 || creditCurrency !== "IDR"
+    (creditPriceMinor !== null && (creditPriceMinor < 1 || creditPriceMinor > 1_000_000_000)) || creditCurrency !== "IDR"
   ) return null;
   return { minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays, dailyStartTime, dailyEndTime, creditPriceMinor, creditCurrency, weeklyHoursJson };
 }

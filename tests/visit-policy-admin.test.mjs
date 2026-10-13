@@ -32,6 +32,7 @@ test("visit policy admin rejects malformed booking horizon and operating hours",
 });
 
 test("visit policy admin rejects unapproved or invalid credit pricing", () => {
+  assert.deepEqual(parseEditableVisitPolicy({ ...valid, creditPriceMinor: null }), { ...valid, creditPriceMinor: null, weeklyHoursJson: null });
   assert.equal(parseEditableVisitPolicy({ ...valid, creditPriceMinor: 0 }), null);
   assert.equal(parseEditableVisitPolicy({ ...valid, creditPriceMinor: 1.5 }), null);
   assert.equal(parseEditableVisitPolicy({ ...valid, creditCurrency: "USD" }), null);
