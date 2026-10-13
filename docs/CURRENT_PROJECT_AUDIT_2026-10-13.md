@@ -16,7 +16,7 @@ polish items.
 
 `npm run verify:release` passed on commit `d6ad7c2`; the follow-up manifest
 sanitizer test, staging-build assertion, and payment-provider timeout fix were
-verified through commit `1f10ac6`.
+verified through commit `341d1e9`.
 The release verifier verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
@@ -35,6 +35,9 @@ The release verifier verified:
 - The visitor-auth delivery webhook adapter applies the same deadline through
   bounded response parsing, so OTP delivery callbacks cannot hang after headers
   arrive.
+- OTP sign-in and phone-verification flows now persist provider references with
+  an explicit write check and reconcile callbacks that arrive before reference
+  persistence, preventing lost delivery receipts at the provider race boundary.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,
