@@ -350,6 +350,7 @@ export async function POST(request: Request) {
     roomCleanup = null;
     return finish({ appointmentId: body.appointmentId, sessionId: newSession?.id || current.session_id || null, state: nextState, version: nextVersion, correlationId });
   } catch (error) {
+    operationalLog("error", { event: "WAITING_ROOM_COMMAND_FAILED", requestId: context.requestId, correlationId: idempotency?.key || null, error });
     if (roomCleanup) {
       try { await roomCleanup.provider.endRoom(roomCleanup.name); }
       catch (error) { operationalLog("error", { event: "LIVEKIT_ORPHAN_ROOM_CLEANUP_FAILED", requestId: context.requestId, error }); }
