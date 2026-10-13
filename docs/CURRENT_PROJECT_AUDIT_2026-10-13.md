@@ -14,7 +14,7 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `8cd5dc3` and verified:
+`npm run verify:release` passed on commit `a48864d` and verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.
@@ -31,6 +31,11 @@ polish items.
 - Deployment preflight now fails closed when staging or production manifests
   contain the default Site Creator D1/R2 resource names instead of explicit
   institutional database and evidence-bucket names.
+- Generated staging/production Worker manifests now carry required non-secret
+  runtime configuration explicitly, while signing material remains outside
+  the manifest in Cloudflare secret bindings; missing values are represented
+  as empty and rejected before deployment rather than inherited silently from
+  local development configuration.
 - Follow-up evidence-upload cleanup verification on commit `8626b83`: 592 server test cases passed; uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit, and failed storage cleanup creates a critical privacy alarm.
 - Versioned weekly operating hours with closed-day and weekday-specific validation
 - Facility pricing can be explicitly cleared to pause Visit Credit checkout
