@@ -10,6 +10,8 @@ test("Waiting Room window selector is controlled and filters persisted appointme
   assert.match(source, /end >= now && start <= now \+ 2 \* 60 \* 60 \* 1000/);
   assert.match(source, /windowFilter === "all_approved"/);
   assert.match(source, /new Intl\.DateTimeFormat\("en-CA", \{ timeZone: record\.timezone \|\| "Asia\/Jakarta"/);
+  assert.match(source, /formatDateValue\(new Date\(\)\.toISOString\(\), \{ hour: "2-digit", minute: "2-digit" \}, timeZone, "Time unavailable"\)/);
+  assert.match(source, /WaitingRoomPage\(\{ facilityState, timeZone = "Asia\/Jakarta", onNotify \}/);
 });
 
 test("Waiting Room preserves explicit staff-review state across refreshes", async () => {

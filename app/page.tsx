@@ -218,7 +218,7 @@ export default function ControlApp() {
 
   function renderOperationsPage() {
     if (page === "Appointments") return <AppointmentsPage appointments={appointments} onSelect={setSelectedAppointment} onNotify={notify} />;
-    if (page === "Waiting Room") return <WaitingRoomPage facilityState={facilityState} onNotify={notify} />;
+    if (page === "Waiting Room") return <WaitingRoomPage facilityState={facilityState} timeZone={facilityTimezone} onNotify={notify} />;
     if (page === "Live Sessions") return <LiveSessionsPage timeZone={facilityTimezone} onNotify={notify} />;
     if (page === "Resources") return <ResourcesPage initialResourceId={resourceToFocus} timeZone={facilityTimezone} onNotify={notify} onReassign={reassignAppointment} />;
     if (page === "Incidents") return <IncidentsPage timeZone={facilityTimezone} onNotify={notify} />;

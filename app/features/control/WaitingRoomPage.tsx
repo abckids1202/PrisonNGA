@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Avatar, Button, PageHeader, Status } from "../../components/ControlPrimitives";
 import { mapBackendAppointment, type Appointment, type CheckState, type ReadinessCheck, type WaitingRecord, type WaitingState } from "./model";
 import { formatDateValue } from "@/lib/date-format";
@@ -121,7 +121,7 @@ function hydrateWaitingRecord(base: WaitingRecord | null, row?: WaitingRoomApiRo
   return { ...base, waitingState, room: row.assigned_room_name || "Unassigned", kiosk: row.assigned_kiosk_name || "Unassigned", visitorPresence: row.visitor_presence === "present" ? "present" : "absent", prisonerPresence: row.prisoner_presence === "present" ? "present" : "waiting", checks, verification: states.get("identity") || "pending", blocker: row.staff_notes || checks.find((check) => check.state === "failed" || check.state === "warning")?.detail, lastUpdated: row.last_checked_at ? `Checked ${formatDateValue(row.last_checked_at, { hour: "2-digit", minute: "2-digit" }, base.timezone, "time unavailable")}` : "Not checked", backendVersion: Number(row.version || 1) };
 }
 
-export default function WaitingRoomPage({ facilityState, onNotify }: { facilityState: string; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
+export default function WaitingRoomPage({ facilityState, timeZone = "Asia/Jakarta", onNotify }: { facilityState: string; timeZone?: string | null; onNotify: (message: string, tone?: Notice["tone"]) => void }) {
   const [lane, setLane] = useState("all");
   const [query, setQuery] = useState("");
   const [windowFilter, setWindowFilter] = useState<"next_2_hours" | "today" | "all_approved">("next_2_hours");
@@ -131,22 +131,22 @@ export default function WaitingRoomPage({ facilityState, onNotify }: { facilityS
   const [windowNow, setWindowNow] = useState(0);
   const [lastSync, setLastSync] = useState("not synced");
   const [syncError, setSyncError] = useState("");
-  async function refreshWaitingRoom() {
+  const refreshWaitingRoom = useCallback(async () => {
     const response = await fetch("/api/control/waiting-room", { headers: { accept: "application/json" }, credentials: "include" });
     if (!response.ok) throw new Error("Waiting Room data could not be refreshed from the staff API.");
     const body = await response.json() as { visits?: WaitingRoomApiRow[] };
     setServerVisits(body.visits || []);
     setWindowNow(Date.now());
-    setLastSync(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    setLastSync(formatDateValue(new Date().toISOString(), { hour: "2-digit", minute: "2-digit" }, timeZone, "Time unavailable"));
     setSyncError("");
-  }
+  }, [timeZone]);
   useEffect(() => {
     let active = true;
     const run = () => refreshWaitingRoom().catch((error) => setSyncError(error instanceof Error ? error.message : "Waiting Room data could not be refreshed."));
     run();
     const timer = window.setInterval(() => { if (active) { setWindowNow(Date.now()); run(); } }, 15000);
     return () => { active = false; window.clearInterval(timer); };
-  }, []);
+  }, [refreshWaitingRoom]);
   const baseRecords = serverVisits.map((visit) => {
     const appointment = mapBackendAppointment({
       id: visit.id,
