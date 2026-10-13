@@ -13,6 +13,9 @@ test("Administration integrations tab reads protected readiness state", async ()
   assert.match(readinessSource, /Active adapters/);
   assert.match(readinessSource, /releaseGates/);
   assert.match(readinessSource, /Institutional launch gates/);
+  assert.match(readinessSource, /LOCAL ONLY/);
+  assert.match(readinessSource, /LOCAL DEVELOPMENT ONLY/);
+  assert.match(readinessSource, /pilot readiness is not being evaluated here/);
   assert.match(readinessSource, /Launch remains blocked/);
   assert.match(complianceSource, /createReconciliationIncident/);
   assert.match(complianceSource, /security-event-incident-/);
