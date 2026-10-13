@@ -65,12 +65,14 @@ export async function POST(request: Request) {
     const challenge = await d1.prepare(`SELECT id, challenge_id, status FROM auth_challenge_delivery_attempts WHERE provider_reference = ? AND provider = ? ORDER BY created_at DESC LIMIT 1`).bind(payload.providerReference, payload.provider).first<{ id: string; challenge_id: string; status: string }>();
     if (!notification && !challenge) return securityResponse({ accepted: true, matched: false, eventId: payload.eventId }, 202, context.requestId);
     const statements: D1PreparedStatement[] = [];
+    let challengeAttemptStatementIndex: number | null = null;
     if (notification) {
       statements.push(d1.prepare(`UPDATE notification_delivery_attempts SET provider_status = ?, provider_error = ?, status_updated_at = ?, status = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN status WHEN ? = 'DELIVERED' THEN 'DELIVERED' WHEN ? = 'FAILED' THEN 'FAILED' ELSE status END, error_message = CASE WHEN ? = 'FAILED' THEN COALESCE(?, error_message) ELSE error_message END, finished_at = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN finished_at WHEN ? IN ('DELIVERED', 'FAILED') THEN ? ELSE finished_at END WHERE id = ?`).bind(payload.status, payload.errorMessage || payload.errorCode || null, now, nextStatus, nextStatus, nextStatus, payload.errorMessage || payload.errorCode || null, nextStatus, now, notification.id));
       if (nextStatus) statements.push(d1.prepare(`UPDATE notifications SET status = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN status ELSE ? END, delivered_at = CASE WHEN ? = 'DELIVERED' AND status NOT IN ('DELIVERED', 'FAILED') THEN ? ELSE delivered_at END, last_error = CASE WHEN ? = 'FAILED' AND status NOT IN ('DELIVERED', 'FAILED') THEN COALESCE(?, last_error) ELSE last_error END WHERE id = ? AND channel <> 'IN_APP'`).bind(nextStatus, nextStatus, now, nextStatus, payload.errorMessage || payload.errorCode || null, notification.notification_id));
       if (notification.facility_id) statements.push(...auditAndOutboxStatements(d1, { actorUserId: "system:notification-webhook", actorRole: "SYSTEM", facilityId: notification.facility_id, actionType: "NOTIFICATION_DELIVERY_STATUS_UPDATED", entityType: "notification_delivery_attempt", entityId: notification.id, reason: `Provider reported ${payload.status}.`, oldValues: { status: notification.status }, newValues: { providerStatus: payload.status, status: nextStatus || notification.status, providerReference: payload.providerReference }, requestId: context.requestId, correlationId: payload.eventId, eventType: "NOTIFICATION_DELIVERY_STATUS_UPDATED", payload: { provider: payload.provider, providerReference: payload.providerReference, status: payload.status, eventType: notification.event_type } }));
     }
     if (challenge) {
+      challengeAttemptStatementIndex = statements.length;
       statements.push(d1.prepare(`UPDATE auth_challenge_delivery_attempts SET
         provider_status = ?, provider_error = ?, status_updated_at = ?,
         status = CASE
@@ -89,6 +91,7 @@ export async function POST(request: Request) {
     }
     const results = await d1.batch(statements);
     if (notification && !results[0]?.meta.changes) throw new SecurityError("NOTIFICATION_STATUS_NOT_APPLIED", 503);
+    if (challenge && challengeAttemptStatementIndex !== null && !results[challengeAttemptStatementIndex]?.meta.changes) throw new SecurityError("AUTH_CHALLENGE_DELIVERY_STATUS_NOT_APPLIED", 503);
     operationalLog("info", { event: "NOTIFICATION_PROVIDER_STATUS_APPLIED", provider: payload.provider, providerReference: payload.providerReference, status: payload.status, correlationId: payload.eventId, requestId: context.requestId });
     return securityResponse({ accepted: true, matched: true, status: payload.status, eventId: payload.eventId }, 200, context.requestId);
   } catch (error) {

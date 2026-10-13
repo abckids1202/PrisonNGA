@@ -45,6 +45,9 @@ The release verifier verified:
   attempt to terminal `DELIVERED` state, including early callbacks reconciled
   after provider-reference persistence; terminal `DELIVERED` and `FAILED`
   states are preserved against later provider events.
+- The signed notification-status webhook now fails closed when an OTP delivery
+  update reports no persisted row change, instead of acknowledging a callback
+  without proving the challenge delivery record was updated.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,
