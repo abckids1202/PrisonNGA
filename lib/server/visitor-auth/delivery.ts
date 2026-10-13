@@ -28,20 +28,21 @@ export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS";
   const signature = Array.from(digest).map((byte) => byte.toString(16).padStart(2, "0")).join("");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
-  let response: Response;
   try {
-    response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": `visitor-auth:${input.challengeId}`, "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": `visitor-auth:${input.challengeId}`, "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}` }, body: payload, signal: controller.signal });
+    if (!response.ok) throw new Error(`VISITOR_AUTH_DELIVERY_FAILED_${response.status}`);
+    let responseBody: { providerReference?: unknown; id?: unknown; sid?: unknown };
+    try {
+      // Keep the timeout active through bounded body consumption. A delivery
+      // provider that sends headers and then stalls must fail closed.
+      responseBody = JSON.parse(await readBoundedResponseText(response)) as { providerReference?: unknown; id?: unknown; sid?: unknown };
+    } catch {
+      throw new Error("VISITOR_AUTH_DELIVERY_INVALID_RESPONSE");
+    }
+    const providerReference = typeof responseBody.providerReference === "string" ? responseBody.providerReference.trim() : typeof responseBody.id === "string" ? responseBody.id.trim() : typeof responseBody.sid === "string" ? responseBody.sid.trim() : "";
+    if (!providerReference) throw new Error("VISITOR_AUTH_DELIVERY_INVALID_RESPONSE");
+    return { providerReference };
   } finally {
     clearTimeout(timeout);
   }
-  if (!response.ok) throw new Error(`VISITOR_AUTH_DELIVERY_FAILED_${response.status}`);
-  let responseBody: { providerReference?: unknown; id?: unknown; sid?: unknown };
-  try {
-    responseBody = JSON.parse(await readBoundedResponseText(response)) as { providerReference?: unknown; id?: unknown; sid?: unknown };
-  } catch {
-    throw new Error("VISITOR_AUTH_DELIVERY_INVALID_RESPONSE");
-  }
-  const providerReference = typeof responseBody.providerReference === "string" ? responseBody.providerReference.trim() : typeof responseBody.id === "string" ? responseBody.id.trim() : typeof responseBody.sid === "string" ? responseBody.sid.trim() : "";
-  if (!providerReference) throw new Error("VISITOR_AUTH_DELIVERY_INVALID_RESPONSE");
-  return { providerReference };
 }

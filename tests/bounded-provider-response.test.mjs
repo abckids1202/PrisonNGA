@@ -22,5 +22,7 @@ test("provider adapters use bounded response parsing", async () => {
   assert.match(messaging, /EMAIL_PROVIDER_INVALID_RESPONSE/);
   assert.match(messaging, /SMS_PROVIDER_INVALID_RESPONSE/);
   assert.match(visitorAuth, /VISITOR_AUTH_DELIVERY_INVALID_RESPONSE/);
+  assert.match(visitorAuth, /responseBody = JSON\.parse\(await readBoundedResponseText\(response\)\)/);
+  assert.match(visitorAuth, /responseBody = JSON\.parse\(await readBoundedResponseText\(response\)[\s\S]*finally \{\s*clearTimeout\(timeout\)/);
   assert.match(notifications, /NOTIFICATION_DELIVERY_INVALID_RESPONSE/);
 });
