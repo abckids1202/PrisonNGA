@@ -567,6 +567,16 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     });
     expect(providerStart.status(), await providerStart.text()).toBe(409);
     await expect(providerStart.json()).resolves.toMatchObject({ error: "VISIT_NOT_STARTED" });
+
+    // A failed provider start must not leak a join action to the visitor after
+    // the failed request or a later refresh. The appointment remains waiting
+    // until a real session is persisted.
+    await page.goto(`/visitor/visits/${encodeURIComponent(approvedAppointmentId)}`);
+    await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Join your visit/ })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Join your visit/ })).toHaveCount(0);
   } finally {
     await staff.close();
   }
