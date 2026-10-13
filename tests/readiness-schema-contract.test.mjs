@@ -34,4 +34,9 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /payment: paymentProvider\?\.name \|\| null/);
   assert.match(source, /video: videoConfig\.provider/);
   assert.match(source, /evidenceScanner: evidenceScanProvider \|\| null/);
+  assert.match(source, /async function readConfiguredNotificationDelivery/);
+  assert.match(source, /readConfiguredNotificationDelivery\("EMAIL"\)/);
+  assert.match(source, /readConfiguredNotificationDelivery\("SMS"\)/);
+  assert.match(source, /notificationsEmail: notificationEmailDelivery/);
+  assert.match(source, /notificationsSms: notificationSmsDelivery/);
 });

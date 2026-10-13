@@ -49,6 +49,17 @@ const configurationKeys = [
   "SECUREVISIT_RELEASE_APPROVAL", "SECUREVISIT_SECURITY_REVIEW", "SECUREVISIT_PRIVACY_REVIEW", "SECUREVISIT_TARIFF_APPROVAL", "SECUREVISIT_REFUND_POLICY_APPROVAL", "SECUREVISIT_BACKUP_RESTORE_DRILL", "SECUREVISIT_WAF", "SECUREVISIT_MONITORING", "SECUREVISIT_OUTAGE_RUNBOOK", "SECUREVISIT_IDENTITY_STAGING", "SECUREVISIT_PAYMENT_STAGING", "SECUREVISIT_NOTIFICATION_STAGING", "SECUREVISIT_EVIDENCE_STAGING", "SECUREVISIT_KIOSK_STAGING", "SECUREVISIT_LIVEKIT_STAGING", "SECUREVISIT_RELEASE_EVIDENCE_ID", "SECUREVISIT_RELEASE_EVIDENCE_EXPIRES_AT", "SECUREVISIT_RELEASE_EVIDENCE_MANIFEST", "NOTIFICATION_QUEUE_NAME",
 ];
 
+async function readConfiguredNotificationDelivery(channel: "EMAIL" | "SMS") {
+  try {
+    return await getNotificationDelivery(channel);
+  } catch {
+    // Readiness is a diagnostic endpoint. A missing or invalid provider must
+    // be represented by the providerConfiguration check instead of collapsing
+    // the whole response into the generic database/schema failure envelope.
+    return null;
+  }
+}
+
 export async function GET() {
   const context = await getRequestContext();
   const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT") || "invalid";
@@ -66,11 +77,11 @@ export async function GET() {
       for (const column of columns) if (!available.has(column)) missingColumns.push(`${table}.${column}`);
     }
     const schemaReady = missingTables.length === 0 && missingColumns.length === 0;
-    const [paymentProvider, videoConfig, , , evidenceBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, , visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
+    const [paymentProvider, videoConfig, notificationEmailDelivery, notificationSmsDelivery, evidenceBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, , visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
       getPaymentProvider(),
       getVideoConfig(),
-      getNotificationDelivery("EMAIL"),
-      getNotificationDelivery("SMS"),
+      readConfiguredNotificationDelivery("EMAIL"),
+      readConfiguredNotificationDelivery("SMS"),
       getEvidenceBucket(),
       getRuntimeValue("EVIDENCE_STORAGE_PROVIDER"),
       getRuntimeValue("NOTIFICATION_WEBHOOK_URL"),
@@ -159,8 +170,8 @@ export async function GET() {
       visitorEmail: configuredVisitorEmailDelivery || null,
       visitorSms: configuredVisitorSmsDelivery || null,
       visitorAuthChannels: visitorAuthChannels.valid ? visitorAuthChannels.channels : null,
-      notificationsEmail: configuredNotificationEmailDelivery || null,
-      notificationsSms: configuredNotificationSmsDelivery || null,
+      notificationsEmail: notificationEmailDelivery,
+      notificationsSms: notificationSmsDelivery,
       evidenceScanner: evidenceScanProvider || null,
       staffFederation: String(staffAuthProvider || "").toLowerCase() || null,
     };
