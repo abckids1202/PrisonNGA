@@ -45,7 +45,7 @@ engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
 institutional gates.
 
-The current baseline also includes commit `862f24b`, which bounds
+The current baseline also includes commit `2297e3d`, which bounds
 authentication-session purging to 250 rows per scheduled invocation, and the
 backup-drill fix that gives each Wrangler config a unique project-root path.
 The full verifier now proves that an interrupted or repeated local backup run
@@ -67,6 +67,9 @@ batches instead of constructing one unbounded batch.
 Notification outbox recovery now resets at most 25 stale processing claims per
 worker invocation, matching the drain batch size and preventing a large stale
 queue from turning one scheduled run into an unbounded write.
+Outbound Resend and Twilio delivery deadlines now remain active while provider
+response bodies are consumed, preventing a response that stalls after headers
+from bypassing the eight-second request timeout.
 
 ## Pilot gate status
 
