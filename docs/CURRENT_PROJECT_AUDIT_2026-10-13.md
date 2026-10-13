@@ -14,7 +14,7 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `a48864d` and verified:
+`npm run verify:release` passed on commit `01edc8d` and verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.
@@ -36,6 +36,9 @@ polish items.
   the manifest in Cloudflare secret bindings; missing values are represented
   as empty and rejected before deployment rather than inherited silently from
   local development configuration.
+- Deployment preflight rejects manifests containing credentials or signing
+  material such as LiveKit, payment, OTP, webhook, federation, or security
+  secrets in Worker `vars`.
 - Follow-up evidence-upload cleanup verification on commit `8626b83`: 592 server test cases passed; uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit, and failed storage cleanup creates a critical privacy alarm.
 - Versioned weekly operating hours with closed-day and weekday-specific validation
 - Facility pricing can be explicitly cleared to pause Visit Credit checkout
