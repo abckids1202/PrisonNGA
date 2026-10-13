@@ -88,3 +88,19 @@ test("early failed OTP callbacks preserve a bounded provider error and expire th
   assert.deepEqual({ status: attempt.status, provider_status: attempt.provider_status, provider_error: attempt.provider_error }, { status: "FAILED", provider_status: "UNDELIVERED", provider_error: "Destination unavailable" });
   assert.ok(Date.parse(d1.sqlite.prepare("SELECT expires_at FROM auth_challenges WHERE id = 'challenge-3'").get().expires_at) <= Date.now());
 });
+
+test("late accepted callbacks cannot overwrite a terminal delivered provider state", async () => {
+  const d1 = new D1();
+  d1.sqlite.exec(`
+    INSERT INTO notification_provider_events VALUES ('provider-event-4', 'twilio', 'evt-4', 'sms-4', 'SENT', '{}', '2026-10-11T10:00:00.000Z');
+    INSERT INTO auth_challenges VALUES ('challenge-4', '2099-10-11T10:10:00.000Z', NULL);
+    INSERT INTO auth_challenge_delivery_attempts (id, challenge_id, provider, provider_reference, status, provider_status, provider_error, completed_at, created_at)
+      VALUES ('challenge-attempt-4', 'challenge-4', 'twilio', 'sms-4', 'DELIVERED', 'DELIVERED', NULL, '2026-10-11T10:01:00.000Z', '2026-10-11T09:59:30.000Z');
+  `);
+
+  assert.equal(await reconcileStoredNotificationProviderEvent(d1, { provider: "twilio", providerReference: "sms-4", requestId: "request-4" }), true);
+  assert.deepEqual(
+    { ...d1.sqlite.prepare("SELECT status, provider_status, provider_error FROM auth_challenge_delivery_attempts WHERE id = 'challenge-attempt-4'").get() },
+    { status: "DELIVERED", provider_status: "DELIVERED", provider_error: null },
+  );
+});

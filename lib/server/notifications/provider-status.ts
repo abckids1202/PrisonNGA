@@ -60,7 +60,9 @@ export async function reconcileStoredNotificationProviderEvent(
   const statements: D1PreparedStatement[] = [];
   if (notification) {
     statements.push(d1.prepare(`UPDATE notification_delivery_attempts
-      SET provider_status = ?, provider_error = ?, status_updated_at = ?,
+      SET provider_status = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN provider_status ELSE ? END,
+        provider_error = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN provider_error ELSE ? END,
+        status_updated_at = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN status_updated_at ELSE ? END,
         status = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN status
           WHEN ? = 'DELIVERED' THEN 'DELIVERED'
           WHEN ? = 'FAILED' THEN 'FAILED' ELSE status END,
@@ -92,7 +94,9 @@ export async function reconcileStoredNotificationProviderEvent(
   }
   if (challenge) {
     statements.push(d1.prepare(`UPDATE auth_challenge_delivery_attempts
-      SET provider_status = ?, provider_error = ?, status_updated_at = ?,
+      SET provider_status = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN provider_status ELSE ? END,
+        provider_error = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN provider_error ELSE ? END,
+        status_updated_at = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN status_updated_at ELSE ? END,
         status = CASE
           WHEN status IN ('DELIVERED', 'FAILED') THEN status
           WHEN ? IN ('DELIVERED', 'FAILED') THEN ?

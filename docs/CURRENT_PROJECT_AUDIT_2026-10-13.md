@@ -55,6 +55,9 @@ The release verifier verified:
 - Early failed provider callbacks now preserve a bounded provider error on the
   delivery attempt while expiring the affected challenge, improving recovery
   diagnosis without storing unbounded callback data.
+- Provider delivery state is now immutable after a terminal `DELIVERED` or
+  `FAILED` result, so late accepted/failure callbacks cannot overwrite the
+  authoritative terminal provider evidence.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,
