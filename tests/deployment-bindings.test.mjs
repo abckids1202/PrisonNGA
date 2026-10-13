@@ -11,6 +11,14 @@ test("deployment build reads explicit remote D1 and R2 binding configuration", a
   assert.match(source, /binding: r2 \|\| "EVIDENCE_BUCKET"/);
   assert.match(source, /A non-development build must never inherit adapter or resource values/);
   assert.match(source, /const deploymentEnvironmentValue = \(key: string\)/);
+  assert.match(source, /const runtimeConfigKeys = \[/);
+  assert.match(source, /"PUBLIC_APP_URL"/);
+  assert.match(source, /"NOTIFICATION_QUEUE_NAME"/);
+  assert.match(source, /"EVIDENCE_SCAN_PROVIDER"/);
+  assert.match(source, /"STAFF_OIDC_ISSUER"/);
+  assert.match(source, /const nonSecretDeploymentKeys = \[/);
+  assert.match(source, /local adapters cannot be[\s\S]*?merged into staging[\s\S]*?production/);
+  assert.match(source, /signing material remain Cloudflare secret bindings/);
 });
 
 test("package scripts expose environment-specific dry-run gates", async () => {

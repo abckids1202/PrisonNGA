@@ -39,6 +39,76 @@ const localOnlyProviderSecrets = new Set([
   "PAYMENT_WEBHOOK_SECRET",
 ]);
 
+// These values are required by the Worker at runtime but are not credentials.
+// Keep them in the generated vars so a staging/production deployment uses the
+// same explicit configuration that passed environment validation. Secrets and
+// signing material remain Cloudflare secret bindings and are deliberately not
+// copied into the manifest.
+const runtimeConfigKeys = [
+  "PUBLIC_APP_URL",
+  "NOTIFICATION_QUEUE_NAME",
+  "VISITOR_EMAIL_DELIVERY",
+  "VISITOR_SMS_DELIVERY",
+  "VISITOR_AUTH_WEBHOOK_URL",
+  "VISITOR_EMAIL_FROM",
+  "VISITOR_SMS_TWILIO_ACCOUNT_SID",
+  "VISITOR_SMS_TWILIO_FROM",
+  "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID",
+  "EVIDENCE_RETENTION_DAYS",
+  "EVIDENCE_SCAN_PROVIDER",
+  "EVIDENCE_SCAN_WEBHOOK_URL",
+  "PAYMENT_CHECKOUT_URL",
+  "PAYMENT_REFUND_URL",
+  "XENDIT_API_BASE_URL",
+  "NOTIFICATION_DELIVERY",
+  "NOTIFICATION_EMAIL_DELIVERY",
+  "NOTIFICATION_SMS_DELIVERY",
+  "NOTIFICATION_WEBHOOK_URL",
+  "STAFF_AUTH_PROVIDER",
+  "STAFF_OIDC_ISSUER",
+  "STAFF_OIDC_CLIENT_ID",
+  "STAFF_OIDC_REDIRECT_URI",
+  "STAFF_OIDC_EXPECTED_AUDIENCE",
+  "STAFF_OIDC_MFA_ACR",
+  "STAFF_OIDC_MFA_AMR",
+  "STAFF_SAML_ENTITY_ID",
+  "STAFF_SAML_METADATA_URL",
+  "STAFF_SAML_ENTRY_POINT",
+  "STAFF_SAML_CALLBACK_URI",
+  "STAFF_SAML_MFA_ACR",
+  "SECUREVISIT_RELEASE_APPROVAL",
+  "SECUREVISIT_SECURITY_REVIEW",
+  "SECUREVISIT_PRIVACY_REVIEW",
+  "SECUREVISIT_TARIFF_APPROVAL",
+  "SECUREVISIT_REFUND_POLICY_APPROVAL",
+  "SECUREVISIT_BACKUP_RESTORE_DRILL",
+  "SECUREVISIT_WAF",
+  "SECUREVISIT_MONITORING",
+  "SECUREVISIT_OUTAGE_RUNBOOK",
+  "SECUREVISIT_IDENTITY_STAGING",
+  "SECUREVISIT_PAYMENT_STAGING",
+  "SECUREVISIT_NOTIFICATION_STAGING",
+  "SECUREVISIT_EVIDENCE_STAGING",
+  "SECUREVISIT_KIOSK_STAGING",
+  "SECUREVISIT_LIVEKIT_STAGING",
+  "SECUREVISIT_RELEASE_EVIDENCE_ID",
+  "SECUREVISIT_RELEASE_EVIDENCE_EXPIRES_AT",
+  "SECUREVISIT_RELEASE_EVIDENCE_MANIFEST",
+];
+const nonSecretDeploymentKeys = [
+  "SECUREVISIT_ENVIRONMENT",
+  "VIDEO_PROVIDER",
+  "LIVEKIT_URL",
+  "VISITOR_AUTH_CHANNELS",
+  "SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL",
+  "VISITOR_AUTH_DELIVERY",
+  "PAYMENT_PROVIDER",
+  "VISIT_CREDIT_PRICE_MINOR",
+  "EVIDENCE_STORAGE_PROVIDER",
+  "SECUREVISIT_E2E_ISOLATED",
+  ...runtimeConfigKeys,
+];
+
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const environmentVars: Record<string, string> = {};
@@ -65,6 +135,7 @@ for (const key of [
   "VISIT_CREDIT_PRICE_MINOR",
   "EVIDENCE_STORAGE_PROVIDER",
   "SECUREVISIT_E2E_ISOLATED",
+  ...runtimeConfigKeys,
 ]) {
   // Provider credentials may be convenient for a local Worker, but they must
   // never be copied from a developer env file into a staging/production
@@ -72,6 +143,14 @@ for (const key of [
   if (localOnlyProviderSecrets.has(key) && configuredEnvironment !== "development") continue;
   const value = deploymentEnvironmentValue(key);
   if (value) environmentVars[key] = value;
+}
+
+// Vite/Cloudflare tooling may load `.env.local` while resolving a build. In a
+// non-development manifest, explicitly set every non-secret runtime key from
+// the deployment process (or to an empty value) so local adapters cannot be
+// merged into staging/production behind the preflight's back.
+if (configuredEnvironment !== "development") {
+  for (const key of nonSecretDeploymentKeys) environmentVars[key] = deploymentEnvironmentValue(key) || "";
 }
 
 // The release browser suite is intentionally self-contained. Keep these
