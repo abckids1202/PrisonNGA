@@ -54,7 +54,15 @@ export async function POST(request: Request) {
     const delivery = await getVisitorAuthDelivery("SMS");
     const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
     const attemptId = crypto.randomUUID();
-    await d1.prepare("INSERT INTO auth_challenge_delivery_attempts (id, challenge_id, channel, provider, status, attempt_count, started_at) VALUES (?, ?, 'SMS', ?, 'PENDING', 1, ?)").bind(attemptId, challengeId, delivery || "unconfigured", now.toISOString()).run();
+    try {
+      const attempt = await d1.prepare("INSERT INTO auth_challenge_delivery_attempts (id, challenge_id, channel, provider, status, attempt_count, started_at) VALUES (?, ?, 'SMS', ?, 'PENDING', 1, ?)").bind(attemptId, challengeId, delivery || "unconfigured", now.toISOString()).run();
+      if (!attempt.meta.changes) throw new Error("delivery attempt was not persisted");
+    } catch {
+      // Never leave a live contact-verification challenge without an
+      // auditable delivery attempt. The visitor can request a fresh code.
+      await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
+      throw new SecurityError("AUTH_DELIVERY_ATTEMPT_NOT_PERSISTED", 503);
+    }
     if (delivery === "console" && environment === "development") {
       await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'SENT', completed_at = ? WHERE id = ?").bind(new Date().toISOString(), attemptId).run();
       return securityResponse({ challengeId, destination: maskPhone(phone), expiresAt, retryAfterSeconds: 60, devCode: code }, 201, context.requestId);
