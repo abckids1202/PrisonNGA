@@ -13,7 +13,7 @@ The repository currently provides a substantial platform foundation:
 
 The product remains a staging candidate rather than a production institutional system. The main gap is external proof and a few workflow joins: real provider adapters, full refresh-safe journey coverage, kiosk/device reality, and operational recovery.
 
-The latest targeted verification commit is `d02898e`; the full local server suite reports 591 passing tests. Evidence uploads now delete their storage object unless the domain row, audit/outbox events, and idempotency completion all commit successfully.
+The latest targeted verification commit is `8626b83`; the full local server suite reports 592 passing tests. Evidence uploads now delete their storage object unless the domain row, audit/outbox events, and idempotency completion all commit successfully, and failed cleanup creates a critical privacy alarm for staff recovery.
 
 ## Release gates
 

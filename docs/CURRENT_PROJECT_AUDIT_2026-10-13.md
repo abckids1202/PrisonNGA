@@ -24,7 +24,7 @@ polish items.
 - 590 server test cases and 19 browser tests.
 - Production dependency audit with 0 vulnerabilities.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
-- Follow-up evidence-upload cleanup verification on commit `d02898e`: 591 server test cases passed and uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit.
+- Follow-up evidence-upload cleanup verification on commit `8626b83`: 592 server test cases passed; uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit, and failed storage cleanup creates a critical privacy alarm.
 - Versioned weekly operating hours with closed-day and weekday-specific validation
 - Facility pricing can be explicitly cleared to pause Visit Credit checkout
   shared by visitor availability, rescheduling, and staff approval.
