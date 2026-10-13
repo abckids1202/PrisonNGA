@@ -14,7 +14,7 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `1c57d84` and verified:
+`npm run verify:release` passed on commit `c1ae9ef` and verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.
@@ -25,6 +25,7 @@ polish items.
 - Production dependency audit with 0 vulnerabilities.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - Versioned weekly operating hours with closed-day and weekday-specific validation
+- Facility pricing can be explicitly cleared to pause Visit Credit checkout
   shared by visitor availability, rescheduling, and staff approval.
 
 `npm run audit:pilot` reports `readyForPilot: false`. Development currently
