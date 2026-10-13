@@ -227,7 +227,7 @@ export default function ControlApp() {
 
   function renderManagementPage() {
     if (page === "People") return <PeoplePage timeZone={facilityTimezone} onNotify={notify} />;
-    if (page === "Visitation") return <VisitationPage timeZone={facilityTimezone} />;
+    if (page === "Visitation") return <VisitationPage timeZone={facilityTimezone} backendStatus={backendStatus} />;
     if (page === "Finance") return <FinancePage timeZone={facilityTimezone} onNotify={notify} />;
     if (page === "Compliance") return <CompliancePageInteractive timeZone={facilityTimezone} onNotify={notify} onNavigate={navigate} />;
     if (page === "Facility") return <FacilityPage facilityState={facilityState} onFacilityStateChange={changeFacilityState} onOpenResource={openResource} onNotify={notify} />;
