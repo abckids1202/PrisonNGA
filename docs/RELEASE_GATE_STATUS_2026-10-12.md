@@ -45,7 +45,7 @@ engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
 institutional gates.
 
-The current baseline is commit `57ed05b`; it retains the earlier hardening
+The current baseline is commit `f901451`; it retains the earlier hardening
 that bounds authentication-session purging to 250 rows per scheduled
 invocation and gives each Wrangler backup config a unique project-root path.
 The disposable restore phase now uses Node's temporary SQLite engine rather
@@ -74,6 +74,10 @@ queue from turning one scheduled run into an unbounded write.
 Outbound Resend and Twilio delivery deadlines now remain active while provider
 response bodies are consumed, preventing a response that stalls after headers
 from bypassing the eight-second request timeout.
+The readiness endpoint now distinguishes expected missing/invalid provider
+configuration from unexpected database or runtime failures: only the former
+are converted into granular readiness diagnostics, while the latter propagate
+to the normal error boundary and remain observable.
 
 ## Pilot gate status
 
