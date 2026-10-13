@@ -51,6 +51,9 @@ The release verifier verified:
 - Visitor sign-in and phone-verification delivery flows now verify the final
   delivery-attempt transition; an unpersisted or failed terminal state expires
   the challenge instead of returning a usable OTP response.
+- Early failed provider callbacks now preserve a bounded provider error on the
+  delivery attempt while expiring the affected challenge, improving recovery
+  diagnosis without storing unbounded callback data.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,

@@ -15,6 +15,18 @@ function nextNotificationStatus(status: string): "DELIVERED" | "FAILED" | null {
   return null;
 }
 
+function providerErrorFromPayload(payload: string, status: string): string | null {
+  if (nextNotificationStatus(status) !== "FAILED") return null;
+  try {
+    const parsed = JSON.parse(payload) as { errorMessage?: unknown; errorCode?: unknown };
+    const message = typeof parsed.errorMessage === "string" ? parsed.errorMessage.trim() : "";
+    const code = typeof parsed.errorCode === "string" ? parsed.errorCode.trim() : "";
+    return (message || code).slice(0, 500) || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Apply a provider callback that arrived before the outbox worker persisted
  * the provider reference. The callback endpoint intentionally acknowledges
@@ -43,17 +55,18 @@ export async function reconcileStoredNotificationProviderEvent(
   if (!notification && !challenge) return false;
 
   const nextStatus = nextNotificationStatus(event.status);
+  const providerError = providerErrorFromPayload(event.payload, event.status);
   const now = new Date().toISOString();
   const statements: D1PreparedStatement[] = [];
   if (notification) {
     statements.push(d1.prepare(`UPDATE notification_delivery_attempts
-      SET provider_status = ?, provider_error = NULL, status_updated_at = ?,
+      SET provider_status = ?, provider_error = ?, status_updated_at = ?,
         status = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN status
           WHEN ? = 'DELIVERED' THEN 'DELIVERED'
           WHEN ? = 'FAILED' THEN 'FAILED' ELSE status END,
         finished_at = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN finished_at
           WHEN ? IN ('DELIVERED', 'FAILED') THEN ? ELSE finished_at END
-      WHERE id = ?`).bind(event.status, now, nextStatus, nextStatus, nextStatus, now, notification.id));
+      WHERE id = ?`).bind(event.status, providerError, now, nextStatus, nextStatus, nextStatus, now, notification.id));
     if (nextStatus) {
       statements.push(d1.prepare(`UPDATE notifications SET
         status = CASE WHEN status IN ('DELIVERED', 'FAILED') THEN status ELSE ? END,
@@ -79,7 +92,7 @@ export async function reconcileStoredNotificationProviderEvent(
   }
   if (challenge) {
     statements.push(d1.prepare(`UPDATE auth_challenge_delivery_attempts
-      SET provider_status = ?, provider_error = NULL, status_updated_at = ?,
+      SET provider_status = ?, provider_error = ?, status_updated_at = ?,
         status = CASE
           WHEN status IN ('DELIVERED', 'FAILED') THEN status
           WHEN ? IN ('DELIVERED', 'FAILED') THEN ?
@@ -90,7 +103,7 @@ export async function reconcileStoredNotificationProviderEvent(
           WHEN ? IN ('DELIVERED', 'FAILED') THEN ?
           ELSE completed_at
         END
-      WHERE id = ?`).bind(event.status, now, nextStatus, nextStatus, nextStatus, now, challenge.id));
+      WHERE id = ?`).bind(event.status, providerError, now, nextStatus, nextStatus, nextStatus, now, challenge.id));
     if (nextStatus === "FAILED") {
       statements.push(d1.prepare(`UPDATE auth_challenges SET expires_at = ?
         WHERE id = ? AND consumed_at IS NULL AND expires_at > ?`).bind(now, challenge.challenge_id, now));
