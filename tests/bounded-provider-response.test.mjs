@@ -11,6 +11,7 @@ test("provider adapters use bounded response parsing", async () => {
     readFile(new URL("../lib/server/notifications/provider.ts", import.meta.url), "utf8"),
   ]);
   assert.match(payments, /readBoundedResponseText\(response\)/);
+  assert.match(payments, /const text = await readBoundedResponseText\(response\);\s*return \{ response, text \};/);
   assert.doesNotMatch(payments, /response\.json\(\)/);
   assert.match(scanner, /readBoundedResponseText\(response\)/);
   assert.doesNotMatch(scanner, /response\.json\(\)/);

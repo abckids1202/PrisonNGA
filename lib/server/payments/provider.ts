@@ -146,11 +146,11 @@ class XenditPaymentProvider implements PaymentProvider {
     return `Basic ${btoa(`${this.secretKey}:`)}`;
   }
 
-  private async request(path: string, init: RequestInit): Promise<Response> {
+  private async request(path: string, init: RequestInit): Promise<{ response: Response; text: string }> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8_000);
     try {
-      return await fetch(`${this.apiBaseUrl.replace(/\/$/, "")}${path}`, {
+      const response = await fetch(`${this.apiBaseUrl.replace(/\/$/, "")}${path}`, {
         ...init,
         headers: {
           accept: "application/json",
@@ -159,6 +159,10 @@ class XenditPaymentProvider implements PaymentProvider {
         },
         signal: controller.signal,
       });
+      // Keep the deadline active through bounded body consumption. A provider
+      // that sends headers and then stalls must not bypass the adapter timeout.
+      const text = await readBoundedResponseText(response);
+      return { response, text };
     } finally {
       clearTimeout(timeout);
     }
@@ -167,7 +171,7 @@ class XenditPaymentProvider implements PaymentProvider {
   async createCheckout(input: { paymentIntentId: string; email: string | null; phone: string | null; creditQuantity: number; amountMinor: number; currency: string; successUrl?: string; cancelUrl?: string }): Promise<PaymentCheckout> {
     if (!input.email && !input.phone) throw new Error("PAYMENT_CONTACT_REQUIRED");
     if (!input.successUrl || !input.cancelUrl) throw new Error("PAYMENT_RETURN_URL_REQUIRED");
-    const response = await this.request("/sessions", {
+    const requestResult = await this.request("/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -197,8 +201,8 @@ class XenditPaymentProvider implements PaymentProvider {
         cancel_return_url: input.cancelUrl,
       }),
     });
+    const { response, text } = requestResult;
     if (!response.ok) throw new Error(`PAYMENT_CHECKOUT_FAILED_${response.status}`);
-    const text = await readBoundedResponseText(response);
     let result: XenditSessionResponse;
     try { result = JSON.parse(text) as XenditSessionResponse; } catch { throw new Error("PAYMENT_CHECKOUT_INVALID_RESPONSE"); }
     const sessionId = typeof result.payment_session_id === "string" ? result.payment_session_id.trim() : "";
@@ -211,14 +215,14 @@ class XenditPaymentProvider implements PaymentProvider {
   async requestRefund(input: { paymentIntentId: string; providerReference: string; amountMinor: number; currency: string; reason: string }): Promise<PaymentRefundRequest> {
     // SecureVisit stores the session ID at checkout time. Xendit requires the
     // payment_request_id for refunds, so resolve the completed session first.
-    const sessionResponse = await this.request(`/sessions/${encodeURIComponent(input.providerReference)}`, { method: "GET" });
+    const sessionResult = await this.request(`/sessions/${encodeURIComponent(input.providerReference)}`, { method: "GET" });
+    const { response: sessionResponse, text: sessionText } = sessionResult;
     if (!sessionResponse.ok) throw new Error(`PAYMENT_SESSION_LOOKUP_FAILED_${sessionResponse.status}`);
-    const sessionText = await readBoundedResponseText(sessionResponse);
     let session: XenditSessionResponse;
     try { session = JSON.parse(sessionText) as XenditSessionResponse; } catch { throw new Error("PAYMENT_SESSION_INVALID_RESPONSE"); }
     const paymentRequestId = typeof session.payment_request_id === "string" ? session.payment_request_id.trim() : "";
     if (!paymentRequestId) throw new Error("PAYMENT_REQUEST_NOT_AVAILABLE");
-    const refundResponse = await this.request("/refunds", {
+    const refundResult = await this.request("/refunds", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -229,8 +233,8 @@ class XenditPaymentProvider implements PaymentProvider {
         reason: input.reason.toUpperCase().includes("CANCEL") ? "CANCELLATION" : "REQUESTED_BY_CUSTOMER",
       }),
     });
+    const { response: refundResponse, text: refundText } = refundResult;
     if (!refundResponse.ok) throw new Error(`PAYMENT_REFUND_REQUEST_FAILED_${refundResponse.status}`);
-    const refundText = await readBoundedResponseText(refundResponse);
     let refund: { id?: unknown };
     try { refund = JSON.parse(refundText) as { id?: unknown }; } catch { throw new Error("PAYMENT_REFUND_INVALID_RESPONSE"); }
     const refundId = typeof refund.id === "string" ? refund.id.trim() : "";
