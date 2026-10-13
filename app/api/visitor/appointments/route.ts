@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     if (appointmentTypeRecord.credit_cost !== 1) throw new SecurityError("APPOINTMENT_TYPE_CREDIT_RULE_UNSUPPORTED", 503);
     const creditAccount = await d1.prepare("SELECT available_credits FROM credit_accounts WHERE user_id = ? AND facility_id = ?").bind(visitor.userId, relationship.facility_id).first<{ available_credits: number }>();
     if (!creditAccount || creditAccount.available_credits < 1) throw new SecurityError("VISIT_CREDIT_REQUIRED", 409);
-    const policy = await d1.prepare("SELECT f.timezone, f.current_state, vp.version AS policy_version, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time FROM facilities f LEFT JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(relationship.facility_id).first<{ timezone: string | null; current_state: string; policy_version: number | null; min_duration_minutes: number | null; max_duration_minutes: number | null; min_advance_minutes: number | null; max_advance_days: number | null; daily_start_time: string | null; daily_end_time: string | null }>();
+    const policy = await d1.prepare("SELECT f.timezone, f.current_state, vp.version AS policy_version, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time, vp.weekly_hours_json FROM facilities f LEFT JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(relationship.facility_id).first<{ timezone: string | null; current_state: string; policy_version: number | null; min_duration_minutes: number | null; max_duration_minutes: number | null; min_advance_minutes: number | null; max_advance_days: number | null; daily_start_time: string | null; daily_end_time: string | null; weekly_hours_json: string | null }>();
     if (!policy) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
     if (policy.current_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
     if (policy.policy_version === null || !policy.timezone) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
@@ -119,7 +119,7 @@ export async function PATCH(request: Request) {
     if (!appointmentId || !action) throw new SecurityError("INVALID_APPOINTMENT_ACTION", 400);
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `visitor-appointment-change:${visitor.userId}`, limit: 30, windowSeconds: 60 * 60 });
-    const appointment = await d1.prepare(`SELECT a.id, a.facility_id, a.prisoner_id, a.status, a.version, a.requested_start, a.requested_end, f.current_state, vp.version AS policy_version, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time, f.timezone, ca.id AS credit_account_id
+    const appointment = await d1.prepare(`SELECT a.id, a.facility_id, a.prisoner_id, a.status, a.version, a.requested_start, a.requested_end, f.current_state, vp.version AS policy_version, vp.min_duration_minutes, vp.max_duration_minutes, vp.min_advance_minutes, vp.max_advance_days, vp.daily_start_time, vp.daily_end_time, vp.weekly_hours_json, f.timezone, ca.id AS credit_account_id
       FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id LEFT JOIN visit_policies vp ON vp.facility_id = a.facility_id LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
       WHERE a.id = ? AND a.visitor_user_id = ?`).bind(appointmentId, visitor.userId).first<Record<string, string | number | null>>();
     if (!appointment) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
@@ -165,6 +165,7 @@ export async function PATCH(request: Request) {
       max_advance_days: appointment.max_advance_days == null ? null : Number(appointment.max_advance_days),
       daily_start_time: typeof appointment.daily_start_time === "string" ? appointment.daily_start_time : null,
       daily_end_time: typeof appointment.daily_end_time === "string" ? appointment.daily_end_time : null,
+      weekly_hours_json: typeof appointment.weekly_hours_json === "string" ? appointment.weekly_hours_json : null,
     });
     if (!window.ok) throw new SecurityError(window.reason, window.reason.startsWith("FACILITY_") ? 503 : 400);
     if (appointment.policy_version == null || typeof appointment.timezone !== "string") throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);

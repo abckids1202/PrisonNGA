@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { getRequestContext, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 import { facilityLocalDateTime } from "../../../../lib/server/time";
-import { validateVisitWindow } from "../../../../lib/server/visit-policy";
+import { operatingHoursForWeekday, validateVisitWindow } from "../../../../lib/server/visit-policy";
 
 const slotMinutes = 15;
 
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     if (!facilityId || !prisonerId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isInteger(duration)) throw new SecurityError("INVALID_AVAILABILITY_REQUEST", 400);
     const d1 = await getD1();
     const facility = await d1.prepare("SELECT id, timezone, current_state FROM facilities WHERE id = ?").bind(facilityId).first<{ id: string; timezone: string; current_state: string }>();
-    const policy = await d1.prepare("SELECT min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time FROM visit_policies WHERE facility_id = ?").bind(facilityId).first<{ min_duration_minutes: number; max_duration_minutes: number; min_advance_minutes: number; max_advance_days: number; daily_start_time: string; daily_end_time: string }>();
+    const policy = await d1.prepare("SELECT min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, weekly_hours_json FROM visit_policies WHERE facility_id = ?").bind(facilityId).first<{ min_duration_minutes: number; max_duration_minutes: number; min_advance_minutes: number; max_advance_days: number; daily_start_time: string; daily_end_time: string; weekly_hours_json: string | null }>();
     if (!facility || !policy) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
     if (facility.current_state !== "NORMAL_OPERATIONS") return securityResponse({ facilityId, date, duration, slots: [], reason: "FACILITY_NOT_ACCEPTING_REQUESTS" }, 200, context.requestId);
     if (duration < policy.min_duration_minutes || duration > policy.max_duration_minutes || duration % slotMinutes !== 0) throw new SecurityError("DURATION_NOT_ALLOWED", 400);
@@ -33,8 +33,11 @@ export async function GET(request: Request) {
     let dayStart: Date;
     let dayEnd: Date;
     try {
-      dayStart = facilityLocalDateTime(date, policy.daily_start_time, facility.timezone);
-      dayEnd = facilityLocalDateTime(date, policy.daily_end_time, facility.timezone);
+      const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+      const hours = operatingHoursForWeekday({ ...policy, timezone: facility.timezone }, weekday);
+      if (!hours?.open || !hours.close) return securityResponse({ facilityId, prisonerId, date, duration, timezone: facility.timezone, slots: [] }, 200, context.requestId);
+      dayStart = facilityLocalDateTime(date, hours.open, facility.timezone);
+      dayEnd = facilityLocalDateTime(date, hours.close, facility.timezone);
     } catch {
       throw new SecurityError("INVALID_AVAILABILITY_DATE", 400);
     }
@@ -65,6 +68,7 @@ export async function GET(request: Request) {
         max_advance_days: policy.max_advance_days,
         daily_start_time: policy.daily_start_time,
         daily_end_time: policy.daily_end_time,
+        weekly_hours_json: policy.weekly_hours_json,
       });
       if (!window.ok) continue;
       if (appointments.results.some((appointment) => Date.parse(appointment.requested_start) < end && Date.parse(appointment.requested_end) > cursor)) continue;

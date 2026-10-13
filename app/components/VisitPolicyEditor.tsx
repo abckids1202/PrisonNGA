@@ -12,6 +12,7 @@ type Policy = {
   maxAdvanceDays: number;
   dailyStartTime: string;
   dailyEndTime: string;
+  weeklyHours: Array<{ open: string | null; close: string | null }> | null;
   creditPriceMinor: number | null;
   creditCurrency: string;
   version: number;
@@ -19,6 +20,8 @@ type Policy = {
 };
 
 type HistoryEntry = { version: number; actor_user_id: string; reason: string; snapshot: string; created_at: string };
+
+const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const fallbackError = "Could not load the facility policy. Check your staff session and try again.";
 
@@ -77,6 +80,7 @@ export default function VisitPolicyEditor({ timeZone = "Asia/Jakarta" }: { timeZ
             dailyEndTime: draft.dailyEndTime,
             creditPriceMinor: draft.creditPriceMinor,
             creditCurrency: draft.creditCurrency,
+            weeklyHours: draft.weeklyHours,
           },
         }),
       });
@@ -104,6 +108,11 @@ export default function VisitPolicyEditor({ timeZone = "Asia/Jakarta" }: { timeZ
   };
 
   const set = <K extends keyof Policy>(key: K, value: Policy[K]) => setDraft((current) => current ? { ...current, [key]: value } : current);
+  const setWeekly = (index: number, field: "open" | "close", value: string | null) => setDraft((current) => {
+    if (!current) return current;
+    const entries = current.weeklyHours || days.map(() => ({ open: current.dailyStartTime, close: current.dailyEndTime }));
+    return { ...current, weeklyHours: entries.map((entry, entryIndex) => entryIndex === index ? { ...entry, [field]: value } : entry) };
+  });
 
   if (error && !policy) return <div className="sv3-settings-surface"><p role="alert">{error}</p><button onClick={() => void load()} disabled={busy}>Retry</button></div>;
   if (!draft) return <div className="sv3-settings-surface" aria-live="polite">Loading facility policy…</div>;
@@ -119,6 +128,7 @@ export default function VisitPolicyEditor({ timeZone = "Asia/Jakarta" }: { timeZ
       <label>Daily closing time<input type="time" value={draft.dailyEndTime} onChange={(event) => set("dailyEndTime", event.target.value)} /></label>
       <label>Visit Credit price (IDR)<input type="number" min="1" max="1000000000" step="1" value={draft.creditPriceMinor ?? ""} onChange={(event) => set("creditPriceMinor", event.target.value === "" ? null : Number(event.target.value))} /></label>
       <label>Credit currency<input value={draft.creditCurrency} readOnly /></label>
+      <fieldset className="sv3-weekly-hours"><legend>Weekly operating hours</legend><small>Closed days are excluded from visitor availability and staff approval.</small>{(draft.weeklyHours || days.map(() => ({ open: draft.dailyStartTime, close: draft.dailyEndTime }))).map((hours, index) => <div className="sv3-weekly-hours-row" key={days[index]}><strong>{days[index]}</strong><label>Open<input type="time" value={hours.open || ""} onChange={(event) => setWeekly(index, "open", event.target.value || null)} /></label><label>Close<input type="time" value={hours.close || ""} onChange={(event) => setWeekly(index, "close", event.target.value || null)} /></label><button type="button" className="sv3-button" onClick={() => { setWeekly(index, "open", null); setWeekly(index, "close", null); }}>{hours.open === null && hours.close === null ? "Closed" : "Mark closed"}</button></div>)}</fieldset>
       <label className="sv3-policy-reason">Reason for change<textarea value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="Explain why the facility rule needs to change (minimum 8 characters)." /></label>
     </div>
     {error ? <p role="alert" className="sv3-policy-feedback error">{error}</p> : null}

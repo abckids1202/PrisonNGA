@@ -14,7 +14,7 @@ const valid = {
 };
 
 test("visit policy admin accepts valid bounded facility configuration", () => {
-  assert.deepEqual(parseEditableVisitPolicy(valid), valid);
+  assert.deepEqual(parseEditableVisitPolicy(valid), { ...valid, weeklyHoursJson: null });
 });
 
 test("visit policy admin rejects invalid duration bounds and granularity", () => {
