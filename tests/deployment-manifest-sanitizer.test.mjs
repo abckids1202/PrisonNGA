@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sanitizeDeploymentManifest } from "../scripts/sanitize-deployment-manifest.mjs";
+import { resolveBuildEnvironment, sanitizeDeploymentManifest } from "../scripts/sanitize-deployment-manifest.mjs";
+
+test("deployment build recognizes development mode loaded from .env.local", () => {
+  assert.equal(resolveBuildEnvironment("", "SECUREVISIT_ENVIRONMENT=development\n"), "development");
+  assert.equal(resolveBuildEnvironment("staging", "SECUREVISIT_ENVIRONMENT=development\n"), "staging");
+});
 
 test("deployment manifest sanitizer replaces local adapters with deployment values", () => {
   const result = sanitizeDeploymentManifest({

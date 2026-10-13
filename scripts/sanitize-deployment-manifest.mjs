@@ -96,7 +96,19 @@ export function sanitizeDeploymentManifest(manifest, runtime = {}) {
   return sanitized;
 }
 
-const environment = process.env.SECUREVISIT_ENVIRONMENT?.trim() || "";
+export function resolveBuildEnvironment(environmentValue, localEnvironmentText = "") {
+  const explicit = String(environmentValue || "").trim();
+  if (explicit) return explicit;
+  const match = String(localEnvironmentText).match(/^\s*SECUREVISIT_ENVIRONMENT\s*=\s*["']?([^"'#\r\n]+?)["']?\s*(?:#.*)?$/m);
+  return match?.[1]?.trim() || "";
+}
+
+let localEnvironmentText = "";
+if (!process.env.SECUREVISIT_ENVIRONMENT) {
+  const localEnvironmentPath = path.resolve(".env.local");
+  if (fs.existsSync(localEnvironmentPath)) localEnvironmentText = fs.readFileSync(localEnvironmentPath, "utf8");
+}
+const environment = resolveBuildEnvironment(process.env.SECUREVISIT_ENVIRONMENT, localEnvironmentText);
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain && environment !== "development") {
   const manifestPath = path.resolve("dist/server/wrangler.json");
