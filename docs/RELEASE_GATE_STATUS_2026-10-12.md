@@ -45,9 +45,13 @@ engineering evidence only and does not
 satisfy external provider, staging, hardware, resilience, legal, or
 institutional gates.
 
-The current baseline also includes commit `2297e3d`, which bounds
-authentication-session purging to 250 rows per scheduled invocation, and the
-backup-drill fix that gives each Wrangler config a unique project-root path.
+The current baseline is commit `57ed05b`; it retains the earlier hardening
+that bounds authentication-session purging to 250 rows per scheduled
+invocation and gives each Wrangler backup config a unique project-root path.
+The disposable restore phase now uses Node's temporary SQLite engine rather
+than a second Wrangler local-D1 process, so the Windows release verifier
+completes the recovery check while retaining schema, foreign-key, credit-ledger,
+and audit-integrity assertions.
 The full verifier now proves that an interrupted or repeated local backup run
 does not collide with a stale config and that the restore uses the application's
 actual local D1 state rather than an empty alternate database.
