@@ -14,7 +14,7 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `e5790f9` and verified:
+`npm run verify:release` passed on commit `812e9e4` and verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.
@@ -26,7 +26,8 @@ polish items.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,
-  Permissions-Policy, content-type, and referrer checks.
+  Permissions-Policy, content-type, referrer, and cross-origin isolation
+  checks (`Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy`).
 - Follow-up evidence-upload cleanup verification on commit `8626b83`: 592 server test cases passed; uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit, and failed storage cleanup creates a critical privacy alarm.
 - Versioned weekly operating hours with closed-day and weekday-specific validation
 - Facility pricing can be explicitly cleared to pause Visit Credit checkout

@@ -5,6 +5,7 @@ import test from "node:test";
 const source = await readFile(new URL("../app/features/control/CommandCenterPage.tsx", import.meta.url), "utf8");
 const shellSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const peopleSource = await readFile(new URL("../app/features/management/PeoplePage.tsx", import.meta.url), "utf8");
+const dateFormatSource = await readFile(new URL("../lib/date-format.ts", import.meta.url), "utf8");
 const incidentsSource = await readFile(new URL("../app/features/control/IncidentsPage.tsx", import.meta.url), "utf8");
 const appointmentsSource = await readFile(new URL("../app/features/control/AppointmentsPage.tsx", import.meta.url), "utf8");
 const financeSource = await readFile(new URL("../app/features/management/FinancePage.tsx", import.meta.url), "utf8");
@@ -13,7 +14,9 @@ const complianceSource = await readFile(new URL("../app/features/management/Comp
 test("Control activity and People timestamps use the persisted facility timezone", () => {
   assert.match(source, /formatAuditTime\(event\.createdAt, facilityTimezone\)/);
   assert.match(shellSource, /<PeoplePage timeZone=\{facilityTimezone\} onNotify=\{notify\} \/>/);
-  assert.match(peopleSource, /new Intl\.DateTimeFormat\("en-CA", \{ timeZone, year:/);
+  assert.match(peopleSource, /addLocalDateDays/);
+  assert.match(peopleSource, /localDateKey/);
+  assert.match(dateFormatSource, /new Intl\.DateTimeFormat\("en-CA", \{ timeZone: safeTimeZone\(timeZone\)/);
   assert.doesNotMatch(peopleSource, /new Intl\.DateTimeFormat\("en-CA", \{ timeZone: "Asia\/Jakarta"/);
   assert.match(peopleSource, /facilityTimeZoneLabel\(timeZone\)/);
 });
