@@ -14,7 +14,7 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `c7f096a`; the current release
+`npm run verify:release` passed on commit `b30706b`; the current release
 baseline includes the follow-up manifest sanitizer, provider timeout, OTP
 delivery race, terminal delivery-state, write-mismatch, finalization, and
 provider-error hardening changes.
@@ -25,7 +25,7 @@ The release verifier verified:
 - Disposable staging-fixture schema compatibility.
 - Local backup/restore drill with schema, foreign-key, credit-ledger, and audit-integrity checks.
 - TypeScript typecheck, ESLint, and production build.
-- 602 server test cases and 19 browser tests.
+- 603 server test cases and 19 browser tests.
 - Production dependency audit with 0 vulnerabilities.
 - Deployment-manifest unit coverage verifies local adapters are replaced by
   deployment values, omitted values are cleared fail-closed, and forbidden
@@ -61,6 +61,10 @@ The release verifier verified:
 - Notification callbacks now distinguish exact idempotent retries from signed
   event-ID replay conflicts; conflicting provider reference, status, or
   normalized payload is rejected instead of silently acknowledged.
+- LiveKit callbacks now apply the same replay-conflict rule to provider event
+  IDs, rejecting a reused event with a different session, event type,
+  participant role, or normalized participant metadata before assignment
+  filtering or session mutation.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,
