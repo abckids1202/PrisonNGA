@@ -12,6 +12,10 @@ test("waiting-room commands are replay-safe and clean up orphan LiveKit rooms on
   assert.match(source, /STALE_WAITING_ROOM_STATE/);
   assert.match(source, /recordWaitingRoomReconciliationRequired/);
   assert.match(source, /WAITING_ROOM_COMMIT_INCOMPLETE/);
+  assert.match(source, /facilityId: logFacilityId/);
+  assert.match(source, /actorId: logActorId/);
+  assert.match(source, /appointmentId: logAppointmentId/);
+  assert.match(source, /idempotencyKey: idempotency\?\.key/);
 });
 
 test("waiting-room reconciliation failures create a durable critical signal", async () => {

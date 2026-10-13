@@ -107,9 +107,17 @@ export async function POST(request: Request) {
   let roomCleanup: { provider: Awaited<ReturnType<typeof createLiveKitProvider>>; name: string } | null = null;
   let databaseRef: D1Database | null = null;
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
+  let logFacilityId: string | null = null;
+  let logActorId: string | null = null;
+  let logAppointmentId: string | null = null;
+  let logCommand: string | null = null;
   try {
     const authorization = await requirePermission("appointment.review");
+    logFacilityId = authorization.facilityId;
+    logActorId = authorization.userId;
     const body = await request.json() as { appointmentId?: string; command?: string; expectedVersion?: number; reason?: string; staffNotes?: string };
+    logAppointmentId = typeof body.appointmentId === "string" ? body.appointmentId : null;
+    logCommand = typeof body.command === "string" ? body.command : null;
     if (!body.appointmentId || !commands.includes(body.command as WaitingCommand)) throw new SecurityError("INVALID_WAITING_ROOM_COMMAND", 400);
     const command = body.command as WaitingCommand;
     const reason = assertReason(body.reason);
@@ -350,10 +358,30 @@ export async function POST(request: Request) {
     roomCleanup = null;
     return finish({ appointmentId: body.appointmentId, sessionId: newSession?.id || current.session_id || null, state: nextState, version: nextVersion, correlationId });
   } catch (error) {
-    operationalLog("error", { event: "WAITING_ROOM_COMMAND_FAILED", requestId: context.requestId, correlationId: idempotency?.key || null, error });
+    operationalLog("error", {
+      event: "WAITING_ROOM_COMMAND_FAILED",
+      requestId: context.requestId,
+      correlationId: idempotency?.key || null,
+      idempotencyKey: idempotency?.key || null,
+      facilityId: logFacilityId,
+      actorId: logActorId,
+      appointmentId: logAppointmentId,
+      command: logCommand,
+      error,
+    });
     if (roomCleanup) {
       try { await roomCleanup.provider.endRoom(roomCleanup.name); }
-      catch (error) { operationalLog("error", { event: "LIVEKIT_ORPHAN_ROOM_CLEANUP_FAILED", requestId: context.requestId, error }); }
+      catch (error) {
+        operationalLog("error", {
+          event: "LIVEKIT_ORPHAN_ROOM_CLEANUP_FAILED",
+          requestId: context.requestId,
+          facilityId: logFacilityId,
+          actorId: logActorId,
+          appointmentId: logAppointmentId,
+          command: logCommand,
+          error,
+        });
+      }
     }
     if (databaseRef && idempotency) {
       try { await releaseIdempotencyClaim(databaseRef, idempotency); } catch { /* Preserve the original waiting-room error. */ }
