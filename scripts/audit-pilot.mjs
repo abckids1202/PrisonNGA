@@ -1,5 +1,6 @@
 import { validateEnvironment } from "../lib/server/config.ts";
 import { evaluateReleaseGates } from "../lib/server/release-gates.ts";
+import { isDeliveryConfigured } from "../lib/server/delivery-readiness.ts";
 import { existsSync } from "node:fs";
 
 const values = { ...process.env, DB: {} };
@@ -32,39 +33,73 @@ const httpsUrl = (key) => {
 };
 
 const configuredValue = (key) => String(values[key] || "").trim().toLowerCase();
+const deliveryValue = (specificKey, fallbackKey) => configuredValue(specificKey) || configuredValue(fallbackKey);
+const visitorEmailDelivery = deliveryValue("VISITOR_EMAIL_DELIVERY", "VISITOR_AUTH_DELIVERY");
+const visitorSmsDelivery = deliveryValue("VISITOR_SMS_DELIVERY", "VISITOR_AUTH_DELIVERY");
+const notificationEmailDelivery = deliveryValue("NOTIFICATION_EMAIL_DELIVERY", "NOTIFICATION_DELIVERY");
+const notificationSmsDelivery = deliveryValue("NOTIFICATION_SMS_DELIVERY", "NOTIFICATION_DELIVERY");
+const emailDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => isDeliveryConfigured({
+  environment,
+  delivery,
+  channel: "EMAIL",
+  webhookUrl,
+  webhookSecret,
+  resendApiKey: values.RESEND_API_KEY,
+  emailFrom: values.VISITOR_EMAIL_FROM,
+});
+const smsDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => isDeliveryConfigured({
+  environment,
+  delivery,
+  channel: "SMS",
+  webhookUrl,
+  webhookSecret,
+  twilioAccountSid: values.VISITOR_SMS_TWILIO_ACCOUNT_SID,
+  twilioAuthToken: values.VISITOR_SMS_TWILIO_AUTH_TOKEN,
+  twilioFrom: values.VISITOR_SMS_TWILIO_FROM,
+  twilioMessagingServiceSid: values.VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID,
+});
 const visitorAuthChannels = String(values.VISITOR_AUTH_CHANNELS || "EMAIL,SMS").trim().toUpperCase();
 const visitorSmsRequired = visitorAuthChannels !== "EMAIL";
 const visitorEmailOnlyApproved = visitorAuthChannels === "EMAIL" && configuredValue("SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL") === "approved";
-const nonLocal = (key, ...localValues) => {
-  const value = configuredValue(key);
-  return Boolean(value) && !localValues.includes(value);
-};
 const externalIntegrationChecks = [
   {
     id: "visitor-email-provider",
     label: "Visitor email delivery provider",
-    configured: nonLocal("VISITOR_EMAIL_DELIVERY", "", "console") || (present("VISITOR_AUTH_WEBHOOK_URL") && present("VISITOR_AUTH_WEBHOOK_SECRET")),
+    configured: emailDeliveryConfigured(visitorEmailDelivery, values.VISITOR_AUTH_WEBHOOK_URL, values.VISITOR_AUTH_WEBHOOK_SECRET),
     detail: "VISITOR_EMAIL_DELIVERY or signed delivery webhook",
     action: "Configure a real visitor email provider and delivery-status callback",
   },
   {
     id: "visitor-sms-provider",
     label: "Visitor SMS delivery provider",
-    configured: !visitorSmsRequired ? visitorEmailOnlyApproved : nonLocal("VISITOR_SMS_DELIVERY", "", "console") || (present("VISITOR_AUTH_WEBHOOK_URL") && present("VISITOR_AUTH_WEBHOOK_SECRET")),
+    configured: !visitorSmsRequired ? visitorEmailOnlyApproved : smsDeliveryConfigured(visitorSmsDelivery, values.VISITOR_AUTH_WEBHOOK_URL, values.VISITOR_AUTH_WEBHOOK_SECRET),
     detail: visitorSmsRequired ? "VISITOR_SMS_DELIVERY or signed delivery webhook" : "Email-only scope must have explicit approval",
     action: visitorSmsRequired ? "Configure a real visitor SMS provider or formally approve email-only pilot scope" : "Keep the email-only approval current and verify the email provider",
   },
   {
     id: "staff-federation",
     label: "Institutional staff federation",
-    configured: configuredValue("STAFF_AUTH_PROVIDER") !== "none" && present("STAFF_OIDC_ISSUER") && present("STAFF_SAML_METADATA_URL"),
+    configured: configuredValue("STAFF_AUTH_PROVIDER") === "both"
+      && httpsUrl("STAFF_OIDC_ISSUER")
+      && present("STAFF_OIDC_CLIENT_ID")
+      && present("STAFF_OIDC_CLIENT_SECRET")
+      && httpsUrl("STAFF_OIDC_REDIRECT_URI")
+      && (present("STAFF_OIDC_MFA_ACR") || present("STAFF_OIDC_MFA_AMR"))
+      && present("STAFF_SAML_ENTITY_ID")
+      && httpsUrl("STAFF_SAML_METADATA_URL")
+      && httpsUrl("STAFF_SAML_ENTRY_POINT")
+      && present("STAFF_SAML_IDP_CERT")
+      && httpsUrl("STAFF_SAML_CALLBACK_URI")
+      && present("STAFF_SAML_MFA_ACR"),
     detail: "OIDC and SAML configuration with MFA claims",
     action: "Connect institutional OIDC and SAML providers with MFA claims and facility mapping",
   },
   {
     id: "payment-provider",
     label: "Payment provider",
-    configured: nonLocal("PAYMENT_PROVIDER", "local_test") && (configuredValue("PAYMENT_PROVIDER") !== "xendit" || present("XENDIT_SECRET_KEY")),
+    configured: configuredValue("PAYMENT_PROVIDER") === "xendit"
+      ? present("XENDIT_SECRET_KEY") && present("XENDIT_WEBHOOK_TOKEN") && (!present("XENDIT_API_BASE_URL") || httpsUrl("XENDIT_API_BASE_URL"))
+      : configuredValue("PAYMENT_PROVIDER") === "webhook" && httpsUrl("PAYMENT_CHECKOUT_URL") && httpsUrl("PAYMENT_REFUND_URL") && present("PAYMENT_PROVIDER_SECRET"),
     detail: "non-local payment adapter with sandbox credentials",
     action: "Select a payment provider and configure sandbox checkout, webhooks, refunds, and reconciliation",
   },
@@ -78,16 +113,15 @@ const externalIntegrationChecks = [
   {
     id: "evidence-scanner",
     label: "Evidence malware scanner",
-    configured: nonLocal("EVIDENCE_SCAN_PROVIDER", "development") && present("EVIDENCE_SCAN_WEBHOOK_URL") && present("EVIDENCE_SCAN_WEBHOOK_SECRET"),
+    configured: configuredValue("EVIDENCE_SCAN_PROVIDER") === "webhook" && httpsUrl("EVIDENCE_SCAN_WEBHOOK_URL") && present("EVIDENCE_SCAN_WEBHOOK_SECRET"),
     detail: "non-development scanner with signed callback",
     action: "Configure a protected malware-scanning adapter and quarantine callback",
   },
   {
     id: "notification-delivery",
     label: "Operational notification delivery",
-    configured: nonLocal("NOTIFICATION_EMAIL_DELIVERY", "", "in_app")
-      || nonLocal("NOTIFICATION_SMS_DELIVERY", "", "in_app")
-      || (present("NOTIFICATION_WEBHOOK_URL") && present("NOTIFICATION_WEBHOOK_SECRET")),
+    configured: emailDeliveryConfigured(notificationEmailDelivery, values.NOTIFICATION_WEBHOOK_URL, values.NOTIFICATION_WEBHOOK_SECRET)
+      && smsDeliveryConfigured(notificationSmsDelivery, values.NOTIFICATION_WEBHOOK_URL, values.NOTIFICATION_WEBHOOK_SECRET),
     detail: "real email/SMS adapter or signed notification delivery webhook",
     action: "Configure operational email/SMS delivery, signed callbacks, retry, and dead-letter replay",
   },
