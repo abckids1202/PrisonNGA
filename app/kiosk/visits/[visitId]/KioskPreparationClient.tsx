@@ -23,6 +23,7 @@ export default function KioskPreparationClient({ visitId }: { visitId: string })
   const [deviceIdInput, setDeviceIdInput] = useState("");
   const [credentialInput, setCredentialInput] = useState("");
   const [phase, setPhase] = useState<"auth" | "checking" | "ready" | "error">("auth");
+  const [connectionState, setConnectionState] = useState<"unknown" | "connected" | "unavailable">("unknown");
   const [error, setError] = useState("");
   const [camera, setCamera] = useState<Result | null>(null);
   const [microphone, setMicrophone] = useState<Result | null>(null);
@@ -38,7 +39,14 @@ export default function KioskPreparationClient({ visitId }: { visitId: string })
     if (!deviceId || !credential) return;
     let active = true;
     const headers = { accept: "application/json", "x-securevisit-kiosk-id": deviceId, "x-securevisit-kiosk-token": credential };
-    const heartbeat = () => fetch("/api/kiosk/heartbeat", { method: "POST", headers, cache: "no-store" }).catch(() => undefined);
+    const heartbeat = async () => {
+      try {
+        const response = await fetch("/api/kiosk/heartbeat", { method: "POST", headers, cache: "no-store" });
+        if (active) setConnectionState(response.ok ? "connected" : "unavailable");
+      } catch {
+        if (active) setConnectionState("unavailable");
+      }
+    };
     const presence = () => fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/presence`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ presence: "present" }), cache: "no-store" }).catch(() => undefined);
     const clearPresence = () => {
       void fetch(`/api/kiosk/visits/${encodeURIComponent(visitId)}/presence`, {
@@ -115,5 +123,6 @@ export default function KioskPreparationClient({ visitId }: { visitId: string })
   if (liveStarted) return <LiveSessionClient visitId={visitId} role="FACILITY" kioskId={deviceId} initialKioskCredential={credential} />;
 
   const overallReady = camera === "ready" && microphone === "ready" && ["stable", "fair"].includes(network || "") && phase === "ready";
-  return <main className="sv-kiosk-shell"><header className="sv-kiosk-header"><span className="sv9-brand-mark">+</span><div><strong>SecureVisit</strong><small>Controlled facility device · {deviceId}</small></div><span className="sv-kiosk-live-dot"><i /> Device connected</span></header><section className="sv-kiosk-card sv-kiosk-card-wide"><div className="sv-kiosk-card-heading"><div><span className="sv9-kicker">VISIT {visitId}</span><h1>{overallReady ? "This kiosk is ready" : phase === "checking" ? "Checking this kiosk" : "Kiosk needs attention"}</h1><p>{overallReady ? "The results are saved. Staff can now complete the pre-call checks and admit the visit." : phase === "checking" ? "Testing camera, microphone, and connection. Keep this page open." : error || "Resolve the failed checks and run the test again."}</p></div><span className={`sv-kiosk-overall ${overallReady ? "ready" : "pending"}`}>{overallReady ? "READY" : phase === "checking" ? "CHECKING" : "ACTION NEEDED"}</span></div><div className="sv-kiosk-check-grid"><KioskCheck label="Camera" result={camera} detail="Video input available" /><KioskCheck label="Microphone" result={microphone} detail="Audio input available" /><KioskCheck label="Network" result={network} detail={latency === null ? "Connection quality" : `${latency} ms response`} /></div><div className="sv-kiosk-actions">{phase !== "checking" && <button className="sv9-button sv9-button-primary" onClick={() => void runChecks()}>{overallReady ? "Run check again" : "Retry device check"} →</button>}<span>Presence is reported to the facility while this page is open.</span></div></section></main>;
+  const connectionLabel = connectionState === "connected" ? "Device connected" : connectionState === "unavailable" ? "Connection unavailable" : "Checking connection";
+  return <main className="sv-kiosk-shell"><header className="sv-kiosk-header"><span className="sv9-brand-mark">+</span><div><strong>SecureVisit</strong><small>Controlled facility device · {deviceId}</small></div><span className={`sv-kiosk-live-dot ${connectionState !== "connected" ? "offline" : ""}`}><i /> {connectionLabel}</span></header><section className="sv-kiosk-card sv-kiosk-card-wide"><div className="sv-kiosk-card-heading"><div><span className="sv9-kicker">VISIT {visitId}</span><h1>{overallReady ? "This kiosk is ready" : phase === "checking" ? "Checking this kiosk" : "Kiosk needs attention"}</h1><p>{overallReady ? "The results are saved. Staff can now complete the pre-call checks and admit the visit." : phase === "checking" ? "Testing camera, microphone, and connection. Keep this page open." : error || "Resolve the failed checks and run the test again."}</p></div><span className={`sv-kiosk-overall ${overallReady ? "ready" : "pending"}`}>{overallReady ? "READY" : phase === "checking" ? "CHECKING" : "ACTION NEEDED"}</span></div><div className="sv-kiosk-check-grid"><KioskCheck label="Camera" result={camera} detail="Video input available" /><KioskCheck label="Microphone" result={microphone} detail="Audio input available" /><KioskCheck label="Network" result={network} detail={latency === null ? "Connection quality" : `${latency} ms response`} /></div><div className="sv-kiosk-actions">{phase !== "checking" && <button className="sv9-button sv9-button-primary" onClick={() => void runChecks()}>{overallReady ? "Run check again" : "Retry device check"} →</button>}<span>Presence is reported to the facility while this page is open.</span></div></section></main>;
 }
