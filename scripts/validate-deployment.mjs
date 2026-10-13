@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const PLACEHOLDER_D1_ID = "00000000-0000-4000-8000-000000000000";
+const PLACEHOLDER_D1_NAME = "site-creator-d1";
+const PLACEHOLDER_R2_NAME = "site-creator-r2";
 const D1_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function option(name) {
@@ -41,7 +43,9 @@ export function evaluateDeploymentConfig(config, environment, runtime = {}) {
   }
   if (!d1) failures.push("generated DB D1 binding is missing");
   else if (!D1_UUID.test(String(d1.database_id || "")) || d1.database_id === PLACEHOLDER_D1_ID) failures.push("generated DB D1 binding must use a real database UUID");
+  else if (!String(d1.database_name || "").trim() || String(d1.database_name).trim() === PLACEHOLDER_D1_NAME) failures.push("generated DB D1 binding must use a real database name");
   if (!evidence) failures.push("generated EVIDENCE_BUCKET R2 binding is missing");
+  else if (!String(evidence.bucket_name || "").trim() || String(evidence.bucket_name).trim() === PLACEHOLDER_R2_NAME) failures.push("generated EVIDENCE_BUCKET R2 binding must use a real bucket name");
   if (!cronConfigured) failures.push("generated scheduled trigger */1 * * * * is missing");
   if (!queueName) failures.push("NOTIFICATION_QUEUE_NAME is required for staging and production");
   else if (!queueProducer || !queueConsumer) failures.push("NOTIFICATION_QUEUE_NAME is set but the generated queue binding is incomplete");

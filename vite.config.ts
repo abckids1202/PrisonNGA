@@ -28,7 +28,9 @@ const deploymentEnvironmentValue = (key: string): string | undefined => configur
   ? runtimeEnvironmentValue(key)
   : process.env[key]?.trim() || undefined;
 const configuredD1DatabaseId = deploymentEnvironmentValue("D1_DATABASE_ID");
-const configuredD1DatabaseName = deploymentEnvironmentValue("D1_DATABASE_NAME") || "site-creator-d1";
+const configuredD1DatabaseName = configuredEnvironment === "development"
+  ? deploymentEnvironmentValue("D1_DATABASE_NAME") || "site-creator-d1"
+  : deploymentEnvironmentValue("D1_DATABASE_NAME") || "";
 const configuredEvidenceBucketName = deploymentEnvironmentValue("EVIDENCE_BUCKET_NAME");
 const localOnlyProviderSecrets = new Set([
   "LIVEKIT_API_KEY",
@@ -107,7 +109,7 @@ const localBindingConfig = {
     ? [
         {
           binding: r2 || "EVIDENCE_BUCKET",
-          bucket_name: configuredEvidenceBucketName || "site-creator-r2",
+          bucket_name: configuredEvidenceBucketName || (configuredEnvironment === "development" ? "site-creator-r2" : ""),
         },
       ]
     : [],
