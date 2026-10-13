@@ -14,7 +14,7 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run build`, `npm run test:e2e`, and `npm run test:quick` passed on commit `91431e7` and verified:
+`npm run verify:release` passed on commit `1c57d84` and verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.

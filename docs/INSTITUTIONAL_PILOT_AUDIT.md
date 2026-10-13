@@ -3,7 +3,7 @@
 Date: 2026-10-13
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `91431e7` (`feat: persist weekly visitation hours`).
+Latest verified code commit: `1c57d84` (`test: cover weekly visitation hours editor`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier baseline now has 589 server test cases and 19 browser tests,
@@ -13,7 +13,7 @@ This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
 The current repository verification reports 589 passing server test cases plus 19
-browser tests on `91431e7`; this is the authoritative repository evidence
+browser tests on `1c57d84`; this is the authoritative repository evidence
 record for the current baseline.
 
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the
