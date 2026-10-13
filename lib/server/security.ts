@@ -188,6 +188,8 @@ export function applySecurityHeaders(response: Response, requestId?: string): vo
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
   response.headers.set("X-XSS-Protection", "0");
   if (requestId) response.headers.set("X-Request-Id", requestId);
 }

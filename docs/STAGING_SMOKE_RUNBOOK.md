@@ -10,6 +10,7 @@ Set `STAGING_DOMAIN` to the HTTPS staging origin. The command checks:
 
 - `/api/health/live` returns `200` and `{ "status": "ok" }`;
 - `X-Content-Type-Options` and `Referrer-Policy` are present;
+- `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Resource-Policy: same-origin` are present;
 - HTTPS deployments include `Strict-Transport-Security` with a positive `max-age` and `includeSubDomains`;
 - camera and microphone are allowed by `Permissions-Policy`;
 - CSP contains same-origin connections and `frame-ancestors 'none'`.

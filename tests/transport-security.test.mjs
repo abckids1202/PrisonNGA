@@ -17,6 +17,8 @@ test("edge rejection and image responses retain the same browser security policy
   assert.match(worker, /applyWorkerSecurityHeaders\(securedImageResponse, routedRequest, env, environmentCheck\.environment, requestId\)/);
   assert.match(worker, /Content-Security-Policy/);
   assert.match(worker, /Permissions-Policy/);
+  assert.match(worker, /Cross-Origin-Opener-Policy/);
+  assert.match(worker, /Cross-Origin-Resource-Policy/);
   assert.match(worker, /liveKitConnectSources\(env\)/);
 });
 
