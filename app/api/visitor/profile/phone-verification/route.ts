@@ -3,6 +3,7 @@ import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { deliverVisitorChallenge, getVisitorAuthDelivery } from "../../../../../lib/server/visitor-auth/delivery";
+import { reconcileStoredNotificationProviderEvent } from "../../../../../lib/server/notifications/provider-status";
 
 function normalizePhone(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/[\s().-]/g, "") : "";
@@ -67,7 +68,11 @@ export async function POST(request: Request) {
     }
     try {
       const deliveryReceipt = await deliverVisitorChallenge({ channel: "SMS", challengeId, destination: phone, code, expiresAt });
-      await d1.prepare("UPDATE auth_challenge_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PENDING'").bind(deliveryReceipt.providerReference, attemptId).run();
+      if (!deliveryReceipt.providerReference) throw new Error("delivery provider reference was empty");
+      const providerReference = deliveryReceipt.providerReference;
+      const referenceWrite = await d1.prepare("UPDATE auth_challenge_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PENDING'").bind(providerReference, attemptId).run();
+      if (!referenceWrite.meta.changes) throw new Error("delivery provider reference was not persisted");
+      await reconcileStoredNotificationProviderEvent(d1, { provider: delivery, providerReference, requestId: context.requestId });
     } catch {
       await d1.batch([
         d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'FAILED', error_code = 'AUTH_DELIVERY_UNAVAILABLE', completed_at = ? WHERE id = ?").bind(new Date().toISOString(), attemptId),

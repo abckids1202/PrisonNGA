@@ -2,6 +2,7 @@ import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { deliverVisitorChallenge, getVisitorAuthDelivery } from "../../../../../lib/server/visitor-auth/delivery";
+import { reconcileStoredNotificationProviderEvent } from "../../../../../lib/server/notifications/provider-status";
 import { isVisitorAuthChannelEnabled, parseVisitorAuthChannels } from "../../../../../lib/server/visitor-auth/channels";
 
 function normalizeEmail(value: unknown): string {
@@ -98,7 +99,11 @@ export async function POST(request: Request) {
     } else if (delivery === "webhook" || delivery === "resend" || delivery === "twilio") {
       try {
         const deliveryReceipt = await deliverVisitorChallenge({ channel: channel as "EMAIL" | "SMS", challengeId, destination, code, expiresAt });
-        await d1.prepare("UPDATE auth_challenge_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PENDING'").bind(deliveryReceipt.providerReference, deliveryAttemptId).run();
+        if (!deliveryReceipt.providerReference) throw new Error("delivery provider reference was empty");
+        const providerReference = deliveryReceipt.providerReference;
+        const referenceWrite = await d1.prepare("UPDATE auth_challenge_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PENDING'").bind(providerReference, deliveryAttemptId).run();
+        if (!referenceWrite.meta.changes) throw new Error("delivery provider reference was not persisted");
+        await reconcileStoredNotificationProviderEvent(d1, { provider: delivery || "unconfigured", providerReference, requestId: context.requestId });
       } catch {
         await d1.prepare("UPDATE auth_challenge_delivery_attempts SET status = 'FAILED', error_code = 'AUTH_DELIVERY_UNAVAILABLE', completed_at = ? WHERE id = ? AND status = 'PENDING'").bind(new Date().toISOString(), deliveryAttemptId).run();
         await d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL").bind(new Date().toISOString(), challengeId).run();
