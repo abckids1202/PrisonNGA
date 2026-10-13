@@ -14,7 +14,9 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `7b85bda` and verified:
+`npm run verify:release` passed on commit `7b85bda`; the follow-up manifest
+sanitizer test and staging-build assertion passed on commit `00434a3`.
+The release verifier verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.
@@ -23,6 +25,9 @@ polish items.
 - TypeScript typecheck, ESLint, and production build.
 - 592 server test cases and 19 browser tests.
 - Production dependency audit with 0 vulnerabilities.
+- Deployment-manifest unit coverage verifies local adapters are replaced by
+  deployment values, omitted values are cleared fail-closed, and forbidden
+  credentials are removed from Worker `vars`.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,
