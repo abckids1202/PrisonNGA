@@ -4,13 +4,14 @@ import { readFile } from "node:fs/promises";
 
 test("Control workspace refreshes appointments and facility state from protected APIs", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const dataSource = await readFile(new URL("../app/features/control/useControlWorkspaceData.ts", import.meta.url), "utf8");
 
-  assert.match(source, /fetch\("\/api\/control\/appointments"[\s\S]*cache: "no-store"/);
-  assert.match(source, /fetch\("\/api\/facility\/state"[\s\S]*credentials: "include", cache: "no-store"/);
-  assert.match(source, /setInterval\(\(\) => \{ void loadAppointments\(\); \}, 15000\)/);
-  assert.match(source, /setInterval\(\(\) => \{ void loadFacilityState\(\); \}, 15000\)/);
-  assert.match(source, /setBackendStatus\("unavailable"\)/);
-  assert.match(source, /useState\("UNKNOWN"\)/);
+  assert.match(dataSource, /fetch\("\/api\/control\/appointments"[\s\S]*cache: "no-store"/);
+  assert.match(dataSource, /fetch\("\/api\/facility\/state"[\s\S]*credentials: "include", cache: "no-store"/);
+  assert.match(dataSource, /setInterval\(\(\) => \{ void loadAppointments\(\); \}, 15000\)/);
+  assert.match(dataSource, /setInterval\(\(\) => \{ void loadFacilityState\(\); \}, 15000\)/);
+  assert.match(dataSource, /setBackendStatus\("unavailable"\)/);
+  assert.match(dataSource, /useState\("UNKNOWN"\)/);
   assert.match(source, /facilityState === "UNKNOWN" \|\| backendStatus !== "connected"/);
   assert.match(source, /The facility state cannot change until the protected facility record is available/);
 });

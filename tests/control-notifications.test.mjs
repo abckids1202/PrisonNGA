@@ -4,9 +4,10 @@ import { readFile } from "node:fs/promises";
 
 test("Control notification button reads persisted facility security events", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const dataSource = await readFile(new URL("../app/features/control/useControlWorkspaceData.ts", import.meta.url), "utf8");
 
   assert.match(source, /aria-label="Notifications" aria-expanded=\{notificationPanelOpen\}/);
-  assert.match(source, /fetch\("\/api\/control\/security-events"[\s\S]*credentials: "include", cache: "no-store"/);
+  assert.match(dataSource, /fetch\("\/api\/control\/security-events"[\s\S]*credentials: "include", cache: "no-store"/);
   assert.match(source, /No security events recorded for this facility/);
   assert.match(source, /Security events are unavailable\. No empty notification state is being inferred/);
   assert.doesNotMatch(source, /onClick=\{\(\) => notify\("No new security notifications\."\)\}/);
