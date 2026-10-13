@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import PrisonerDirectory from "../../components/PrisonerDirectory";
 import { Avatar, Button, EmptyState, PageHeader, Status } from "../../components/ControlPrimitives";
 import { facilityTimeZoneLabel } from "../control/model";
-import { formatDateValue as formatDateValueWithZone } from "@/lib/date-format";
+import { addLocalDateDays, formatDateValue as formatDateValueWithZone, localDateKey } from "@/lib/date-format";
 
 type Notice = { id: number; message: string; tone?: "success" | "warning" | "error" | "info" };
 type PeopleRecord = {
@@ -184,10 +184,9 @@ export default function PeoplePage({ timeZone, onNotify }: { timeZone: string; o
           let nextDate = "No upcoming visit";
           let nextTime = "—";
           if (visitAt && !Number.isNaN(visitAt.getTime())) {
-            const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(visitAt);
-            const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-            const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            const tomorrowKey = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(tomorrow);
+            const dateKey = localDateKey(visitAt, timeZone);
+            const todayKey = localDateKey(new Date(), timeZone);
+            const tomorrowKey = addLocalDateDays(new Date(), 1, timeZone);
             nextDate = dateKey === todayKey ? "Today" : dateKey === tomorrowKey ? "Tomorrow" : new Intl.DateTimeFormat("en-ID", { timeZone, day: "numeric", month: "short" }).format(visitAt);
             const time = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(visitAt);
             nextTime = `${time} ${facilityTimeZoneLabel(timeZone)}${row.next_room ? ` · ${String(row.next_room)}` : ""}`;

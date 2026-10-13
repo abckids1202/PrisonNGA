@@ -30,3 +30,13 @@ export function localDateKey(date: Date, timeZone?: string | null) {
     return "";
   }
 }
+
+export function addLocalDateDays(date: Date, days: number, timeZone?: string | null) {
+  const key = localDateKey(date, timeZone);
+  if (!key || !Number.isInteger(days)) return "";
+  const [year, month, day] = key.split("-").map(Number);
+  if (![year, month, day].every(Number.isInteger)) return "";
+  const calendarDate = new Date(Date.UTC(year, month - 1, day));
+  calendarDate.setUTCDate(calendarDate.getUTCDate() + days);
+  return `${calendarDate.getUTCFullYear()}-${String(calendarDate.getUTCMonth() + 1).padStart(2, "0")}-${String(calendarDate.getUTCDate()).padStart(2, "0")}`;
+}
