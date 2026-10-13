@@ -3,20 +3,18 @@
 Date: 2026-10-13
 Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `b78a93d` (`fix: fail closed on malformed weekly hours`).
+Latest verified code commit: `8626b83` (`feat: alarm on failed evidence cleanup`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The release verifier baseline now has 590 server test cases and 19 browser tests,
+The release verifier baseline now has 592 server test cases and 19 browser tests,
 fresh migration verification, a disposable backup/restore drill, typecheck,
 lint, production build, and a zero-vulnerability production dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The release-verifier baseline reports 590 passing server test cases plus 19
-browser tests on `b78a93d`. A subsequent targeted verification on `8626b83`
-reports 592 passing server test cases, including evidence-object cleanup and
-failed-cleanup alarm coverage;
-this is the current repository evidence record.
+The release verifier reports 592 passing server test cases plus 19 browser tests
+on `8626b83`, including evidence-object cleanup and failed-cleanup alarm
+coverage; this is the current repository evidence record.
 
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the
 development environment. The report identifies the expected missing deployment
@@ -131,9 +129,9 @@ The current repository already includes:
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server tests and browser smoke tests. Current validation baseline is 590 passing server test cases and 19 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server tests and browser smoke tests. Current validation baseline is 592 passing server test cases and 19 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - The follow-up evidence transaction fix on `8626b83` has 592 passing server test cases locally; it deletes an uploaded object unless all domain, audit/outbox, and idempotency persistence proofs succeed, and records a critical alarm if deletion fails.
-- `npm run audit:routes` now scans all 75 API route files and fails if a route is absent from `docs/ROUTE_SECURITY_MATRIX.md`; the matcher understands combined rows, parameterized segments, and wildcard route families. The release verifier passes with the resulting 590 server test cases and 19 browser tests.
+- `npm run audit:routes` now scans all 75 API route files and fails if a route is absent from `docs/ROUTE_SECURITY_MATRIX.md`; the matcher understands combined rows, parameterized segments, and wildcard route families. The release verifier passes with the resulting 592 server test cases and 19 browser tests.
 - Client-side root, global, Control, and Visitor error boundaries now send only a bounded surface, pathname, and digest to a rate-limited diagnostics endpoint; the endpoint emits a redacted structured operational event and never accepts error messages, stacks, cookies, tokens, or user data. This improves local observability, but an external log sink and alert routing remain deployment gates.
 - The release verifier now runs the API route security-matrix audit as an explicit named gate before migrations, so route-review coverage cannot disappear silently if the test command changes.
 - Client error reporting now consumes failed telemetry requests, so a monitoring outage cannot create an unhandled browser rejection or alter the user-facing recovery boundary.

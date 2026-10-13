@@ -15,6 +15,8 @@ The product remains a staging candidate rather than a production institutional s
 
 The latest targeted verification commit is `8626b83`; the full local server suite reports 592 passing tests. Evidence uploads now delete their storage object unless the domain row, audit/outbox events, and idempotency completion all commit successfully, and failed cleanup creates a critical privacy alarm for staff recovery.
 
+The fresh release verifier also passed on `8626b83`: route-security coverage, clean migrations, staging-fixture compatibility, disposable backup/restore integrity, typecheck, lint, production build, 592 server tests, 19 browser tests, and the production dependency audit. This remains repository evidence only; real providers, infrastructure, hardware, and institutional approvals are still release gates.
+
 ## Release gates
 
 The pilot cannot be approved until every gate below has evidence attached to the release record.

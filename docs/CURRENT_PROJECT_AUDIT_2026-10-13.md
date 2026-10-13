@@ -14,14 +14,14 @@ polish items.
 
 ### Evidence captured on this audit
 
-`npm run verify:release` passed on commit `b78a93d` and verified:
+`npm run verify:release` passed on commit `8626b83` and verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
 - Fresh local D1 migration and synthetic seed verification.
 - Disposable staging-fixture schema compatibility.
 - Local backup/restore drill with schema, foreign-key, credit-ledger, and audit-integrity checks.
 - TypeScript typecheck, ESLint, and production build.
-- 590 server test cases and 19 browser tests.
+- 592 server test cases and 19 browser tests.
 - Production dependency audit with 0 vulnerabilities.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - Follow-up evidence-upload cleanup verification on commit `8626b83`: 592 server test cases passed; uncommitted evidence objects are deleted unless the domain, audit/outbox, and idempotency writes all commit, and failed storage cleanup creates a critical privacy alarm.
