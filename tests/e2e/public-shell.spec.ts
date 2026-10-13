@@ -513,6 +513,15 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     expect(visitorCheckIn.status(), await visitorCheckIn.text()).toBe(201);
     await expect(visitorCheckIn.json()).resolves.toMatchObject({ checkIn: { state: "VISITOR_WAITING", visitorPresence: "present" } });
 
+    // The visitor-facing waiting state must be rendered from the persisted
+    // appointment record, not from the check-in response or local component
+    // state. Refreshing here catches a broken handoff before the kiosk joins.
+    await page.goto(`/visitor/visits/${encodeURIComponent(approvedAppointmentId)}`);
+    await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
+    await expect(page.getByText("Your device", { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
+
     const kioskCheck = await page.request.post(`/api/kiosk/visits/${approvedAppointmentId}/device-check`, {
       headers: { ...kioskHeaders, "Idempotency-Key": `kiosk-device-check-${Date.now()}-e2e` },
       data: { cameraResult: "ready", microphoneResult: "ready", networkResult: "stable", latencyMs: 42 },

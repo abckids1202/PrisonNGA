@@ -176,20 +176,14 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
         // The next visit-detail refresh will surface a stale or unavailable waiting-room state.
       }
     };
-    const clearPresence = () => {
-      void fetch(`/api/visitor/appointments/${encodeURIComponent(presenceAppointmentId)}/waiting-room/presence`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ presence: "absent" }),
-        cache: "no-store",
-        keepalive: true,
-      }).catch(() => undefined);
-    };
     void sendPresence();
     const timer = window.setInterval(() => void sendPresence(), 15_000);
-    window.addEventListener("pagehide", clearPresence);
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener("pagehide", clearPresence); };
+    // Presence is intentionally heartbeat/TTL based. A pagehide event also
+    // fires during a normal reload or same-origin navigation, so clearing the
+    // record there creates a false departure and can race with kiosk check-in.
+    // The server treats the visitor as absent once the persisted heartbeat is
+    // stale, while an explicit visit action can still mark the visitor absent.
+    return () => { active = false; window.clearInterval(timer); };
   }, [presenceAppointmentId, presenceAppointmentStatus, presenceState]);
 
   const state = useMemo(() => appointment ? getVisitorVisitViewState(appointment) : null, [appointment]);

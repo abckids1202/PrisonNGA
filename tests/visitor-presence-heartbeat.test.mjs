@@ -24,7 +24,7 @@ test("visitor presence compensates a partial optimistic-concurrency write", () =
   assert.match(source, /if \(result\[0\]\?\.meta\.changes\) \{/);
 });
 
-test("visitor presence can be cleared safely when the browser leaves", () => {
+test("visitor presence can be cleared explicitly while browser reloads rely on the heartbeat TTL", () => {
   assert.match(source, /requestedPresence !== "present" && requestedPresence !== "absent"/);
   assert.match(source, /presence === "absent"/);
   assert.match(source, /visitor_presence = 'absent'/);
@@ -32,8 +32,9 @@ test("visitor presence can be cleared safely when the browser leaves", () => {
   assert.match(source, /VISITOR_PRESENCE_CLEARED/);
   assert.match(source, /VISITOR_PRESENCE_AUDIT_INCOMPLETE/);
   assert.match(source, /VISITOR_PRESENCE_CLEAR/);
-  assert.match(visitDetailsSource, /body: JSON\.stringify\(\{ presence: "absent" \}\)/);
-  assert.match(visitDetailsSource, /window\.addEventListener\("pagehide", clearPresence\)/);
+  assert.doesNotMatch(visitDetailsSource, /window\.addEventListener\("pagehide", clearPresence\)/);
+  assert.match(visitDetailsSource, /heartbeat\/TTL based/);
+  assert.match(visitDetailsSource, /stale/);
   assert.match(liveSessionSource, /window\.addEventListener\("pagehide", clearPresence\)/);
   assert.match(liveSessionSource, /function leaveVisit\(\)/);
 });
