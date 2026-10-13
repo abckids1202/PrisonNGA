@@ -80,9 +80,17 @@ export async function reconcileStoredNotificationProviderEvent(
   if (challenge) {
     statements.push(d1.prepare(`UPDATE auth_challenge_delivery_attempts
       SET provider_status = ?, provider_error = NULL, status_updated_at = ?,
-        status = CASE WHEN ? = 'FAILED' THEN 'FAILED' ELSE status END,
-        completed_at = CASE WHEN ? = 'FAILED' THEN ? ELSE completed_at END
-      WHERE id = ?`).bind(event.status, now, nextStatus, nextStatus, now, challenge.id));
+        status = CASE
+          WHEN status IN ('DELIVERED', 'FAILED') THEN status
+          WHEN ? IN ('DELIVERED', 'FAILED') THEN ?
+          ELSE status
+        END,
+        completed_at = CASE
+          WHEN status IN ('DELIVERED', 'FAILED') THEN completed_at
+          WHEN ? IN ('DELIVERED', 'FAILED') THEN ?
+          ELSE completed_at
+        END
+      WHERE id = ?`).bind(event.status, now, nextStatus, nextStatus, nextStatus, now, challenge.id));
     if (nextStatus === "FAILED") {
       statements.push(d1.prepare(`UPDATE auth_challenges SET expires_at = ?
         WHERE id = ? AND consumed_at IS NULL AND expires_at > ?`).bind(now, challenge.challenge_id, now));

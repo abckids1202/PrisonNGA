@@ -71,7 +71,20 @@ export async function POST(request: Request) {
       if (notification.facility_id) statements.push(...auditAndOutboxStatements(d1, { actorUserId: "system:notification-webhook", actorRole: "SYSTEM", facilityId: notification.facility_id, actionType: "NOTIFICATION_DELIVERY_STATUS_UPDATED", entityType: "notification_delivery_attempt", entityId: notification.id, reason: `Provider reported ${payload.status}.`, oldValues: { status: notification.status }, newValues: { providerStatus: payload.status, status: nextStatus || notification.status, providerReference: payload.providerReference }, requestId: context.requestId, correlationId: payload.eventId, eventType: "NOTIFICATION_DELIVERY_STATUS_UPDATED", payload: { provider: payload.provider, providerReference: payload.providerReference, status: payload.status, eventType: notification.event_type } }));
     }
     if (challenge) {
-      statements.push(d1.prepare(`UPDATE auth_challenge_delivery_attempts SET provider_status = ?, provider_error = ?, status_updated_at = ?, status = CASE WHEN ? = 'FAILED' THEN 'FAILED' ELSE status END, error_code = CASE WHEN ? = 'FAILED' THEN COALESCE(?, error_code) ELSE error_code END, completed_at = CASE WHEN ? = 'FAILED' THEN ? ELSE completed_at END WHERE id = ?`).bind(payload.status, payload.errorMessage || payload.errorCode || null, now, nextStatus, nextStatus, payload.errorMessage || payload.errorCode || null, nextStatus, now, challenge.id));
+      statements.push(d1.prepare(`UPDATE auth_challenge_delivery_attempts SET
+        provider_status = ?, provider_error = ?, status_updated_at = ?,
+        status = CASE
+          WHEN status IN ('DELIVERED', 'FAILED') THEN status
+          WHEN ? IN ('DELIVERED', 'FAILED') THEN ?
+          ELSE status
+        END,
+        error_code = CASE WHEN ? = 'FAILED' THEN COALESCE(?, error_code) ELSE error_code END,
+        completed_at = CASE
+          WHEN status IN ('DELIVERED', 'FAILED') THEN completed_at
+          WHEN ? IN ('DELIVERED', 'FAILED') THEN ?
+          ELSE completed_at
+        END
+        WHERE id = ?`).bind(payload.status, payload.errorMessage || payload.errorCode || null, now, nextStatus, nextStatus, nextStatus, payload.errorMessage || payload.errorCode || null, nextStatus, now, challenge.id));
       if (nextStatus === "FAILED") statements.push(d1.prepare("UPDATE auth_challenges SET expires_at = ? WHERE id = ? AND consumed_at IS NULL AND expires_at > ?").bind(now, challenge.challenge_id, now));
     }
     const results = await d1.batch(statements);

@@ -41,6 +41,10 @@ The release verifier verified:
 - Phone verification now expires the challenge if its delivery-attempt record
   cannot be persisted, preventing an unauditable live OTP from surviving a
   partial database failure.
+- Provider-confirmed OTP delivery now transitions the persisted challenge
+  attempt to terminal `DELIVERED` state, including early callbacks reconciled
+  after provider-reference persistence; terminal `DELIVERED` and `FAILED`
+  states are preserved against later provider events.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,

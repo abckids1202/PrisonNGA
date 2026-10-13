@@ -57,3 +57,19 @@ test("provider callback received before reference persistence is reconciled", as
   assert.equal(d1.sqlite.prepare("SELECT status, delivered_at FROM notifications WHERE id = 'notification-1'").get().status, "DELIVERED");
   assert.equal(d1.sqlite.prepare("SELECT action_type FROM audit_events WHERE entity_id = 'attempt-1'").get().action_type, "NOTIFICATION_DELIVERY_STATUS_RECONCILED");
 });
+
+test("delivered OTP callbacks become terminal delivery attempts", async () => {
+  const d1 = new D1();
+  d1.sqlite.exec(`
+    INSERT INTO notification_provider_events VALUES ('provider-event-2', 'twilio', 'evt-2', 'sms-2', 'DELIVERED', '{}', '2026-10-11T10:00:00.000Z');
+    INSERT INTO auth_challenges VALUES ('challenge-2', '2026-10-11T10:10:00.000Z', NULL);
+    INSERT INTO auth_challenge_delivery_attempts (id, challenge_id, provider, provider_reference, status, created_at)
+      VALUES ('challenge-attempt-2', 'challenge-2', 'twilio', 'sms-2', 'SENT', '2026-10-11T09:59:30.000Z');
+  `);
+
+  assert.equal(await reconcileStoredNotificationProviderEvent(d1, { provider: "twilio", providerReference: "sms-2", requestId: "request-2" }), true);
+  const attempt = d1.sqlite.prepare("SELECT status, provider_status, completed_at FROM auth_challenge_delivery_attempts WHERE id = 'challenge-attempt-2'").get();
+  assert.equal(attempt.status, "DELIVERED");
+  assert.equal(attempt.provider_status, "DELIVERED");
+  assert.match(attempt.completed_at, /^20\d\d-\d\d-\d\dT/);
+});
