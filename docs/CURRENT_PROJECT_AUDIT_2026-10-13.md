@@ -16,7 +16,7 @@ polish items.
 
 `npm run verify:release` passed on commit `d6ad7c2`; the follow-up manifest
 sanitizer test, staging-build assertion, and payment-provider timeout fix were
-verified through commit `5a4592c`.
+verified through commit `1f10ac6`.
 The release verifier verified:
 
 - 75 API route files covered by the security matrix; 0 uncovered routes.
@@ -32,6 +32,9 @@ The release verifier verified:
 - The Xendit adapter keeps its eight-second request deadline active through
   bounded response-body parsing, preventing a provider that sends headers and
   then stalls from bypassing the timeout.
+- The visitor-auth delivery webhook adapter applies the same deadline through
+  bounded response parsing, so OTP delivery callbacks cannot hang after headers
+  arrive.
 - Waiting Room provider-failure logging with request ID and redacted error reason.
 - HTTPS staging smoke now verifies `Strict-Transport-Security` with a positive
   `max-age` and `includeSubDomains`, in addition to the existing CSP,
