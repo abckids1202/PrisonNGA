@@ -56,7 +56,7 @@ function inTimeZone(timestamp: number, timeZone: string): LocalDateTime {
   };
 }
 
-function parseWeeklyHours(value: string | null | undefined): WeeklyHoursEntry[] | null {
+export function parseWeeklyHours(value: string | null | undefined): WeeklyHoursEntry[] | null {
   if (value == null) return null;
   try {
     const parsed: unknown = JSON.parse(value);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateVisitWindow } from "../lib/server/visit-policy.ts";
+import { parseWeeklyHours, validateVisitWindow } from "../lib/server/visit-policy.ts";
 import { parseEditableVisitPolicy } from "../lib/server/visit-policy-admin.ts";
 
 const base = {
@@ -56,4 +56,9 @@ test("weekly policy admin input is normalized and preserves closed days", () => 
     weeklyHours: weekdaysClosedSunday,
   });
   assert.equal(parsed?.weeklyHoursJson, JSON.stringify(weekdaysClosedSunday));
+});
+
+test("malformed persisted weekly hours fail closed instead of becoming daily fallback", () => {
+  assert.equal(parseWeeklyHours("{not-json}"), null);
+  assert.equal(parseWeeklyHours(JSON.stringify([{ open: "08:00", close: "17:00" }])), null);
 });

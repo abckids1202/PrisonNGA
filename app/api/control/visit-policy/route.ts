@@ -2,6 +2,7 @@ import { getD1 } from "../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { parseEditableVisitPolicy } from "../../../../lib/server/visit-policy-admin";
+import { parseWeeklyHours } from "../../../../lib/server/visit-policy";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 type PolicyRow = {
@@ -24,7 +25,9 @@ const selectPolicy = `SELECT id, facility_id, min_duration_minutes, max_duration
   max_advance_days, daily_start_time, daily_end_time, weekly_hours_json, credit_price_minor, credit_currency, version, updated_at FROM visit_policies WHERE facility_id = ?`;
 
 function publicWeeklyHours(value: string | null) {
-  return value ? JSON.parse(value) : null;
+  const parsed = parseWeeklyHours(value);
+  if (value != null && !parsed) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
+  return parsed;
 }
 
 function toPublicPolicy(row: PolicyRow) {
