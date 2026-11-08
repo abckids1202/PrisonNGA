@@ -7,6 +7,7 @@ test("organization administration uses a dedicated organization-role boundary", 
   const organizations = await readFile(new URL("../app/api/control/organizations/route.ts", import.meta.url), "utf8");
   const facilities = await readFile(new URL("../app/api/control/facilities/route.ts", import.meta.url), "utf8");
   const memberships = await readFile(new URL("../app/api/control/memberships/route.ts", import.meta.url), "utf8");
+  const staff = await readFile(new URL("../app/api/control/staff/route.ts", import.meta.url), "utf8");
   const organizationRoles = await readFile(new URL("../app/api/control/organization-roles/route.ts", import.meta.url), "utf8");
   const migration = await readFile(new URL("../drizzle/0061_organization_role_assignments.sql", import.meta.url), "utf8");
   const contactMigration = await readFile(new URL("../drizzle/0063_organization_contact_details.sql", import.meta.url), "utf8");
@@ -14,6 +15,8 @@ test("organization administration uses a dedicated organization-role boundary", 
 
   assert.match(security, /export async function requireOrganizationPermission/);
   assert.match(security, /organization_role_assignments/);
+  assert.match(memberships, /organization\.manage/);
+  assert.match(staff, /role-organization-owner/);
   assert.match(organizations, /requireOrganizationPermission\("organization\.manage"\)/);
   assert.match(facilities, /requireOrganizationPermission\("organization\.manage"\)/);
   assert.match(memberships, /requireOrganizationPermission\("organization\.manage"\)/);

@@ -127,10 +127,6 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ,('role-supervisor', 'perm-break-glass-approve')
 ON CONFLICT(role_id, permission_id) DO NOTHING;
 
-INSERT INTO role_permissions (role_id, permission_id)
-VALUES ('role-supervisor', 'perm-organization-manage')
-ON CONFLICT(role_id, permission_id) DO NOTHING;
-
 INSERT INTO organization_role_assignments (user_id, organization_id, role_id, status, assigned_by)
-VALUES ('staff-local-supervisor', 'org-local-001', 'role-supervisor', 'ACTIVE', 'staff-local-supervisor')
+VALUES ('staff-local-supervisor', 'org-local-001', 'role-organization-owner', 'ACTIVE', 'staff-local-supervisor')
 ON CONFLICT(user_id, organization_id, role_id) DO NOTHING;

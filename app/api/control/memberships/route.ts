@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     if (organizationId !== authorization.organizationId) throw new SecurityError("ORGANIZATION_SCOPE_DENIED", 403);
     const user = await d1.prepare("SELECT id, email, display_name FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE'").bind(body.userId.trim()).first<{ id: string; email: string; display_name: string }>();
     if (!user) throw new SecurityError("STAFF_NOT_FOUND", 404);
-    const role = await d1.prepare("SELECT id, name FROM roles WHERE id = ?").bind(body.roleId.trim()).first<{ id: string; name: string }>();
+    const role = await d1.prepare("SELECT r.id, r.name FROM roles r WHERE r.id = ? AND NOT EXISTS (SELECT 1 FROM role_permissions rp INNER JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = r.id AND p.permission_key = 'organization.manage')").bind(body.roleId.trim()).first<{ id: string; name: string }>();
     if (!role) throw new SecurityError("STAFF_ROLE_NOT_FOUND", 404);
     const scope = `organization-membership-create:${facilityId}:${body.userId.trim()}`;
     const requestHash = await hashIdempotencyPayload({ userId: body.userId.trim(), facilityId, roleId: role.id, employeeReference, jobTitle, department, reason });

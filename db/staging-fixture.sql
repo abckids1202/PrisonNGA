@@ -76,6 +76,3 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES
   ('role-auditor', 'perm-facility-read'),
   ('role-auditor', 'perm-audit-read'),
   ('role-auditor', 'perm-audit-export');
-
-INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
-VALUES ('role-supervisor', 'perm-organization-manage');

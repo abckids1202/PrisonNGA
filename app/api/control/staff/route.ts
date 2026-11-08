@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope: idempotencyScope, key: idempotencyKey };
     const [role, facility] = await Promise.all([
-      d1.prepare("SELECT id, name FROM roles WHERE id = ?").bind(roleId).first<{ id: string; name: string }>(),
+      d1.prepare("SELECT id, name FROM roles WHERE id = ? AND id NOT IN ('role-organization-owner', 'role-organization-administrator')").bind(roleId).first<{ id: string; name: string }>(),
       d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>(),
     ]);
     if (!role) throw new SecurityError("STAFF_ROLE_NOT_FOUND", 404);
