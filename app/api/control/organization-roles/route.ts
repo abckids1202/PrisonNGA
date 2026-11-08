@@ -12,7 +12,7 @@ export async function GET() {
   try {
     const authorization = await requireOrganizationPermission("organization.manage");
     const d1 = await getD1();
-    const [assignments, roles] = await Promise.all([
+    const [assignments, roles, eligibleStaff] = await Promise.all([
       d1.prepare(`SELECT ora.user_id, ora.organization_id, ora.role_id, ora.status, ora.assigned_by, ora.version,
           ora.assigned_at, ora.created_at, ora.updated_at, u.email, u.display_name, r.name AS role_name
         FROM organization_role_assignments ora
@@ -23,8 +23,12 @@ export async function GET() {
         FROM roles r INNER JOIN role_permissions rp ON rp.role_id = r.id
         INNER JOIN permissions p ON p.id = rp.permission_id
         WHERE p.permission_key = 'organization.manage' ORDER BY r.name`).all(),
+      d1.prepare(`SELECT DISTINCT u.id, u.email, u.display_name, u.status
+        FROM organization_memberships om INNER JOIN users u ON u.id = om.user_id
+        WHERE om.organization_id = ? AND om.status = 'ACTIVE' AND u.user_type = 'STAFF' AND u.status = 'ACTIVE'
+        ORDER BY u.display_name`).bind(authorization.organizationId).all(),
     ]);
-    return securityResponse({ organizationId: authorization.organizationId, assignments: assignments.results, roles: roles.results }, 200, context.requestId);
+    return securityResponse({ organizationId: authorization.organizationId, assignments: assignments.results, roles: roles.results, eligibleStaff: eligibleStaff.results }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
   }

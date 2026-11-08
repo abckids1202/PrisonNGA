@@ -40,8 +40,12 @@ export async function POST(request: Request) {
     const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope: idempotencyScope, key: idempotencyKey };
-    const role = await d1.prepare("SELECT id, name FROM roles WHERE id = ?").bind(roleId).first<{ id: string; name: string }>();
+    const [role, facility] = await Promise.all([
+      d1.prepare("SELECT id, name FROM roles WHERE id = ?").bind(roleId).first<{ id: string; name: string }>(),
+      d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>(),
+    ]);
     if (!role) throw new SecurityError("STAFF_ROLE_NOT_FOUND", 404);
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 409);
     const existing = await d1.prepare("SELECT id FROM users WHERE lower(email) = lower(?)").bind(email).first<{ id: string }>();
     if (existing) throw new SecurityError("STAFF_EMAIL_ALREADY_REGISTERED", 409);
     const userId = crypto.randomUUID();
@@ -52,6 +56,7 @@ export async function POST(request: Request) {
     const results = await d1.batch([
       d1.prepare("INSERT INTO users (id, external_id, email, display_name, user_type, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'STAFF', 'ACTIVE', 1, ?, ?)").bind(userId, `pending:staff:${userId}`, email, displayName, now, now),
       d1.prepare("INSERT INTO staff_profiles (user_id, facility_id, employee_reference, job_title, department, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(userId, authorization.facilityId, employeeReference, jobTitle, department, now, now),
+      d1.prepare("INSERT INTO organization_memberships (id, organization_id, user_id, facility_id, role, status, version, assigned_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'ACTIVE', 1, ?, ?, ?)").bind(`membership-${userId}-${authorization.facilityId}`, facility.organization_id, userId, authorization.facilityId, role.name, authorization.userId, now, now),
       d1.prepare("INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?, ?)").bind(userId, role.id, authorization.facilityId, authorization.userId, now),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "STAFF_PROVISIONED", entityType: "staff_user", entityId: userId, reason, newValues: { email, displayName, employeeReference, jobTitle, department, role: role.name, status: "ACTIVE" }, requestId: context.requestId, correlationId, eventType: "STAFF_PROVISIONED", payload: { userId, email } }, auditGuard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: auditGuard }),

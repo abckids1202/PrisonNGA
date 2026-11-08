@@ -25,3 +25,18 @@ test("Administration integrations tab reads protected readiness state", async ()
   assert.match(readinessSource, /Secret values are never returned/);
   assert.match(source, /tab === "Integrations" \? <IntegrationReadinessPanel/);
 });
+
+test("Organization Roles UI uses the organization-scoped, audited mutation boundary", async () => {
+  const source = await readFile(new URL("../app/features/management/AdministrationPage.tsx", import.meta.url), "utf8");
+  const panel = await readFile(new URL("../app/components/OrganizationRolesPanel.tsx", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/control/organization-roles/route.ts", import.meta.url), "utf8");
+  const staffRoute = await readFile(new URL("../app/api/control/staff/route.ts", import.meta.url), "utf8");
+  assert.match(source, /tab === "Organization Roles" \? <OrganizationRolesPanel/);
+  assert.match(panel, /fetch\("\/api\/control\/organization-roles"/);
+  assert.match(panel, /Idempotency-Key/);
+  assert.match(panel, /expectedVersion/);
+  assert.match(panel, /STEP_UP_REQUIRED/);
+  assert.match(route, /eligibleStaff/);
+  assert.match(route, /organization_memberships/);
+  assert.match(staffRoute, /INSERT INTO organization_memberships/);
+});
