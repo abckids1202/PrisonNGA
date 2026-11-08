@@ -22,5 +22,8 @@ test("visitor evidence only preserves the object after every persistence proof s
   assert.match(source, /evidenceUploaded = true/);
   assert.match(source, /if \(!evidenceCommitted && evidenceUploaded\)/);
   assert.match(source, /EVIDENCE_UPLOAD_CLEANUP_REQUIRED/);
+  assert.match(source, /retention_policies/);
+  assert.match(source, /VISITOR_VERIFICATION/);
+  assert.match(source, /EVIDENCE_RETENTION_NOT_CONFIGURED/);
   assert.ok(source.lastIndexOf("evidenceCommitted = true") < source.lastIndexOf("idempotency = null;"));
 });

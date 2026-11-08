@@ -46,6 +46,7 @@ export async function POST(request: Request) {
     catch (error) { throw new SecurityError(error instanceof Error ? error.message : "EVIDENCE_FILE_NOT_ALLOWED", 400); }
     const ownedCase = await d1.prepare(`SELECT vc.id, vc.facility_id FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id WHERE vc.id = ? AND vr.visitor_user_id = ?`).bind(verificationCaseId, visitor.userId).first<{ id: string; facility_id: string }>();
     if (!ownedCase) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
+    const retentionPolicy = await d1.prepare("SELECT retention_days FROM retention_policies WHERE facility_id = ? AND evidence_type = 'VISITOR_VERIFICATION'").bind(ownedCase.facility_id).first<{ retention_days: number }>();
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const suppliedIdempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
@@ -68,7 +69,9 @@ export async function POST(request: Request) {
     const id = crypto.randomUUID();
     const storageKey = `${ownedCase.facility_id}/verification/${verificationCaseId}/${id}`;
     const now = new Date();
-    const retentionDays = Math.max(1, Number(await getRuntimeValue("EVIDENCE_RETENTION_DAYS") || "365") || 365);
+    const configuredRetentionDays = retentionPolicy?.retention_days ?? Number(await getRuntimeValue("EVIDENCE_RETENTION_DAYS") || "365");
+    if (!Number.isSafeInteger(configuredRetentionDays) || configuredRetentionDays < 1 || configuredRetentionDays > 3650) throw new SecurityError("EVIDENCE_RETENTION_NOT_CONFIGURED", 503);
+    const retentionDays = configuredRetentionDays;
     const retentionUntil = new Date(now.getTime() + retentionDays * 86400000).toISOString();
     let scanVerdict: Awaited<ReturnType<typeof scanEvidence>>;
     let evidenceCommitted = false;
@@ -102,7 +105,7 @@ export async function POST(request: Request) {
           entityType: "evidence_document",
           entityId: id,
           reason: "Visitor uploaded supporting evidence for relationship verification.",
-          newValues: { verificationCaseId, contentType: file.type, byteSize: file.size, sha256, status: "AVAILABLE" },
+          newValues: { verificationCaseId, contentType: file.type, byteSize: file.size, sha256, status: "AVAILABLE", retentionDays },
           requestId: context.requestId,
           correlationId,
           eventType: "EVIDENCE_UPLOADED",
