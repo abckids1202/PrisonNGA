@@ -52,6 +52,13 @@ async function handleEgressEvent(d1: D1Database, event: { id?: string; event?: s
   }
   const prior = await d1.prepare("SELECT id, metadata FROM visit_session_events WHERE id = ? AND session_id = ?").bind(eventId, session.id).first<{ id: string; metadata: string }>();
   if (prior) return { handled: true, response: securityResponse({ accepted: true, idempotent: true, sessionId: session.id, recordingId: recording.id }, 200, requestId) };
+  // Egress delivery is at-least-once and callbacks can arrive out of order.
+  // Recording lifecycle is monotonic: a terminal record must never be
+  // reopened by a late start/progress callback, and an available object must
+  // never be downgraded because a provider retry could not read the object.
+  if (recording.status === "AVAILABLE" || recording.status === "FAILED") {
+    return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "RECORDING_TERMINAL", sessionId: session.id, recordingId: recording.id }, 200, requestId) };
+  }
   const now = new Date().toISOString();
   const metadata = JSON.stringify({ roomName, egressId: egress.egressId, fileResults: egress.fileResults || [] });
   const eventType = `PROVIDER_${event.event.toUpperCase()}`;
@@ -87,7 +94,7 @@ async function handleEgressEvent(d1: D1Database, event: { id?: string; event?: s
   const guard = { sql: "EXISTS (SELECT 1 FROM recordings WHERE id = ? AND status = ?)", values: [recording.id, nextStatus] };
   const results = await d1.batch([
     d1.prepare("INSERT INTO visit_session_events (id, session_id, event_type, source, metadata, correlation_id, created_at) VALUES (?, ?, ?, 'LIVEKIT_EGRESS_WEBHOOK', ?, ?, ?)").bind(eventId, session.id, eventType, metadata, requestId, now),
-    d1.prepare("UPDATE recordings SET status = ?, content_type = COALESCE(?, content_type), byte_size = COALESCE(?, byte_size), sha256 = COALESCE(?, sha256), failure_reason = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ?").bind(nextStatus, contentType, byteSize, sha256, nextStatus === "FAILED" ? reason : null, now, recording.id, session.facility_id),
+    d1.prepare("UPDATE recordings SET status = ?, content_type = COALESCE(?, content_type), byte_size = COALESCE(?, byte_size), sha256 = COALESCE(?, sha256), failure_reason = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status IN ('PENDING', 'PROCESSING')").bind(nextStatus, contentType, byteSize, sha256, nextStatus === "FAILED" ? reason : null, now, recording.id, session.facility_id),
     d1.prepare("UPDATE visit_sessions SET recording_status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ?").bind(nextSessionRecordingStatus, now, session.id, session.facility_id),
     ...auditAndOutboxStatements(d1, { actorUserId: "system:livekit", actorRole: "SYSTEM", facilityId: session.facility_id, actionType: `RECORDING_${nextStatus}`, entityType: "recording", entityId: recording.id, reason, newValues: { status: nextStatus, providerReference: egress.egressId, byteSize, sha256 }, requestId, correlationId, eventType: `RECORDING_${nextStatus}`, payload: { recordingId: recording.id, sessionId: session.id, providerReference: egress.egressId, status: nextStatus } }, guard),
   ]);
