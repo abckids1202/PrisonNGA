@@ -40,3 +40,17 @@ test("Organization Roles UI uses the organization-scoped, audited mutation bound
   assert.match(route, /organization_memberships/);
   assert.match(staffRoute, /INSERT INTO organization_memberships/);
 });
+
+test("Organization administration exposes persisted facility creation and version-safe edits", async () => {
+  const source = await readFile(new URL("../app/components/OrganizationFacilitiesPanel.tsx", import.meta.url), "utf8");
+  const facilities = await readFile(new URL("../app/api/control/facilities/route.ts", import.meta.url), "utf8");
+  const facility = await readFile(new URL("../app/api/control/facilities/[facilityId]/route.ts", import.meta.url), "utf8");
+  assert.match(source, /fetch\("\/api\/control\/facilities"/);
+  assert.match(source, /Idempotency-Key/);
+  assert.match(source, /expectedVersion/);
+  assert.match(source, /STEP_UP_REQUIRED/);
+  assert.match(facilities, /INSERT INTO facilities/);
+  assert.match(facilities, /INSERT INTO visit_policies/);
+  assert.match(facilities, /organization_memberships/);
+  assert.match(facility, /STALE_FACILITY/);
+});
