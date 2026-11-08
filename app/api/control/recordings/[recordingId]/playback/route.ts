@@ -8,10 +8,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ rec
     const authorization = await requirePermission("recording.manage");
     const { recordingId } = await params;
     const d1 = await getD1();
-    const recording = await d1.prepare(`SELECT id, facility_id, storage_key, status, content_type, byte_size, sha256, legal_hold
+    const recording = await d1.prepare(`SELECT id, facility_id, storage_key, status, content_type, byte_size, sha256, retention_until, legal_hold
       FROM recordings WHERE id = ? AND facility_id = ?`).bind(recordingId, authorization.facilityId)
-      .first<{ id: string; facility_id: string; storage_key: string | null; status: string; content_type: string | null; byte_size: number | null; sha256: string | null; legal_hold: number }>();
+      .first<{ id: string; facility_id: string; storage_key: string | null; status: string; content_type: string | null; byte_size: number | null; sha256: string | null; retention_until: string | null; legal_hold: number }>();
     if (!recording) throw new SecurityError("RECORDING_NOT_FOUND", 404);
+    if (!recording.legal_hold && recording.retention_until && Date.parse(recording.retention_until) <= Date.now()) throw new SecurityError("RECORDING_RETENTION_EXPIRED", 410);
     if (recording.status !== "AVAILABLE" || !recording.storage_key || !recording.content_type || !recording.byte_size || !recording.sha256) throw new SecurityError("RECORDING_NOT_AVAILABLE", 409);
     const store = await getRecordingStore();
     if (!store) throw new SecurityError("RECORDING_STORAGE_NOT_CONFIGURED", 503);
