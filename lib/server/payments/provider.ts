@@ -173,7 +173,11 @@ class XenditPaymentProvider implements PaymentProvider {
     if (!input.successUrl || !input.cancelUrl) throw new Error("PAYMENT_RETURN_URL_REQUIRED");
     const requestResult = await this.request("/sessions", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      // Keep provider retries tied to the same SecureVisit intent. If the
+      // response is lost after Xendit accepts the session, a visitor retry
+      // must resolve to the original checkout instead of creating another
+      // payable session.
+      headers: { "content-type": "application/json", "idempotency-key": input.paymentIntentId },
       body: JSON.stringify({
         reference_id: input.paymentIntentId,
         session_type: "PAY",

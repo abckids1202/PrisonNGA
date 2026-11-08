@@ -48,6 +48,7 @@ test("Xendit adapter creates a hosted payment session with a stable SecureVisit 
   assert.equal(request.url, "https://api.xendit.example.test/sessions");
   assert.equal(request.init.method, "POST");
   assert.match(request.init.headers.authorization, /^Basic /);
+  assert.equal(new Headers(request.init.headers).get("idempotency-key"), "payment-intent-123");
   const body = JSON.parse(request.init.body);
   assert.equal(body.reference_id, "payment-intent-123");
   assert.equal(body.session_type, "PAY");
