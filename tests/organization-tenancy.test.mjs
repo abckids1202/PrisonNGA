@@ -12,6 +12,7 @@ test("organization administration uses a dedicated organization-role boundary", 
   const migration = await readFile(new URL("../drizzle/0061_organization_role_assignments.sql", import.meta.url), "utf8");
   const contactMigration = await readFile(new URL("../drizzle/0063_organization_contact_details.sql", import.meta.url), "utf8");
   const facilityContactMigration = await readFile(new URL("../drizzle/0064_facility_contact_details.sql", import.meta.url), "utf8");
+  const roleSeparationMigration = await readFile(new URL("../drizzle/0067_separate_organization_roles.sql", import.meta.url), "utf8");
 
   assert.match(security, /export async function requireOrganizationPermission/);
   assert.match(security, /organization_role_assignments/);
@@ -35,6 +36,8 @@ test("organization administration uses a dedicated organization-role boundary", 
   assert.match(facilityContactMigration, /ALTER TABLE `facilities` ADD COLUMN `address`/);
   assert.match(facilityContactMigration, /contact_email/);
   assert.match(facilityContactMigration, /contact_phone/);
+  assert.match(roleSeparationMigration, /role_id = 'role-supervisor'/);
+  assert.match(roleSeparationMigration, /status = 'REVOKED'/);
 });
 
 test("organization administration does not enumerate facilities through visitor memberships", async () => {
