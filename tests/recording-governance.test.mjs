@@ -42,6 +42,13 @@ test("failed recording rows can be retried without creating a second recording",
   assert.match(route, /RECORDING_RETRY_STATE_CHANGED/);
 });
 
+test("staff recording controls only start after persisted consent or a retryable failure", async () => {
+  const page = await readFile(new URL("../app/features/live-session/LiveSessionsPage.tsx", import.meta.url), "utf8");
+  assert.match(page, /\["CONSENTED", "FAILED"\]\.includes\(selected\.recording_status\)/);
+  assert.match(page, /Start recording/);
+  assert.match(page, /Retry recording/);
+});
+
 test("recording inventory exposes facility-scoped access history", async () => {
   const route = await readFile(new URL("../app/api/control/recordings/route.ts", import.meta.url), "utf8");
   const playback = await readFile(new URL("../app/api/control/recordings/[recordingId]/playback/route.ts", import.meta.url), "utf8");
