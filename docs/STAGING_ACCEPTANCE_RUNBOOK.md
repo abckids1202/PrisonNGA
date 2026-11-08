@@ -2,7 +2,7 @@
 
 This runbook is the release gate for a single-facility Indonesian institutional pilot. It is designed to prove that the visitor, staff, kiosk, payment, notification, and video workflows use authoritative persisted state and recover safely from failures.
 
-Staging is not production. Use synthetic identities and sandbox payment accounts, keep recording disabled, and never upload real prisoner or identity documents until the institution has approved the privacy, retention, and access controls.
+Staging is not production. Use synthetic identities and sandbox payment accounts. Recording may be exercised only with synthetic participants after the facility recording policy, explicit consent, private storage, retention, legal-hold, and access controls have been configured; never upload real prisoner or identity documents.
 
 ## 1. Ownership and prerequisites
 
@@ -30,7 +30,7 @@ Maintain separate credentials, D1 databases, R2 buckets, LiveKit projects, webho
 Before each staging run:
 
 1. Confirm the deployment points to the staging D1 database and staging provider endpoints.
-2. Confirm recording is disabled at the application and LiveKit project level.
+2. Confirm recording is either disabled by policy or, for the governed recording test, enabled only for the synthetic facility with explicit consent and a private recordings bucket.
 3. Confirm the approved staging tariff is configured; never use the local example price.
 4. Confirm the staging facility, prisoner, visitor, kiosk, and staff fixtures are synthetic and traceable to the test run.
 5. Confirm observability is receiving request IDs, facility IDs, actor IDs, session IDs, and correlation IDs without logging secrets or sensitive evidence.
@@ -109,7 +109,7 @@ Record timestamps, actor IDs, request/correlation IDs, resulting database record
 
 1. Staff runs the preflight checks and starts the visit.
 2. Visitor, kiosk, and authorized staff observer join the same LiveKit room with scoped, expiring tokens.
-3. Confirm recording is disabled and no recording route or provider setting enables it.
+3. For the governed recording test, confirm consent is required, playback is facility-scoped and audited, retention deletion honors legal holds, and no raw R2 URL is exposed. Otherwise confirm the facility policy remains OFF.
 4. Test a visitor disconnect/reconnect, kiosk disconnect, observer removal, expired token, and provider webhook retry.
 5. End the session from staff control and repeat the end request to verify idempotency.
 6. Confirm the appointment reaches the correct completion outcome, the credit is consumed or released exactly once according to policy, and the visitor receives a receipt/status update.

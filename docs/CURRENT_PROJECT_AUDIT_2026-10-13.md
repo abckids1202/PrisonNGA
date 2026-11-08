@@ -126,7 +126,9 @@ pilot deployment.
 - Waiting Room state machine, visitor/kiosk device checks, presence TTLs,
   kiosk credential lifecycle boundaries, and staff actions.
 - LiveKit token/session boundaries, observer authorization, provider webhook
-  handling, expiry/termination paths, and recording kept disabled.
+  handling, expiry/termination paths, and governed recording foundations with
+  consent, private storage, retention, legal holds, playback authorization,
+  and access auditing.
 - Notification outbox, delivery attempts, retries/dead-letter concepts, audit
   records, export manifests, retention, legal holds, break-glass boundaries,
   incidents, lockdown state, and durable reconciliation alarms.
@@ -185,8 +187,10 @@ pilot deployment.
   local browser fixtures.
 - Define service ownership and SLAs for verification, failed payments,
   notification failure, video failure, no-show, dispute, and privacy requests.
-- Keep recording disabled. A recording feature requires a separate approved
-  consent, encryption, access, retention, legal-hold, and audit design.
+- Recording is code-ready but not externally proven. Do not enable it for a
+  pilot facility until the recording policy, explicit consent, private R2
+  storage, retention, legal-hold, playback, access-audit, and restore evidence
+  are approved and demonstrated in staging.
 
 ## End-to-end workflow that must be proven
 
