@@ -4,6 +4,8 @@ import { getRuntimeValue } from "./security";
 export type EvidenceObject = {
   body: ReadableStream<Uint8Array>;
   size: number;
+  /** Provider checksum, normalized to lowercase hexadecimal when available. */
+  checksumSha256?: string;
   arrayBuffer(): Promise<ArrayBuffer>;
 };
 
@@ -23,9 +25,11 @@ const localDevelopmentStore: EvidenceStore = {
     const bytes = localObjects.get(key);
     if (!bytes) return null;
     const copy = new Uint8Array(bytes);
+    const digest = await crypto.subtle.digest("SHA-256", copy);
     return {
       body: new Response(copy).body!,
       size: copy.byteLength,
+      checksumSha256: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
       arrayBuffer: async () => copy.slice().buffer,
     };
   },
@@ -48,7 +52,13 @@ export async function getEvidenceStore(): Promise<EvidenceStore | null> {
     put: async (key, value, options) => { await bucket.put(key, value, options); },
     get: async (key) => {
       const object = await bucket.get(key);
-      return object ? { body: object.body, size: object.size, arrayBuffer: () => object.arrayBuffer() } : null;
+      const checksum = (object as unknown as { checksums?: { sha256?: ArrayBuffer } } | null)?.checksums?.sha256;
+      return object ? {
+        body: object.body,
+        size: object.size,
+        checksumSha256: checksum ? Array.from(new Uint8Array(checksum), (byte) => byte.toString(16).padStart(2, "0")).join("") : undefined,
+        arrayBuffer: () => object.arrayBuffer(),
+      } : null;
     },
     delete: (key) => bucket.delete(key),
   };
@@ -65,7 +75,13 @@ export async function getRecordingStore(): Promise<EvidenceStore | null> {
     put: async (key, value, options) => { await bucket.put(key, value, options); },
     get: async (key) => {
       const object = await bucket.get(key);
-      return object ? { body: object.body, size: object.size, arrayBuffer: () => object.arrayBuffer() } : null;
+      const checksum = (object as unknown as { checksums?: { sha256?: ArrayBuffer } } | null)?.checksums?.sha256;
+      return object ? {
+        body: object.body,
+        size: object.size,
+        checksumSha256: checksum ? Array.from(new Uint8Array(checksum), (byte) => byte.toString(16).padStart(2, "0")).join("") : undefined,
+        arrayBuffer: () => object.arrayBuffer(),
+      } : null;
     },
     delete: (key) => bucket.delete(key),
   };

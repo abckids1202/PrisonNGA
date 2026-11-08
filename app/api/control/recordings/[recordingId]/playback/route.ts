@@ -2,6 +2,8 @@ import { getD1 } from "../../../../../../db/runtime";
 import { getRecordingStore } from "../../../../../../lib/server/evidence-storage";
 import { applySecurityHeaders, getRequestContext, requirePermission, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
 
+const MAX_FALLBACK_INTEGRITY_BYTES = 64 * 1024 * 1024;
+
 export async function GET(_request: Request, { params }: { params: Promise<{ recordingId: string }> }) {
   const context = await getRequestContext();
   try {
@@ -17,17 +19,22 @@ export async function GET(_request: Request, { params }: { params: Promise<{ rec
     if (!store) throw new SecurityError("RECORDING_STORAGE_NOT_CONFIGURED", 503);
     const object = await store.get(recording.storage_key);
     if (!object || object.size !== recording.byte_size) throw new SecurityError("RECORDING_NOT_AVAILABLE", 404);
-    const bytes = new Uint8Array(await object.arrayBuffer());
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-    if (sha256 !== recording.sha256) throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
+    if (object.checksumSha256) {
+      if (object.checksumSha256 !== recording.sha256) throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
+    } else {
+      if (object.size > MAX_FALLBACK_INTEGRITY_BYTES) throw new SecurityError("RECORDING_INTEGRITY_METADATA_MISSING", 503);
+      const bytes = new Uint8Array(await object.arrayBuffer());
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      if (sha256 !== recording.sha256) throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
+    }
     const correlationId = crypto.randomUUID();
     const audited = await d1.prepare(`INSERT INTO recording_access_events
       (id, recording_id, facility_id, actor_user_id, access_type, reason, correlation_id, created_at)
       VALUES (?, ?, ?, ?, 'PLAYBACK', 'Authorized staff recording playback.', ?, ?)`)
       .bind(crypto.randomUUID(), recording.id, authorization.facilityId, authorization.userId, correlationId, new Date().toISOString()).run();
     if (!audited.meta.changes) throw new SecurityError("RECORDING_ACCESS_AUDIT_FAILED", 503);
-    const response = new Response(bytes, { status: 200, headers: {
+    const response = new Response(object.body, { status: 200, headers: {
       "Content-Type": recording.content_type,
       "Content-Length": String(object.size),
       "Content-Disposition": `inline; filename="securevisit-recording-${recording.id}.bin"`,

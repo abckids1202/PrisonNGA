@@ -59,3 +59,13 @@ test("recording permission is assigned to the intended operational roles", async
   assert.match(staging, /role-supervisor.*perm-recording-manage/);
   assert.match(staging, /role-monitoring-officer.*perm-recording-manage/);
 });
+
+test("recording playback streams verified objects and bounds fallback hashing", async () => {
+  const route = await readFile(new URL("../app/api/control/recordings/[recordingId]/playback/route.ts", import.meta.url), "utf8");
+  const storage = await readFile(new URL("../lib/server/evidence-storage.ts", import.meta.url), "utf8");
+  assert.match(storage, /checksumSha256\?: string/);
+  assert.match(storage, /checksums\?\.sha256/);
+  assert.match(route, /new Response\(object\.body/);
+  assert.match(route, /MAX_FALLBACK_INTEGRITY_BYTES = 64 \* 1024 \* 1024/);
+  assert.match(route, /RECORDING_INTEGRITY_METADATA_MISSING/);
+});
