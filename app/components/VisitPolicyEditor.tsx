@@ -15,6 +15,8 @@ type Policy = {
   weeklyHours: Array<{ open: string | null; close: string | null }> | null;
   creditPriceMinor: number | null;
   creditCurrency: string;
+  recordingPolicy: "OFF" | "ON";
+  recordingRetentionDays: number | null;
   version: number;
   updatedAt: string;
 };
@@ -80,6 +82,8 @@ export default function VisitPolicyEditor({ timeZone = "Asia/Jakarta" }: { timeZ
             dailyEndTime: draft.dailyEndTime,
             creditPriceMinor: draft.creditPriceMinor,
             creditCurrency: draft.creditCurrency,
+            recordingPolicy: draft.recordingPolicy,
+            recordingRetentionDays: draft.recordingRetentionDays,
             weeklyHours: draft.weeklyHours,
           },
         }),
@@ -128,6 +132,8 @@ export default function VisitPolicyEditor({ timeZone = "Asia/Jakarta" }: { timeZ
       <label>Daily closing time<input type="time" value={draft.dailyEndTime} onChange={(event) => set("dailyEndTime", event.target.value)} /></label>
       <label>Visit Credit price (IDR)<input type="number" min="1" max="1000000000" step="1" value={draft.creditPriceMinor ?? ""} onChange={(event) => set("creditPriceMinor", event.target.value === "" ? null : Number(event.target.value))} /></label>
       <label>Credit currency<input value={draft.creditCurrency} readOnly /></label>
+      <label>Recording policy<select value={draft.recordingPolicy} onChange={(event) => { const next = event.target.value as "OFF" | "ON"; set("recordingPolicy", next); if (next === "OFF") set("recordingRetentionDays", null); else if (draft.recordingRetentionDays === null) set("recordingRetentionDays", 30); }}><option value="OFF">Off · no recording</option><option value="ON">On · consent required</option></select></label>
+      <label>Recording retention (days)<input type="number" min="1" max="3650" value={draft.recordingRetentionDays ?? ""} disabled={draft.recordingPolicy === "OFF"} onChange={(event) => set("recordingRetentionDays", event.target.value === "" ? null : Number(event.target.value))} /><small>Required when enabled; legal holds can extend retention.</small></label>
       <fieldset className="sv3-weekly-hours"><legend>Weekly operating hours</legend><small>Closed days are excluded from visitor availability and staff approval.</small>{(draft.weeklyHours || days.map(() => ({ open: draft.dailyStartTime, close: draft.dailyEndTime }))).map((hours, index) => <div className="sv3-weekly-hours-row" key={days[index]}><strong>{days[index]}</strong><label>Open<input type="time" value={hours.open || ""} onChange={(event) => setWeekly(index, "open", event.target.value || null)} /></label><label>Close<input type="time" value={hours.close || ""} onChange={(event) => setWeekly(index, "close", event.target.value || null)} /></label><button type="button" className="sv3-button" onClick={() => { setWeekly(index, "open", null); setWeekly(index, "close", null); }}>{hours.open === null && hours.close === null ? "Closed" : "Mark closed"}</button></div>)}</fieldset>
       <label className="sv3-policy-reason">Reason for change<textarea value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="Explain why the facility rule needs to change (minimum 8 characters)." /></label>
     </div>

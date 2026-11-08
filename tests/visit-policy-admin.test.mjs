@@ -11,6 +11,8 @@ const valid = {
   dailyEndTime: "17:00",
   creditPriceMinor: 50000,
   creditCurrency: "IDR",
+  recordingPolicy: "OFF",
+  recordingRetentionDays: null,
 };
 
 test("visit policy admin accepts valid bounded facility configuration", () => {
@@ -38,6 +40,13 @@ test("visit policy admin rejects unapproved or invalid credit pricing", () => {
   assert.equal(parseEditableVisitPolicy({ ...valid, creditCurrency: "USD" }), null);
 });
 
+test("visit policy admin requires governed recording retention when enabled", () => {
+  assert.deepEqual(parseEditableVisitPolicy({ ...valid, recordingPolicy: "ON", recordingRetentionDays: 30 }), { ...valid, recordingPolicy: "ON", recordingRetentionDays: 30, weeklyHoursJson: null });
+  assert.equal(parseEditableVisitPolicy({ ...valid, recordingPolicy: "ON", recordingRetentionDays: null }), null);
+  assert.equal(parseEditableVisitPolicy({ ...valid, recordingPolicy: "OFF", recordingRetentionDays: 30 }), null);
+  assert.equal(parseEditableVisitPolicy({ ...valid, recordingPolicy: "ON", recordingRetentionDays: 3651 }), null);
+});
+
 test("visit policy mutation is replay-safe and preserves the step-up boundary", async () => {
   const { readFile } = await import("node:fs/promises");
   const source = await readFile(new URL("../app/api/control/visit-policy/route.ts", import.meta.url), "utf8");
@@ -49,4 +58,6 @@ test("visit policy mutation is replay-safe and preserves the step-up boundary", 
   assert.match(source, /requirePermission\("visit_policy\.manage"\)/);
   assert.match(source, /credit_price_minor/);
   assert.match(source, /creditPriceMinor/);
+  assert.match(source, /recording_retention_days/);
+  assert.match(source, /recordingPolicy/);
 });

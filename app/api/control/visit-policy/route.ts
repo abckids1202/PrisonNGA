@@ -17,12 +17,14 @@ type PolicyRow = {
   weekly_hours_json: string | null;
   credit_price_minor: number | null;
   credit_currency: string;
+  recording_policy: "OFF" | "ON";
+  recording_retention_days: number | null;
   version: number;
   updated_at: string;
 };
 
 const selectPolicy = `SELECT id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes,
-  max_advance_days, daily_start_time, daily_end_time, weekly_hours_json, credit_price_minor, credit_currency, version, updated_at FROM visit_policies WHERE facility_id = ?`;
+  max_advance_days, daily_start_time, daily_end_time, weekly_hours_json, credit_price_minor, credit_currency, recording_policy, recording_retention_days, version, updated_at FROM visit_policies WHERE facility_id = ?`;
 
 function publicWeeklyHours(value: string | null) {
   const parsed = parseWeeklyHours(value);
@@ -43,6 +45,8 @@ function toPublicPolicy(row: PolicyRow) {
     weeklyHours: publicWeeklyHours(row.weekly_hours_json),
     creditPriceMinor: row.credit_price_minor,
     creditCurrency: row.credit_currency,
+    recordingPolicy: row.recording_policy,
+    recordingRetentionDays: row.recording_retention_days,
     version: row.version,
     updatedAt: row.updated_at,
   };
@@ -107,9 +111,9 @@ export async function PUT(request: Request) {
     const statements = await database.batch([
       database.prepare(`UPDATE visit_policies SET min_duration_minutes = ?, max_duration_minutes = ?,
         min_advance_minutes = ?, max_advance_days = ?, daily_start_time = ?, daily_end_time = ?, weekly_hours_json = ?,
-        credit_price_minor = ?, credit_currency = ?, version = version + 1, updated_at = ? WHERE facility_id = ? AND version = ?`)
+        credit_price_minor = ?, credit_currency = ?, recording_policy = ?, recording_retention_days = ?, version = version + 1, updated_at = ? WHERE facility_id = ? AND version = ?`)
         .bind(policy.minDurationMinutes, policy.maxDurationMinutes, policy.minAdvanceMinutes, policy.maxAdvanceDays,
-          policy.dailyStartTime, policy.dailyEndTime, policy.weeklyHoursJson, policy.creditPriceMinor, policy.creditCurrency, now, authorization.facilityId, current.version),
+          policy.dailyStartTime, policy.dailyEndTime, policy.weeklyHoursJson, policy.creditPriceMinor, policy.creditCurrency, policy.recordingPolicy, policy.recordingRetentionDays, now, authorization.facilityId, current.version),
       database.prepare(`INSERT INTO visit_policy_history (id, facility_id, version, actor_user_id, reason, snapshot, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), authorization.facilityId, nextVersion, authorization.userId, reason,

@@ -7,6 +7,8 @@ export type EditableVisitPolicy = {
   dailyEndTime: string;
   creditPriceMinor: number | null;
   creditCurrency: string;
+  recordingPolicy: "OFF" | "ON";
+  recordingRetentionDays: number | null;
   weeklyHoursJson: string | null;
 };
 
@@ -19,6 +21,8 @@ export function parseEditableVisitPolicy(value: unknown): EditableVisitPolicy | 
   const [minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays] = requiredIntegerFields as number[];
   const creditPriceMinor = body.creditPriceMinor as number | null;
   const creditCurrency = typeof body.creditCurrency === "string" ? body.creditCurrency.trim().toUpperCase() : "";
+  const recordingPolicy = body.recordingPolicy === "ON" || body.recordingPolicy === "OFF" ? body.recordingPolicy : "";
+  const recordingRetentionDays = body.recordingRetentionDays === null ? null : body.recordingRetentionDays;
   const dailyStartTime = typeof body.dailyStartTime === "string" ? body.dailyStartTime : "";
   const dailyEndTime = typeof body.dailyEndTime === "string" ? body.dailyEndTime : "";
   const weeklyHours = body.weeklyHours === undefined ? null : body.weeklyHours;
@@ -53,7 +57,10 @@ export function parseEditableVisitPolicy(value: unknown): EditableVisitPolicy | 
     minAdvanceMinutes < 0 || minAdvanceMinutes > 10080 ||
     maxAdvanceDays < 1 || maxAdvanceDays > 365 ||
     (weeklyHoursJson === null && (start === null || end === null || start >= end)) ||
-    (creditPriceMinor !== null && (creditPriceMinor < 1 || creditPriceMinor > 1_000_000_000)) || creditCurrency !== "IDR"
+    (creditPriceMinor !== null && (creditPriceMinor < 1 || creditPriceMinor > 1_000_000_000)) || creditCurrency !== "IDR" ||
+    !recordingPolicy || (recordingRetentionDays !== null && !(typeof recordingRetentionDays === "number" && Number.isInteger(recordingRetentionDays))) ||
+    (recordingPolicy === "ON" && (recordingRetentionDays === null || recordingRetentionDays < 1 || recordingRetentionDays > 3650)) ||
+    (recordingPolicy === "OFF" && recordingRetentionDays !== null)
   ) return null;
-  return { minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays, dailyStartTime, dailyEndTime, creditPriceMinor, creditCurrency, weeklyHoursJson };
+  return { minDurationMinutes, maxDurationMinutes, minAdvanceMinutes, maxAdvanceDays, dailyStartTime, dailyEndTime, creditPriceMinor, creditCurrency, recordingPolicy, recordingRetentionDays, weeklyHoursJson };
 }

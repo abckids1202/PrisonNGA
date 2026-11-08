@@ -53,6 +53,8 @@ test("weekly policy admin input is normalized and preserves closed days", () => 
     dailyEndTime: "17:00",
     creditPriceMinor: 50000,
     creditCurrency: "IDR",
+    recordingPolicy: "OFF",
+    recordingRetentionDays: null,
     weeklyHours: weekdaysClosedSunday,
   });
   assert.equal(parsed?.weeklyHoursJson, JSON.stringify(weekdaysClosedSunday));
