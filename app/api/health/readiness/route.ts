@@ -11,11 +11,11 @@ import { evaluateReleaseGates } from "../../../../lib/server/release-gates";
 import { parseVisitorAuthChannels } from "../../../../lib/server/visitor-auth/channels";
 
 const requiredTables = [
-  "users", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "staff_facility_assignments", "roles", "permissions", "user_roles", "role_permissions",
+  "users", "organizations", "organization_memberships", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "staff_facility_assignments", "roles", "permissions", "user_roles", "role_permissions",
   "auth_sessions", "auth_challenges", "auth_challenge_delivery_attempts", "idempotency_records", "auth_federation_states", "saml_request_cache", "security_events", "rate_limit_buckets",
   "audit_events", "audit_export_manifests", "break_glass_requests", "outbox_events", "appointments", "appointment_types", "appointment_type_history", "prisoners", "visitor_profiles", "visitor_relationships", "verification_cases", "evidence_documents",
   "retention_policies", "legal_holds", "facility_closures", "appointment_status_events", "resource_reservations", "resources", "kiosk_credentials", "kiosk_device_check_attempts", "waiting_room_sessions", "visitor_waiting_room_checkins",
-  "visit_sessions", "visit_session_participants", "visitor_device_check_attempts", "visit_session_events", "credit_accounts", "credit_ledger_entries", "payment_intents",
+  "visit_sessions", "visit_session_participants", "visitor_device_check_attempts", "visit_session_events", "recording_consents", "recordings", "recording_access_events", "credit_accounts", "credit_ledger_entries", "payment_intents",
   "payment_provider_events", "payment_refund_requests", "notification_delivery_attempts", "notification_provider_events", "notifications", "incidents", "incident_events", "step_up_assertions",
 ];
 
@@ -30,7 +30,9 @@ const requiredColumns: Record<string, string[]> = {
   saml_request_cache: ["state_hash"],
   appointments: ["last_transition_id", "policy_version", "duration_minutes"],
   incidents: ["idempotency_key", "request_hash"],
-  visit_policies: ["credit_price_minor", "credit_currency"],
+  facilities: ["organization_id"],
+  visit_policies: ["credit_price_minor", "credit_currency", "recording_policy", "recording_retention_days"],
+  recordings: ["organization_id", "storage_key", "encryption_key_reference", "retention_until", "legal_hold"],
   waiting_room_sessions: ["assigned_room_id", "assigned_kiosk_id", "visitor_presence_at", "prisoner_presence_at", "kiosk_camera_state", "kiosk_microphone_state", "kiosk_network_state", "kiosk_device_checked_at"],
   payment_provider_events: ["attempt_count", "available_at", "last_error", "processing_started_at"],
   idempotency_records: ["processing_started_at"],
@@ -42,7 +44,7 @@ const requiredColumns: Record<string, string[]> = {
 
 const configurationKeys = [
   "SECUREVISIT_ENVIRONMENT", "SECUREVISIT_HASH_SALT", "STAFF_STEP_UP_SECRET", "VISITOR_AUTH_CHANNELS", "SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL", "VISITOR_AUTH_DELIVERY", "VISITOR_EMAIL_DELIVERY", "VISITOR_SMS_DELIVERY", "VISITOR_AUTH_WEBHOOK_URL", "VISITOR_AUTH_WEBHOOK_SECRET", "RESEND_API_KEY", "VISITOR_EMAIL_FROM", "VISITOR_SMS_TWILIO_ACCOUNT_SID", "VISITOR_SMS_TWILIO_AUTH_TOKEN", "VISITOR_SMS_TWILIO_FROM", "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID",
-  "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "EVIDENCE_STORAGE_PROVIDER", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
+  "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "RECORDING_STORAGE_PROVIDER", "R2_S3_ENDPOINT", "R2_S3_ACCESS_KEY_ID", "R2_S3_SECRET_ACCESS_KEY", "R2_BUCKET_NAME", "R2_S3_REGION", "EVIDENCE_STORAGE_PROVIDER", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
   "PAYMENT_PROVIDER", "PAYMENT_CHECKOUT_URL", "PAYMENT_REFUND_URL", "PAYMENT_PROVIDER_SECRET", "XENDIT_SECRET_KEY", "XENDIT_API_BASE_URL", "XENDIT_WEBHOOK_TOKEN", "PAYMENT_WEBHOOK_SECRET", "NOTIFICATION_DELIVERY", "NOTIFICATION_EMAIL_DELIVERY", "NOTIFICATION_SMS_DELIVERY", "NOTIFICATION_WEBHOOK_URL", "NOTIFICATION_WEBHOOK_SECRET", "NOTIFICATION_STATUS_WEBHOOK_SECRET",
   "STAFF_AUTH_PROVIDER", "STAFF_OIDC_ISSUER", "STAFF_OIDC_CLIENT_ID", "STAFF_OIDC_CLIENT_SECRET", "STAFF_OIDC_REDIRECT_URI", "STAFF_OIDC_MFA_ACR", "STAFF_OIDC_MFA_AMR",
   "STAFF_SAML_ENTITY_ID", "STAFF_SAML_METADATA_URL", "STAFF_SAML_ENTRY_POINT", "STAFF_SAML_IDP_CERT", "STAFF_SAML_CALLBACK_URI", "STAFF_SAML_MFA_ACR", "PUBLIC_APP_URL",
