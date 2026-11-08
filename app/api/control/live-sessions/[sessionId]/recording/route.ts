@@ -55,9 +55,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     if (existing?.status === "PENDING" && existing.provider_reference && existing.provider_reference.startsWith("pending:")) {
       throw new SecurityError("RECORDING_START_IN_PROGRESS", 409);
     }
+    const startClaim = `pending:${crypto.randomUUID()}`;
+    if (existing?.status === "FAILED") {
+      const reopened = await d1.prepare("UPDATE recordings SET provider_reference = ?, status = 'PENDING', failure_reason = NULL, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'FAILED'")
+        .bind(startClaim, new Date().toISOString(), existing.id, session.facility_id).run();
+      if (!reopened.meta.changes) throw new SecurityError("RECORDING_RETRY_STATE_CHANGED", 409);
+    }
     const recordingId = existing?.id || crypto.randomUUID();
     const storageKey = existing?.storage_key || `recordings/${session.facility_id}/${session.id}/${recordingId}.mp4`;
-    const startClaim = `pending:${crypto.randomUUID()}`;
     claimedRecordingId = recordingId;
     claimedRecordingReference = startClaim;
     claimedFacilityId = session.facility_id;

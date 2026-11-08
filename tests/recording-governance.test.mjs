@@ -35,6 +35,13 @@ test("recording start claims are reset when provider startup fails", async () =>
   assert.match(route, /RECORDING_START_IN_PROGRESS/);
 });
 
+test("failed recording rows can be retried without creating a second recording", async () => {
+  const route = await readFile(new URL("../app/api/control/live-sessions/[sessionId]/recording/route.ts", import.meta.url), "utf8");
+  assert.match(route, /existing\?\.status === "FAILED"/);
+  assert.match(route, /status = 'PENDING', failure_reason = NULL/);
+  assert.match(route, /RECORDING_RETRY_STATE_CHANGED/);
+});
+
 test("recording inventory exposes facility-scoped access history", async () => {
   const route = await readFile(new URL("../app/api/control/recordings/route.ts", import.meta.url), "utf8");
   const playback = await readFile(new URL("../app/api/control/recordings/[recordingId]/playback/route.ts", import.meta.url), "utf8");
