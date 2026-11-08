@@ -39,6 +39,24 @@ export async function POST(request: Request) {
     const existing = await d1.prepare("SELECT id, status, provider_reference, amount_minor, currency, reason FROM payment_refund_requests WHERE payment_intent_id = ? AND facility_id = ? AND status IN ('REQUESTED', 'FAILED', 'COMPLETED') ORDER BY created_at DESC LIMIT 1")
       .bind(paymentIntentId, authorization.facilityId).first<{ id: string; status: string; provider_reference: string | null; amount_minor: number; currency: string; reason: string }>();
     if (existing?.status === "COMPLETED") throw new SecurityError("PAYMENT_REFUND_ALREADY_REQUESTED", 409);
+    // A provider may have accepted the refund while the original request
+    // timed out before SecureVisit persisted the response. Once a provider
+    // reference exists, never submit another refund request: a new client
+    // idempotency key must replay the authoritative in-flight request.
+    if (existing?.status === "REQUESTED" && existing.provider_reference) {
+      const responseBody = { refundRequestId: existing.id, paymentIntentId, status: "REQUESTED", providerReference: existing.provider_reference, idempotent: true };
+      const replayed = await d1.batch([
+        completeIdempotencyStatement(d1, {
+          ...idempotency,
+          status: 202,
+          body: responseBody,
+          guard: { sql: "EXISTS (SELECT 1 FROM payment_refund_requests WHERE id = ? AND facility_id = ? AND status = 'REQUESTED' AND provider_reference = ?)", values: [existing.id, authorization.facilityId, existing.provider_reference] },
+        }),
+      ]);
+      if (!replayed[0]?.meta?.changes) throw new SecurityError("PAYMENT_REFUND_REQUEST_CONFLICT", 409);
+      idempotency = null;
+      return securityResponse(responseBody, 202, context.requestId);
+    }
     const provider = await getPaymentProvider();
     if (!provider) throw new SecurityError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
 

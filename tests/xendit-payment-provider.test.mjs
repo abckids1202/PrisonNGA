@@ -72,6 +72,7 @@ test("Xendit refund resolves the payment request ID before requesting a refund",
   assert.deepEqual(result, { provider: "xendit", providerReference: "rfd-refund-123" });
   assert.equal(requests.length, 2);
   assert.equal(requests[0].init.method, "GET");
+  assert.equal(new Headers(requests[1].init.headers).get("x-idempotency-key"), "refund:payment-intent-123");
   const refundBody = JSON.parse(requests[1].init.body);
   assert.equal(refundBody.payment_request_id, "pr-request-123");
   assert.equal(refundBody.reference_id, "payment-intent-123");

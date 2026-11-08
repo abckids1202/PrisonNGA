@@ -224,7 +224,9 @@ class XenditPaymentProvider implements PaymentProvider {
     if (!paymentRequestId) throw new Error("PAYMENT_REQUEST_NOT_AVAILABLE");
     const refundResult = await this.request("/refunds", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      // Xendit must receive a stable key so a network timeout cannot create
+      // two provider refunds when the operator retries the same intent.
+      headers: { "content-type": "application/json", "X-IDEMPOTENCY-KEY": `refund:${input.paymentIntentId}` },
       body: JSON.stringify({
         reference_id: input.paymentIntentId,
         payment_request_id: paymentRequestId,
