@@ -34,3 +34,13 @@ test("recording start claims are reset when provider startup fails", async () =>
   assert.match(route, /SET provider_reference = NULL/);
   assert.match(route, /RECORDING_START_IN_PROGRESS/);
 });
+
+test("recording inventory exposes facility-scoped access history", async () => {
+  const route = await readFile(new URL("../app/api/control/recordings/route.ts", import.meta.url), "utf8");
+  const compliance = await readFile(new URL("../app/features/management/CompliancePageInteractive.tsx", import.meta.url), "utf8");
+  assert.match(route, /recording_access_events rae WHERE rae\.recording_id = r\.id AND rae\.facility_id = r\.facility_id/);
+  assert.match(route, /access_count/);
+  assert.match(route, /last_accessed_at/);
+  assert.match(compliance, /Open audited playback/);
+  assert.match(compliance, /audited access/);
+});
