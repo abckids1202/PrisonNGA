@@ -27,8 +27,18 @@ export const users = sqliteTable("users", {
   phoneIdx: uniqueIndex("users_phone_idx").on(table.phone),
 }));
 
+export const organizations = sqliteTable("organizations", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  status: text("status", { enum: ["ACTIVE", "SUSPENDED"] }).notNull().default("ACTIVE"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ slugIdx: uniqueIndex("organizations_slug_idx").on(table.slug), statusIdx: index("organizations_status_idx").on(table.status) }));
+
 export const facilities = sqliteTable("facilities", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   name: text("name").notNull(),
   timezone: text("timezone").notNull().default("Asia/Jakarta"),
   currentState: text("current_state", { enum: ["NORMAL_OPERATIONS", "LIMITED_OPERATIONS", "LOCKDOWN", "EMERGENCY_CLOSURE", "TECHNICAL_DEGRADATION"] }).notNull().default("NORMAL_OPERATIONS"),
@@ -37,7 +47,19 @@ export const facilities = sqliteTable("facilities", {
   stateChangedBy: text("state_changed_by"),
   version: integer("version").notNull().default(1),
   ...timestamps,
-});
+}, (table) => ({ organizationIdx: index("facilities_organization_idx").on(table.organizationId), stateIdx: index("facilities_state_idx").on(table.currentState) }));
+
+export const organizationMemberships = sqliteTable("organization_memberships", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  facilityId: text("facility_id").references(() => facilities.id),
+  role: text("role").notNull(),
+  status: text("status", { enum: ["ACTIVE", "REVOKED"] }).notNull().default("ACTIVE"),
+  assignedBy: text("assigned_by").references(() => users.id),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ scopeIdx: uniqueIndex("organization_memberships_scope_idx").on(table.organizationId, table.userId, table.facilityId, table.role), userIdx: index("organization_memberships_user_idx").on(table.userId, table.status), facilityIdx: index("organization_memberships_facility_idx").on(table.facilityId, table.status) }));
 
 export const visitPolicies = sqliteTable("visit_policies", {
   id: text("id").primaryKey(),
@@ -50,6 +72,8 @@ export const visitPolicies = sqliteTable("visit_policies", {
   dailyEndTime: text("daily_end_time").notNull().default("17:00"),
   creditPriceMinor: integer("credit_price_minor"),
   creditCurrency: text("credit_currency").notNull().default("IDR"),
+  recordingPolicy: text("recording_policy").notNull().default("OFF"),
+  recordingRetentionDays: integer("recording_retention_days"),
   version: integer("version").notNull().default(1),
   ...timestamps,
 }, (table) => ({ facilityIdx: uniqueIndex("visit_policies_facility_idx").on(table.facilityId) }));
@@ -546,6 +570,53 @@ export const visitSessionParticipants = sqliteTable("visit_session_participants"
   disconnectedAt: text("disconnected_at"),
   metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
 }, (table) => ({ identityIdx: uniqueIndex("visit_session_participants_identity_idx").on(table.sessionId, table.identity), facilityStatusIdx: index("visit_session_participants_facility_status_idx").on(table.facilityId, table.status, table.lastSeenAt) }));
+
+export const recordingConsents = sqliteTable("recording_consents", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().references(() => visitSessions.id),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  participantUserId: text("participant_user_id").notNull().references(() => users.id),
+  participantRole: text("participant_role").notNull(),
+  decision: text("decision", { enum: ["GRANTED", "DECLINED", "REVOKED"] }).notNull(),
+  policyVersion: integer("policy_version"),
+  noticeVersion: text("notice_version").notNull(),
+  decidedAt: text("decided_at").notNull(),
+  correlationId: text("correlation_id").notNull(),
+  ...timestamps,
+}, (table) => ({ sessionParticipantIdx: uniqueIndex("recording_consents_session_participant_idx").on(table.sessionId, table.participantUserId), facilityIdx: index("recording_consents_facility_idx").on(table.facilityId, table.decidedAt) }));
+
+export const recordings = sqliteTable("recordings", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  sessionId: text("session_id").notNull().references(() => visitSessions.id),
+  provider: text("provider").notNull(),
+  providerReference: text("provider_reference"),
+  storageKey: text("storage_key"),
+  encryptionKeyReference: text("encryption_key_reference"),
+  status: text("status", { enum: ["PENDING", "PROCESSING", "AVAILABLE", "FAILED", "QUARANTINED", "DELETED", "LEGAL_HOLD"] }).notNull().default("PENDING"),
+  contentType: text("content_type"),
+  byteSize: integer("byte_size"),
+  sha256: text("sha256"),
+  retentionUntil: text("retention_until"),
+  legalHold: integer("legal_hold", { mode: "boolean" }).notNull().default(false),
+  failureReason: text("failure_reason"),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ sessionIdx: uniqueIndex("recordings_session_idx").on(table.sessionId), facilityStatusIdx: index("recordings_facility_status_idx").on(table.facilityId, table.status), retentionIdx: index("recordings_retention_idx").on(table.facilityId, table.retentionUntil, table.legalHold) }));
+
+export const recordingAccessEvents = sqliteTable("recording_access_events", {
+  id: text("id").primaryKey(),
+  recordingId: text("recording_id").notNull().references(() => recordings.id),
+  organizationId: text("organization_id").references(() => organizations.id),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  actorUserId: text("actor_user_id").notNull().references(() => users.id),
+  accessType: text("access_type").notNull(),
+  breakGlassRequestId: text("break_glass_request_id"),
+  reason: text("reason").notNull(),
+  correlationId: text("correlation_id").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ recordingIdx: index("recording_access_events_recording_idx").on(table.recordingId, table.createdAt), facilityIdx: index("recording_access_events_facility_idx").on(table.facilityId, table.createdAt) }));
 
 export const creditAccounts = sqliteTable("credit_accounts", {
   id: text("id").primaryKey(),
