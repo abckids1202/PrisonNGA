@@ -232,6 +232,6 @@ SecureVisit is ready for a controlled pilot only when:
 - every protected route enforces identity, facility, permission, validation, and idempotency requirements;
 - duplicate requests, delayed webhooks, provider failures, stale sessions, and resource collisions are safe;
 - money, evidence, sessions, incidents, notifications, and audit records reconcile;
-- recordings remain disabled and the policy is technically enforced;
+- governed recordings obey facility policy and explicit consent, use separate private storage, audit access, and enforce retention/legal holds;
 - fresh migrations, typecheck, lint, server tests, browser tests, dependency audit, security review, backup/restore, and provider sandbox acceptance all pass;
 - institutional privacy, correctional-policy, retention, and operational approvals are recorded.
