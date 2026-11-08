@@ -54,6 +54,8 @@ test("recording inventory exposes facility-scoped access history", async () => {
   const playback = await readFile(new URL("../app/api/control/recordings/[recordingId]/playback/route.ts", import.meta.url), "utf8");
   const compliance = await readFile(new URL("../app/features/management/CompliancePageInteractive.tsx", import.meta.url), "utf8");
   assert.match(route, /requirePermission\("recording\.manage"\)/);
+  assert.match(route, /f\.organization_id = \?/);
+  assert.match(route, /r\.organization_id = f\.organization_id/);
   assert.match(playback, /requirePermission\("recording\.manage"\)/);
   assert.match(route, /recording_access_events rae WHERE rae\.recording_id = r\.id AND rae\.facility_id = r\.facility_id/);
   assert.match(route, /access_count/);
