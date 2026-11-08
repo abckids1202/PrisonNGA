@@ -46,6 +46,8 @@ INSERT OR IGNORE INTO permissions (id, permission_key, description) VALUES
   ('perm-visitor-directory-read', 'visitor.directory.read', 'Read facility-scoped visitor directory data.'),
   ('perm-finance-read', 'finance.read', 'Read facility-scoped credit and payment records.'),
   ('perm-finance-manage', 'finance.manage', 'Operate facility payment exceptions.');
+INSERT OR IGNORE INTO permissions (id, permission_key, description)
+VALUES ('perm-visit-policy-manage', 'visit_policy.manage', 'Manage facility visitation policy, operating hours, and credit pricing.');
 
 INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES
   ('role-scheduling-officer', 'perm-facility-read'),
@@ -70,6 +72,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES
   ('role-supervisor', 'perm-visitor-directory-read'),
   ('role-supervisor', 'perm-finance-read'),
   ('role-supervisor', 'perm-finance-manage'),
+  ('role-supervisor', 'perm-visit-policy-manage'),
   ('role-auditor', 'perm-facility-read'),
   ('role-auditor', 'perm-audit-read'),
   ('role-auditor', 'perm-audit-export');

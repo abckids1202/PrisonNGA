@@ -46,6 +46,7 @@ test("visit policy mutation is replay-safe and preserves the step-up boundary", 
   assert.match(source, /completeIdempotencyStatement\(database/);
   assert.match(source, /releaseIdempotencyClaim/);
   assert.match(source, /requireStepUp/);
+  assert.match(source, /requirePermission\("visit_policy\.manage"\)/);
   assert.match(source, /credit_price_minor/);
   assert.match(source, /creditPriceMinor/);
 });

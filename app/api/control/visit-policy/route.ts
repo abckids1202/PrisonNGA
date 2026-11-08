@@ -68,7 +68,7 @@ export async function PUT(request: Request) {
   let d1: D1Database | null = null;
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
-    const authorization = await requirePermission("facility.state.change");
+    const authorization = await requirePermission("visit_policy.manage");
     let body: Record<string, unknown>;
     try {
       const parsed: unknown = await request.json();
