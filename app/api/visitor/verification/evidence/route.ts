@@ -19,7 +19,7 @@ export async function GET() {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.original_filename, ed.content_type, ed.byte_size, ed.status, ed.retention_until, ed.legal_hold, ed.created_at
-      FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id
+      FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id
       WHERE ed.visitor_user_id = ? AND vr.visitor_user_id = ? AND ed.status <> 'DELETED' ORDER BY ed.created_at DESC`).bind(visitor.userId, visitor.userId).all();
     return securityResponse({ evidence: result.results }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     try { validateEvidenceUpload({ contentType: file.type, bytes }); }
     catch (error) { throw new SecurityError(error instanceof Error ? error.message : "EVIDENCE_FILE_NOT_ALLOWED", 400); }
-    const ownedCase = await d1.prepare(`SELECT vc.id, vc.facility_id FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id WHERE vc.id = ? AND vr.visitor_user_id = ?`).bind(verificationCaseId, visitor.userId).first<{ id: string; facility_id: string }>();
+    const ownedCase = await d1.prepare(`SELECT vc.id, vc.facility_id, f.organization_id FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN facilities f ON f.id = vc.facility_id WHERE vc.id = ? AND vr.visitor_user_id = ? AND f.organization_id IS NOT NULL`).bind(verificationCaseId, visitor.userId).first<{ id: string; facility_id: string; organization_id: string }>();
     if (!ownedCase) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
     const retentionPolicy = await d1.prepare("SELECT retention_days FROM retention_policies WHERE facility_id = ? AND evidence_type = 'VISITOR_VERIFICATION'").bind(ownedCase.facility_id).first<{ retention_days: number }>();
     const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -90,13 +90,13 @@ export async function POST(request: Request) {
     const responseBody = { evidenceId: id, status: "AVAILABLE", retentionUntil, correlationId };
     try {
       const inserted = await d1.batch([
-        d1.prepare(`INSERT INTO evidence_documents (id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, retention_until, legal_hold, created_by, created_at, updated_at)
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, 0, ?, ?, ?
+        d1.prepare(`INSERT INTO evidence_documents (id, organization_id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, retention_until, legal_hold, created_by, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, 0, ?, ?, ?
           WHERE NOT EXISTS (
             SELECT 1 FROM evidence_documents
             WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE'
           )`)
-          .bind(id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256),
+          .bind(id, ownedCase.organization_id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256),
         ...auditAndOutboxStatements(d1, {
           actorUserId: visitor.userId,
           actorRole: "VISITOR",

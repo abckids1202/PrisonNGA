@@ -417,6 +417,7 @@ export const verificationCases = sqliteTable("verification_cases", {
 
 export const evidenceDocuments = sqliteTable("evidence_documents", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   verificationCaseId: text("verification_case_id").notNull().references(() => verificationCases.id),
   visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
@@ -431,7 +432,7 @@ export const evidenceDocuments = sqliteTable("evidence_documents", {
   createdBy: text("created_by").notNull(),
   deletedAt: text("deleted_at"),
   ...timestamps,
-}, (table) => ({ caseIdx: index("evidence_documents_case_idx").on(table.verificationCaseId, table.createdAt), facilityRetentionIdx: index("evidence_documents_retention_idx").on(table.facilityId, table.retentionUntil, table.legalHold) }));
+}, (table) => ({ caseIdx: index("evidence_documents_case_idx").on(table.organizationId, table.verificationCaseId, table.createdAt), facilityRetentionIdx: index("evidence_documents_retention_idx").on(table.organizationId, table.facilityId, table.retentionUntil, table.legalHold) }));
 
 export const retentionPolicies = sqliteTable("retention_policies", {
   id: text("id").primaryKey(),

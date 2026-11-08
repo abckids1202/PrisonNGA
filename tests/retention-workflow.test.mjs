@@ -93,7 +93,7 @@ test("retention deletion uses a recoverable database claim around object deletio
 
 test("break-glass evidence access excludes pending-deletion records", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/control/access/break-glass/route.ts", import.meta.url), "utf8");
-  assert.match(source, /FROM evidence_documents WHERE id = \? AND facility_id = \? AND status = 'AVAILABLE'/);
+  assert.match(source, /FROM evidence_documents ed INNER JOIN facilities f ON f\.id = ed\.facility_id AND f\.organization_id = ed\.organization_id/);
 });
 
 test("retention does not restore an object-deleted row to AVAILABLE after a database failure", async () => {

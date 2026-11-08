@@ -16,7 +16,8 @@ test("evidence validation rejects spoofed MIME types and unsupported content", (
 
 test("visitor evidence persistence claims duplicate content atomically", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../app/api/visitor/verification/evidence/route.ts", import.meta.url), "utf8");
-  assert.match(source, /INSERT INTO evidence_documents[\s\S]*SELECT \?, \?, \?, \?, \?, \?, \?, \?, \?, 'AVAILABLE'/);
+  assert.match(source, /INSERT INTO evidence_documents[\s\S]*SELECT \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, 'AVAILABLE'/);
+  assert.match(source, /organization_id/);
   assert.match(source, /WHERE NOT EXISTS \([\s\S]*verification_case_id = \? AND visitor_user_id = \? AND sha256 = \? AND status = 'AVAILABLE'/);
   assert.match(source, /bytes\.length/);
   assert.match(source, /EVIDENCE_UPLOAD_NOT_PERSISTED/);

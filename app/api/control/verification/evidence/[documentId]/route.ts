@@ -21,7 +21,7 @@ export async function GET(_request: Request, context: RouteContext) {
     }
     const d1 = await getD1();
     const evidence = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.storage_key, ed.original_filename, ed.content_type, ed.byte_size, ed.sha256, ed.retention_until, ed.legal_hold
-      FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id
+      FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id
       WHERE ed.id = ? AND ed.facility_id = ? AND vc.facility_id = ? AND ed.status = 'AVAILABLE'`)
       .bind(documentId, authorization.facilityId, authorization.facilityId)
       .first<{ id: string; verification_case_id: string; storage_key: string; original_filename: string; content_type: string; byte_size: number; sha256: string; retention_until: string | null; legal_hold: number }>();

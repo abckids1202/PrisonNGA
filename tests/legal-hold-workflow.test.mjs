@@ -10,14 +10,14 @@ class D1 {
       CREATE TABLE organizations (id TEXT PRIMARY KEY);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL);
       CREATE TABLE verification_cases (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL);
-      CREATE TABLE evidence_documents (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, verification_case_id TEXT NOT NULL, legal_hold INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'AVAILABLE', updated_at TEXT);
+      CREATE TABLE evidence_documents (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, facility_id TEXT NOT NULL, verification_case_id TEXT NOT NULL, legal_hold INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'AVAILABLE', updated_at TEXT);
       CREATE TABLE legal_holds (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, facility_id TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL, created_by TEXT NOT NULL, released_by TEXT, released_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
       INSERT INTO organizations VALUES ('org-1');
       INSERT INTO facilities VALUES ('facility-1', 'org-1');
       INSERT INTO verification_cases VALUES ('case-1', 'facility-1');
-      INSERT INTO evidence_documents VALUES ('evidence-1', 'facility-1', 'case-1', 0, 'AVAILABLE', 'before');
+      INSERT INTO evidence_documents VALUES ('evidence-1', 'org-1', 'facility-1', 'case-1', 0, 'AVAILABLE', 'before');
     `);
   }
   prepare(sql) {
