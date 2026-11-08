@@ -90,3 +90,12 @@ test("visitor visit details exposes persisted recording consent controls", async
   assert.match(details, /I do not consent/);
 });
 
+test("visitor visit details does not offer a live join before recording consent", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const details = await readFile(new URL("../app/visitor/VisitDetailsClient.tsx", import.meta.url), "utf8");
+  assert.match(details, /recordingConsentRequired/);
+  assert.match(details, /Review recording choice/);
+  assert.match(details, /recordingConsentDeclined/);
+  assert.match(details, /scrollIntoView/);
+});
+
