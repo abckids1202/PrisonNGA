@@ -1,0 +1,23 @@
+import { getD1 } from "../../../../db/runtime";
+import { getRequestContext, requirePermission, securityErrorResponse, securityResponse } from "../../../../lib/server/security";
+
+export async function GET() {
+  const context = await getRequestContext();
+  try {
+    const authorization = await requirePermission("session.monitor");
+    const d1 = await getD1();
+    const recordings = await d1.prepare(`SELECT r.id, r.session_id, r.facility_id, r.provider, r.provider_reference,
+        r.status, r.content_type, r.byte_size, r.sha256, r.retention_until, r.legal_hold, r.created_at, r.updated_at,
+        a.id AS appointment_id, a.requested_start, a.requested_end,
+        u.display_name AS visitor_name, p.display_name AS prisoner_name
+      FROM recordings r
+      INNER JOIN visit_sessions vs ON vs.id = r.session_id AND vs.facility_id = r.facility_id
+      INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = r.facility_id
+      INNER JOIN users u ON u.id = a.visitor_user_id
+      INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = r.facility_id
+      WHERE r.facility_id = ? ORDER BY r.created_at DESC LIMIT 100`).bind(authorization.facilityId).all();
+    return securityResponse({ recordings: recordings.results }, 200, context.requestId);
+  } catch (error) {
+    return securityErrorResponse(error, context.requestId);
+  }
+}

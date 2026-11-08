@@ -43,6 +43,14 @@ CREATE INDEX `organization_memberships_user_idx` ON `organization_memberships` (
 --> statement-breakpoint
 CREATE INDEX `organization_memberships_facility_idx` ON `organization_memberships` (`facility_id`, `status`);
 --> statement-breakpoint
+INSERT OR IGNORE INTO `organization_memberships` (`id`, `organization_id`, `user_id`, `facility_id`, `role`, `status`, `version`, `created_at`, `updated_at`)
+SELECT 'membership-' || ur.user_id || '-' || ur.role_id || '-' || ur.facility_id,
+  f.organization_id, ur.user_id, ur.facility_id, r.name, 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+FROM `user_roles` ur
+INNER JOIN `roles` r ON r.id = ur.role_id
+INNER JOIN `facilities` f ON f.id = ur.facility_id
+WHERE f.organization_id IS NOT NULL;
+--> statement-breakpoint
 ALTER TABLE `visit_policies` ADD COLUMN `recording_policy` text DEFAULT 'OFF' NOT NULL;
 --> statement-breakpoint
 ALTER TABLE `visit_policies` ADD COLUMN `recording_retention_days` integer;
