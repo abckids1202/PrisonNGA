@@ -446,6 +446,7 @@ export const retentionPolicies = sqliteTable("retention_policies", {
 
 export const legalHolds = sqliteTable("legal_holds", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   entityType: text("entity_type").notNull(),
   entityId: text("entity_id").notNull(),
@@ -455,7 +456,7 @@ export const legalHolds = sqliteTable("legal_holds", {
   releasedBy: text("released_by"),
   releasedAt: text("released_at"),
   ...timestamps,
-}, (table) => ({ entityIdx: index("legal_holds_entity_idx").on(table.facilityId, table.entityType, table.entityId, table.status) }));
+}, (table) => ({ entityIdx: index("legal_holds_entity_idx").on(table.organizationId, table.facilityId, table.entityType, table.entityId, table.status) }));
 
 export const appointmentStatusEvents = sqliteTable("appointment_status_events", {
   id: text("id").primaryKey(),

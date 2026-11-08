@@ -8,7 +8,9 @@ export async function GET() {
   try {
     const authorization = await requirePermission("audit.read");
     const d1 = await getD1();
-    const result = await d1.prepare("SELECT id, entity_type, entity_id, reason, status, created_by, released_by, released_at, created_at FROM legal_holds WHERE facility_id = ? ORDER BY created_at DESC").bind(authorization.facilityId).all();
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
+    const result = await d1.prepare("SELECT id, entity_type, entity_id, reason, status, created_by, released_by, released_at, created_at FROM legal_holds WHERE organization_id = ? AND facility_id = ? ORDER BY created_at DESC").bind(facility.organization_id, authorization.facilityId).all();
     return securityResponse({ holds: result.results }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
@@ -24,12 +26,15 @@ export async function POST(request: Request) {
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     d1 = await getD1();
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
+    const organizationId = facility.organization_id;
     const now = new Date().toISOString();
     if (action === "CREATE") {
       const entityType = typeof body.entityType === "string" ? body.entityType.trim().slice(0, 80) : "";
       const entityId = typeof body.entityId === "string" ? body.entityId.trim() : "";
       if (!entityType || !entityId) throw new SecurityError("LEGAL_HOLD_ENTITY_REQUIRED", 400);
-      if (!(await legalHoldTargetExists(d1, authorization.facilityId, entityType, entityId))) throw new SecurityError("LEGAL_HOLD_TARGET_NOT_FOUND", 404);
+      if (!(await legalHoldTargetExists(d1, organizationId, authorization.facilityId, entityType, entityId))) throw new SecurityError("LEGAL_HOLD_TARGET_NOT_FOUND", 404);
       const reason = assertReason(body.reason);
       await requireStepUp({ purpose: "legal_hold_change", userId: authorization.userId, targetId: `${authorization.facilityId}:${entityType}:${entityId}`, payload: { action, entityType, entityId, reason } });
       const scope = `legal-hold:create:${authorization.facilityId}:${authorization.userId}`;
@@ -41,7 +46,7 @@ export async function POST(request: Request) {
       const correlationId = crypto.randomUUID();
       const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Auditor", facilityId: authorization.facilityId, actionType: "LEGAL_HOLD_CREATED", entityType, entityId, reason, newValues: { status: "ACTIVE" }, requestId: context.requestId, correlationId, eventType: "LEGAL_HOLD_CREATED", payload: { legalHoldId: id, entityType, entityId } };
       const responseBody = { id, status: "ACTIVE", correlationId };
-      const results = await d1.batch([...createLegalHoldStatements(d1, { id, facilityId: authorization.facilityId, entityType, entityId, reason, actorUserId: authorization.userId, now }, event), completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND facility_id = ? AND status = 'ACTIVE')", values: [id, authorization.facilityId] } })]);
+      const results = await d1.batch([...createLegalHoldStatements(d1, { id, organizationId, facilityId: authorization.facilityId, entityType, entityId, reason, actorUserId: authorization.userId, now }, event), completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = 'ACTIVE')", values: [id, organizationId, authorization.facilityId] } })]);
       // A verification-case hold may have no evidence rows yet, so the
       // evidence flag update is intentionally allowed to affect zero rows.
       const auditIndex = results.length - 2;
@@ -51,8 +56,9 @@ export async function POST(request: Request) {
     const holdId = typeof body.holdId === "string" ? body.holdId.trim() : "";
     if (!holdId) throw new SecurityError("LEGAL_HOLD_REQUIRED", 400);
     const reason = assertReason(body.reason);
-    const hold = await d1.prepare("SELECT id, entity_type, entity_id, status FROM legal_holds WHERE id = ? AND facility_id = ?").bind(holdId, authorization.facilityId).first<{ id: string; entity_type: string; entity_id: string; status: string }>();
+    const hold = await d1.prepare("SELECT id, organization_id, entity_type, entity_id, status FROM legal_holds WHERE id = ? AND organization_id = ? AND facility_id = ?").bind(holdId, organizationId, authorization.facilityId).first<{ id: string; organization_id: string | null; entity_type: string; entity_id: string; status: string }>();
     if (!hold) throw new SecurityError("LEGAL_HOLD_NOT_FOUND", 404);
+    if (!hold.organization_id) throw new SecurityError("LEGAL_HOLD_ORGANIZATION_SCOPE_MISSING", 503);
     const scope = `legal-hold:release:${authorization.facilityId}:${authorization.userId}:${holdId}`;
     const requestHash = await hashIdempotencyPayload({ action: "RELEASE", holdId, reason });
     const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
@@ -68,9 +74,9 @@ export async function POST(request: Request) {
     const correlationId = crypto.randomUUID();
     const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Auditor", facilityId: authorization.facilityId, actionType: "LEGAL_HOLD_RELEASED", entityType: hold.entity_type, entityId: hold.entity_id, reason, oldValues: { status: "ACTIVE" }, newValues: { status: "RELEASED" }, requestId: context.requestId, correlationId, eventType: "LEGAL_HOLD_RELEASED", payload: { legalHoldId: holdId } };
     const responseBody = { id: holdId, status: "RELEASED", correlationId };
-    const results = await d1.batch([...releaseLegalHoldStatements(d1, { id: holdId, facilityId: authorization.facilityId, entityType: hold.entity_type, entityId: hold.entity_id, actorUserId: authorization.userId, now }, event), completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND facility_id = ? AND status = 'RELEASED')", values: [holdId, authorization.facilityId] } })]);
+    const results = await d1.batch([...releaseLegalHoldStatements(d1, { id: holdId, organizationId, facilityId: authorization.facilityId, entityType: hold.entity_type, entityId: hold.entity_id, actorUserId: authorization.userId, now }, event), completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = 'RELEASED')", values: [holdId, organizationId, authorization.facilityId] } })]);
     if (!results[0]?.meta.changes) {
-      const latest = await d1.prepare("SELECT status FROM legal_holds WHERE id = ? AND facility_id = ?").bind(holdId, authorization.facilityId).first<{ status: string }>();
+      const latest = await d1.prepare("SELECT status FROM legal_holds WHERE id = ? AND organization_id = ? AND facility_id = ?").bind(holdId, organizationId, authorization.facilityId).first<{ status: string }>();
       if (latest?.status === "RELEASED") throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
       throw new SecurityError("LEGAL_HOLD_RELEASE_CONFLICT", 409);
     }

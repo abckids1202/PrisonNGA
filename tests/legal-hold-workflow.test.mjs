@@ -7,11 +7,15 @@ class D1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
+      CREATE TABLE organizations (id TEXT PRIMARY KEY);
+      CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL);
       CREATE TABLE verification_cases (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL);
       CREATE TABLE evidence_documents (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, verification_case_id TEXT NOT NULL, legal_hold INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'AVAILABLE', updated_at TEXT);
-      CREATE TABLE legal_holds (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL, created_by TEXT NOT NULL, released_by TEXT, released_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE legal_holds (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, facility_id TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL, created_by TEXT NOT NULL, released_by TEXT, released_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
+      INSERT INTO organizations VALUES ('org-1');
+      INSERT INTO facilities VALUES ('facility-1', 'org-1');
       INSERT INTO verification_cases VALUES ('case-1', 'facility-1');
       INSERT INTO evidence_documents VALUES ('evidence-1', 'facility-1', 'case-1', 0, 'AVAILABLE', 'before');
     `);
@@ -39,19 +43,20 @@ function event(actionType, holdId, entityId = "case-1") {
 
 function create(d1, id) {
   const now = `2026-09-22T10:0${id.endsWith("2") ? "1" : "0"}:00.000Z`;
-  return d1.batch(createLegalHoldStatements(d1, { id, facilityId: "facility-1", entityType: "verification_case", entityId: "case-1", reason: "Legal review requires preservation", actorUserId: "staff-1", now }, event("LEGAL_HOLD_CREATED", id)));
+  return d1.batch(createLegalHoldStatements(d1, { id, organizationId: "org-1", facilityId: "facility-1", entityType: "verification_case", entityId: "case-1", reason: "Legal review requires preservation", actorUserId: "staff-1", now }, event("LEGAL_HOLD_CREATED", id)));
 }
 
 function release(d1, id, now = "2026-09-22T11:00:00.000Z") {
-  return d1.batch(releaseLegalHoldStatements(d1, { id, facilityId: "facility-1", entityType: "verification_case", entityId: "case-1", actorUserId: "staff-1", now }, event("LEGAL_HOLD_RELEASED", id)));
+  return d1.batch(releaseLegalHoldStatements(d1, { id, organizationId: "org-1", facilityId: "facility-1", entityType: "verification_case", entityId: "case-1", actorUserId: "staff-1", now }, event("LEGAL_HOLD_RELEASED", id)));
 }
 
 test("legal holds reject missing or unsupported facility-scoped targets", async () => {
   const d1 = new D1();
   try {
-    assert.equal(await legalHoldTargetExists(d1, "facility-1", "verification_case", "case-1"), true);
-    assert.equal(await legalHoldTargetExists(d1, "facility-2", "verification_case", "case-1"), false);
-    assert.equal(await legalHoldTargetExists(d1, "facility-1", "unsupported", "case-1"), false);
+    assert.equal(await legalHoldTargetExists(d1, "org-1", "facility-1", "verification_case", "case-1"), true);
+    assert.equal(await legalHoldTargetExists(d1, "org-2", "facility-1", "verification_case", "case-1"), false);
+    assert.equal(await legalHoldTargetExists(d1, "org-1", "facility-2", "verification_case", "case-1"), false);
+    assert.equal(await legalHoldTargetExists(d1, "org-1", "facility-1", "unsupported", "case-1"), false);
   } finally { d1.close(); }
 });
 

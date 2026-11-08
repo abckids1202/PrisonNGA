@@ -12,6 +12,17 @@ test("recording retention and legal holds are wired into the scheduled worker", 
   assert.match(worker, /runScheduledJob\(env, "recording-object-reconciliation"/);
   assert.match(holds, /entityType === "recording"/);
   assert.match(holds, /UPDATE recordings SET legal_hold = 1/);
+  assert.match(holds, /organization_id/);
+});
+
+test("legal holds are organization-scoped and legacy rows are backfilled", async () => {
+  const migration = await readFile(new URL("../drizzle/0068_legal_hold_organization_scope.sql", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/control/legal-holds/route.ts", import.meta.url), "utf8");
+  assert.match(migration, /ADD COLUMN `organization_id`/);
+  assert.match(migration, /UPDATE `legal_holds`/);
+  assert.match(migration, /facilities/);
+  assert.match(route, /WHERE organization_id = \? AND facility_id = \?/);
+  assert.match(route, /LEGAL_HOLD_ORGANIZATION_SCOPE_MISSING/);
 });
 
 test("consented recording sessions remain joinable while egress is processing", async () => {
