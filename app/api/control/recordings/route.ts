@@ -8,6 +8,8 @@ export async function GET() {
     const d1 = await getD1();
     const recordings = await d1.prepare(`SELECT r.id, r.session_id, r.facility_id, r.provider, r.provider_reference,
         r.status, r.content_type, r.byte_size, r.sha256, r.retention_until, r.legal_hold, r.created_at, r.updated_at,
+        (SELECT COUNT(*) FROM recording_access_events rae WHERE rae.recording_id = r.id AND rae.facility_id = r.facility_id) AS access_count,
+        (SELECT MAX(rae.created_at) FROM recording_access_events rae WHERE rae.recording_id = r.id AND rae.facility_id = r.facility_id) AS last_accessed_at,
         a.id AS appointment_id, a.requested_start, a.requested_end,
         u.display_name AS visitor_name, p.display_name AS prisoner_name
       FROM recordings r
