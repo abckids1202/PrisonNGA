@@ -11,7 +11,7 @@ import { evaluateReleaseGates } from "../../../../lib/server/release-gates";
 import { parseVisitorAuthChannels } from "../../../../lib/server/visitor-auth/channels";
 
 const requiredTables = [
-  "users", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "roles", "permissions", "user_roles", "role_permissions",
+  "users", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "staff_facility_assignments", "roles", "permissions", "user_roles", "role_permissions",
   "auth_sessions", "auth_challenges", "auth_challenge_delivery_attempts", "idempotency_records", "auth_federation_states", "saml_request_cache", "security_events", "rate_limit_buckets",
   "audit_events", "audit_export_manifests", "break_glass_requests", "outbox_events", "appointments", "appointment_types", "appointment_type_history", "prisoners", "visitor_profiles", "visitor_relationships", "verification_cases", "evidence_documents",
   "retention_policies", "legal_holds", "facility_closures", "appointment_status_events", "resource_reservations", "resources", "kiosk_credentials", "kiosk_device_check_attempts", "waiting_room_sessions", "visitor_waiting_room_checkins",

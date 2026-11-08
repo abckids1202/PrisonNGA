@@ -115,6 +115,18 @@ export const staffProfiles = sqliteTable("staff_profiles", {
   ...timestamps,
 }, (table) => ({ facilityIdx: index("staff_profiles_facility_idx").on(table.facilityId) }));
 
+export const staffFacilityAssignments = sqliteTable("staff_facility_assignments", {
+  userId: text("user_id").notNull().references(() => users.id),
+  facilityId: text("facility_id").notNull().references(() => facilities.id),
+  employeeReference: text("employee_reference").notNull(),
+  jobTitle: text("job_title").notNull(),
+  department: text("department"),
+  status: text("status", { enum: ["ACTIVE", "REVOKED"] }).notNull().default("ACTIVE"),
+  assignedBy: text("assigned_by").references(() => users.id),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => ({ assignmentIdx: uniqueIndex("staff_facility_assignments_scope_idx").on(table.userId, table.facilityId), facilityIdx: index("staff_facility_assignments_facility_idx").on(table.facilityId, table.status), userIdx: index("staff_facility_assignments_user_idx").on(table.userId, table.status) }));
+
 export const roles = sqliteTable("roles", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

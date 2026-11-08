@@ -113,8 +113,12 @@ export async function requirePermission(permissionKey: string, facilityId?: stri
   if (!user || user.status !== "ACTIVE") throw new SecurityError("ACCOUNT_NOT_PROVISIONED", 403);
 
   const [profile] = await db.select({ facilityId: staffProfiles.facilityId }).from(staffProfiles).where(eq(staffProfiles.userId, user.id)).limit(1);
-  const scopedFacilityId = facilityId || profile?.facilityId;
-  if (!profile || !scopedFacilityId || profile.facilityId !== scopedFacilityId) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
+  const requestedFacilityId = facilityId || profile?.facilityId;
+  if (!requestedFacilityId) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
+  const assignment = await getD1().then((d1) => d1.prepare(`SELECT 1 AS active FROM staff_facility_assignments WHERE user_id = ? AND facility_id = ? AND status = 'ACTIVE'
+    UNION ALL SELECT 1 AS active FROM staff_profiles WHERE user_id = ? AND facility_id = ? LIMIT 1`).bind(user.id, requestedFacilityId, user.id, requestedFacilityId).first<{ active: number }>()).catch(() => null);
+  if (!assignment) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
+  const scopedFacilityId = requestedFacilityId;
 
   const rows = await db.select({ roleName: roles.name, permissionKey: permissions.permissionKey })
     .from(userRoles)
