@@ -11,9 +11,9 @@ import { reconcileStoredNotificationProviderEvent } from "../lib/server/notifica
 import { purgeExpiredAuthArtifacts, purgeExpiredAuthSessions, purgeExpiredIdempotencyRecords, reconcileStaleAuthDeliveryAttempts } from "../lib/server/auth/cleanup";
 import { processPaymentProviderEvent } from "../lib/server/payments/process-event";
 import { isSameOriginMutation } from "../lib/server/csrf";
-import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement } from "../lib/server/retention-workflow";
+import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement, claimExpiredRecordingRetentionStatement, expiredRecordingRetentionStatements, restoreClaimedRecordingRetentionStatement } from "../lib/server/retention-workflow";
 import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
-import { evidenceRetentionFailureStatement, liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
+import { evidenceRetentionFailureStatement, recordingRetentionFailureStatement, liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
 import { assertRequestBodyWithinLimit } from "../lib/server/request-body";
@@ -610,6 +610,68 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
   }
 }
 
+async function purgeExpiredRecordings(env: Env): Promise<void> {
+  if (!env.EVIDENCE_BUCKET) return;
+  // Legal-hold creation is blocked once a deletion claim exists. This
+  // bounded restore also repairs a stale claim if a hold was applied by an
+  // operational recovery or an older deployment.
+  await env.DB.prepare(`UPDATE recordings SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP, version = version + 1
+    WHERE rowid IN (SELECT rowid FROM recordings WHERE status = 'PENDING_DELETION' AND legal_hold = 1 LIMIT 50)`).run();
+  const rows = await env.DB.prepare(`SELECT id, facility_id, storage_key, retention_until, status
+    FROM recordings
+    WHERE storage_key IS NOT NULL AND legal_hold = 0
+      AND ((status = 'AVAILABLE' AND julianday(retention_until) <= julianday('now')) OR status = 'PENDING_DELETION')
+    LIMIT 50`).all<{ id: string; facility_id: string; storage_key: string; retention_until: string; status: string }>();
+  for (const row of rows.results) {
+    const correlationId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    let objectDeleteSucceeded = false;
+    try {
+      if (row.status !== 'PENDING_DELETION') {
+        const claimed = await env.DB.batch([claimExpiredRecordingRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now })]);
+        if (!claimed[0]?.meta.changes) continue;
+      }
+      const latest = await env.DB.prepare("SELECT status, legal_hold FROM recordings WHERE id = ? AND facility_id = ?").bind(row.id, row.facility_id).first<{ status: string; legal_hold: number }>();
+      if (!latest || latest.status !== 'PENDING_DELETION' || latest.legal_hold) {
+        if (latest?.status === 'PENDING_DELETION') await env.DB.batch([restoreClaimedRecordingRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now })]);
+        continue;
+      }
+      await env.EVIDENCE_BUCKET.delete(row.storage_key);
+      objectDeleteSucceeded = true;
+      const finalized = await env.DB.batch(expiredRecordingRetentionStatements(env.DB, {
+        id: row.id,
+        facilityId: row.facility_id,
+        storageKey: row.storage_key,
+        retentionUntil: row.retention_until,
+        requestId: correlationId,
+        correlationId,
+        now,
+        claimed: true,
+      }));
+      if (!finalized.every((result) => Boolean(result?.meta.changes))) throw new Error('RECORDING_RETENTION_STATE_NOT_COMMITTED');
+    } catch (error) {
+      if (!objectDeleteSucceeded) {
+        try { await env.DB.batch([restoreClaimedRecordingRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now: new Date().toISOString() })]); } catch { /* Keep the claim for the next recovery run. */ }
+      }
+      try {
+        await env.DB.batch([recordingRetentionFailureStatement(env.DB, {
+          facilityId: row.facility_id,
+          recordingId: row.id,
+          storageKey: row.storage_key,
+          retentionUntil: row.retention_until,
+          error: safeOperationalErrorMessage(error, 'RECORDING_RETENTION_DELETE_FAILED', 500),
+          requestId: correlationId,
+          correlationId,
+          now: new Date().toISOString(),
+        })]);
+      } catch (alarmError) {
+        operationalLog('error', { event: 'RECORDING_RETENTION_FAILURE_ALARM_FAILED', recordingId: row.id, facilityId: row.facility_id, requestId: correlationId, correlationId, error: alarmError });
+      }
+      operationalLog('error', { event: 'RECORDING_RETENTION_DELETE_FAILED', recordingId: row.id, facilityId: row.facility_id, requestId: correlationId, correlationId, error });
+    }
+  }
+}
+
 async function purgeExpiredStepUpAssertions(env: Env): Promise<void> {
   // Step-up assertions are deliberately short-lived, but cleanup still needs
   // a bounded transaction if a deployment has been offline or its scheduler
@@ -950,6 +1012,7 @@ const worker = {
       runScheduledJob(env, "waiting-room-open", () => openScheduledWaitingRooms(env)),
       runScheduledJob(env, "waiting-room-no-shows", () => reconcileWaitingRoomNoShows(env)),
       runScheduledJob(env, "evidence-retention", () => purgeExpiredEvidence(env)),
+      runScheduledJob(env, "recording-retention", () => purgeExpiredRecordings(env)),
       runScheduledJob(env, "step-up-expiry", () => purgeExpiredStepUpAssertions(env)),
       runScheduledJob(env, "break-glass-expiry", () => expireBreakGlassRequests(env)),
       runScheduledJob(env, "auth-delivery-reconciliation", () => reconcileStaleAuthDeliveryAttempts(env.DB)),

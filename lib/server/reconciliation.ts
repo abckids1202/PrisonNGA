@@ -193,6 +193,40 @@ export function evidenceRetentionFailureStatement(
   );
 }
 
+export function recordingRetentionFailureStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    recordingId: string;
+    storageKey: string;
+    retentionUntil: string;
+    error: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    VALUES (?, ?, 'RECORDING_RETENTION_DELETE_FAILED', 'CRITICAL', ?, ?, ?)`).bind(
+    `recording-retention-delete-failed:${input.recordingId}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "recording",
+      entityId: input.recordingId,
+      operation: "RECORDING_RETENTION_DELETE",
+      storageKey: input.storageKey,
+      retentionUntil: input.retentionUntil,
+      error: input.error,
+      correlationId: input.correlationId,
+      requiresStaffReview: true,
+      deletionUnconfirmed: true,
+    }),
+    input.now,
+  );
+}
+
 export function evidenceUploadCleanupFailureStatement(
   database: ReconciliationDatabase,
   input: {

@@ -66,12 +66,12 @@ export function assertJoinable(record: SessionRecord): void {
   if (Date.now() > end + 60_000) throw new SecurityError("SESSION_EXPIRED", 409);
 }
 
-/**
- * Recording is intentionally unavailable for the institutional pilot. Treat
- * any legacy, malformed, or future-enabled row as non-joinable until a
- * separately approved recording workflow exists.
- */
 export function assertRecordingDisabled(record: Pick<SessionRecord, "recording_policy" | "recording_status">): void {
+  if (record.recording_policy === "OFF" && record.recording_status === "NOT_RECORDED") return;
+  // Once recording is explicitly governed and the visitor has consented,
+  // participants may join while egress is starting, processing, or already
+  // available. Declined, failed, malformed, and deletion states fail closed.
+  if (record.recording_policy === "ON" && ["CONSENTED", "RECORDING", "PROCESSING", "AVAILABLE"].includes(record.recording_status)) return;
   if (record.recording_policy !== "OFF" || record.recording_status !== "NOT_RECORDED") {
     throw new SecurityError("RECORDING_POLICY_NOT_ALLOWED", 409);
   }

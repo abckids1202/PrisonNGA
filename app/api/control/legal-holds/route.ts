@@ -44,7 +44,8 @@ export async function POST(request: Request) {
       const results = await d1.batch([...createLegalHoldStatements(d1, { id, facilityId: authorization.facilityId, entityType, entityId, reason, actorUserId: authorization.userId, now }, event), completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND facility_id = ? AND status = 'ACTIVE')", values: [id, authorization.facilityId] } })]);
       // A verification-case hold may have no evidence rows yet, so the
       // evidence flag update is intentionally allowed to affect zero rows.
-      if (!results[0]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("LEGAL_HOLD_CREATE_FAILED", 409);
+      const auditIndex = results.length - 2;
+      if (!results[0]?.meta.changes || !results[auditIndex]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("LEGAL_HOLD_CREATE_FAILED", 409);
       return securityResponse(responseBody, 201, context.requestId);
     }
     const holdId = typeof body.holdId === "string" ? body.holdId.trim() : "";
@@ -76,7 +77,7 @@ export async function POST(request: Request) {
     // The evidence flag may remain unchanged when another active hold still
     // protects the same target. The hold state, audit, outbox, and replay
     // record must still all be durable.
-    if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[4]?.meta.changes) throw new SecurityError("LEGAL_HOLD_RELEASE_CONFLICT", 409);
+    if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[results.length - 1]?.meta.changes) throw new SecurityError("LEGAL_HOLD_RELEASE_CONFLICT", 409);
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {
     if (d1 && idempotency) {

@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+test("recording retention and legal holds are wired into the scheduled worker", async () => {
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const holds = await readFile(new URL("../lib/server/legal-hold-workflow.ts", import.meta.url), "utf8");
+  assert.match(worker, /async function purgeExpiredRecordings/);
+  assert.match(worker, /runScheduledJob\(env, "recording-retention"/);
+  assert.match(worker, /recordingRetentionFailureStatement/);
+  assert.match(holds, /entityType === "recording"/);
+  assert.match(holds, /UPDATE recordings SET legal_hold = 1/);
+});
+
+test("consented recording sessions remain joinable while egress is processing", async () => {
+  const session = await readFile(new URL("../lib/server/video/session.ts", import.meta.url), "utf8");
+  assert.match(session, /\["CONSENTED", "RECORDING", "PROCESSING", "AVAILABLE"\]/);
+  assert.match(session, /recording_policy === "OFF" && record\.recording_status === "NOT_RECORDED"/);
+});
+
+test("recording retention deletes the private object before final database deletion", async () => {
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const section = worker.slice(worker.indexOf("async function purgeExpiredRecordings"), worker.indexOf("async function purgeExpiredStepUpAssertions"));
+  assert.match(section, /await env\.EVIDENCE_BUCKET\.delete\(row\.storage_key\)/);
+  assert.match(section, /expiredRecordingRetentionStatements/);
+  assert.match(section, /status !== 'PENDING_DELETION'/);
+});

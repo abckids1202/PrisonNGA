@@ -7,6 +7,9 @@ export async function legalHoldTargetExists(d1: D1Database, facilityId: string, 
   if (entityType === "evidence_document") {
     return Boolean(await d1.prepare("SELECT 1 AS found FROM evidence_documents WHERE id = ? AND facility_id = ?").bind(entityId, facilityId).first());
   }
+  if (entityType === "recording") {
+    return Boolean(await d1.prepare("SELECT 1 AS found FROM recordings WHERE id = ? AND facility_id = ?").bind(entityId, facilityId).first());
+  }
   return false;
 }
 
@@ -21,6 +24,21 @@ export type LegalHoldCreateWrite = {
 };
 
 export function createLegalHoldStatements(d1: D1Database, input: LegalHoldCreateWrite, event: DomainEventInput): D1PreparedStatement[] {
+  if (input.entityType === "recording") {
+    return [
+      d1.prepare(`INSERT INTO legal_holds (id, facility_id, entity_type, entity_id, reason, status, created_by, created_at, updated_at)
+        SELECT ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM recordings WHERE id = ? AND facility_id = ? AND status = 'PENDING_DELETION')`)
+        .bind(input.id, input.facilityId, input.entityType, input.entityId, input.reason, input.actorUserId, input.now, input.now, input.entityId, input.facilityId),
+      d1.prepare(`UPDATE recordings SET legal_hold = 1, updated_at = ?
+        WHERE id = ? AND facility_id = ? AND status <> 'PENDING_DELETION'`)
+        .bind(input.now, input.entityId, input.facilityId),
+      ...auditAndOutboxStatements(d1, event, {
+        sql: "EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND facility_id = ? AND status = 'ACTIVE')",
+        values: [input.id, input.facilityId],
+      }),
+    ];
+  }
   return [
     d1.prepare(`INSERT INTO legal_holds (id, facility_id, entity_type, entity_id, reason, status, created_by, created_at, updated_at)
       SELECT ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?
@@ -50,6 +68,19 @@ export type LegalHoldReleaseWrite = {
 };
 
 export function releaseLegalHoldStatements(d1: D1Database, input: LegalHoldReleaseWrite, event: DomainEventInput): D1PreparedStatement[] {
+  if (input.entityType === "recording") {
+    return [
+      d1.prepare(`UPDATE legal_holds SET status = 'RELEASED', released_by = ?, released_at = ?, updated_at = ?
+        WHERE id = ? AND facility_id = ? AND status = 'ACTIVE'`)
+        .bind(input.actorUserId, input.now, input.now, input.id, input.facilityId),
+      ...auditAndOutboxStatements(d1, event, { sql: "changes() > 0", values: [] }),
+      d1.prepare(`UPDATE recordings SET legal_hold = 0, updated_at = ?
+        WHERE id = ? AND facility_id = ?
+        AND NOT EXISTS (SELECT 1 FROM legal_holds WHERE facility_id = ? AND entity_type = 'recording' AND entity_id = ? AND status = 'ACTIVE')
+        AND EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND facility_id = ? AND status = 'RELEASED')`)
+        .bind(input.now, input.entityId, input.facilityId, input.facilityId, input.entityId, input.id, input.facilityId),
+    ];
+  }
   return [
     d1.prepare(`UPDATE legal_holds SET status = 'RELEASED', released_by = ?, released_at = ?, updated_at = ?
       WHERE id = ? AND facility_id = ? AND status = 'ACTIVE'`)
