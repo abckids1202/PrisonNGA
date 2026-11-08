@@ -54,3 +54,16 @@ test("Organization administration exposes persisted facility creation and versio
   assert.match(facilities, /organization_memberships/);
   assert.match(facility, /STALE_FACILITY/);
 });
+
+test("Facility Access UI uses the persisted organization membership workflow", async () => {
+  const source = await readFile(new URL("../app/components/OrganizationMembershipsPanel.tsx", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/control/memberships/route.ts", import.meta.url), "utf8");
+  assert.match(source, /fetch\("\/api\/control\/memberships"/);
+  assert.match(source, /Idempotency-Key/);
+  assert.match(source, /expectedVersion/);
+  assert.match(source, /STEP_UP_REQUIRED/);
+  assert.match(route, /staff_facility_assignments/);
+  assert.match(route, /MEMBERSHIP_ALREADY_ACTIVE/);
+  assert.match(route, /STALE_MEMBERSHIP/);
+  assert.match(route, /organization_memberships/);
+});

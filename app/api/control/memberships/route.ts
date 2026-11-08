@@ -17,12 +17,20 @@ export async function GET() {
     const authorization = await requireOrganizationPermission("organization.manage");
     const d1 = await getD1();
     const organizationId = await organizationForFacility(d1, authorization.facilityId);
-    const memberships = await d1.prepare(`SELECT om.id, om.organization_id, om.user_id, om.facility_id, om.role, om.status, om.version,
+    const [memberships, facilities, staff, roles] = await Promise.all([
+      d1.prepare(`SELECT om.id, om.organization_id, om.user_id, om.facility_id, om.role, om.status, om.version,
       om.assigned_by, om.created_at, om.updated_at, u.email, u.display_name, f.name AS facility_name
       FROM organization_memberships om INNER JOIN users u ON u.id = om.user_id
       LEFT JOIN facilities f ON f.id = om.facility_id
-      WHERE om.organization_id = ? ORDER BY COALESCE(f.name, ''), u.display_name`).bind(organizationId).all();
-    return securityResponse({ organizationId, memberships: memberships.results }, 200, context.requestId);
+      WHERE om.organization_id = ? ORDER BY COALESCE(f.name, ''), u.display_name`).bind(organizationId).all(),
+      d1.prepare("SELECT id, name, timezone, current_state, version FROM facilities WHERE organization_id = ? ORDER BY name").bind(organizationId).all(),
+      d1.prepare(`SELECT DISTINCT u.id, u.email, u.display_name, u.status FROM organization_memberships om INNER JOIN users u ON u.id = om.user_id
+        WHERE om.organization_id = ? AND om.status = 'ACTIVE' AND u.user_type = 'STAFF' AND u.status = 'ACTIVE' ORDER BY u.display_name`).bind(organizationId).all(),
+      d1.prepare(`SELECT r.id, r.name, r.description FROM roles r
+        WHERE NOT EXISTS (SELECT 1 FROM role_permissions rp INNER JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = r.id AND p.permission_key = 'organization.manage')
+        ORDER BY r.name`).all(),
+    ]);
+    return securityResponse({ organizationId, memberships: memberships.results, facilities: facilities.results, staff: staff.results, roles: roles.results }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
 

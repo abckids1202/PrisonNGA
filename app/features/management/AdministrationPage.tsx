@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import AccessReviewPanel from "../../components/AccessReviewPanel";
 import OrganizationRolesPanel from "../../components/OrganizationRolesPanel";
 import OrganizationFacilitiesPanel from "../../components/OrganizationFacilitiesPanel";
+import OrganizationMembershipsPanel from "../../components/OrganizationMembershipsPanel";
 import { Avatar, Button, PageHeader, Status } from "../../components/ControlPrimitives";
 import IntegrationReadinessPanel from "./IntegrationReadinessPanel";
 import NotificationOperationsPanel from "./NotificationOperationsPanel";
@@ -60,8 +61,8 @@ export default function RealAdministrationPage({ timeZone, onNotify }: { timeZon
 
   return <div>
     <PageHeader eyebrow="Management · Administration" title="Administration" description="Provision facility staff, assign least-privilege roles, and control access to SecureVisit." actions={tab === "Integrations" ? <span className="sv3-toolbar-meta">Readiness refresh is available below</span> : <Button onClick={() => load()}>Refresh directory</Button>} />
-    <div className="sv3-admin-tabs">{["Staff", "Roles & Permissions", "Organization", "Organization Roles", "Notifications", "Integrations"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>
-    {tab === "Notifications" ? <NotificationOperationsPanel onNotify={onNotify} /> : tab === "Integrations" ? <IntegrationReadinessPanel onNotify={onNotify} /> : tab === "Roles & Permissions" ? <AccessReviewPanel timeZone={timeZone} /> : tab === "Organization Roles" ? <OrganizationRolesPanel onNotify={onNotify} /> : tab === "Organization" ? <OrganizationFacilitiesPanel onNotify={onNotify} /> : <div className="sv3-admin-content">
+    <div className="sv3-admin-tabs">{["Staff", "Roles & Permissions", "Organization", "Facility Access", "Organization Roles", "Notifications", "Integrations"].map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{item}</button>)}</div>
+    {tab === "Notifications" ? <NotificationOperationsPanel onNotify={onNotify} /> : tab === "Integrations" ? <IntegrationReadinessPanel onNotify={onNotify} /> : tab === "Roles & Permissions" ? <AccessReviewPanel timeZone={timeZone} /> : tab === "Organization Roles" ? <OrganizationRolesPanel onNotify={onNotify} /> : tab === "Organization" ? <OrganizationFacilitiesPanel onNotify={onNotify} /> : tab === "Facility Access" ? <OrganizationMembershipsPanel onNotify={onNotify} /> : <div className="sv3-admin-content">
       <div className="sv3-admin-stat"><span>Provisioned staff</span><strong>{loading ? "—" : staff.length}</strong><small>Facility-scoped directory · OIDC identities map after first sign-in</small></div>
       <form className="sv3-form-grid" onSubmit={provision}>
         <label>Email address<input type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
