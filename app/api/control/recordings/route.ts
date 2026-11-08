@@ -4,7 +4,7 @@ import { getRequestContext, requirePermission, securityErrorResponse, securityRe
 export async function GET() {
   const context = await getRequestContext();
   try {
-    const authorization = await requirePermission("session.monitor");
+    const authorization = await requirePermission("recording.manage");
     const d1 = await getD1();
     const recordings = await d1.prepare(`SELECT r.id, r.session_id, r.facility_id, r.provider, r.provider_reference,
         r.status, r.content_type, r.byte_size, r.sha256, r.retention_until, r.legal_hold, r.created_at, r.updated_at,

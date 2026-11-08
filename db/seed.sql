@@ -77,6 +77,7 @@ INSERT INTO permissions (id, permission_key, description) VALUES
   ('perm-incident-read', 'incident.read', 'Read facility incident records.'),
   ('perm-incident-manage', 'incident.manage', 'Create and resolve facility incidents.'),
   ('perm-notification-manage', 'notification.manage', 'Replay and operate failed notification deliveries.')
+  ,('perm-recording-manage', 'recording.manage', 'Start, review, and access governed session recordings.')
   ,('perm-visitor-directory-read', 'visitor.directory.read', 'Read facility-scoped visitor identity and relationship directory data.')
   ,('perm-finance-read', 'finance.read', 'Read facility-scoped credit ledger and payment records.')
   ,('perm-finance-manage', 'finance.manage', 'Request provider refunds and operate facility payment exceptions.')
@@ -104,6 +105,8 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ('role-supervisor', 'perm-incident-manage'),
   ('role-auditor', 'perm-incident-read'),
   ('role-supervisor', 'perm-notification-manage')
+  ,('role-supervisor', 'perm-recording-manage')
+  ,('role-monitoring-officer', 'perm-recording-manage')
   ,('role-supervisor', 'perm-staff-manage')
   ,('role-scheduling-officer', 'perm-visitor-directory-read')
   ,('role-verification-officer', 'perm-visitor-directory-read')

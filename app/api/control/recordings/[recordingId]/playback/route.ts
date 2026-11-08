@@ -5,7 +5,7 @@ import { applySecurityHeaders, getRequestContext, requirePermission, securityErr
 export async function GET(_request: Request, { params }: { params: Promise<{ recordingId: string }> }) {
   const context = await getRequestContext();
   try {
-    const authorization = await requirePermission("session.monitor");
+    const authorization = await requirePermission("recording.manage");
     const { recordingId } = await params;
     const d1 = await getD1();
     const recording = await d1.prepare(`SELECT id, facility_id, storage_key, status, content_type, byte_size, sha256, legal_hold

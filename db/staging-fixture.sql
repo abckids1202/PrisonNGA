@@ -39,6 +39,7 @@ INSERT OR IGNORE INTO permissions (id, permission_key, description) VALUES
   ('perm-incident-read', 'incident.read', 'Read facility incident records.'),
   ('perm-incident-manage', 'incident.manage', 'Create and resolve facility incidents.'),
   ('perm-notification-manage', 'notification.manage', 'Replay and operate failed notification deliveries.'),
+  ('perm-recording-manage', 'recording.manage', 'Start, review, and access governed session recordings.'),
   ('perm-visitor-directory-read', 'visitor.directory.read', 'Read facility-scoped visitor directory data.'),
   ('perm-finance-read', 'finance.read', 'Read facility-scoped credit and payment records.'),
   ('perm-finance-manage', 'finance.manage', 'Operate facility payment exceptions.');
@@ -61,6 +62,8 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES
   ('role-supervisor', 'perm-incident-read'),
   ('role-supervisor', 'perm-incident-manage'),
   ('role-supervisor', 'perm-notification-manage'),
+  ('role-supervisor', 'perm-recording-manage'),
+  ('role-monitoring-officer', 'perm-recording-manage'),
   ('role-supervisor', 'perm-visitor-directory-read'),
   ('role-supervisor', 'perm-finance-read'),
   ('role-supervisor', 'perm-finance-manage'),
