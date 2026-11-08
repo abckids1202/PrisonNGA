@@ -16,7 +16,9 @@ CREATE INDEX `organization_role_assignments_organization_idx` ON `organization_r
 CREATE INDEX `organization_role_assignments_user_idx` ON `organization_role_assignments` (`user_id`, `status`);
 --> statement-breakpoint
 INSERT OR IGNORE INTO `organization_role_assignments` (`user_id`, `organization_id`, `role_id`, `status`, `assigned_by`, `version`, `assigned_at`, `created_at`, `updated_at`)
-SELECT DISTINCT ur.user_id, f.organization_id, ur.role_id, 'ACTIVE', ur.assigned_by, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+SELECT DISTINCT ur.user_id, f.organization_id, ur.role_id, 'ACTIVE',
+  CASE WHEN EXISTS (SELECT 1 FROM users assigned_user WHERE assigned_user.id = ur.assigned_by) THEN ur.assigned_by ELSE NULL END,
+  1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 FROM `user_roles` ur
 INNER JOIN `facilities` f ON f.id = ur.facility_id AND f.organization_id IS NOT NULL
 INNER JOIN `role_permissions` rp ON rp.role_id = ur.role_id
