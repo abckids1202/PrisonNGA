@@ -672,6 +672,55 @@ async function purgeExpiredRecordings(env: Env): Promise<void> {
   }
 }
 
+async function reconcileRecordingObjects(env: Env): Promise<void> {
+  if (!env.EVIDENCE_BUCKET) return;
+  const rows = await env.DB.prepare(`SELECT id, facility_id, session_id, storage_key, status, provider_reference
+    FROM recordings
+    WHERE storage_key IS NOT NULL AND status IN ('PROCESSING', 'FAILED')
+      AND julianday(updated_at) <= julianday('now', '-30 seconds')
+    ORDER BY updated_at ASC LIMIT 25`).all<{ id: string; facility_id: string; session_id: string; storage_key: string; status: string; provider_reference: string | null }>();
+  for (const row of rows.results) {
+    const object = await env.EVIDENCE_BUCKET.get(row.storage_key);
+    if (!object) continue;
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    if (!bytes.byteLength) continue;
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const now = new Date().toISOString();
+    const eventId = `recording-object-reconcile:${row.id}:${sha256}`;
+    const correlationId = crypto.randomUUID();
+    try {
+      const results = await env.DB.batch([
+        env.DB.prepare(`INSERT OR IGNORE INTO visit_session_events (id, session_id, event_type, source, metadata, correlation_id, created_at)
+          VALUES (?, ?, 'RECORDING_OBJECT_RECONCILED', 'SYSTEM_RECORDING_RECONCILIATION', ?, ?, ?)`).bind(eventId, row.session_id, JSON.stringify({ recordingId: row.id, storageKey: row.storage_key, sha256, byteSize: bytes.byteLength, previousStatus: row.status }), correlationId, now),
+        env.DB.prepare(`UPDATE recordings SET status = 'AVAILABLE', content_type = COALESCE(content_type, 'video/mp4'), byte_size = ?, sha256 = ?, failure_reason = NULL, version = version + 1, updated_at = ?
+          WHERE id = ? AND facility_id = ? AND status IN ('PROCESSING', 'FAILED') AND legal_hold = 0`).bind(bytes.byteLength, sha256, now, row.id, row.facility_id),
+        env.DB.prepare(`UPDATE visit_sessions SET recording_status = 'AVAILABLE', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ?`).bind(now, row.session_id, row.facility_id),
+        ...auditAndOutboxStatements(env.DB, {
+          actorUserId: 'system:recording-reconciliation',
+          actorRole: 'SYSTEM',
+          facilityId: row.facility_id,
+          actionType: 'RECORDING_OBJECT_RECONCILED',
+          entityType: 'recording',
+          entityId: row.id,
+          reason: 'The private recording object became available after the provider callback and passed integrity verification.',
+          oldValues: { status: row.status, storageKey: row.storage_key },
+          newValues: { status: 'AVAILABLE', byteSize: bytes.byteLength, sha256 },
+          requestId: eventId,
+          correlationId,
+          eventType: 'RECORDING_OBJECT_RECONCILED',
+          payload: { recordingId: row.id, sessionId: row.session_id, providerReference: row.provider_reference, byteSize: bytes.byteLength, sha256 },
+        }, { sql: 'EXISTS (SELECT 1 FROM recordings WHERE id = ? AND facility_id = ? AND status = \'AVAILABLE\')', values: [row.id, row.facility_id] }),
+      ]);
+      if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes || !results[4]?.meta.changes) {
+        throw new Error('RECORDING_RECONCILIATION_NOT_COMMITTED');
+      }
+    } catch (error) {
+      operationalLog('error', { event: 'RECORDING_OBJECT_RECONCILIATION_FAILED', recordingId: row.id, facilityId: row.facility_id, requestId: eventId, correlationId, error });
+    }
+  }
+}
+
 async function purgeExpiredStepUpAssertions(env: Env): Promise<void> {
   // Step-up assertions are deliberately short-lived, but cleanup still needs
   // a bounded transaction if a deployment has been offline or its scheduler
@@ -1013,6 +1062,7 @@ const worker = {
       runScheduledJob(env, "waiting-room-no-shows", () => reconcileWaitingRoomNoShows(env)),
       runScheduledJob(env, "evidence-retention", () => purgeExpiredEvidence(env)),
       runScheduledJob(env, "recording-retention", () => purgeExpiredRecordings(env)),
+      runScheduledJob(env, "recording-object-reconciliation", () => reconcileRecordingObjects(env)),
       runScheduledJob(env, "step-up-expiry", () => purgeExpiredStepUpAssertions(env)),
       runScheduledJob(env, "break-glass-expiry", () => expireBreakGlassRequests(env)),
       runScheduledJob(env, "auth-delivery-reconciliation", () => reconcileStaleAuthDeliveryAttempts(env.DB)),

@@ -8,6 +8,8 @@ test("recording retention and legal holds are wired into the scheduled worker", 
   assert.match(worker, /async function purgeExpiredRecordings/);
   assert.match(worker, /runScheduledJob\(env, "recording-retention"/);
   assert.match(worker, /recordingRetentionFailureStatement/);
+  assert.match(worker, /async function reconcileRecordingObjects/);
+  assert.match(worker, /runScheduledJob\(env, "recording-object-reconciliation"/);
   assert.match(holds, /entityType === "recording"/);
   assert.match(holds, /UPDATE recordings SET legal_hold = 1/);
 });
