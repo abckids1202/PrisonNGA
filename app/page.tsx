@@ -62,6 +62,7 @@ export default function ControlApp() {
     runtimeEnvironment,
     securityNotifications, notificationLoading, notificationError,
     staffIdentity, now,
+    switchFacility,
     openNotifications,
   } = useControlWorkspaceData();
   const [mode, setMode] = useState<Mode>("operations");
@@ -237,7 +238,7 @@ export default function ControlApp() {
   return <div className="sv3-app sv6-control-app">
     <aside className="sv3-sidebar">
       <div className="sv3-brand"><SecureVisitLogo /></div>
-      <div className="sv3-facility-chip"><span className="sv3-facility-icon">▣</span><div><strong>{staffIdentity?.scope?.facilityName || "Facility workspace"}</strong><small>{staffIdentity?.scope?.facilityName ? "Protected facility" : "Awaiting staff scope"}</small></div><span>⌄</span></div>
+      <div className="sv3-facility-chip"><span className="sv3-facility-icon">▣</span><div><strong>{staffIdentity?.scope?.facilityName || "Facility workspace"}</strong><small>{staffIdentity?.scope?.facilityName ? "Protected facility" : "Awaiting staff scope"}</small>{(staffIdentity?.scopes?.length || 0) > 1 ? <select aria-label="Switch facility" value={staffIdentity?.scope?.facilityId || ""} onChange={(event) => { void switchFacility(event.target.value).catch(() => notify("The facility context could not be changed.", "error")); }}>{staffIdentity?.scopes?.map((scope) => <option key={scope.facilityId} value={scope.facilityId}>{scope.facilityName}</option>)}</select> : null}</div><span>⌄</span></div>
       <div className="sv3-mode-switch" role="tablist" aria-label="Staff workspace"><button className={mode === "operations" ? "active" : ""} onClick={() => navigate("Command Center", "operations")}>Operations</button><button className={mode === "management" ? "active" : ""} onClick={() => navigate("People", "management")}>Management</button></div>
       <SectionLabel>{mode === "operations" ? "Live operations" : "Records & policy"}</SectionLabel>
       <nav className="sv3-nav" aria-label={`${mode} navigation`}>{currentNav.map(([label, icon]) => <button key={label} className={page === label ? "active" : ""} onClick={() => navigate(label)}><span>{icon}</span><b>{label}</b>{label === "Appointments" && appointments.filter((appointment) => appointment.status !== "Completed").length > 0 ? <em>{appointments.filter((appointment) => appointment.status !== "Completed").length}</em> : label === "Waiting Room" && appointments.filter((appointment) => appointment.status === "Ready").length > 0 ? <em>{appointments.filter((appointment) => appointment.status === "Ready").length}</em> : null}</button>)}</nav>

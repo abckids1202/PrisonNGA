@@ -4,7 +4,8 @@ import { safeTimeZone } from "@/lib/date-format";
 
 export type RuntimeEnvironment = "development" | "staging" | "production" | "unknown";
 export type SecurityNotification = { id: string; eventType: string; severity: string; createdAt: string; requestId?: string | null };
-export type StaffShellIdentity = { displayName?: string; userType?: string; scope?: { facilityName?: string; jobTitle?: string } | null };
+export type StaffScope = { facilityId?: string; facilityName?: string; jobTitle?: string };
+export type StaffShellIdentity = { displayName?: string; userType?: string; scope?: StaffScope | null; scopes?: StaffScope[] };
 
 export function useControlWorkspaceData() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -19,6 +20,12 @@ export function useControlWorkspaceData() {
   const [notificationError, setNotificationError] = useState(false);
   const [staffIdentity, setStaffIdentity] = useState<StaffShellIdentity | null>(null);
   const [now, setNow] = useState(() => new Date());
+
+  async function switchFacility(facilityId: string) {
+    const response = await fetch("/api/auth/facility-context", { method: "PUT", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ facilityId }) });
+    if (!response.ok) throw new Error("FACILITY_CONTEXT_DENIED");
+    window.location.reload();
+  }
 
   useEffect(() => {
     let active = true;
@@ -109,6 +116,7 @@ export function useControlWorkspaceData() {
     runtimeEnvironment,
     securityNotifications, notificationLoading, notificationError,
     staffIdentity, now,
+    switchFacility,
     openNotifications,
   };
 }

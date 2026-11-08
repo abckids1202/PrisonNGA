@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { cookies } from "next/headers";
 import { getDb } from "../../../../db";
 import { facilities, staffFacilityAssignments, staffProfiles, users } from "../../../../db/schema";
 import { getRequestContext, getVisitorSessionIdentity, getWorkspaceIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
@@ -21,7 +22,8 @@ export async function GET() {
     const legacyProfile = assignments.length ? null : await db.select({ facilityId: staffProfiles.facilityId, jobTitle: staffProfiles.jobTitle, facilityName: facilities.name })
       .from(staffProfiles).innerJoin(facilities, eq(staffProfiles.facilityId, facilities.id)).where(eq(staffProfiles.userId, user.id)).limit(1);
     const scopes = assignments.filter((assignment) => assignment.status === "ACTIVE").map((assignment) => ({ facilityId: assignment.facilityId, facilityName: assignment.facilityName, jobTitle: assignment.jobTitle }));
-    const scope = scopes[0] || legacyProfile?.[0] || null;
+    const selectedFacilityId = (await cookies()).get("securevisit_facility_context")?.value || "";
+    const scope = scopes.find((candidate) => candidate.facilityId === selectedFacilityId) || scopes[0] || legacyProfile?.[0] || null;
     return securityResponse({ authenticated: true, provisioned: user.status === "ACTIVE", identity: { id: user.id, email: identity.email, displayName: user.displayName, userType: user.userType }, scope, scopes }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
