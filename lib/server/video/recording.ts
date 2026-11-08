@@ -28,3 +28,10 @@ export async function startLiveKitRecording(input: { liveKitUrl: string; apiKey:
   if (!egress.egressId) throw new SecurityError("RECORDING_PROVIDER_REFERENCE_MISSING", 503);
   return { egressId: egress.egressId, storageKey: input.storageKey };
 }
+
+export async function stopLiveKitRecording(input: { liveKitUrl: string; apiKey: string; apiSecret: string; egressId: string }) {
+  const host = input.liveKitUrl.startsWith("wss://") ? `https://${input.liveKitUrl.slice("wss://".length)}` : input.liveKitUrl.replace(/^ws:\/\//, "http://");
+  if (!/^https:\/\//.test(host)) throw new SecurityError("VIDEO_PROVIDER_URL_INVALID", 503);
+  const client = new EgressClient(host, input.apiKey, input.apiSecret, { requestTimeout: 15_000 });
+  await client.stopEgress(input.egressId);
+}

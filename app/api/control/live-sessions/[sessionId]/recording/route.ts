@@ -2,8 +2,9 @@ import { getD1 } from "../../../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../../lib/server/idempotency";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
+import { recordingProviderCleanupFailureStatement } from "../../../../../../lib/server/reconciliation";
 import { getVideoConfig } from "../../../../../../lib/server/video/provider";
-import { startLiveKitRecording } from "../../../../../../lib/server/video/recording";
+import { startLiveKitRecording, stopLiveKitRecording } from "../../../../../../lib/server/video/recording";
 
 export async function POST(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   const context = await getRequestContext();
@@ -11,6 +12,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   let claimedRecordingId: string | null = null;
   let claimedRecordingReference: string | null = null;
+  let startedEgressId: string | null = null;
+  let recordingProviderConfig: { url: string; apiKey: string; apiSecret: string } | null = null;
+  let recordingCorrelationId: string | null = null;
+  let claimedFacilityId: string | null = null;
+  let claimedSessionId: string | null = null;
   try {
     const { sessionId } = await params;
     const authorization = await requirePermission("recording.manage");
@@ -54,6 +60,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     const startClaim = `pending:${crypto.randomUUID()}`;
     claimedRecordingId = recordingId;
     claimedRecordingReference = startClaim;
+    claimedFacilityId = session.facility_id;
+    claimedSessionId = session.id;
     if (!existing) {
       const created = await d1.prepare(`INSERT INTO recordings (id, organization_id, facility_id, session_id, provider, provider_reference, storage_key, status, retention_until, version, created_at, updated_at)
         SELECT ?, f.organization_id, ?, ?, 'livekit', ?, ?, 'PENDING', datetime(?, '+' || COALESCE(vp.recording_retention_days, 30) || ' days'), 1, ?, ?
@@ -67,9 +75,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     const config = await getVideoConfig();
     const liveKitUrl = config.url;
     if (!config.configured || config.provider !== "livekit" || !liveKitUrl || !config.apiKey || !config.apiSecret) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
+    recordingProviderConfig = { url: liveKitUrl, apiKey: config.apiKey, apiSecret: config.apiSecret };
     const started = await startLiveKitRecording({ liveKitUrl, apiKey: config.apiKey, apiSecret: config.apiSecret, roomName: session.provider_room_name, storageKey });
+    startedEgressId = started.egressId;
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
+    recordingCorrelationId = correlationId;
     const latest = await d1.prepare("SELECT provider_reference, storage_key, status FROM recordings WHERE id = ? AND facility_id = ?").bind(recordingId, session.facility_id).first<{ provider_reference: string | null; storage_key: string | null; status: string }>();
     if (!latest) throw new SecurityError("RECORDING_START_NOT_PERSISTED", 503);
     if (latest.provider_reference === started.egressId && ["PROCESSING", "AVAILABLE", "FAILED"].includes(latest.status)) {
@@ -90,6 +101,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     idempotency = null;
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
+    if (d1 && claimedRecordingId && startedEgressId && recordingProviderConfig) {
+      let providerAlreadyBound = false;
+      try {
+        const current = await d1.prepare("SELECT provider_reference, status FROM recordings WHERE id = ? AND facility_id = ?").bind(claimedRecordingId, claimedFacilityId).first<{ provider_reference: string | null; status: string }>();
+        providerAlreadyBound = current?.provider_reference === startedEgressId && ["PROCESSING", "AVAILABLE", "FAILED"].includes(current.status);
+      } catch { /* Attempt cleanup when authoritative state cannot be read. */ }
+      if (!providerAlreadyBound) {
+        try {
+          await stopLiveKitRecording({ liveKitUrl: recordingProviderConfig.url, apiKey: recordingProviderConfig.apiKey, apiSecret: recordingProviderConfig.apiSecret, egressId: startedEgressId });
+        } catch (cleanupError) {
+          try {
+            if (claimedFacilityId && claimedSessionId) await recordingProviderCleanupFailureStatement(d1, {
+              facilityId: claimedFacilityId,
+              recordingId: claimedRecordingId,
+              sessionId: claimedSessionId,
+              providerReference: startedEgressId,
+              reason: cleanupError instanceof Error ? cleanupError.message.slice(0, 500) : String(cleanupError).slice(0, 500),
+              requestId: context.requestId,
+              correlationId: recordingCorrelationId || crypto.randomUUID(),
+              now: new Date().toISOString(),
+            }).run();
+          } catch { /* Preserve the original provider error; operations can inspect provider reconciliation. */ }
+        }
+      }
+    }
     if (d1 && claimedRecordingId && claimedRecordingReference) {
       try {
         await d1.prepare("UPDATE recordings SET provider_reference = NULL, updated_at = ? WHERE id = ? AND status = 'PENDING' AND provider_reference = ?").bind(new Date().toISOString(), claimedRecordingId, claimedRecordingReference).run();

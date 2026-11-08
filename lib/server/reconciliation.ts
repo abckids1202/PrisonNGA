@@ -159,6 +159,41 @@ export function liveSessionFinalizationBlockedStatement(
   );
 }
 
+export function recordingProviderCleanupFailureStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    recordingId: string;
+    sessionId: string;
+    providerReference: string;
+    reason: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    VALUES (?, ?, 'RECORDING_PROVIDER_CLEANUP_FAILED', 'CRITICAL', ?, ?, ?)`).bind(
+    `recording-provider-cleanup-failed:${input.recordingId}:${input.providerReference}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "recording",
+      entityId: input.recordingId,
+      operation: "RECORDING_PROVIDER_CLEANUP",
+      sessionId: input.sessionId,
+      providerReference: input.providerReference,
+      reason: input.reason,
+      correlationId: input.correlationId,
+      retryable: true,
+      requiresStaffReview: true,
+      orphanedProviderJobPossible: true,
+    }),
+    input.now,
+  );
+}
+
 export function evidenceRetentionFailureStatement(
   database: ReconciliationDatabase,
   input: {
