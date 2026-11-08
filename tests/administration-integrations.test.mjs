@@ -66,4 +66,6 @@ test("Facility Access UI uses the persisted organization membership workflow", a
   assert.match(route, /MEMBERSHIP_ALREADY_ACTIVE/);
   assert.match(route, /STALE_MEMBERSHIP/);
   assert.match(route, /organization_memberships/);
+  assert.match(route, /id <> \?/);
+  assert.match(route, /role_id IN \(SELECT id FROM roles WHERE name = \?\)/);
 });
