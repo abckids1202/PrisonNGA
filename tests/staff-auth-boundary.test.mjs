@@ -7,4 +7,7 @@ test("workspace identity headers are development-only and cannot bypass institut
   assert.match(source, /getStaffSessionIdentity\(\)/);
   assert.match(source, /getRuntimeValue\("SECUREVISIT_ENVIRONMENT"\)/);
   assert.match(source, /!== "development"\) return null/);
+  assert.match(source, /resolveFacilityScope/);
+  assert.match(source, /selectedAssignment/);
+  assert.match(source, /explicitFacilityId/);
 });

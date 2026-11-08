@@ -90,6 +90,18 @@ function shouldTouchSession(lastSeenAt: string | null): boolean {
   return !Number.isFinite(parsed) || Date.now() - parsed >= SESSION_TOUCH_INTERVAL_MS;
 }
 
+async function resolveFacilityScope(d1: D1Database, userId: string, explicitFacilityId: string | undefined, selectedFacilityId: string, profileFacilityId: string | undefined): Promise<string> {
+  if (explicitFacilityId) return explicitFacilityId;
+  if (selectedFacilityId) {
+    const selectedAssignment = await d1.prepare(`SELECT 1 AS active FROM staff_facility_assignments WHERE user_id = ? AND facility_id = ? AND status = 'ACTIVE'
+      UNION ALL SELECT 1 AS active FROM staff_profiles WHERE user_id = ? AND facility_id = ? LIMIT 1`).bind(userId, selectedFacilityId, userId, selectedFacilityId).first<{ active: number }>();
+    if (selectedAssignment) return selectedFacilityId;
+  }
+  if (profileFacilityId) return profileFacilityId;
+  const fallback = await d1.prepare("SELECT facility_id FROM staff_facility_assignments WHERE user_id = ? AND status = 'ACTIVE' ORDER BY facility_id LIMIT 1").bind(userId).first<{ facility_id: string }>();
+  return fallback?.facility_id || "";
+}
+
 export async function getRequestContext(): Promise<RequestContext> {
   const requestHeaders = await headers();
   const suppliedRequestId = requestHeaders.get("x-request-id")?.trim() || "";
@@ -114,11 +126,12 @@ export async function requirePermission(permissionKey: string, facilityId?: stri
   if (!user || user.status !== "ACTIVE") throw new SecurityError("ACCOUNT_NOT_PROVISIONED", 403);
 
   const [profile] = await db.select({ facilityId: staffProfiles.facilityId }).from(staffProfiles).where(eq(staffProfiles.userId, user.id)).limit(1);
+  const d1 = await getD1();
   const selectedFacilityId = (await cookies()).get("securevisit_facility_context")?.value?.trim() || "";
-  const requestedFacilityId = facilityId || selectedFacilityId || profile?.facilityId;
+  const requestedFacilityId = await resolveFacilityScope(d1, user.id, facilityId, selectedFacilityId, profile?.facilityId);
   if (!requestedFacilityId) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
-  const assignment = await getD1().then((d1) => d1.prepare(`SELECT 1 AS active FROM staff_facility_assignments WHERE user_id = ? AND facility_id = ? AND status = 'ACTIVE'
-    UNION ALL SELECT 1 AS active FROM staff_profiles WHERE user_id = ? AND facility_id = ? LIMIT 1`).bind(user.id, requestedFacilityId, user.id, requestedFacilityId).first<{ active: number }>()).catch(() => null);
+  const assignment = await d1.prepare(`SELECT 1 AS active FROM staff_facility_assignments WHERE user_id = ? AND facility_id = ? AND status = 'ACTIVE'
+    UNION ALL SELECT 1 AS active FROM staff_profiles WHERE user_id = ? AND facility_id = ? LIMIT 1`).bind(user.id, requestedFacilityId, user.id, requestedFacilityId).first<{ active: number }>().catch(() => null);
   if (!assignment) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
   const scopedFacilityId = requestedFacilityId;
 
@@ -146,11 +159,11 @@ export async function requireOrganizationPermission(permissionKey: string): Prom
   const [user] = await db.select().from(users).where(and(eq(users.externalId, identity.externalId), eq(users.userType, "STAFF"))).limit(1);
   if (!user || user.status !== "ACTIVE") throw new SecurityError("ACCOUNT_NOT_PROVISIONED", 403);
 
-  const selectedFacilityId = (await cookies()).get("securevisit_facility_context")?.value?.trim() || "";
   const [profile] = await db.select({ facilityId: staffProfiles.facilityId }).from(staffProfiles).where(eq(staffProfiles.userId, user.id)).limit(1);
-  const facilityId = selectedFacilityId || profile?.facilityId || "";
-  if (!facilityId) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
   const d1 = await getD1();
+  const selectedFacilityId = (await cookies()).get("securevisit_facility_context")?.value?.trim() || "";
+  const facilityId = await resolveFacilityScope(d1, user.id, undefined, selectedFacilityId, profile?.facilityId);
+  if (!facilityId) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
   const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(facilityId).first<{ organization_id: string | null }>();
   if (!facility?.organization_id) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
   const roles = await d1.prepare(`SELECT r.name AS role_name
