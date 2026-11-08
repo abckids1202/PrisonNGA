@@ -1,5 +1,5 @@
 import { getD1 } from "../../../../db/runtime";
-import { getEvidenceBucket } from "../../../../db/runtime";
+import { getEvidenceBucket, getRecordingBucket } from "../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, requirePermission, securityErrorResponse, securityResponse } from "../../../../lib/server/security";
 import { validateEnvironment } from "../../../../lib/server/config";
 import { getPaymentProvider } from "../../../../lib/server/payments/provider";
@@ -44,7 +44,7 @@ const requiredColumns: Record<string, string[]> = {
 
 const configurationKeys = [
   "SECUREVISIT_ENVIRONMENT", "SECUREVISIT_HASH_SALT", "STAFF_STEP_UP_SECRET", "VISITOR_AUTH_CHANNELS", "SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL", "VISITOR_AUTH_DELIVERY", "VISITOR_EMAIL_DELIVERY", "VISITOR_SMS_DELIVERY", "VISITOR_AUTH_WEBHOOK_URL", "VISITOR_AUTH_WEBHOOK_SECRET", "RESEND_API_KEY", "VISITOR_EMAIL_FROM", "VISITOR_SMS_TWILIO_ACCOUNT_SID", "VISITOR_SMS_TWILIO_AUTH_TOKEN", "VISITOR_SMS_TWILIO_FROM", "VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID",
-  "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "RECORDING_STORAGE_PROVIDER", "R2_S3_ENDPOINT", "R2_S3_ACCESS_KEY_ID", "R2_S3_SECRET_ACCESS_KEY", "R2_BUCKET_NAME", "R2_S3_REGION", "EVIDENCE_STORAGE_PROVIDER", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
+  "VIDEO_PROVIDER", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "RECORDING_STORAGE_PROVIDER", "R2_S3_ENDPOINT", "R2_S3_ACCESS_KEY_ID", "R2_S3_SECRET_ACCESS_KEY", "R2_BUCKET_NAME", "RECORDINGS_BUCKET_NAME", "R2_S3_REGION", "EVIDENCE_STORAGE_PROVIDER", "EVIDENCE_SCAN_PROVIDER", "EVIDENCE_SCAN_WEBHOOK_URL", "EVIDENCE_SCAN_WEBHOOK_SECRET",
   "PAYMENT_PROVIDER", "PAYMENT_CHECKOUT_URL", "PAYMENT_REFUND_URL", "PAYMENT_PROVIDER_SECRET", "XENDIT_SECRET_KEY", "XENDIT_API_BASE_URL", "XENDIT_WEBHOOK_TOKEN", "PAYMENT_WEBHOOK_SECRET", "NOTIFICATION_DELIVERY", "NOTIFICATION_EMAIL_DELIVERY", "NOTIFICATION_SMS_DELIVERY", "NOTIFICATION_WEBHOOK_URL", "NOTIFICATION_WEBHOOK_SECRET", "NOTIFICATION_STATUS_WEBHOOK_SECRET",
   "STAFF_AUTH_PROVIDER", "STAFF_OIDC_ISSUER", "STAFF_OIDC_CLIENT_ID", "STAFF_OIDC_CLIENT_SECRET", "STAFF_OIDC_REDIRECT_URI", "STAFF_OIDC_MFA_ACR", "STAFF_OIDC_MFA_AMR",
   "STAFF_SAML_ENTITY_ID", "STAFF_SAML_METADATA_URL", "STAFF_SAML_ENTRY_POINT", "STAFF_SAML_IDP_CERT", "STAFF_SAML_CALLBACK_URI", "STAFF_SAML_MFA_ACR", "PUBLIC_APP_URL",
@@ -81,12 +81,13 @@ export async function GET() {
       for (const column of columns) if (!available.has(column)) missingColumns.push(`${table}.${column}`);
     }
     const schemaReady = missingTables.length === 0 && missingColumns.length === 0;
-    const [paymentProvider, videoConfig, notificationEmailDelivery, notificationSmsDelivery, evidenceBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, , visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
+    const [paymentProvider, videoConfig, notificationEmailDelivery, notificationSmsDelivery, evidenceBucket, recordingsBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, , visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
       getPaymentProvider(),
       getVideoConfig(),
       readConfiguredNotificationDelivery("EMAIL"),
       readConfiguredNotificationDelivery("SMS"),
       getEvidenceBucket(),
+      getRecordingBucket(),
       getRuntimeValue("EVIDENCE_STORAGE_PROVIDER"),
       getRuntimeValue("NOTIFICATION_WEBHOOK_URL"),
       getRuntimeValue("NOTIFICATION_WEBHOOK_SECRET"),
@@ -110,7 +111,7 @@ export async function GET() {
       d1.prepare("SELECT COUNT(*) AS configured_count FROM visit_policies WHERE credit_price_minor IS NOT NULL AND credit_price_minor > 0 AND credit_currency = 'IDR'").first<{ configured_count: number }>(),
       ...configurationKeys.map((key) => getRuntimeValue(key)),
     ]);
-    const environmentConfig = validateEnvironment({ DB: d1, EVIDENCE_BUCKET: evidenceBucket, ...Object.fromEntries(configurationKeys.map((key, index) => [key, configurationValues[index]])) });
+    const environmentConfig = validateEnvironment({ DB: d1, EVIDENCE_BUCKET: evidenceBucket, RECORDINGS_BUCKET: recordingsBucket, ...Object.fromEntries(configurationKeys.map((key, index) => [key, configurationValues[index]])) });
     const configured = Object.fromEntries(await Promise.all(configurationKeys.map(async (key) => [key, await getRuntimeValue(key)] as const)));
     const configuredString = (key: string) => typeof configured[key] === "string" ? configured[key].trim() : "";
     const visitorAuthChannels = parseVisitorAuthChannels(configuredString("VISITOR_AUTH_CHANNELS"));

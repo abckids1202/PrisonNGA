@@ -9,6 +9,7 @@ test("deployment build reads explicit remote D1 and R2 binding configuration", a
   assert.match(source, /deploymentEnvironmentValue\("EVIDENCE_BUCKET_NAME"\)/);
   assert.match(source, /database_id: configuredD1DatabaseId \|\| SITE_CREATOR_PLACEHOLDER_DATABASE_ID/);
   assert.match(source, /binding: r2 \|\| "EVIDENCE_BUCKET"/);
+  assert.match(source, /binding: "RECORDINGS_BUCKET"/);
   assert.match(source, /A non-development build must never inherit adapter or resource values/);
   assert.match(source, /const deploymentEnvironmentValue = \(key: string\)/);
   assert.match(source, /const runtimeConfigKeys = \[/);

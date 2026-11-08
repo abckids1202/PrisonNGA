@@ -103,6 +103,7 @@ test("staging and production reject weak webhook signing secrets", () => {
     LIVEKIT_API_SECRET: "secret",
     EVIDENCE_STORAGE_PROVIDER: "r2",
     EVIDENCE_BUCKET: {},
+    RECORDINGS_BUCKET: {},
     EVIDENCE_RETENTION_DAYS: "365",
     EVIDENCE_SCAN_PROVIDER: "webhook",
     EVIDENCE_SCAN_WEBHOOK_URL: "https://scan.example.test/scan",
@@ -137,6 +138,7 @@ test("staging and production reject weak LiveKit secrets and unsafe retention wi
     LIVEKIT_API_SECRET: "short",
     EVIDENCE_STORAGE_PROVIDER: "r2",
     EVIDENCE_BUCKET: {},
+    RECORDINGS_BUCKET: {},
     EVIDENCE_RETENTION_DAYS: "0",
   });
   assert.ok(result.missing.includes("LIVEKIT_API_SECRET (must be at least 32 characters)"));
@@ -162,6 +164,7 @@ test("production endpoints reject embedded credentials, fragments, and non-HTTPS
     LIVEKIT_API_SECRET: "secret",
     EVIDENCE_STORAGE_PROVIDER: "r2",
     EVIDENCE_BUCKET: {},
+    RECORDINGS_BUCKET: {},
     VISIT_CREDIT_PRICE_MINOR: "50000",
     SECUREVISIT_HASH_SALT: "x".repeat(32),
     STAFF_STEP_UP_SECRET: "y".repeat(32),

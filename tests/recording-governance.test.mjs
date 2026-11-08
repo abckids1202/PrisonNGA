@@ -23,7 +23,7 @@ test("consented recording sessions remain joinable while egress is processing", 
 test("recording retention deletes the private object before final database deletion", async () => {
   const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
   const section = worker.slice(worker.indexOf("async function purgeExpiredRecordings"), worker.indexOf("async function purgeExpiredStepUpAssertions"));
-  assert.match(section, /await env\.EVIDENCE_BUCKET\.delete\(row\.storage_key\)/);
+  assert.match(section, /await env\.RECORDINGS_BUCKET\.delete\(row\.storage_key\)/);
   assert.match(section, /expiredRecordingRetentionStatements/);
   assert.match(section, /status !== 'PENDING_DELETION'/);
 });

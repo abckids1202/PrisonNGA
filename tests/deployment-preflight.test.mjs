@@ -6,7 +6,7 @@ function config(overrides = {}) {
   return {
     vars: { SECUREVISIT_ENVIRONMENT: "staging", VIDEO_PROVIDER: "livekit" },
     d1_databases: [{ binding: "DB", database_name: "securevisit-staging", database_id: "123e4567-e89b-12d3-a456-426614174000" }],
-    r2_buckets: [{ binding: "EVIDENCE_BUCKET", bucket_name: "securevisit-staging-evidence" }],
+    r2_buckets: [{ binding: "EVIDENCE_BUCKET", bucket_name: "securevisit-staging-evidence" }, { binding: "RECORDINGS_BUCKET", bucket_name: "securevisit-staging-recordings" }],
     triggers: { crons: ["*/1 * * * *"] },
     queues: {
       producers: [{ binding: "NOTIFICATION_QUEUE", queue: "securevisit-staging-notifications" }],
@@ -45,7 +45,7 @@ test("deployment preflight requires queue bindings when a queue is explicitly co
 test("deployment preflight rejects placeholder D1 and R2 resource names", () => {
   const result = evaluateDeploymentConfig(config({
     d1_databases: [{ binding: "DB", database_name: "site-creator-d1", database_id: "123e4567-e89b-12d3-a456-426614174000" }],
-    r2_buckets: [{ binding: "EVIDENCE_BUCKET", bucket_name: "site-creator-r2" }],
+    r2_buckets: [{ binding: "EVIDENCE_BUCKET", bucket_name: "site-creator-r2" }, { binding: "RECORDINGS_BUCKET", bucket_name: "site-creator-r2" }],
   }), "staging", { NOTIFICATION_QUEUE_NAME: "securevisit-staging-notifications" });
   assert.equal(result.ok, false);
   assert.match(result.failures.join("\n"), /real database name/);

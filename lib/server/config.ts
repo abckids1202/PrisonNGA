@@ -83,11 +83,12 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   requireSecret(env, "LIVEKIT_API_SECRET", missing);
   if (value(env, "RECORDING_STORAGE_PROVIDER") !== "livekit_r2") missing.push("RECORDING_STORAGE_PROVIDER=livekit_r2");
   if (!isSecureHttpsEndpoint(value(env, "R2_S3_ENDPOINT"))) missing.push("R2_S3_ENDPOINT (must be an https:// URL without credentials or fragments)");
-  if (!value(env, "R2_BUCKET_NAME")) missing.push("R2_BUCKET_NAME");
+  if (!value(env, "RECORDINGS_BUCKET_NAME") && !value(env, "R2_BUCKET_NAME")) missing.push("RECORDINGS_BUCKET_NAME");
   if (!value(env, "R2_S3_ACCESS_KEY_ID")) missing.push("R2_S3_ACCESS_KEY_ID");
   requireSecret(env, "R2_S3_SECRET_ACCESS_KEY", missing);
   if (value(env, "EVIDENCE_STORAGE_PROVIDER") !== "r2") missing.push("EVIDENCE_STORAGE_PROVIDER=r2");
   if (!env.EVIDENCE_BUCKET) missing.push("EVIDENCE_BUCKET");
+  if (!env.RECORDINGS_BUCKET) missing.push("RECORDINGS_BUCKET");
   const retentionDays = Number(value(env, "EVIDENCE_RETENTION_DAYS"));
   if (!Number.isSafeInteger(retentionDays) || retentionDays < 1 || retentionDays > 3650) missing.push("EVIDENCE_RETENTION_DAYS (must be an integer from 1 to 3650)");
   const evidenceScanProvider = value(env, "EVIDENCE_SCAN_PROVIDER");

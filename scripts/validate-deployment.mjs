@@ -43,6 +43,7 @@ export function evaluateDeploymentConfig(config, environment, runtime = {}) {
   const vars = config?.vars && typeof config.vars === "object" ? config.vars : {};
   const d1 = binding(config, "d1_databases", "DB");
   const evidence = binding(config, "r2_buckets", "EVIDENCE_BUCKET");
+  const recordings = binding(config, "r2_buckets", "RECORDINGS_BUCKET");
   const queueName = String(runtime.NOTIFICATION_QUEUE_NAME || "").trim();
   const queueProducer = Array.isArray(config?.queues?.producers)
     ? config.queues.producers.find((item) => item?.binding === "NOTIFICATION_QUEUE")
@@ -64,6 +65,8 @@ export function evaluateDeploymentConfig(config, environment, runtime = {}) {
   else if (!String(d1.database_name || "").trim() || String(d1.database_name).trim() === PLACEHOLDER_D1_NAME) failures.push("generated DB D1 binding must use a real database name");
   if (!evidence) failures.push("generated EVIDENCE_BUCKET R2 binding is missing");
   else if (!String(evidence.bucket_name || "").trim() || String(evidence.bucket_name).trim() === PLACEHOLDER_R2_NAME) failures.push("generated EVIDENCE_BUCKET R2 binding must use a real bucket name");
+  if (!recordings) failures.push("generated RECORDINGS_BUCKET R2 binding is missing");
+  else if (!String(recordings.bucket_name || "").trim() || String(recordings.bucket_name).trim() === PLACEHOLDER_R2_NAME) failures.push("generated RECORDINGS_BUCKET R2 binding must use a real bucket name");
   for (const key of forbiddenManifestSecrets) {
     if (Object.prototype.hasOwnProperty.call(vars, key)) failures.push(`generated manifest must not contain secret ${key}`);
   }

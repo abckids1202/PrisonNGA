@@ -1,4 +1,4 @@
-import { getEvidenceBucket } from "../../db/runtime";
+import { getEvidenceBucket, getRecordingBucket } from "../../db/runtime";
 import { getRuntimeValue } from "./security";
 
 export type EvidenceObject = {
@@ -43,6 +43,23 @@ export async function getEvidenceStore(): Promise<EvidenceStore | null> {
   // workflow testable in memory while staging and production still require
   // protected R2 through environment validation.
   if (!bucket && environment === "development" && (provider === "r2" || provider === "")) return localDevelopmentStore;
+  if (!bucket) return null;
+  return {
+    put: async (key, value, options) => { await bucket.put(key, value, options); },
+    get: async (key) => {
+      const object = await bucket.get(key);
+      return object ? { body: object.body, size: object.size, arrayBuffer: () => object.arrayBuffer() } : null;
+    },
+    delete: (key) => bucket.delete(key),
+  };
+}
+
+export async function getRecordingStore(): Promise<EvidenceStore | null> {
+  const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
+  const provider = (await getRuntimeValue("RECORDING_STORAGE_PROVIDER") || "r2").toLowerCase();
+  if (provider === "local_test") return environment === "development" ? localDevelopmentStore : null;
+  const bucket = await getRecordingBucket();
+  if (!bucket && environment === "development" && (provider === "livekit_r2" || provider === "r2" || provider === "")) return localDevelopmentStore;
   if (!bucket) return null;
   return {
     put: async (key, value, options) => { await bucket.put(key, value, options); },

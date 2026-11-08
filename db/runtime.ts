@@ -12,3 +12,12 @@ export async function getEvidenceBucket(): Promise<R2Bucket | null> {
     return null;
   }
 }
+
+export async function getRecordingBucket(): Promise<R2Bucket | null> {
+  try {
+    const { env } = await import("cloudflare:workers");
+    return ((env as unknown as { RECORDINGS_BUCKET?: R2Bucket }).RECORDINGS_BUCKET) || null;
+  } catch {
+    return null;
+  }
+}

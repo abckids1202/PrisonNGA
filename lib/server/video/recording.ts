@@ -8,7 +8,7 @@ async function recordingStorageConfig(): Promise<RecordingStorageConfig> {
   const endpoint = (await getRuntimeValue("R2_S3_ENDPOINT") || "").trim();
   const accessKey = (await getRuntimeValue("R2_S3_ACCESS_KEY_ID") || "").trim();
   const secret = (await getRuntimeValue("R2_S3_SECRET_ACCESS_KEY") || "").trim();
-  const bucket = (await getRuntimeValue("R2_BUCKET_NAME") || "").trim();
+  const bucket = (await getRuntimeValue("RECORDINGS_BUCKET_NAME") || await getRuntimeValue("R2_BUCKET_NAME") || "").trim();
   const region = (await getRuntimeValue("R2_S3_REGION") || "auto").trim();
   if (provider !== "livekit_r2" || !/^https:\/\//.test(endpoint) || !accessKey || !secret || !bucket) throw new SecurityError("RECORDING_STORAGE_NOT_CONFIGURED", 503);
   return { endpoint, accessKey, secret, bucket, region };

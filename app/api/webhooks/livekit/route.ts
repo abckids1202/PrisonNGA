@@ -5,7 +5,7 @@ import { getRequestContext, securityErrorResponse, securityResponse, SecurityErr
 import { getVideoConfig } from "@/lib/server/video/provider";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { readTextBodyWithinLimit } from "@/lib/server/request-body";
-import { getEvidenceStore } from "@/lib/server/evidence-storage";
+import { getRecordingStore } from "@/lib/server/evidence-storage";
 import { auditAndOutboxStatements } from "@/lib/server/events";
 
 function roleForParticipant(identity: string | undefined): "VISITOR" | "FACILITY" | "STAFF_OBSERVER" | null {
@@ -61,7 +61,7 @@ async function handleEgressEvent(d1: D1Database, event: { id?: string; event?: s
   let byteSize: number | null = null;
   let sha256: string | null = null;
   if (event.event === "egress_ended" && recording.storage_key) {
-    const store = await getEvidenceStore();
+    const store = await getRecordingStore();
     const object = store ? await store.get(recording.storage_key) : null;
     if (object) {
       const bytes = new Uint8Array(await object.arrayBuffer());

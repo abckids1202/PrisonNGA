@@ -23,6 +23,7 @@ interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   EVIDENCE_BUCKET?: R2Bucket;
+  RECORDINGS_BUCKET?: R2Bucket;
   // Optional in local development. Production can bind a Cloudflare Queue to
   // move notification draining off the cron path while retaining cron as a
   // safe fallback when the queue is unavailable.
@@ -611,7 +612,7 @@ async function purgeExpiredEvidence(env: Env): Promise<void> {
 }
 
 async function purgeExpiredRecordings(env: Env): Promise<void> {
-  if (!env.EVIDENCE_BUCKET) return;
+  if (!env.RECORDINGS_BUCKET) return;
   // Legal-hold creation is blocked once a deletion claim exists. This
   // bounded restore also repairs a stale claim if a hold was applied by an
   // operational recovery or an older deployment.
@@ -636,7 +637,7 @@ async function purgeExpiredRecordings(env: Env): Promise<void> {
         if (latest?.status === 'PENDING_DELETION') await env.DB.batch([restoreClaimedRecordingRetentionStatement(env.DB, { id: row.id, facilityId: row.facility_id, now })]);
         continue;
       }
-      await env.EVIDENCE_BUCKET.delete(row.storage_key);
+      await env.RECORDINGS_BUCKET.delete(row.storage_key);
       objectDeleteSucceeded = true;
       const finalized = await env.DB.batch(expiredRecordingRetentionStatements(env.DB, {
         id: row.id,
@@ -673,14 +674,14 @@ async function purgeExpiredRecordings(env: Env): Promise<void> {
 }
 
 async function reconcileRecordingObjects(env: Env): Promise<void> {
-  if (!env.EVIDENCE_BUCKET) return;
+  if (!env.RECORDINGS_BUCKET) return;
   const rows = await env.DB.prepare(`SELECT id, facility_id, session_id, storage_key, status, provider_reference
     FROM recordings
     WHERE storage_key IS NOT NULL AND status IN ('PROCESSING', 'FAILED')
       AND julianday(updated_at) <= julianday('now', '-30 seconds')
     ORDER BY updated_at ASC LIMIT 25`).all<{ id: string; facility_id: string; session_id: string; storage_key: string; status: string; provider_reference: string | null }>();
   for (const row of rows.results) {
-    const object = await env.EVIDENCE_BUCKET.get(row.storage_key);
+    const object = await env.RECORDINGS_BUCKET.get(row.storage_key);
     if (!object) continue;
     const bytes = new Uint8Array(await object.arrayBuffer());
     if (!bytes.byteLength) continue;

@@ -32,6 +32,7 @@ const configuredD1DatabaseName = configuredEnvironment === "development"
   ? deploymentEnvironmentValue("D1_DATABASE_NAME") || "site-creator-d1"
   : deploymentEnvironmentValue("D1_DATABASE_NAME") || "";
 const configuredEvidenceBucketName = deploymentEnvironmentValue("EVIDENCE_BUCKET_NAME");
+const configuredRecordingsBucketName = deploymentEnvironmentValue("RECORDINGS_BUCKET_NAME");
 const localOnlyProviderSecrets = new Set([
   "LIVEKIT_API_KEY",
   "LIVEKIT_API_SECRET",
@@ -184,14 +185,16 @@ const localBindingConfig = {
         },
       ]
     : [],
-  r2_buckets: (r2 || configuredEvidenceBucketName)
-    ? [
-        {
-          binding: r2 || "EVIDENCE_BUCKET",
-          bucket_name: configuredEvidenceBucketName || (configuredEnvironment === "development" ? "site-creator-r2" : ""),
-        },
-      ]
-    : [],
+  r2_buckets: [
+    ...(r2 || configuredEvidenceBucketName ? [{
+      binding: r2 || "EVIDENCE_BUCKET",
+      bucket_name: configuredEvidenceBucketName || (configuredEnvironment === "development" ? "site-creator-r2" : ""),
+    }] : []),
+    ...(configuredRecordingsBucketName ? [{
+      binding: "RECORDINGS_BUCKET",
+      bucket_name: configuredRecordingsBucketName,
+    }] : []),
+  ],
   queues: notificationQueueName
     ? {
         producers: [{ binding: "NOTIFICATION_QUEUE", queue: notificationQueueName }],
