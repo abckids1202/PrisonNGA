@@ -12,7 +12,7 @@ export async function GET() {
     const d1 = await getD1();
     const organization = await d1.prepare("SELECT id, name, slug, address, contact_email, contact_phone, status, version FROM organizations WHERE id = ?").bind(authorization.organizationId).first();
     if (!organization) throw new SecurityError("ORGANIZATION_NOT_FOUND", 404);
-    const facilities = await d1.prepare(`SELECT id, name, timezone, current_state, version, created_at, updated_at FROM facilities WHERE organization_id = ? ORDER BY name ASC`).bind(organization.id).all();
+    const facilities = await d1.prepare(`SELECT id, name, timezone, address, contact_email, contact_phone, current_state, version, created_at, updated_at FROM facilities WHERE organization_id = ? ORDER BY name ASC`).bind(organization.id).all();
     return securityResponse({ organization, facilities: facilities.results }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const correlationId = crypto.randomUUID();
     const role = await d1.prepare(`SELECT ur.role_id, r.name FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND ur.facility_id = ? ORDER BY CASE WHEN r.name = 'Supervisor' THEN 0 ELSE 1 END LIMIT 1`).bind(authorization.userId, authorization.facilityId).first<{ role_id: string; name: string }>();
     if (!role) throw new SecurityError("STAFF_ROLE_NOT_FOUND", 409);
-    const responseBody = { facility: { id: facilityId, organizationId: organization.id, name, timezone, currentState: "NORMAL_OPERATIONS", version: 1 }, correlationId };
+    const responseBody = { facility: { id: facilityId, organizationId: organization.id, name, timezone, address: null, contactEmail: null, contactPhone: null, currentState: "NORMAL_OPERATIONS", version: 1 }, correlationId };
     const guard = { sql: "EXISTS (SELECT 1 FROM facilities WHERE id = ? AND organization_id = ? AND version = 1)", values: [facilityId, organization.id] };
     const results = await d1.batch([
       d1.prepare(`INSERT INTO facilities (id, organization_id, name, timezone, current_state, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'NORMAL_OPERATIONS', 1, ?, ?)`).bind(facilityId, organization.id, name, timezone, now, now),

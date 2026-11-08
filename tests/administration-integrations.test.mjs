@@ -43,6 +43,7 @@ test("Organization Roles UI uses the organization-scoped, audited mutation bound
 
 test("Organization administration exposes persisted facility creation and version-safe edits", async () => {
   const source = await readFile(new URL("../app/components/OrganizationFacilitiesPanel.tsx", import.meta.url), "utf8");
+  const facilityPage = await readFile(new URL("../app/features/management/FacilityPage.tsx", import.meta.url), "utf8");
   const facilities = await readFile(new URL("../app/api/control/facilities/route.ts", import.meta.url), "utf8");
   const facility = await readFile(new URL("../app/api/control/facilities/[facilityId]/route.ts", import.meta.url), "utf8");
   assert.match(source, /fetch\("\/api\/control\/facilities"/);
@@ -55,6 +56,8 @@ test("Organization administration exposes persisted facility creation and versio
   assert.match(facility, /STALE_FACILITY/);
   assert.match(source, /Save organization details/);
   assert.match(source, /contactEmail/);
+  assert.match(facilityPage, /Save facility details/);
+  assert.match(facilityPage, /contactEmail/);
 });
 
 test("Facility Access UI uses the persisted organization membership workflow", async () => {

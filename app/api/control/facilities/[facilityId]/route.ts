@@ -12,18 +12,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ fa
   try {
     const { facilityId } = await params;
     const authorization = await requirePermission("organization.manage", facilityId);
-    const body = await request.json() as { name?: unknown; timezone?: unknown; expectedVersion?: unknown; reason?: unknown };
+    const body = await request.json() as { name?: unknown; timezone?: unknown; address?: unknown; contactEmail?: unknown; contactPhone?: unknown; expectedVersion?: unknown; reason?: unknown };
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 160) : "";
     const timezone = typeof body.timezone === "string" ? body.timezone.trim() : "";
+    const address = typeof body.address === "string" ? body.address.trim().slice(0, 500) : null;
+    const contactEmail = typeof body.contactEmail === "string" ? body.contactEmail.trim().toLowerCase().slice(0, 254) : null;
+    const contactPhone = typeof body.contactPhone === "string" ? body.contactPhone.trim().slice(0, 40) : null;
     const reason = assertReason(body.reason);
     if (name.length < 2 || !timezonePattern.test(timezone) || !Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 1) throw new SecurityError("INVALID_FACILITY_DETAILS", 400);
+    if (contactEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail)) throw new SecurityError("INVALID_FACILITY_CONTACT", 400);
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     d1 = await getD1();
-    const current = await d1.prepare("SELECT f.id, f.organization_id, f.name, f.timezone, f.current_state, f.version FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id WHERE f.id = ? AND o.status = 'ACTIVE'").bind(facilityId).first<{ id: string; organization_id: string; name: string; timezone: string; current_state: string; version: number }>();
+    const current = await d1.prepare("SELECT f.id, f.organization_id, f.name, f.timezone, f.address, f.contact_email, f.contact_phone, f.current_state, f.version FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id WHERE f.id = ? AND o.status = 'ACTIVE'").bind(facilityId).first<{ id: string; organization_id: string; name: string; timezone: string; address: string | null; contact_email: string | null; contact_phone: string | null; current_state: string; version: number }>();
     if (!current) throw new SecurityError("FACILITY_NOT_FOUND", 404);
     const scope = `facility-details:${facilityId}`;
-    const requestHash = await hashIdempotencyPayload({ facilityId, name, timezone, expectedVersion: body.expectedVersion, reason });
+    const requestHash = await hashIdempotencyPayload({ facilityId, name, timezone, address, contactEmail, contactPhone, expectedVersion: body.expectedVersion, reason });
     const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
@@ -31,11 +35,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ fa
     await requireStepUp({ purpose: "facility_update", userId: authorization.userId, targetId: facilityId, payload: { name, timezone, expectedVersion: body.expectedVersion, reason } });
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
-    const responseBody = { facility: { id: facilityId, organizationId: current.organization_id, name, timezone, currentState: current.current_state, version: current.version + 1 }, correlationId };
+    const responseBody = { facility: { id: facilityId, organizationId: current.organization_id, name, timezone, address, contactEmail, contactPhone, currentState: current.current_state, version: current.version + 1 }, correlationId };
     const guard = { sql: "EXISTS (SELECT 1 FROM facilities WHERE id = ? AND version = ? AND name = ? AND timezone = ?)", values: [facilityId, current.version + 1, name, timezone] };
     const results = await d1.batch([
-      d1.prepare("UPDATE facilities SET name = ?, timezone = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?").bind(name, timezone, now, facilityId, current.version),
-      ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId, actionType: "FACILITY_UPDATED", entityType: "facility", entityId: facilityId, reason, oldValues: { name: current.name, timezone: current.timezone }, newValues: responseBody.facility, requestId: context.requestId, correlationId, eventType: "FACILITY_UPDATED", payload: { facilityId } }, guard),
+      d1.prepare("UPDATE facilities SET name = ?, timezone = ?, address = ?, contact_email = ?, contact_phone = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?").bind(name, timezone, address, contactEmail, contactPhone, now, facilityId, current.version),
+      ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId, actionType: "FACILITY_UPDATED", entityType: "facility", entityId: facilityId, reason, oldValues: { name: current.name, timezone: current.timezone, address: current.address, contactEmail: current.contact_email, contactPhone: current.contact_phone }, newValues: responseBody.facility, requestId: context.requestId, correlationId, eventType: "FACILITY_UPDATED", payload: { facilityId } }, guard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard }),
     ]);
     if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("STALE_FACILITY", 409);
