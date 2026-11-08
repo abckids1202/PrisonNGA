@@ -10,3 +10,9 @@ test("starting a visit persists the selected video provider on the session", () 
   assert.match(route, /\.bind\(newSession\.id, body\.appointmentId, authorization\.facilityId, newSession\.provider/);
   assert.doesNotMatch(route, /authorization\.facilityId, "livekit", newSession\.roomName/);
 });
+
+test("starting a visit persists the facility recording policy instead of forcing recording off", () => {
+  assert.match(route, /vp\.recording_policy AS facility_recording_policy/);
+  assert.match(route, /recordingPolicy: current\.facility_recording_policy === "ON" \? "ON" : "OFF"/);
+  assert.match(route, /newSession\.recordingPolicy, "NOT_RECORDED"/);
+});

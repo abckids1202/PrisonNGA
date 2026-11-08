@@ -130,7 +130,7 @@ export async function POST(request: Request) {
         EXISTS (SELECT 1 FROM credit_ledger_entries cle WHERE cle.appointment_id = a.id AND cle.credit_account_id = ca.id AND cle.entry_type = 'RESERVATION'
           AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries terminal WHERE terminal.appointment_id = a.id AND terminal.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))) AS active_credit_reservation,
         (SELECT vr.status FROM visitor_relationships vr WHERE vr.visitor_user_id = a.visitor_user_id AND vr.prisoner_id = a.prisoner_id AND vr.facility_id = a.facility_id LIMIT 1) AS relationship_status,
-        vs.id AS session_id, vs.status AS session_status, vs.provider_room_name,
+        vs.id AS session_id, vs.status AS session_status, vs.provider_room_name, vp.recording_policy AS facility_recording_policy,
         w.state, w.visitor_presence, w.visitor_presence_at, w.prisoner_presence, w.prisoner_presence_at, w.identity_state, w.camera_state, w.microphone_state, w.network_state, w.room_state, w.kiosk_state, w.kiosk_camera_state, w.kiosk_microphone_state, w.kiosk_network_state, w.kiosk_device_checked_at, w.restriction_state,
         COALESCE(w.assigned_room_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'ROOM' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_room_id,
         COALESCE(w.assigned_kiosk_id, (SELECT rr.resource_id FROM resource_reservations rr WHERE rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') ORDER BY rr.created_at DESC LIMIT 1)) AS assigned_kiosk_id,
@@ -153,6 +153,7 @@ export async function POST(request: Request) {
       LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
       LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
       LEFT JOIN visit_sessions vs ON vs.appointment_id = a.id AND vs.facility_id = a.facility_id
+      LEFT JOIN visit_policies vp ON vp.facility_id = a.facility_id
       WHERE a.id = ? AND a.facility_id = ?`).bind(body.appointmentId, authorization.facilityId).first<Record<string, string | number | null>>();
     if (!current) throw new SecurityError("WAITING_APPOINTMENT_NOT_FOUND", 404);
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
@@ -255,12 +256,12 @@ export async function POST(request: Request) {
     const restrictionState = readiness?.checks.restriction || String(current.restriction_state || "pending");
     const nextAppointmentStatus = command === "start_visit" ? "IN_PROGRESS" : command === "cancel_visit" ? "CANCELLED_BY_FACILITY" : command === "admit_visitor" ? "WAITING" : String(current.appointment_status);
     const correlationId = crypto.randomUUID();
-    let newSession: { id: string; provider: "livekit" | "local_test"; roomName: string; roomSid: string | null } | null = null;
+    let newSession: { id: string; provider: "livekit" | "local_test"; roomName: string; roomSid: string | null; recordingPolicy: "OFF" | "ON" } | null = null;
     if (command === "start_visit" && !current.session_id) {
       try {
         const videoConfig = await getVideoConfig();
         const provider = await createLiveKitProvider();
-        newSession = { id: crypto.randomUUID(), provider: videoConfig.provider, ...(await provider.createSession(createProviderRoomName())) };
+        newSession = { id: crypto.randomUUID(), provider: videoConfig.provider, recordingPolicy: current.facility_recording_policy === "ON" ? "ON" : "OFF", ...(await provider.createSession(createProviderRoomName())) };
         roomCleanup = { provider, name: newSession.roomName };
       } catch (error) {
         const providerFailure = error instanceof Error ? error.message : "VIDEO_PROVIDER_START_FAILED";
@@ -312,7 +313,7 @@ export async function POST(request: Request) {
     if (newSession) {
       statements.push(d1.prepare(`INSERT INTO visit_sessions (id, appointment_id, facility_id, provider, provider_room_name, provider_room_sid, status, authorized_start_at, authorized_end_at, actual_started_at, created_by, recording_policy, recording_status, version, created_at, updated_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(newSession.id, body.appointmentId, authorization.facilityId, newSession.provider, newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), null, authorization.userId, "OFF", "NOT_RECORDED", 1, now, now));
+        .bind(newSession.id, body.appointmentId, authorization.facilityId, newSession.provider, newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), null, authorization.userId, newSession.recordingPolicy, "NOT_RECORDED", 1, now, now));
       statements.push(d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), newSession.id, "SESSION_CREATED", "SECUREVISIT", "FACILITY", JSON.stringify({ appointmentId: body.appointmentId }), correlationId, now));
