@@ -9,6 +9,7 @@ test("organization administration uses a dedicated organization-role boundary", 
   const memberships = await readFile(new URL("../app/api/control/memberships/route.ts", import.meta.url), "utf8");
   const organizationRoles = await readFile(new URL("../app/api/control/organization-roles/route.ts", import.meta.url), "utf8");
   const migration = await readFile(new URL("../drizzle/0061_organization_role_assignments.sql", import.meta.url), "utf8");
+  const contactMigration = await readFile(new URL("../drizzle/0063_organization_contact_details.sql", import.meta.url), "utf8");
 
   assert.match(security, /export async function requireOrganizationPermission/);
   assert.match(security, /organization_role_assignments/);
@@ -19,8 +20,14 @@ test("organization administration uses a dedicated organization-role boundary", 
   assert.match(organizationRoles, /ORGANIZATION_ROLE_ASSIGNED/);
   assert.match(organizationRoles, /ORGANIZATION_ROLE_REVOKED/);
   assert.match(organizationRoles, /requireStepUp/);
+  assert.match(organizations, /export async function PATCH/);
+  assert.match(organizations, /ORGANIZATION_UPDATED/);
+  assert.match(organizations, /STALE_ORGANIZATION/);
   assert.match(migration, /CREATE TABLE `organization_role_assignments`/);
   assert.match(migration, /p\.permission_key = 'organization\.manage'/);
+  assert.match(contactMigration, /ALTER TABLE `organizations` ADD COLUMN `address`/);
+  assert.match(contactMigration, /contact_email/);
+  assert.match(contactMigration, /contact_phone/);
 });
 
 test("organization administration does not enumerate facilities through visitor memberships", async () => {

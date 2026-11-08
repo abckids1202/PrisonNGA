@@ -10,7 +10,7 @@ export async function GET() {
   try {
     const authorization = await requireOrganizationPermission("organization.manage");
     const d1 = await getD1();
-    const organization = await d1.prepare("SELECT id, name, slug, status, version FROM organizations WHERE id = ?").bind(authorization.organizationId).first();
+    const organization = await d1.prepare("SELECT id, name, slug, address, contact_email, contact_phone, status, version FROM organizations WHERE id = ?").bind(authorization.organizationId).first();
     if (!organization) throw new SecurityError("ORGANIZATION_NOT_FOUND", 404);
     const facilities = await d1.prepare(`SELECT id, name, timezone, current_state, version, created_at, updated_at FROM facilities WHERE organization_id = ? ORDER BY name ASC`).bind(organization.id).all();
     return securityResponse({ organization, facilities: facilities.results }, 200, context.requestId);

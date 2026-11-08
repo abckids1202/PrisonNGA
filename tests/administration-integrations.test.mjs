@@ -53,6 +53,8 @@ test("Organization administration exposes persisted facility creation and versio
   assert.match(facilities, /INSERT INTO visit_policies/);
   assert.match(facilities, /organization_memberships/);
   assert.match(facility, /STALE_FACILITY/);
+  assert.match(source, /Save organization details/);
+  assert.match(source, /contactEmail/);
 });
 
 test("Facility Access UI uses the persisted organization membership workflow", async () => {
