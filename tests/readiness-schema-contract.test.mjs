@@ -5,6 +5,9 @@ import { readFile } from "node:fs/promises";
 test("readiness fails closed on critical columns, not only table names", async () => {
   const source = await readFile(new URL("../app/api/health/readiness/route.ts", import.meta.url), "utf8");
   assert.match(source, /const requiredColumns/);
+  assert.match(source, /"d1_migrations"/);
+  assert.match(source, /getReleaseInfo/);
+  assert.match(source, /release, checks:/);
   assert.match(source, /credit_price_minor IS NOT NULL/);
   assert.match(source, /tariffConfigured/);
   assert.match(source, /payment_provider_events: \["attempt_count", "available_at", "last_error", "processing_started_at"\]/);

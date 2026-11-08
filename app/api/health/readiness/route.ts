@@ -9,8 +9,10 @@ import { isSecureHttpsEndpoint } from "../../../../lib/server/endpoint";
 import { isDeliveryConfigured } from "../../../../lib/server/delivery-readiness";
 import { evaluateReleaseGates } from "../../../../lib/server/release-gates";
 import { parseVisitorAuthChannels } from "../../../../lib/server/visitor-auth/channels";
+import { getReleaseInfo } from "../../../../lib/server/release-info";
 
 const requiredTables = [
+  "d1_migrations",
   "users", "organizations", "organization_memberships", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "staff_facility_assignments", "roles", "permissions", "user_roles", "role_permissions",
   "auth_sessions", "auth_challenges", "auth_challenge_delivery_attempts", "idempotency_records", "auth_federation_states", "saml_request_cache", "security_events", "rate_limit_buckets",
   "audit_events", "audit_export_manifests", "break_glass_requests", "outbox_events", "appointments", "appointment_types", "appointment_type_history", "prisoners", "visitor_profiles", "visitor_relationships", "verification_cases", "evidence_documents",
@@ -70,6 +72,7 @@ export async function GET() {
   try {
     await requirePermission("facility.read");
     const d1 = await getD1();
+    const release = await getReleaseInfo(d1);
     const rows = await d1.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>();
     const present = new Set(rows.results.map((row) => row.name));
     const missingTables = requiredTables.filter((table) => !present.has(table));
@@ -183,9 +186,9 @@ export async function GET() {
     const providersReady = Object.values(providerConfiguration).every(Boolean);
     const releaseGates = evaluateReleaseGates(environment, configured);
     const ready = schemaReady && environmentConfig.ok && (environment === "development" || providersReady && releaseGates.ready);
-    return securityResponse({ status: ready ? "ready" : "not_ready", environment, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, providerAdapters, releaseGates, tariff: { configured: tariffConfigured, configuredFacilities: Number(tariffRow?.configured_count || 0) }, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
+    return securityResponse({ status: ready ? "ready" : "not_ready", environment, release, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, providerAdapters, releaseGates, tariff: { configured: tariffConfigured, configuredFacilities: Number(tariffRow?.configured_count || 0) }, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
   } catch (error) {
     if (error instanceof Error && error.name === "SecurityError") return securityErrorResponse(error, context.requestId);
-    return securityResponse({ status: "not_ready", environment, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, visitorAuthChannels: false, staffIdentity: false, notifications: false, notificationQueue: false }, providerAdapters: { payment: null, video: null, visitorEmail: null, visitorSms: null, visitorAuthChannels: null, notificationsEmail: null, notificationsSms: null, evidenceScanner: null, staffFederation: null }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
+    return securityResponse({ status: "not_ready", environment, release: { releaseId: "unknown", buildId: null, migrationVersion: null, migrationName: null }, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, visitorAuthChannels: false, staffIdentity: false, notifications: false, notificationQueue: false }, providerAdapters: { payment: null, video: null, visitorEmail: null, visitorSms: null, visitorAuthChannels: null, notificationsEmail: null, notificationsSms: null, evidenceScanner: null, staffFederation: null }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
   }
 }
