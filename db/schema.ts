@@ -155,6 +155,17 @@ export const rolePermissions = sqliteTable("role_permissions", {
   permissionId: text("permission_id").notNull().references(() => permissions.id),
 }, (table) => ({ rolePermissionIdx: uniqueIndex("role_permissions_pair_idx").on(table.roleId, table.permissionId) }));
 
+export const organizationRoleAssignments = sqliteTable("organization_role_assignments", {
+  userId: text("user_id").notNull().references(() => users.id),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  roleId: text("role_id").notNull().references(() => roles.id),
+  status: text("status", { enum: ["ACTIVE", "REVOKED"] }).notNull().default("ACTIVE"),
+  assignedBy: text("assigned_by").references(() => users.id),
+  version: integer("version").notNull().default(1),
+  assignedAt: text("assigned_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  ...timestamps,
+}, (table) => ({ scopeIdx: uniqueIndex("organization_role_assignments_scope_idx").on(table.userId, table.organizationId, table.roleId), organizationIdx: index("organization_role_assignments_organization_idx").on(table.organizationId, table.status), userIdx: index("organization_role_assignments_user_idx").on(table.userId, table.status) }));
+
 export const authSessions = sqliteTable("auth_sessions", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id),

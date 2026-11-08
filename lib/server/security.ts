@@ -8,6 +8,7 @@ import { consumeStepUpNonce, hashStepUpNonce, hashStepUpPayload, verifyStepUpAss
 export type WorkspaceIdentity = { externalId: string; email: string; displayName: string };
 export type RequestContext = { requestId: string; ipAddress: string | null; userAgent: string | null };
 export type AuthorizationContext = { userId: string; facilityId: string; roles: string[]; permissions: string[]; displayName: string };
+export type OrganizationAuthorizationContext = { userId: string; organizationId: string; facilityId: string; roles: string[]; permissions: string[]; displayName: string };
 export type VisitorAuthorizationContext = { userId: string; email: string | null; phone: string | null; phoneVerifiedAt: string | null; displayName: string };
 
 const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
@@ -136,6 +137,31 @@ export async function requirePermission(permissionKey: string, facilityId?: stri
     permissions: [permissionKey],
     displayName: user.displayName,
   };
+}
+
+/** Authorize organization administration independently from facility roles. */
+export async function requireOrganizationPermission(permissionKey: string): Promise<OrganizationAuthorizationContext> {
+  const identity = await requireWorkspaceIdentity();
+  const db = await getDb();
+  const [user] = await db.select().from(users).where(and(eq(users.externalId, identity.externalId), eq(users.userType, "STAFF"))).limit(1);
+  if (!user || user.status !== "ACTIVE") throw new SecurityError("ACCOUNT_NOT_PROVISIONED", 403);
+
+  const selectedFacilityId = (await cookies()).get("securevisit_facility_context")?.value?.trim() || "";
+  const [profile] = await db.select({ facilityId: staffProfiles.facilityId }).from(staffProfiles).where(eq(staffProfiles.userId, user.id)).limit(1);
+  const facilityId = selectedFacilityId || profile?.facilityId || "";
+  if (!facilityId) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
+  const d1 = await getD1();
+  const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(facilityId).first<{ organization_id: string | null }>();
+  if (!facility?.organization_id) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
+  const roles = await d1.prepare(`SELECT r.name AS role_name
+    FROM organization_role_assignments ora
+    INNER JOIN roles r ON r.id = ora.role_id
+    INNER JOIN role_permissions rp ON rp.role_id = r.id
+    INNER JOIN permissions p ON p.id = rp.permission_id
+    WHERE ora.user_id = ? AND ora.organization_id = ? AND ora.status = 'ACTIVE'
+      AND p.permission_key = ? LIMIT 25`).bind(user.id, facility.organization_id, permissionKey).all<{ role_name: string }>();
+  if (!roles.results.length) throw new SecurityError("PERMISSION_DENIED", 403);
+  return { userId: user.id, organizationId: facility.organization_id, facilityId, roles: [...new Set(roles.results.map((row) => row.role_name))], permissions: [permissionKey], displayName: user.displayName };
 }
 
 export function assertReason(reason: unknown): string {

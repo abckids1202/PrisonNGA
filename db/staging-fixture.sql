@@ -3,8 +3,11 @@
 -- kiosk credentials, payment records, or identity evidence. Those records
 -- must be created through the real staging workflows and providers.
 
-INSERT OR IGNORE INTO facilities (id, name, timezone, current_state)
-VALUES ('facility-staging-001', 'SecureVisit Staging Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS');
+INSERT OR IGNORE INTO organizations (id, name, slug, status, version)
+VALUES ('org-staging-001', 'SecureVisit Synthetic Staging Organization', 'securevisit-staging', 'ACTIVE', 1);
+
+INSERT OR IGNORE INTO facilities (id, organization_id, name, timezone, current_state)
+VALUES ('facility-staging-001', 'org-staging-001', 'SecureVisit Staging Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS');
 
 INSERT OR IGNORE INTO visit_policies (id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version)
 VALUES ('policy-staging-default', 'facility-staging-001', 15, 30, 60, 30, '08:00', '17:00', NULL, 'IDR', 1);
@@ -70,3 +73,6 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES
   ('role-auditor', 'perm-facility-read'),
   ('role-auditor', 'perm-audit-read'),
   ('role-auditor', 'perm-audit-export');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+VALUES ('role-supervisor', 'perm-organization-manage');

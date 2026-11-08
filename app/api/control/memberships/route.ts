@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
-import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { assertReason, getRequestContext, requireOrganizationPermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 function validId(value: unknown): value is string { return typeof value === "string" && /^[A-Za-z0-9._:-]{1,160}$/.test(value.trim()); }
 
@@ -14,7 +14,7 @@ async function organizationForFacility(d1: D1Database, facilityId: string): Prom
 export async function GET() {
   const context = await getRequestContext();
   try {
-    const authorization = await requirePermission("organization.manage");
+    const authorization = await requireOrganizationPermission("organization.manage");
     const d1 = await getD1();
     const organizationId = await organizationForFacility(d1, authorization.facilityId);
     const memberships = await d1.prepare(`SELECT om.id, om.organization_id, om.user_id, om.facility_id, om.role, om.status, om.version,
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const body = await request.json() as { userId?: unknown; facilityId?: unknown; roleId?: unknown; employeeReference?: unknown; jobTitle?: unknown; department?: unknown; reason?: unknown };
     if (!validId(body.userId) || !validId(body.facilityId) || !validId(body.roleId)) throw new SecurityError("INVALID_MEMBERSHIP_DETAILS", 400);
     const facilityId = body.facilityId.trim();
-    const authorization = await requirePermission("organization.manage", facilityId);
+    const authorization = await requireOrganizationPermission("organization.manage");
     const employeeReference = typeof body.employeeReference === "string" ? body.employeeReference.trim().slice(0, 80) : "";
     const jobTitle = typeof body.jobTitle === "string" ? body.jobTitle.trim().slice(0, 120) : "";
     const department = typeof body.department === "string" ? body.department.trim().slice(0, 120) : null;
@@ -44,8 +44,7 @@ export async function POST(request: Request) {
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     d1 = await getD1();
     const organizationId = await organizationForFacility(d1, facilityId);
-    const actorOrganizationId = await organizationForFacility(d1, authorization.facilityId);
-    if (organizationId !== actorOrganizationId) throw new SecurityError("ORGANIZATION_SCOPE_DENIED", 403);
+    if (organizationId !== authorization.organizationId) throw new SecurityError("ORGANIZATION_SCOPE_DENIED", 403);
     const user = await d1.prepare("SELECT id, email, display_name FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE'").bind(body.userId.trim()).first<{ id: string; email: string; display_name: string }>();
     if (!user) throw new SecurityError("STAFF_NOT_FOUND", 404);
     const role = await d1.prepare("SELECT id, name FROM roles WHERE id = ?").bind(body.roleId.trim()).first<{ id: string; name: string }>();
@@ -94,9 +93,8 @@ export async function PATCH(request: Request) {
     const current = await d1.prepare(`SELECT om.id, om.organization_id, om.user_id, om.facility_id, om.role, om.status, om.version
       FROM organization_memberships om WHERE om.id = ?`).bind(body.membershipId.trim()).first<{ id: string; organization_id: string; user_id: string; facility_id: string; role: string; status: string; version: number }>();
     if (!current?.facility_id) throw new SecurityError("MEMBERSHIP_NOT_FOUND", 404);
-    const authorization = await requirePermission("organization.manage", current.facility_id);
-    const actorOrganizationId = await organizationForFacility(d1, authorization.facilityId);
-    if (actorOrganizationId !== current.organization_id) throw new SecurityError("ORGANIZATION_SCOPE_DENIED", 403);
+    const authorization = await requireOrganizationPermission("organization.manage");
+    if (authorization.organizationId !== current.organization_id) throw new SecurityError("ORGANIZATION_SCOPE_DENIED", 403);
     const scope = `organization-membership-revoke:${current.id}`;
     const requestHash = await hashIdempotencyPayload({ membershipId: current.id, expectedVersion: body.expectedVersion, reason });
     const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });

@@ -6,6 +6,7 @@ test("readiness fails closed on critical columns, not only table names", async (
   const source = await readFile(new URL("../app/api/health/readiness/route.ts", import.meta.url), "utf8");
   assert.match(source, /const requiredColumns/);
   assert.match(source, /"d1_migrations"/);
+  assert.match(source, /"organization_role_assignments"/);
   assert.match(source, /getReleaseInfo/);
   assert.match(source, /release, checks:/);
   assert.match(source, /credit_price_minor IS NOT NULL/);

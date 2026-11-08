@@ -12,7 +12,7 @@ import { parseVisitorAuthChannels } from "../../../../lib/server/visitor-auth/ch
 import { getReleaseInfo } from "../../../../lib/server/release-info";
 
 const requiredTables = [
-  "d1_migrations",
+  "d1_migrations", "organization_role_assignments",
   "users", "organizations", "organization_memberships", "facilities", "visit_policies", "visit_policy_history", "staff_profiles", "staff_facility_assignments", "roles", "permissions", "user_roles", "role_permissions",
   "auth_sessions", "auth_challenges", "auth_challenge_delivery_attempts", "idempotency_records", "auth_federation_states", "saml_request_cache", "security_events", "rate_limit_buckets",
   "audit_events", "audit_export_manifests", "break_glass_requests", "outbox_events", "appointments", "appointment_types", "appointment_type_history", "prisoners", "visitor_profiles", "visitor_relationships", "verification_cases", "evidence_documents",

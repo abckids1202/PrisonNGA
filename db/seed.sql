@@ -1,5 +1,9 @@
-INSERT INTO facilities (id, name, timezone, current_state)
-VALUES ('facility-central-001', 'Central Correctional Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS')
+INSERT INTO organizations (id, name, slug, status, version)
+VALUES ('org-local-001', 'SecureVisit Local Organization', 'securevisit-local', 'ACTIVE', 1)
+ON CONFLICT(id) DO NOTHING;
+
+INSERT INTO facilities (id, organization_id, name, timezone, current_state)
+VALUES ('facility-central-001', 'org-local-001', 'Central Correctional Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS')
 ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO visit_policies (id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version)
@@ -63,6 +67,14 @@ ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
 INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by)
 VALUES ('staff-local-supervisor', 'role-scheduling-officer', 'facility-central-001', 'local-seed')
 ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+VALUES ('role-supervisor', 'perm-organization-manage')
+ON CONFLICT(role_id, permission_id) DO NOTHING;
+
+INSERT INTO organization_role_assignments (user_id, organization_id, role_id, status, assigned_by)
+VALUES ('staff-local-supervisor', 'org-local-001', 'role-supervisor', 'ACTIVE', 'local-seed')
+ON CONFLICT(user_id, organization_id, role_id) DO NOTHING;
 
 INSERT INTO permissions (id, permission_key, description) VALUES
   ('perm-facility-read', 'facility.read', 'Read facility state and operational context.'),

@@ -1,16 +1,16 @@
 import { getD1 } from "../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
-import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
+import { assertReason, getRequestContext, requireOrganizationPermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const timezonePattern = /^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)+$/;
 
 export async function GET() {
   const context = await getRequestContext();
   try {
-    const authorization = await requirePermission("organization.manage");
+    const authorization = await requireOrganizationPermission("organization.manage");
     const d1 = await getD1();
-    const organization = await d1.prepare("SELECT o.id, o.name, o.slug, o.status, o.version FROM organizations o INNER JOIN facilities f ON f.organization_id = o.id WHERE f.id = ?").bind(authorization.facilityId).first();
+    const organization = await d1.prepare("SELECT id, name, slug, status, version FROM organizations WHERE id = ?").bind(authorization.organizationId).first();
     if (!organization) throw new SecurityError("ORGANIZATION_NOT_FOUND", 404);
     const facilities = await d1.prepare(`SELECT id, name, timezone, current_state, version, created_at, updated_at FROM facilities WHERE organization_id = ? ORDER BY name ASC`).bind(organization.id).all();
     return securityResponse({ organization, facilities: facilities.results }, 200, context.requestId);
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   let d1: D1Database | null = null;
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
-    const authorization = await requirePermission("organization.manage");
+    const authorization = await requireOrganizationPermission("organization.manage");
     const body = await request.json() as { name?: unknown; timezone?: unknown; reason?: unknown };
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 160) : "";
     const timezone = typeof body.timezone === "string" ? body.timezone.trim() : "";
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     d1 = await getD1();
-    const organization = await d1.prepare("SELECT o.id FROM organizations o INNER JOIN facilities f ON f.organization_id = o.id WHERE f.id = ? AND o.status = 'ACTIVE'").bind(authorization.facilityId).first<{ id: string }>();
+    const organization = await d1.prepare("SELECT id FROM organizations WHERE id = ? AND status = 'ACTIVE'").bind(authorization.organizationId).first<{ id: string }>();
     if (!organization) throw new SecurityError("ORGANIZATION_NOT_FOUND", 404);
     await requireStepUp({ purpose: "facility_create", userId: authorization.userId, targetId: organization.id, payload: { name, timezone, reason } });
     const scope = `organization-facility-create:${organization.id}:${authorization.userId}`;
