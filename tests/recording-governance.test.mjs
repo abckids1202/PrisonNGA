@@ -66,6 +66,14 @@ test("recording playback streams verified objects and bounds fallback hashing", 
   assert.match(storage, /checksumSha256\?: string/);
   assert.match(storage, /checksums\?\.sha256/);
   assert.match(route, /new Response\(object\.body/);
-  assert.match(route, /MAX_FALLBACK_INTEGRITY_BYTES = 64 \* 1024 \* 1024/);
+  assert.match(route, /MAX_FALLBACK_INTEGRITY_BYTES/);
   assert.match(route, /RECORDING_INTEGRITY_METADATA_MISSING/);
+});
+
+test("LiveKit egress ingestion does not buffer large recordings when R2 has no checksum", async () => {
+  const webhook = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
+  assert.match(webhook, /object\.checksumSha256 \|\| null/);
+  assert.match(webhook, /object\.size <= MAX_FALLBACK_INTEGRITY_BYTES/);
+  assert.match(webhook, /lacked bounded integrity metadata/);
+  assert.doesNotMatch(webhook, /byteSize = bytes\.byteLength/);
 });

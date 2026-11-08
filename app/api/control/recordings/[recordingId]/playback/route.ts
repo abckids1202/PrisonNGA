@@ -1,8 +1,6 @@
 import { getD1 } from "../../../../../../db/runtime";
-import { getRecordingStore } from "../../../../../../lib/server/evidence-storage";
+import { getRecordingStore, MAX_FALLBACK_INTEGRITY_BYTES } from "../../../../../../lib/server/evidence-storage";
 import { applySecurityHeaders, getRequestContext, requirePermission, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
-
-const MAX_FALLBACK_INTEGRITY_BYTES = 64 * 1024 * 1024;
 
 export async function GET(_request: Request, { params }: { params: Promise<{ recordingId: string }> }) {
   const context = await getRequestContext();

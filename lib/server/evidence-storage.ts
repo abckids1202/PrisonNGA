@@ -9,6 +9,8 @@ export type EvidenceObject = {
   arrayBuffer(): Promise<ArrayBuffer>;
 };
 
+export const MAX_FALLBACK_INTEGRITY_BYTES = 64 * 1024 * 1024;
+
 export type EvidenceStore = {
   put(key: string, value: Uint8Array, options?: { httpMetadata?: { contentType?: string } }): Promise<void>;
   get(key: string): Promise<EvidenceObject | null>;

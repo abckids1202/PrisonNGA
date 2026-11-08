@@ -5,7 +5,7 @@ import { getRequestContext, securityErrorResponse, securityResponse, SecurityErr
 import { getVideoConfig } from "@/lib/server/video/provider";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { readTextBodyWithinLimit } from "@/lib/server/request-body";
-import { getRecordingStore } from "@/lib/server/evidence-storage";
+import { getRecordingStore, MAX_FALLBACK_INTEGRITY_BYTES } from "@/lib/server/evidence-storage";
 import { auditAndOutboxStatements } from "@/lib/server/events";
 
 function roleForParticipant(identity: string | undefined): "VISITOR" | "FACILITY" | "STAFF_OBSERVER" | null {
@@ -64,16 +64,25 @@ async function handleEgressEvent(d1: D1Database, event: { id?: string; event?: s
     const store = await getRecordingStore();
     const object = store ? await store.get(recording.storage_key) : null;
     if (object) {
-      const bytes = new Uint8Array(await object.arrayBuffer());
-      const digest = await crypto.subtle.digest("SHA-256", bytes);
-      sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-      byteSize = bytes.byteLength;
+      byteSize = object.size;
       contentType = "video/mp4";
-      nextStatus = "AVAILABLE";
-      nextSessionRecordingStatus = "AVAILABLE";
+      sha256 = object.checksumSha256 || null;
+      if (!sha256 && object.size <= MAX_FALLBACK_INTEGRITY_BYTES) {
+        const bytes = new Uint8Array(await object.arrayBuffer());
+        const digest = await crypto.subtle.digest("SHA-256", bytes);
+        sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      }
+      if (sha256) {
+        nextStatus = "AVAILABLE";
+        nextSessionRecordingStatus = "AVAILABLE";
+      }
     }
   }
-  const reason = nextStatus === "AVAILABLE" ? "LiveKit Egress completed and the private R2 object passed integrity verification." : event.event === "egress_ended" ? "LiveKit Egress ended but the private recording object was not available for verification." : "LiveKit Egress is processing the private recording output.";
+  const reason = nextStatus === "AVAILABLE"
+    ? "LiveKit Egress completed and the private R2 object passed integrity verification."
+    : event.event === "egress_ended"
+      ? "LiveKit Egress ended but the private recording object was unavailable or lacked bounded integrity metadata."
+      : "LiveKit Egress is processing the private recording output.";
   const correlationId = crypto.randomUUID();
   const guard = { sql: "EXISTS (SELECT 1 FROM recordings WHERE id = ? AND status = ?)", values: [recording.id, nextStatus] };
   const results = await d1.batch([
