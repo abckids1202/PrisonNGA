@@ -80,3 +80,13 @@ test("visitor visit details can open the authoritative reschedule picker", async
   assert.match(page, /openReschedule\(target\)/);
 });
 
+test("visitor visit details exposes persisted recording consent controls", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const details = await readFile(new URL("../app/visitor/VisitDetailsClient.tsx", import.meta.url), "utf8");
+  assert.match(details, /api\/visitor\/visits\/\$\{encodeURIComponent\(visitId\)\}\/recording-consent/);
+  assert.match(details, /noticeVersion: "recording-notice-v1"/);
+  assert.match(details, /Idempotency-Key/);
+  assert.match(details, /I consent to recording/);
+  assert.match(details, /I do not consent/);
+});
+

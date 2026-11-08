@@ -63,6 +63,15 @@ type AppointmentDetail = {
 
 type StatusEvent = { from_status: string | null; to_status: string; reason_text: string | null; created_at: string };
 type VisitApiResponse = { appointment?: AppointmentDetail; statusHistory?: StatusEvent[]; error?: string };
+type RecordingConsent = { decision: "GRANTED" | "DECLINED"; noticeVersion: string; decidedAt: string };
+type RecordingConsentResponse = {
+  sessionId?: string;
+  policy?: string | null;
+  status?: string | null;
+  policyVersion?: number | null;
+  consent?: RecordingConsent | null;
+  error?: string;
+};
 function formatDate(value: string, timezone: string, options: Intl.DateTimeFormatOptions = { dateStyle: "full" }) {
   return formatDateValue(value, options, timezone);
 }
@@ -109,6 +118,10 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
   const [checkInSaving, setCheckInSaving] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelSaving, setCancelSaving] = useState(false);
+  const [recordingConsent, setRecordingConsent] = useState<RecordingConsentResponse | null>(null);
+  const [recordingConsentLoading, setRecordingConsentLoading] = useState(false);
+  const [recordingConsentSaving, setRecordingConsentSaving] = useState(false);
+  const [recordingConsentError, setRecordingConsentError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [now, setNow] = useState<number | null>(null);
   const waitingRoomKey = useRef<string | null>(null);
@@ -151,6 +164,33 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
       controller?.abort();
     };
   }, [visitId]);
+
+  useEffect(() => {
+    if (!appointment?.session_id || appointment.recording_policy !== "ON") return;
+    let active = true;
+    const loadConsent = async () => {
+      setRecordingConsentLoading(true);
+      try {
+        const response = await fetch(`/api/visitor/visits/${encodeURIComponent(visitId)}/recording-consent`, {
+          credentials: "include",
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        });
+        const body = await response.json() as RecordingConsentResponse;
+        if (!response.ok) throw new Error(body.error || "RECORDING_CONSENT_UNAVAILABLE");
+        if (active) {
+          setRecordingConsent(body);
+          setRecordingConsentError("");
+        }
+      } catch (cause) {
+        if (active) setRecordingConsentError(cause instanceof Error ? cause.message.replaceAll("_", " ") : "We couldn’t load recording consent.");
+      } finally {
+        if (active) setRecordingConsentLoading(false);
+      }
+    };
+    void loadConsent();
+    return () => { active = false; };
+  }, [appointment?.recording_policy, appointment?.session_id, visitId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -261,6 +301,30 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
     }
   }
 
+  async function decideRecordingConsent(decision: "GRANTED" | "DECLINED") {
+    if (!appointment || recordingConsentSaving || recordingConsent?.consent || !recordingConsent?.sessionId) return;
+    setRecordingConsentSaving(true);
+    setRecordingConsentError("");
+    try {
+      const storageKey = `securevisit:recording-consent:${appointment.id}:${recordingConsent.sessionId}:${decision}`;
+      const idempotencyKey = (typeof window !== "undefined" ? window.sessionStorage.getItem(storageKey) : null) || crypto.randomUUID();
+      if (typeof window !== "undefined") window.sessionStorage.setItem(storageKey, idempotencyKey);
+      const response = await fetch(`/api/visitor/visits/${encodeURIComponent(appointment.id)}/recording-consent`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ decision, noticeVersion: "recording-notice-v1" }),
+      });
+      const body = await response.json() as RecordingConsentResponse;
+      if (!response.ok) throw new Error(body.error || "RECORDING_CONSENT_FAILED");
+      setRecordingConsent((current) => ({ ...current, ...body, consent: body.consent || null }));
+    } catch (cause) {
+      setRecordingConsentError(cause instanceof Error ? cause.message.replaceAll("_", " ") : "We couldn’t save your recording choice.");
+    } finally {
+      setRecordingConsentSaving(false);
+    }
+  }
+
   if (loading) return <VisitPageMessage title="Loading your visit" body="Checking the latest status in your SecureVisit account." />;
   if ((!appointment && error) || !appointment || !presentation || !state) return <VisitPageMessage title="Visit details unavailable" body={error || "We couldn’t find that visit in your account."} action="Back to My Visits" />;
 
@@ -295,6 +359,7 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
       </section>
 
       <section className="sv5-info-layout"><article className="sv5-panel sv5-info-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Visit information</p><h2>The details you need</h2></div><span className="sv5-info-icon">⌁</span></div><div className="sv5-detail-grid"><Detail label="Date" value={formatDate(appointment.requested_start, appointment.timezone)} /><Detail label="Time" value={formatTimeRange(appointment)} /><Detail label="Visit type" value={prettyStatus(appointment.appointment_type)} /><Detail label="Duration" value={`${duration} minutes`} /><Detail label="Facility" value={appointment.facility_name} /><Detail label="Connection" value={`${appointment.prisoner_name} · ${appointment.relationship_type || "Approved connection"}`} /></div></article><article className="sv5-panel sv5-credit-panel"><div className="sv5-credit-symbol">◇</div><p className="sv4-kicker">Visit Credit</p><h2>{credit === "CONSUMED" ? "Credit used" : credit === "RETURNED" ? "Credit returned" : credit === "RESERVED" ? "Credit reserved" : "Not reserved yet"}</h2><p>{credit === "CONSUMED" ? "The ledger records this credit as used for the completed visit." : credit === "RETURNED" ? "The ledger records this credit as returned to your balance." : credit === "RESERVED" ? "One visit credit is reserved for this appointment." : "A credit has not been reserved for this appointment."}</p><Link className="sv5-inline-link" href="/visitor/credits">View my credits →</Link></article></section>
+      {appointment.recording_policy === "ON" && appointment.session_id && <section className="sv5-panel sv5-recording-consent-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Recording notice</p><h2>Choose before your visit is recorded</h2></div><span className="sv5-info-icon">◉</span></div><p className="sv5-recording-copy">This facility has enabled recording for this visit. A recording may be stored securely for the facility’s approved retention period. Your choice is saved to the visit record and cannot be changed after the session begins.</p>{recordingConsentLoading ? <p className="sv5-recording-status">Checking your saved choice…</p> : recordingConsent?.consent ? <div className={`sv5-recording-decision ${recordingConsent.consent.decision === "GRANTED" ? "granted" : "declined"}`} role="status"><strong>{recordingConsent.consent.decision === "GRANTED" ? "Recording consent given" : "Recording consent declined"}</strong><span>Saved {formatDate(recordingConsent.consent.decidedAt, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}. This decision is part of the visit audit record.</span></div> : <><div className="sv5-recording-notice"><strong>What this means</strong><span>The call may be recorded for safety and review. Recording access is limited to authorized facility staff and is governed by the facility retention policy.</span></div><div className="sv5-dialog-actions sv5-recording-actions"><button type="button" className="sv4-button" onClick={() => void decideRecordingConsent("DECLINED")} disabled={recordingConsentSaving || recordingConsent?.status === "RECORDING"}>{recordingConsentSaving ? "Saving…" : "I do not consent"}</button><button type="button" className="sv4-button sv4-button-primary" onClick={() => void decideRecordingConsent("GRANTED")} disabled={recordingConsentSaving || recordingConsent?.status === "RECORDING"}>{recordingConsentSaving ? "Saving…" : "I consent to recording"}</button></div></>}{recordingConsentError && <p className="sv5-recording-error" role="alert">{recordingConsentError}</p>}</section>}
       {appointment.settlement_ledger_entry_id && <section className="sv5-panel sv5-receipt-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Completion receipt</p><h2>{appointment.settlement_entry_type === "CONSUMPTION" ? "Visit credit settled" : "Visit credit returned"}</h2></div><span className="sv5-info-icon">✓</span></div><p>This receipt is generated from the saved credit ledger settlement for this visit.</p><div className="sv5-detail-grid"><Detail label="Visit ID" value={appointment.id} /><Detail label="Ledger reference" value={appointment.settlement_ledger_entry_id} /><Detail label="Credit change" value={`${appointment.settlement_amount != null && appointment.settlement_amount > 0 ? "+" : ""}${appointment.settlement_amount ?? 0} credit`} /><Detail label="Outcome" value={appointment.settlement_entry_type === "CONSUMPTION" ? "Consumed" : "Returned"} /><Detail label="Recorded at" value={appointment.settlement_created_at ? formatDate(appointment.settlement_created_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" }) : "—"} /><Detail label="Reason" value={appointment.settlement_reason || "Recorded by SecureVisit settlement policy."} /></div><Link className="sv5-inline-link" href="/visitor/credits">View credit activity →</Link></section>}
 
       <section className="sv5-panel sv5-journey-panel"><div className="sv5-panel-heading"><div><p className="sv4-kicker">Saved history</p><h2>What has changed</h2></div><code>{appointment.id}</code></div><div className="sv5-journey-list">{historyRows.length ? historyRows.map((event, index) => <div className="sv5-journey-item sv5-journey-done" key={`${event.to_status}-${event.created_at}-${index}`}><span className="sv5-journey-marker">✓</span><span><strong>{prettyStatus(event.to_status)}</strong><small>{formatDate(event.created_at, appointment.timezone, { dateStyle: "medium", timeStyle: "short" })}</small></span></div>) : <p className="sv5-history-empty">No status changes have been recorded yet.</p>}</div></section>

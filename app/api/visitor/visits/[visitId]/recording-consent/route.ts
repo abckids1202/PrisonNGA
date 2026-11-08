@@ -67,6 +67,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (!current) throw new SecurityError("VISIT_NOT_FOUND", 404);
     const policy = current.facility_recording_policy || current.recording_policy;
     if (policy !== "ON") throw new SecurityError("RECORDING_NOT_ALLOWED", 409);
+    if (!Number.isInteger(current.policy_version) || (current.policy_version as number) < 1) throw new SecurityError("RECORDING_POLICY_VERSION_UNAVAILABLE", 503);
     if (!["PREPARING", "CONNECTING", "ACTIVE", "RECONNECTING"].includes(current.session_status)) throw new SecurityError("RECORDING_CONSENT_CLOSED", 409);
 
     const existing = await d1.prepare(`SELECT id, decision, notice_version, decided_at, correlation_id
