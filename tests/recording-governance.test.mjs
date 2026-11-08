@@ -87,6 +87,10 @@ test("recording playback streams verified objects and bounds fallback hashing", 
   assert.match(route, /RECORDING_INTEGRITY_METADATA_MISSING/);
   assert.match(route, /RECORDING_RETENTION_EXPIRED/);
   assert.match(route, /retention_until/);
+  assert.match(route, /SELECT id, organization_id, facility_id/);
+  assert.match(route, /recording\.organization_id/);
+  assert.match(route, /recording_id, organization_id, facility_id/);
+  assert.match(route, /RECORDING_ORGANIZATION_SCOPE_MISSING/);
 });
 
 test("LiveKit egress ingestion does not buffer large recordings when R2 has no checksum", async () => {
