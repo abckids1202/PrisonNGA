@@ -128,8 +128,9 @@ export async function PATCH(request: Request) {
           AND NOT EXISTS (SELECT 1 FROM organization_memberships WHERE user_id = ? AND facility_id = ? AND status = 'ACTIVE' AND id <> ?)`)
         .bind(now, current.user_id, current.facility_id, current.user_id, current.facility_id, current.id),
       d1.prepare(`DELETE FROM user_roles WHERE user_id = ? AND facility_id = ?
-        AND role_id IN (SELECT id FROM roles WHERE name = ?)`)
-        .bind(current.user_id, current.facility_id, current.role),
+        AND role_id IN (SELECT id FROM roles WHERE name = ?)
+        AND NOT EXISTS (SELECT 1 FROM organization_memberships WHERE user_id = ? AND facility_id = ? AND role = ? AND status = 'ACTIVE' AND id <> ?)`)
+        .bind(current.user_id, current.facility_id, current.role, current.user_id, current.facility_id, current.role, current.id),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: current.facility_id, actionType: "STAFF_MEMBERSHIP_REVOKED", entityType: "organization_membership", entityId: current.id, reason, oldValues: { status: current.status, role: current.role }, newValues: responseBody, requestId: context.requestId, correlationId, eventType: "STAFF_MEMBERSHIP_REVOKED", payload: { membershipId: current.id, userId: current.user_id, facilityId: current.facility_id } }, guard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard }),
     ]);
