@@ -69,7 +69,7 @@ The current repository already includes:
 - Staff appointment decisions, verification decisions, waiting-room commands, live-session termination, facility policy mutation, staff provisioning, kiosk credentials, resource health, retention and legal-hold operations.
 - Provider-neutral payment checkout boundary, signed payment webhook ingestion, duplicate-event protection, delayed-event retry and credit settlement/refund invariants.
 - Authenticated visitor payment receipts that only expose a settled payment with a matching `PURCHASE` ledger entry.
-- LiveKit token scopes, expiry, participant roles, session creation/finalization, stale-session reconciliation and recording disabled by policy.
+- LiveKit token scopes, expiry, participant roles, session creation/finalization, stale-session reconciliation, and governed recording policy/consent boundaries.
 - Development Live Session responses now identify the selected video provider; the local-only provider drives the persisted countdown/status/presence journey without sending its deliberately invalid URL to the LiveKit browser client. Staging and production remain restricted to real LiveKit configuration.
 - Local-only Live Session screens now visibly identify the transport as a test session, local test transport, and a preview placeholder; development UI no longer presents the non-media adapter as a real `LIVE` call.
 - The local Live Session header now also says that no media channel is connected, so development transport cannot be mistaken for an encrypted provider-backed call.
@@ -342,7 +342,7 @@ Exit evidence: approved appointment flows into Waiting Room automatically and ad
 - Run visitor, kiosk and staff observer clients against staging LiveKit.
 - Test join authorization, participant roles, reconnect, browser permissions, network loss, provider outage, expiry, staff termination and orphan-room cleanup.
 - Finalize completion and credit outcome exactly once; record incident when required.
-- Keep recording disabled and assert the policy at token, UI and provider configuration layers.
+- Exercise governed recording only after policy, consent, private R2 storage, playback authorization, retention, legal-hold, and access-audit controls are configured; otherwise assert that recording remains disabled.
 
 Exit evidence: full three-party journey passes repeatedly, including refresh/retry and forced failure scenarios.
 
