@@ -8,6 +8,7 @@ type NoticeTone = "success" | "warning" | "error" | "info";
 type ReadinessResult = {
   status: "ready" | "not_ready";
   environment: string;
+  release?: { releaseId?: string; buildId?: string | null; migrationVersion?: number | null; migrationName?: string | null };
   checks?: {
     database?: boolean;
     schema?: boolean;
