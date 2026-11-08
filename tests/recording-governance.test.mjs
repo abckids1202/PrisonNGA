@@ -25,3 +25,10 @@ test("recording retention deletes the private object before final database delet
   assert.match(section, /expiredRecordingRetentionStatements/);
   assert.match(section, /status !== 'PENDING_DELETION'/);
 });
+
+test("recording start claims are reset when provider startup fails", async () => {
+  const route = await readFile(new URL("../app/api/control/live-sessions/[sessionId]/recording/route.ts", import.meta.url), "utf8");
+  assert.match(route, /status = 'PENDING' AND provider_reference = \?/);
+  assert.match(route, /SET provider_reference = NULL/);
+  assert.match(route, /RECORDING_START_IN_PROGRESS/);
+});

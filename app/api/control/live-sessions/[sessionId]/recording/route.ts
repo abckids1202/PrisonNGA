@@ -9,6 +9,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
   const context = await getRequestContext();
   let d1: D1Database | null = null;
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
+  let claimedRecordingId: string | null = null;
+  let claimedRecordingReference: string | null = null;
   try {
     const { sessionId } = await params;
     const authorization = await requirePermission("recording.manage");
@@ -44,24 +46,55 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
       idempotency = null;
       return securityResponse(responseBody, 200, context.requestId);
     }
+    if (existing?.status === "PENDING" && existing.provider_reference && existing.provider_reference.startsWith("pending:")) {
+      throw new SecurityError("RECORDING_START_IN_PROGRESS", 409);
+    }
     const recordingId = existing?.id || crypto.randomUUID();
     const storageKey = existing?.storage_key || `recordings/${session.facility_id}/${session.id}/${recordingId}.mp4`;
+    const startClaim = `pending:${crypto.randomUUID()}`;
+    claimedRecordingId = recordingId;
+    claimedRecordingReference = startClaim;
+    if (!existing) {
+      const created = await d1.prepare(`INSERT INTO recordings (id, organization_id, facility_id, session_id, provider, provider_reference, storage_key, status, retention_until, version, created_at, updated_at)
+        SELECT ?, f.organization_id, ?, ?, 'livekit', ?, ?, 'PENDING', datetime(?, '+' || COALESCE(vp.recording_retention_days, 30) || ' days'), 1, ?, ?
+        FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?`)
+        .bind(recordingId, session.facility_id, session.id, startClaim, storageKey, new Date().toISOString(), new Date().toISOString(), new Date().toISOString(), session.facility_id).run();
+      if (!created.meta.changes) throw new SecurityError("RECORDING_START_NOT_PERSISTED", 503);
+    } else if (existing.status === "PENDING" && !existing.provider_reference) {
+      const claimed = await d1.prepare("UPDATE recordings SET provider_reference = ?, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND provider_reference IS NULL").bind(startClaim, new Date().toISOString(), recordingId, session.facility_id).run();
+      if (!claimed.meta.changes) throw new SecurityError("RECORDING_START_IN_PROGRESS", 409);
+    }
     const config = await getVideoConfig();
     const liveKitUrl = config.url;
     if (!config.configured || config.provider !== "livekit" || !liveKitUrl || !config.apiKey || !config.apiSecret) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
     const started = await startLiveKitRecording({ liveKitUrl, apiKey: config.apiKey, apiSecret: config.apiSecret, roomName: session.provider_room_name, storageKey });
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
+    const latest = await d1.prepare("SELECT provider_reference, storage_key, status FROM recordings WHERE id = ? AND facility_id = ?").bind(recordingId, session.facility_id).first<{ provider_reference: string | null; storage_key: string | null; status: string }>();
+    if (!latest) throw new SecurityError("RECORDING_START_NOT_PERSISTED", 503);
+    if (latest.provider_reference === started.egressId && ["PROCESSING", "AVAILABLE", "FAILED"].includes(latest.status)) {
+      const responseBody = { recordingId, sessionId: session.id, providerReference: started.egressId, storageKey: latest.storage_key || storageKey, status: latest.status, idempotent: true };
+      const completed = await d1.prepare("UPDATE idempotency_records SET status = 'COMPLETED', processing_started_at = NULL, response_status = 200, response_body = ?, completed_at = ? WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING'").bind(JSON.stringify(responseBody), now, idempotency.claimId, idempotency.scope, idempotency.key).run();
+      if (!completed.meta.changes) throw new SecurityError("IDEMPOTENCY_RETRY_REQUIRED", 409);
+      idempotency = null;
+      return securityResponse(responseBody, 200, context.requestId);
+    }
     const responseBody = { recordingId, sessionId: session.id, providerReference: started.egressId, storageKey, status: "PROCESSING", correlationId };
     const guard = { sql: "EXISTS (SELECT 1 FROM recordings WHERE id = ? AND provider_reference = ? AND status = 'PROCESSING')", values: [recordingId, started.egressId] };
-    const statements = existing
-      ? [d1.prepare("UPDATE recordings SET provider_reference = ?, storage_key = ?, status = 'PROCESSING', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ?").bind(started.egressId, storageKey, now, recordingId, session.facility_id)]
-      : [d1.prepare("INSERT INTO recordings (id, organization_id, facility_id, session_id, provider, provider_reference, storage_key, status, retention_until, version, created_at, updated_at) SELECT ?, f.organization_id, ?, ?, 'livekit', ?, ?, 'PROCESSING', datetime(?, '+' || COALESCE(vp.recording_retention_days, 30) || ' days'), 1, ?, ? FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(recordingId, session.facility_id, session.id, started.egressId, storageKey, now, now, now, session.facility_id)];
+    if (latest.status !== "PENDING" || (latest.provider_reference && latest.provider_reference !== startClaim && !latest.provider_reference.startsWith("pending:"))) {
+      throw new SecurityError("RECORDING_START_STATE_CHANGED", 409);
+    }
+    const statements = [d1.prepare("UPDATE recordings SET provider_reference = ?, storage_key = ?, status = 'PROCESSING', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND (provider_reference = ? OR provider_reference IS NULL)").bind(started.egressId, storageKey, now, recordingId, session.facility_id, latest.provider_reference || startClaim)];
     const results = await d1.batch([...statements, d1.prepare("UPDATE visit_sessions SET recording_status = 'RECORDING', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(now, session.id, session.facility_id, session.version), ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: session.facility_id, actionType: "RECORDING_STARTED", entityType: "recording", entityId: recordingId, reason, newValues: responseBody, requestId: context.requestId, correlationId, eventType: "RECORDING_STARTED", payload: { recordingId, sessionId: session.id, providerReference: started.egressId } }, guard), completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard })]);
     if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("RECORDING_START_NOT_PERSISTED", 503);
     idempotency = null;
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {
+    if (d1 && claimedRecordingId && claimedRecordingReference) {
+      try {
+        await d1.prepare("UPDATE recordings SET provider_reference = NULL, updated_at = ? WHERE id = ? AND status = 'PENDING' AND provider_reference = ?").bind(new Date().toISOString(), claimedRecordingId, claimedRecordingReference).run();
+      } catch { /* Preserve the original provider error; scheduled recovery can inspect the claim. */ }
+    }
     if (d1 && idempotency) { try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve original error. */ } }
     return securityErrorResponse(error, context.requestId);
   }

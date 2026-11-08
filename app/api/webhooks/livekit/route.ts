@@ -33,7 +33,23 @@ async function handleEgressEvent(d1: D1Database, event: { id?: string; event?: s
   const session = await d1.prepare("SELECT id, facility_id FROM visit_sessions WHERE provider_room_name = ? AND provider = ?").bind(roomName, provider).first<{ id: string; facility_id: string }>();
   if (!session) return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "SESSION_NOT_FOUND" }, 200, requestId) };
   const recording = await d1.prepare("SELECT id, storage_key, status, provider_reference FROM recordings WHERE session_id = ? AND facility_id = ?").bind(session.id, session.facility_id).first<{ id: string; storage_key: string | null; status: string; provider_reference: string | null }>();
-  if (!recording || recording.provider_reference !== egress.egressId) return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "RECORDING_NOT_BOUND" }, 200, requestId) };
+  if (!recording) return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "RECORDING_NOT_BOUND" }, 200, requestId) };
+  if (recording.provider_reference && !recording.provider_reference.startsWith("pending:") && recording.provider_reference !== egress.egressId) {
+    return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "RECORDING_PROVIDER_MISMATCH" }, 200, requestId) };
+  }
+  // Egress can emit its first callback immediately after the provider accepts
+  // the start request. Bind that callback to the pending, facility-scoped row
+  // before applying the normal lifecycle transition so the event cannot be
+  // lost between provider acceptance and the staff request's final batch.
+  if (!recording.provider_reference || recording.provider_reference.startsWith("pending:")) {
+    const bound = await d1.prepare("UPDATE recordings SET provider_reference = ?, status = 'PROCESSING', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND (provider_reference IS NULL OR provider_reference LIKE 'pending:%')").bind(egress.egressId, new Date().toISOString(), recording.id, session.facility_id).run();
+    if (!bound.meta.changes) {
+      const rebound = await d1.prepare("SELECT provider_reference FROM recordings WHERE id = ? AND facility_id = ?").bind(recording.id, session.facility_id).first<{ provider_reference: string | null }>();
+      if (rebound?.provider_reference !== egress.egressId) return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "RECORDING_BIND_CONFLICT" }, 200, requestId) };
+    }
+    recording.provider_reference = egress.egressId;
+    recording.status = "PROCESSING";
+  }
   const prior = await d1.prepare("SELECT id, metadata FROM visit_session_events WHERE id = ? AND session_id = ?").bind(eventId, session.id).first<{ id: string; metadata: string }>();
   if (prior) return { handled: true, response: securityResponse({ accepted: true, idempotent: true, sessionId: session.id, recordingId: recording.id }, 200, requestId) };
   const now = new Date().toISOString();
