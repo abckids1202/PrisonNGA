@@ -19,7 +19,7 @@ export async function PUT(request: Request) {
   let d1: D1Database | null = null;
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
-    const authorization = await requirePermission("facility.state.change");
+    const authorization = await requirePermission("appointment_type.manage");
     const body = await request.json() as { id?: unknown; expectedVersion?: unknown; displayName?: unknown; description?: unknown; durationMinutes?: unknown; creditCost?: unknown; status?: unknown; reason?: unknown };
     const id = typeof body.id === "string" ? body.id.trim() : "";
     const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
