@@ -46,6 +46,9 @@ test("recording inventory exposes facility-scoped access history", async () => {
   assert.match(route, /last_accessed_at/);
   assert.match(compliance, /Open audited playback/);
   assert.match(compliance, /audited access/);
+  assert.match(compliance, /\/api\/control\/legal-holds/);
+  assert.match(compliance, /Place legal hold/);
+  assert.match(compliance, /Release legal hold/);
 });
 
 test("recording permission is assigned to the intended operational roles", async () => {
