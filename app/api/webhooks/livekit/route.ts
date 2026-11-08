@@ -5,6 +5,8 @@ import { getRequestContext, securityErrorResponse, securityResponse, SecurityErr
 import { getVideoConfig } from "@/lib/server/video/provider";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { readTextBodyWithinLimit } from "@/lib/server/request-body";
+import { getEvidenceStore } from "@/lib/server/evidence-storage";
+import { auditAndOutboxStatements } from "@/lib/server/events";
 
 function roleForParticipant(identity: string | undefined): "VISITOR" | "FACILITY" | "STAFF_OBSERVER" | null {
   if (identity?.startsWith("visitor:")) return "VISITOR";
@@ -18,6 +20,54 @@ function participantAuditAction(event: string | undefined): string | null {
   if (event === "participant_left") return "LIVE_SESSION_PARTICIPANT_DISCONNECTED";
   if (event === "participant_connection_aborted") return "LIVE_SESSION_PARTICIPANT_RECONNECTING";
   return null;
+}
+
+type EgressWebhookInfo = { egressId?: string; roomName?: string; fileResults?: Array<{ filename?: string; size?: bigint | number; location?: string }> };
+
+async function handleEgressEvent(d1: D1Database, event: { id?: string; event?: string; egressInfo?: unknown }, requestId: string, provider: string): Promise<{ handled: boolean; response?: Response }> {
+  if (!event.event?.startsWith("egress_")) return { handled: false };
+  const egress = event.egressInfo as EgressWebhookInfo | undefined;
+  const roomName = egress?.roomName?.trim() || "";
+  const eventId = event.id?.trim() || "";
+  if (!roomName || !eventId || !egress?.egressId) throw new SecurityError("LIVEKIT_EGRESS_EVENT_INVALID", 400);
+  const session = await d1.prepare("SELECT id, facility_id FROM visit_sessions WHERE provider_room_name = ? AND provider = ?").bind(roomName, provider).first<{ id: string; facility_id: string }>();
+  if (!session) return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "SESSION_NOT_FOUND" }, 200, requestId) };
+  const recording = await d1.prepare("SELECT id, storage_key, status, provider_reference FROM recordings WHERE session_id = ? AND facility_id = ?").bind(session.id, session.facility_id).first<{ id: string; storage_key: string | null; status: string; provider_reference: string | null }>();
+  if (!recording || recording.provider_reference !== egress.egressId) return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "RECORDING_NOT_BOUND" }, 200, requestId) };
+  const prior = await d1.prepare("SELECT id, metadata FROM visit_session_events WHERE id = ? AND session_id = ?").bind(eventId, session.id).first<{ id: string; metadata: string }>();
+  if (prior) return { handled: true, response: securityResponse({ accepted: true, idempotent: true, sessionId: session.id, recordingId: recording.id }, 200, requestId) };
+  const now = new Date().toISOString();
+  const metadata = JSON.stringify({ roomName, egressId: egress.egressId, fileResults: egress.fileResults || [] });
+  const eventType = `PROVIDER_${event.event.toUpperCase()}`;
+  let nextStatus = event.event === "egress_ended" ? "FAILED" : "PROCESSING";
+  let nextSessionRecordingStatus = event.event === "egress_ended" ? "FAILED" : "RECORDING";
+  let contentType: string | null = null;
+  let byteSize: number | null = null;
+  let sha256: string | null = null;
+  if (event.event === "egress_ended" && recording.storage_key) {
+    const store = await getEvidenceStore();
+    const object = store ? await store.get(recording.storage_key) : null;
+    if (object) {
+      const bytes = new Uint8Array(await object.arrayBuffer());
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      byteSize = bytes.byteLength;
+      contentType = "video/mp4";
+      nextStatus = "AVAILABLE";
+      nextSessionRecordingStatus = "AVAILABLE";
+    }
+  }
+  const reason = nextStatus === "AVAILABLE" ? "LiveKit Egress completed and the private R2 object passed integrity verification." : event.event === "egress_ended" ? "LiveKit Egress ended but the private recording object was not available for verification." : "LiveKit Egress is processing the private recording output.";
+  const correlationId = crypto.randomUUID();
+  const guard = { sql: "EXISTS (SELECT 1 FROM recordings WHERE id = ? AND status = ?)", values: [recording.id, nextStatus] };
+  const results = await d1.batch([
+    d1.prepare("INSERT INTO visit_session_events (id, session_id, event_type, source, metadata, correlation_id, created_at) VALUES (?, ?, ?, 'LIVEKIT_EGRESS_WEBHOOK', ?, ?, ?)").bind(eventId, session.id, eventType, metadata, requestId, now),
+    d1.prepare("UPDATE recordings SET status = ?, content_type = COALESCE(?, content_type), byte_size = COALESCE(?, byte_size), sha256 = COALESCE(?, sha256), failure_reason = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ?").bind(nextStatus, contentType, byteSize, sha256, nextStatus === "FAILED" ? reason : null, now, recording.id, session.facility_id),
+    d1.prepare("UPDATE visit_sessions SET recording_status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ?").bind(nextSessionRecordingStatus, now, session.id, session.facility_id),
+    ...auditAndOutboxStatements(d1, { actorUserId: "system:livekit", actorRole: "SYSTEM", facilityId: session.facility_id, actionType: `RECORDING_${nextStatus}`, entityType: "recording", entityId: recording.id, reason, newValues: { status: nextStatus, providerReference: egress.egressId, byteSize, sha256 }, requestId, correlationId, eventType: `RECORDING_${nextStatus}`, payload: { recordingId: recording.id, sessionId: session.id, providerReference: egress.egressId, status: nextStatus } }, guard),
+  ]);
+  if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("LIVEKIT_EGRESS_NOT_PERSISTED", 503);
+  return { handled: true, response: securityResponse({ accepted: true, event: event.event, sessionId: session.id, recordingId: recording.id, status: nextStatus }, 200, requestId) };
 }
 
 export async function POST(request: Request) {
@@ -35,6 +85,8 @@ export async function POST(request: Request) {
     await enforceRateLimit(d1, { key: `livekit-webhook:${context.ipAddress || "unknown"}`, limit: 300, windowSeconds: 60 });
     const body = await readTextBodyWithinLimit(request, 256 * 1024);
     const event = await new WebhookReceiver(config.apiKey, config.apiSecret).receive(body, request.headers.get("Authorization") || undefined);
+    const egressResult = await handleEgressEvent(d1, event, context.requestId, config.provider);
+    if (egressResult.handled) return egressResult.response!;
     const roomName = event.room?.name;
     if (!roomName) return securityResponse({ accepted: true, ignored: true }, 200, context.requestId);
     const session = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, vs.status, vs.version, vs.actual_started_at, vs.termination_reason,
