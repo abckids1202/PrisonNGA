@@ -20,12 +20,13 @@ export async function GET(_request: Request, context: RouteContext) {
       breakGlassRequestId = "pending";
     }
     const d1 = await getD1();
-    const evidence = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.storage_key, ed.original_filename, ed.content_type, ed.byte_size, ed.sha256
+    const evidence = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.storage_key, ed.original_filename, ed.content_type, ed.byte_size, ed.sha256, ed.retention_until, ed.legal_hold
       FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id
       WHERE ed.id = ? AND ed.facility_id = ? AND vc.facility_id = ? AND ed.status = 'AVAILABLE'`)
       .bind(documentId, authorization.facilityId, authorization.facilityId)
-      .first<{ id: string; verification_case_id: string; storage_key: string; original_filename: string; content_type: string; byte_size: number; sha256: string }>();
+      .first<{ id: string; verification_case_id: string; storage_key: string; original_filename: string; content_type: string; byte_size: number; sha256: string; retention_until: string | null; legal_hold: number }>();
     if (!evidence) throw new SecurityError("EVIDENCE_NOT_FOUND", 404);
+    if (!evidence.legal_hold && evidence.retention_until && Date.parse(evidence.retention_until) <= Date.now()) throw new SecurityError("EVIDENCE_RETENTION_EXPIRED", 410);
     if (breakGlassRequestId) {
       const grant = await requireActiveBreakGlass(d1, { facilityId: authorization.facilityId, userId: authorization.userId, targetType: "evidence_document", targetId: evidence.id });
       breakGlassRequestId = grant.requestId;

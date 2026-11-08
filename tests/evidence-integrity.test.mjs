@@ -7,6 +7,8 @@ test("staff evidence retrieval verifies the persisted digest before serving stor
   assert.match(source, /ed\.sha256/);
   assert.match(source, /crypto\.subtle\.digest\("SHA-256", bytes\)/);
   assert.match(source, /EVIDENCE_INTEGRITY_CHECK_FAILED/);
+  assert.match(source, /EVIDENCE_RETENTION_EXPIRED/);
+  assert.match(source, /retention_until/);
   assert.match(source, /new Response\(bytes/);
 });
 
