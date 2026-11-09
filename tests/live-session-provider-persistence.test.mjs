@@ -7,7 +7,8 @@ const route = await readFile(new URL("../app/api/control/waiting-room/route.ts",
 test("starting a visit persists the selected video provider on the session", () => {
   assert.match(route, /getVideoConfig/);
   assert.match(route, /provider: videoConfig\.provider/);
-  assert.match(route, /\.bind\(newSession\.id, body\.appointmentId, authorization\.facilityId, newSession\.provider/);
+  assert.match(route, /INSERT INTO visit_sessions \(id, organization_id, appointment_id, facility_id, provider/);
+  assert.match(route, /\.bind\(newSession\.id, authorization\.facilityId, body\.appointmentId, authorization\.facilityId, newSession\.provider/);
   assert.doesNotMatch(route, /authorization\.facilityId, "livekit", newSession\.roomName/);
 });
 

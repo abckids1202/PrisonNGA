@@ -549,6 +549,7 @@ export const visitorWaitingRoomCheckins = sqliteTable("visitor_waiting_room_chec
 
 export const visitSessions = sqliteTable("visit_sessions", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   appointmentId: text("appointment_id").notNull().references(() => appointments.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   provider: text("provider").notNull().default("livekit"),
@@ -565,7 +566,7 @@ export const visitSessions = sqliteTable("visit_sessions", {
   terminationReason: text("termination_reason"),
   version: integer("version").notNull().default(1),
   ...timestamps,
-}, (table) => ({ appointmentIdx: uniqueIndex("visit_sessions_appointment_idx").on(table.appointmentId), facilityStatusIdx: index("visit_sessions_facility_status_idx").on(table.facilityId, table.status) }));
+}, (table) => ({ appointmentIdx: uniqueIndex("visit_sessions_appointment_idx").on(table.appointmentId), facilityStatusIdx: index("visit_sessions_facility_status_idx").on(table.organizationId, table.facilityId, table.status) }));
 
 export const visitorDeviceCheckAttempts = sqliteTable("visitor_device_check_attempts", {
   id: text("id").primaryKey(),
