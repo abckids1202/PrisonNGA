@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import StaffObserverClient from "./StaffObserverClient";
 
 type ObserverPayload = { token: string; serverUrl: string; session: { id: string; visitorName: string; prisonerName: string } };
@@ -11,6 +11,7 @@ export default function StaffObserverRouteClient({ sessionId }: { sessionId: str
   const [payload, setPayload] = useState<ObserverPayload | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
+  const requestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!authorizedReason) return;
@@ -18,7 +19,8 @@ export default function StaffObserverRouteClient({ sessionId }: { sessionId: str
     async function authorize() {
       setStatus("loading");
       try {
-        const response = await fetch(`/api/control/live-sessions/${encodeURIComponent(sessionId)}/observer-token`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, credentials: "include", body: JSON.stringify({ reason: authorizedReason }), cache: "no-store" });
+        const idempotencyKey = requestKeyRef.current || (requestKeyRef.current = `observer-token-${sessionId}-${crypto.randomUUID()}`);
+        const response = await fetch(`/api/control/live-sessions/${encodeURIComponent(sessionId)}/observer-token`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyKey }, credentials: "include", body: JSON.stringify({ reason: authorizedReason }), cache: "no-store" });
         const body = await response.json() as Partial<ObserverPayload> & { error?: string };
         if (!response.ok || typeof body.token !== "string" || typeof body.serverUrl !== "string" || !body.session) throw new Error(body.error || "The observer session could not be authorized.");
         if (active) setPayload(body as ObserverPayload);

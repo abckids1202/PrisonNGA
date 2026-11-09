@@ -8,4 +8,6 @@ test("observer token issuance fails closed when monitoring audit writes are not 
   assert.match(source, /auditResults\[0\]\?\.meta\.changes/);
   assert.match(source, /auditResults\[1\]\?\.meta\.changes/);
   assert.match(source, /SESSION_MONITORING_AUDIT_FAILED/);
+  assert.match(source, /releaseIdempotencyClaim/);
+  assert.match(source, /auditResults\[2\]\?\.meta\.changes/);
 });

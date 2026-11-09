@@ -51,6 +51,7 @@ export default function LiveSessionsPage({ onNotify, timeZone = "Asia/Jakarta" }
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const detailRequestRef = useRef(0);
+  const observerRequestKeysRef = useRef(new Map<string, string>());
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -124,9 +125,11 @@ export default function LiveSessionsPage({ onNotify, timeZone = "Asia/Jakarta" }
 
   async function authorizeObserver(session: LiveSessionRow) {
     try {
+      const idempotencyKey = observerRequestKeysRef.current.get(session.id) || `observer-token-${session.id}-${crypto.randomUUID()}`;
+      observerRequestKeysRef.current.set(session.id, idempotencyKey);
       const response = await fetch(`/api/control/live-sessions/${session.id}/observer-token`, {
         method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: { "content-type": "application/json", accept: "application/json", "Idempotency-Key": idempotencyKey },
         body: JSON.stringify({ reason: "Routine supervision of an authorized live visit." }),
       });
       const body = await response.json() as { error?: string; token?: string; serverUrl?: string };

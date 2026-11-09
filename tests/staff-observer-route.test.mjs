@@ -8,6 +8,7 @@ test("staff observer route requests a restricted server token and mounts the rea
   assert.match(source, /Routine live-session observation/);
   assert.match(source, /StaffObserverClient/);
   assert.match(source, /credentials: "include"/);
+  assert.match(source, /Idempotency-Key/);
 });
 
 test("staff observer authorization requires the appointment to remain in progress", async () => {
@@ -25,4 +26,6 @@ test("staff observer token refreshes are audited as token issuance, not repeated
   assert.match(source, /SESSION_MONITORING_TOKEN_ISSUED/);
   assert.doesNotMatch(source, /MONITORING_STARTED/);
   assert.doesNotMatch(source, /SESSION_MONITORING_STARTED/);
+  assert.match(source, /claimIdempotency/);
+  assert.match(source, /completeIdempotencyStatement/);
 });
