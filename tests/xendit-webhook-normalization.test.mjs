@@ -38,3 +38,22 @@ test("Xendit refund failures do not masquerade as failed payments", () => {
 test("unsupported Xendit events fail closed instead of becoming payment state", () => {
   assert.throws(() => canonicalizeXenditWebhook({ event: "payment.authorization", data: { reference_id: "payment-intent-123" } }), /XENDIT_WEBHOOK_UNSUPPORTED/);
 });
+
+test("Xendit top-level dispute notifications map to an audited disputed payment", () => {
+  const payload = canonicalizeXenditWebhook({
+    event: "dispute.action_required",
+    id: "mi-dspt-123",
+    reference_id: "payment-intent-123",
+    status: "ACTION_REQUIRED",
+    currency: "IDR",
+    amount: { initial: "50000.00", terminal: null },
+  });
+  assert.deepEqual(payload, {
+    eventId: "xendit:dispute.action_required:mi-dspt-123",
+    eventType: "PAYMENT_DISPUTED",
+    paymentIntentId: "payment-intent-123",
+    providerReference: "mi-dspt-123",
+    status: "DISPUTED",
+    currency: "IDR",
+  });
+});

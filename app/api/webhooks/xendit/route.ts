@@ -5,7 +5,7 @@ import { readTextBodyWithinLimit } from "../../../../lib/server/request-body";
 import { getD1 } from "../../../../db/runtime";
 
 type XenditData = Record<string, unknown>;
-type XenditWebhook = { event?: unknown; created?: unknown; data?: unknown };
+type XenditWebhook = { event?: unknown; created?: unknown; data?: unknown; id?: unknown; reference_id?: unknown; payment_id?: unknown; currency?: unknown; amount?: unknown; status?: unknown };
 
 async function matchesCallbackToken(supplied: string | null, expected: string): Promise<boolean> {
   if (!supplied || !expected || supplied.length > 512) return false;
@@ -28,14 +28,20 @@ function amountField(data: XenditData): number | undefined {
 export function canonicalizeXenditWebhook(body: XenditWebhook): { eventId: string; eventType: string; paymentIntentId: string; providerReference?: string; status?: string; amountMinor?: number; currency?: string } {
   const event = typeof body.event === "string" ? body.event.trim().toLowerCase() : "";
   const data = body.data && typeof body.data === "object" && !Array.isArray(body.data) ? body.data as XenditData : null;
-  if (!event || !data) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
-  const paymentIntentId = stringField(data, "reference_id");
-  const sessionId = stringField(data, "payment_session_id");
-  const paymentRequestId = stringField(data, "payment_request_id");
-  const refundId = stringField(data, "refund_id") || stringField(data, "id");
+  if (!event) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
+  // Payment-session/refund notifications nest their identifiers under data.
+  // Xendit's dispute notifications are top-level objects, so use the
+  // envelope itself only for the explicitly supported dispute family.
+  const disputePayload = event.startsWith("dispute.") ? body as XenditData : null;
+  const payload = data || disputePayload;
+  if (!payload) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
+  const paymentIntentId = stringField(payload, "reference_id");
+  const sessionId = stringField(payload, "payment_session_id");
+  const paymentRequestId = stringField(payload, "payment_request_id");
+  const refundId = stringField(payload, "refund_id") || stringField(payload, "id");
   if (!paymentIntentId || paymentIntentId.length > 128) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
-  const currency = stringField(data, "currency").toUpperCase() || undefined;
-  const amountMinor = amountField(data);
+  const currency = stringField(payload, "currency").toUpperCase() || undefined;
+  const amountMinor = amountField(payload);
   if (event === "payment_session.completed") {
     if (!sessionId || !currency || amountMinor === undefined) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
     return { eventId: `xendit:${event}:${sessionId}`, eventType: "PAYMENT_SUCCEEDED", paymentIntentId, providerReference: sessionId, status: "SUCCEEDED", amountMinor, currency };
@@ -47,6 +53,15 @@ export function canonicalizeXenditWebhook(body: XenditWebhook): { eventId: strin
   if (event === "refund.succeeded" || event === "refund.failed") {
     const reference = refundId || paymentRequestId || paymentIntentId;
     return { eventId: `xendit:${event}:${reference}`, eventType: event === "refund.succeeded" ? "PAYMENT_REFUNDED" : "PAYMENT_REFUND_FAILED", paymentIntentId, status: event === "refund.succeeded" ? "REFUNDED" : "FAILED", amountMinor, currency };
+  }
+  if (event.startsWith("dispute.")) {
+    const disputeId = stringField(payload, "id");
+    const disputeStatus = stringField(payload, "status").toUpperCase();
+    if (!disputeId || !disputeStatus || !currency) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
+    // Disputes are deliberately terminal in the local payment state machine.
+    // A later WON event is retained as an audited provider event and requires
+    // finance review; it must never silently recreate visitor credits.
+    return { eventId: `xendit:${event}:${disputeId}`, eventType: "PAYMENT_DISPUTED", paymentIntentId, providerReference: disputeId, status: "DISPUTED", currency };
   }
   throw new SecurityError("XENDIT_WEBHOOK_UNSUPPORTED", 400);
 }
