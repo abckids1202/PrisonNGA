@@ -56,7 +56,16 @@ try {
   if ((result.status ?? 1) !== 0) throw new Error(`Staging fixture failed with exit code ${result.status ?? "unknown"}.`);
   if (bootstrapEmail) {
     const bootstrapSql = `INSERT OR IGNORE INTO users (id, external_id, email, display_name, user_type, status, version, created_at, updated_at)\nVALUES ('staff-staging-bootstrap', 'pending:staff-staging-bootstrap', ${sqlLiteral(bootstrapEmail)}, ${sqlLiteral(bootstrapName)}, 'STAFF', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);\n\nINSERT OR IGNORE INTO staff_profiles (user_id, facility_id, employee_reference, job_title, department)\nVALUES ('staff-staging-bootstrap', 'facility-staging-001', ${sqlLiteral(bootstrapReference)}, 'Staging Supervisor', 'Operations');\n\nINSERT OR IGNORE INTO user_roles (user_id, role_id, facility_id, assigned_by)\nVALUES ('staff-staging-bootstrap', 'role-supervisor', 'facility-staging-001', NULL);\n\nINSERT OR IGNORE INTO organization_role_assignments (user_id, organization_id, role_id, status, assigned_by)\nVALUES ('staff-staging-bootstrap', 'org-staging-001', 'role-supervisor', 'ACTIVE', NULL);\n`;
-    await writeFile(bootstrapSqlPath, bootstrapSql, { flag: "wx" });
+    // Organization administration is intentionally separate from the
+    // facility Supervisor role. The migration removes organization.manage
+    // from Supervisor, so the bootstrap must receive the dedicated owner
+    // role before the first institutional login.
+    const hardenedBootstrapSql = bootstrapSql.replace(
+      "VALUES ('staff-staging-bootstrap', 'org-staging-001', 'role-supervisor', 'ACTIVE', NULL);",
+      "VALUES ('staff-staging-bootstrap', 'org-staging-001', 'role-organization-owner', 'ACTIVE', NULL);",
+    );
+    if (hardenedBootstrapSql === bootstrapSql) throw new Error("STAGING_BOOTSTRAP_ORGANIZATION_ROLE_NOT_FOUND");
+    await writeFile(bootstrapSqlPath, hardenedBootstrapSql, { flag: "wx" });
     const bootstrapResult = spawnSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--remote", "--file", bootstrapSqlPath, "--config", configPath], { cwd: projectRoot, stdio: "inherit" });
     if (bootstrapResult.error) throw bootstrapResult.error;
     if ((bootstrapResult.status ?? 1) !== 0) throw new Error(`Bootstrap staff insert failed with exit code ${bootstrapResult.status ?? "unknown"}.`);

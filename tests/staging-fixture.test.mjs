@@ -28,6 +28,12 @@ test("staging fixture contains synthetic infrastructure but no credentials or pr
   assert.doesNotMatch(fixture, /INSERT[^\n]+evidence/i);
 });
 
+test("staging bootstrap upgrades organization access to the dedicated owner role", () => {
+  assert.match(script, /role-organization-owner/);
+  assert.match(script, /hardenedBootstrapSql/);
+  assert.match(script, /STAGING_BOOTSTRAP_ORGANIZATION_ROLE_NOT_FOUND/);
+});
+
 test("release verification executes the fixture against a disposable migrated database", () => {
   assert.match(verifier, /db:test:staging-fixture/);
 });
