@@ -88,6 +88,17 @@ test("recording inventory exposes facility-scoped access history", async () => {
   assert.match(compliance, /Release legal hold/);
 });
 
+test("recording playback supports approved break-glass access with an auditable request reference", async () => {
+  const request = await readFile(new URL("../app/api/control/access/break-glass/route.ts", import.meta.url), "utf8");
+  const playback = await readFile(new URL("../app/api/control/recordings/[recordingId]/playback/route.ts", import.meta.url), "utf8");
+  assert.match(request, /"recording"/);
+  assert.match(request, /FROM recordings/);
+  assert.match(playback, /requireActiveBreakGlass/);
+  assert.match(playback, /targetType: "recording"/);
+  assert.match(playback, /break_glass_request_id/);
+  assert.match(playback, /BREAK_GLASS_PLAYBACK/);
+});
+
 test("recording permission is assigned to the intended operational roles", async () => {
   const migration = await readFile(new URL("../drizzle/0060_recording_access_permission.sql", import.meta.url), "utf8");
   const seed = await readFile(new URL("../db/seed.sql", import.meta.url), "utf8");

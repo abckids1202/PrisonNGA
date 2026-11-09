@@ -25,6 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ req
     const current = await d1.prepare(`SELECT id, requested_by, target_type, target_id, reason, duration_minutes, status, version
       FROM break_glass_requests WHERE id = ? AND organization_id = ? AND facility_id = ?`).bind(requestId, facility.organization_id, authorization.facilityId).first<{ id: string; requested_by: string; target_type: string; target_id: string; reason: string; duration_minutes: number; status: string; version: number }>();
     if (!current) throw new SecurityError("BREAK_GLASS_REQUEST_NOT_FOUND", 404);
+    if (action === "APPROVE" && current.requested_by === authorization.userId) throw new SecurityError("BREAK_GLASS_SELF_APPROVAL_FORBIDDEN", 403);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_BREAK_GLASS_REQUEST", 409);
     const expectedStatus = action === "APPROVE" || action === "DENY" ? "PENDING" : "APPROVED";
     if (current.status !== expectedStatus) throw new SecurityError("BREAK_GLASS_INVALID_TRANSITION", 409);

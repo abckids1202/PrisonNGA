@@ -3,7 +3,7 @@ import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../lib/server/idempotency";
 import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 
-const targetTypes = new Set(["evidence_document", "visit_session", "appointment"]);
+const targetTypes = new Set(["evidence_document", "recording", "visit_session", "appointment"]);
 
 export async function GET() {
   const context = await getRequestContext();
@@ -41,6 +41,8 @@ export async function POST(request: Request) {
     if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const target = targetType === "evidence_document"
       ? await d1.prepare("SELECT ed.id FROM evidence_documents ed INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id WHERE ed.id = ? AND ed.facility_id = ? AND ed.status = 'AVAILABLE'").bind(targetId, authorization.facilityId).first()
+      : targetType === "recording"
+        ? await d1.prepare("SELECT id FROM recordings WHERE id = ? AND facility_id = ? AND organization_id = (SELECT organization_id FROM facilities WHERE id = ?) AND status = 'AVAILABLE'").bind(targetId, authorization.facilityId, authorization.facilityId).first()
       : targetType === "visit_session"
         ? await d1.prepare("SELECT id FROM visit_sessions WHERE id = ? AND facility_id = ?").bind(targetId, authorization.facilityId).first()
         : await d1.prepare("SELECT id FROM appointments WHERE id = ? AND facility_id = ?").bind(targetId, authorization.facilityId).first();
