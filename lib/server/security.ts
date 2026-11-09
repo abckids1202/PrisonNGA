@@ -171,19 +171,38 @@ export async function requireOrganizationPermission(permissionKey: string): Prom
   const [profile] = await db.select({ facilityId: staffProfiles.facilityId }).from(staffProfiles).where(eq(staffProfiles.userId, user.id)).limit(1);
   const d1 = await getD1();
   const selectedFacilityId = (await cookies()).get("securevisit_facility_context")?.value?.trim() || "";
-  const facilityId = await resolveFacilityScope(d1, user.id, undefined, selectedFacilityId, profile?.facilityId);
-  if (!facilityId) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
-  const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(facilityId).first<{ organization_id: string | null }>();
-  if (!facility?.organization_id) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
+  let facilityId = await resolveFacilityScope(d1, user.id, undefined, selectedFacilityId, profile?.facilityId);
+  let organizationId: string | null = null;
+  if (facilityId) {
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(facilityId).first<{ organization_id: string | null }>();
+    organizationId = facility?.organization_id || null;
+  }
+  // Organization owners/administrators may intentionally have no facility
+  // membership while retaining organization-wide administration. Resolve
+  // that case from the organization role itself, but fail closed when the
+  // account spans multiple organizations and no context was selected.
+  if (!organizationId) {
+    const organizationRows = await d1.prepare(`SELECT ora.organization_id, MIN(f.id) AS facility_id
+      FROM organization_role_assignments ora
+      INNER JOIN roles r ON r.id = ora.role_id
+      INNER JOIN role_permissions rp ON rp.role_id = r.id
+      INNER JOIN permissions p ON p.id = rp.permission_id AND p.permission_key = ?
+      LEFT JOIN facilities f ON f.organization_id = ora.organization_id AND f.status = 'ACTIVE'
+      WHERE ora.user_id = ? AND ora.status = 'ACTIVE'
+      GROUP BY ora.organization_id`).bind(permissionKey, user.id).all<{ organization_id: string; facility_id: string | null }>();
+    if (organizationRows.results.length !== 1 || !organizationRows.results[0].facility_id) throw new SecurityError(organizationRows.results.length > 1 ? "ORGANIZATION_CONTEXT_REQUIRED" : "FACILITY_SCOPE_DENIED", 403);
+    organizationId = organizationRows.results[0].organization_id;
+    facilityId = organizationRows.results[0].facility_id;
+  }
   const roles = await d1.prepare(`SELECT r.name AS role_name
     FROM organization_role_assignments ora
     INNER JOIN roles r ON r.id = ora.role_id
     INNER JOIN role_permissions rp ON rp.role_id = r.id
     INNER JOIN permissions p ON p.id = rp.permission_id
     WHERE ora.user_id = ? AND ora.organization_id = ? AND ora.status = 'ACTIVE'
-      AND p.permission_key = ? LIMIT 25`).bind(user.id, facility.organization_id, permissionKey).all<{ role_name: string }>();
+      AND p.permission_key = ? LIMIT 25`).bind(user.id, organizationId, permissionKey).all<{ role_name: string }>();
   if (!roles.results.length) throw new SecurityError("PERMISSION_DENIED", 403);
-  return { userId: user.id, organizationId: facility.organization_id, facilityId, roles: [...new Set(roles.results.map((row) => row.role_name))], permissions: [permissionKey], displayName: user.displayName };
+  return { userId: user.id, organizationId, facilityId, roles: [...new Set(roles.results.map((row) => row.role_name))], permissions: [permissionKey], displayName: user.displayName };
 }
 
 export function assertReason(reason: unknown): string {

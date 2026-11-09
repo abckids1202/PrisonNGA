@@ -101,3 +101,10 @@ test("staff directory and access review hide revoked modern assignments", async 
     assert.match(source, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments sfa2/);
   }
 });
+
+test("organization authorization can resolve an owner without facility membership", async () => {
+  const security = await readFile(new URL("../lib/server/security.ts", import.meta.url), "utf8");
+  assert.match(security, /Organization owners\/administrators may intentionally have no facility[\s\S]*membership/);
+  assert.match(security, /ORGANIZATION_CONTEXT_REQUIRED/);
+  assert.match(security, /MIN\(f\.id\) AS facility_id/);
+});
