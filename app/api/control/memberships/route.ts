@@ -131,10 +131,20 @@ export async function PATCH(request: Request) {
         AND role_id IN (SELECT id FROM roles WHERE name = ?)
         AND NOT EXISTS (SELECT 1 FROM organization_memberships WHERE user_id = ? AND facility_id = ? AND role = ? AND status = 'ACTIVE' AND id <> ?)`)
         .bind(current.user_id, current.facility_id, current.role, current.user_id, current.facility_id, current.role, current.id),
+      // A facility membership can be revoked while the staff member remains
+      // authorized elsewhere. Revoke sessions only when this was the user's
+      // last organization-level access, so a valid multi-facility session is
+      // not destroyed unnecessarily while a fully deprovisioned account is
+      // invalidated immediately.
+      d1.prepare(`UPDATE auth_sessions SET revoked_at = ?
+        WHERE user_id = ? AND revoked_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM organization_memberships WHERE user_id = ? AND status = 'ACTIVE')
+          AND NOT EXISTS (SELECT 1 FROM organization_role_assignments WHERE user_id = ? AND status = 'ACTIVE')`)
+        .bind(now, current.user_id, current.user_id, current.user_id),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: current.facility_id, actionType: "STAFF_MEMBERSHIP_REVOKED", entityType: "organization_membership", entityId: current.id, reason, oldValues: { status: current.status, role: current.role }, newValues: responseBody, requestId: context.requestId, correlationId, eventType: "STAFF_MEMBERSHIP_REVOKED", payload: { membershipId: current.id, userId: current.user_id, facilityId: current.facility_id } }, guard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard }),
     ]);
-    if (!results[0]?.meta.changes || !results[1] || !results.slice(3).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("MEMBERSHIP_REVOKE_FAILED", 409);
+    if (!results[0]?.meta.changes || !results[1] || !results[2] || !results.slice(4).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("MEMBERSHIP_REVOKE_FAILED", 409);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {
