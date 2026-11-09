@@ -130,12 +130,35 @@ async function reconcileTenantIntegrity(env: Env): Promise<void> {
     GROUP BY f.id, f.organization_id
     HAVING mismatch_count > 0
     LIMIT 50
-  `)));
+  `)).concat([
+    // Ledger entries inherit facility scope through their credit account.
+    env.DB.prepare(`
+      SELECT ca.facility_id, ca.organization_id, COUNT(cl.rowid) AS mismatch_count
+      FROM credit_accounts ca
+      INNER JOIN credit_ledger_entries cl ON cl.credit_account_id = ca.id
+      WHERE cl.organization_id IS NULL OR cl.organization_id <> ca.organization_id
+      GROUP BY ca.facility_id, ca.organization_id
+      HAVING mismatch_count > 0
+      LIMIT 50
+    `),
+    // Incident history inherits facility scope through its incident case.
+    env.DB.prepare(`
+      SELECT i.facility_id, i.organization_id, COUNT(ie.rowid) AS mismatch_count
+      FROM incidents i
+      INNER JOIN incident_events ie ON ie.incident_id = i.id
+      WHERE ie.organization_id IS NULL OR ie.organization_id <> i.organization_id
+      GROUP BY i.facility_id, i.organization_id
+      HAVING mismatch_count > 0
+      LIMIT 50
+    `),
+  ]));
   const now = new Date().toISOString();
   const correlationId = crypto.randomUUID();
   const statements: D1PreparedStatement[] = [];
   checks.forEach((result, index) => {
-    const table = tenantScopedFacilityTables[index];
+    const table = index < tenantScopedFacilityTables.length
+      ? tenantScopedFacilityTables[index]
+      : index === tenantScopedFacilityTables.length ? "credit_ledger_entries" : "incident_events";
     for (const issue of (result.results as TenantIntegrityIssue[])) {
       const metadata = JSON.stringify({ source: "SECUREVISIT_TENANT_INTEGRITY_RECONCILIATION", table, mismatchCount: Number(issue.mismatch_count), requiresStaffReview: true });
       statements.push(env.DB.prepare(`
