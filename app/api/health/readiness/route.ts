@@ -186,9 +186,15 @@ export async function GET() {
     const staffIdentity = String(staffAuthProvider || "").toLowerCase() === "both" && oidcReady && samlReady;
     const configuredNotificationEmailDelivery = (configuredString("NOTIFICATION_EMAIL_DELIVERY") || configuredString("NOTIFICATION_DELIVERY") || "").toLowerCase();
     const configuredNotificationSmsDelivery = (configuredString("NOTIFICATION_SMS_DELIVERY") || configuredString("NOTIFICATION_DELIVERY") || "").toLowerCase();
-    const notifications = deliveryConfigured(configuredNotificationEmailDelivery, "EMAIL", configuredString("NOTIFICATION_WEBHOOK_URL") || notificationWebhookUrl, configuredString("NOTIFICATION_WEBHOOK_SECRET") || notificationWebhookSecret)
-      && deliveryConfigured(configuredNotificationSmsDelivery, "SMS", configuredString("NOTIFICATION_WEBHOOK_URL") || notificationWebhookUrl, configuredString("NOTIFICATION_WEBHOOK_SECRET") || notificationWebhookSecret)
-      && (configuredNotificationEmailDelivery !== "webhook" && configuredNotificationSmsDelivery !== "webhook" || Boolean(notificationWebhookUrl) && Boolean(notificationWebhookSecret));
+    const notificationEmailConfigured = configuredNotificationEmailDelivery
+      ? deliveryConfigured(configuredNotificationEmailDelivery, "EMAIL", configuredString("NOTIFICATION_WEBHOOK_URL") || notificationWebhookUrl, configuredString("NOTIFICATION_WEBHOOK_SECRET") || notificationWebhookSecret)
+      : false;
+    const notificationSmsConfigured = configuredNotificationSmsDelivery
+      ? deliveryConfigured(configuredNotificationSmsDelivery, "SMS", configuredString("NOTIFICATION_WEBHOOK_URL") || notificationWebhookUrl, configuredString("NOTIFICATION_WEBHOOK_SECRET") || notificationWebhookSecret)
+      : false;
+    const notifications = (notificationEmailConfigured || notificationSmsConfigured)
+      && (!configuredNotificationEmailDelivery || notificationEmailConfigured)
+      && (!configuredNotificationSmsDelivery || notificationSmsConfigured);
     const providerConfiguration = {
       payment: Boolean(paymentProvider),
       tariff: tariffConfigured,
