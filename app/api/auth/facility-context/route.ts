@@ -14,7 +14,8 @@ export async function GET() {
     const d1 = await getD1();
     const facilities = await d1.prepare(`SELECT f.id, f.name, f.timezone, f.current_state, f.version
       FROM facilities f WHERE EXISTS (SELECT 1 FROM staff_facility_assignments sfa WHERE sfa.user_id = ? AND sfa.facility_id = f.id AND sfa.status = 'ACTIVE')
-      OR EXISTS (SELECT 1 FROM staff_profiles sp WHERE sp.user_id = ? AND sp.facility_id = f.id) ORDER BY f.name`).bind(authorization.userId, authorization.userId).all();
+      OR EXISTS (SELECT 1 FROM staff_profiles sp WHERE sp.user_id = ? AND sp.facility_id = f.id
+        AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = ?)) ORDER BY f.name`).bind(authorization.userId, authorization.userId, authorization.userId).all();
     return securityResponse({ selectedFacilityId: authorization.facilityId, facilities: facilities.results }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }

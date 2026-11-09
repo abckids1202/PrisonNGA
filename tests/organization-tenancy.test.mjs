@@ -59,3 +59,10 @@ test("last organization role revocation invalidates the target's active sessions
   assert.match(source, /NOT EXISTS \(SELECT 1 FROM organization_memberships WHERE user_id = \? AND status = 'ACTIVE'\)/);
   assert.match(source, /NOT EXISTS \(SELECT 1 FROM organization_role_assignments WHERE user_id = \? AND status = 'ACTIVE'\)/);
 });
+
+test("legacy staff profiles cannot bypass modern assignment revocation", async () => {
+  const security = await readFile(new URL("../lib/server/security.ts", import.meta.url), "utf8");
+  const context = await readFile(new URL("../app/api/auth/facility-context/route.ts", import.meta.url), "utf8");
+  assert.match(security, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments WHERE user_id = \?\)/);
+  assert.match(context, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2\.user_id = \?\)/);
+});
