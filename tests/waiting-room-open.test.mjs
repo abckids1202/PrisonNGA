@@ -22,7 +22,7 @@ function createDatabase() {
   sqlite.exec(`
     CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
     CREATE TABLE waiting_room_sessions (
-      appointment_id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, state TEXT NOT NULL,
+      appointment_id TEXT PRIMARY KEY, organization_id TEXT, facility_id TEXT NOT NULL, state TEXT NOT NULL,
       visitor_presence TEXT NOT NULL, prisoner_presence TEXT NOT NULL,
       identity_state TEXT NOT NULL, camera_state TEXT NOT NULL, microphone_state TEXT NOT NULL,
       network_state TEXT NOT NULL, room_state TEXT NOT NULL, kiosk_state TEXT NOT NULL,
@@ -42,6 +42,7 @@ function createDatabase() {
       id TEXT, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT,
       payload TEXT, correlation_id TEXT, created_at TEXT
     );
+    INSERT INTO facilities (id, organization_id) VALUES ('facility-1', 'org-1');
   `);
   return sqlite;
 }
@@ -72,7 +73,7 @@ test("scheduled Waiting Room opening materializes one assigned, audited record",
 
   const first = await executeBatch(sqlite, openScheduledWaitingRoomStatements(d1, input));
   assert.equal(first.every((result) => result.meta.changes === 1), true);
-  assert.deepEqual({ ...sqlite.prepare("SELECT state, assigned_room_id, assigned_kiosk_id FROM waiting_room_sessions").get() }, { state: "NOT_ARRIVED", assigned_room_id: "room-1", assigned_kiosk_id: "kiosk-1" });
+  assert.deepEqual({ ...sqlite.prepare("SELECT organization_id, state, assigned_room_id, assigned_kiosk_id FROM waiting_room_sessions").get() }, { organization_id: "org-1", state: "NOT_ARRIVED", assigned_room_id: "room-1", assigned_kiosk_id: "kiosk-1" });
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action_type = 'WAITING_ROOM_OPENED'").get().count, 1);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events WHERE event_type = 'WAITING_ROOM_OPENED'").get().count, 1);
 

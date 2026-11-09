@@ -14,11 +14,11 @@ export type ScheduledWaitingRoomOpenInput = {
 export function openScheduledWaitingRoomStatements(d1: D1Database, input: ScheduledWaitingRoomOpenInput): D1PreparedStatement[] {
   return [
     d1.prepare(`INSERT INTO waiting_room_sessions
-      (appointment_id, facility_id, state, visitor_presence, prisoner_presence,
+      (appointment_id, organization_id, facility_id, state, visitor_presence, prisoner_presence,
        identity_state, camera_state, microphone_state, network_state, room_state,
        kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id,
        version, last_checked_at, created_at, updated_at)
-      SELECT ?, ?, 'NOT_ARRIVED', 'absent', 'waiting', 'pending', 'pending',
+      SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, 'NOT_ARRIVED', 'absent', 'waiting', 'pending', 'pending',
         'pending', 'pending', 'pass', 'pending', 'pass',
         (SELECT rr.resource_id FROM resource_reservations rr
           WHERE rr.appointment_id = ? AND rr.facility_id = ?
@@ -33,7 +33,7 @@ export function openScheduledWaitingRoomStatements(d1: D1Database, input: Schedu
         SELECT 1 FROM waiting_room_sessions
         WHERE appointment_id = ? AND facility_id = ?
       )`)
-      .bind(input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.now, input.now, input.now, input.appointmentId, input.facilityId),
+      .bind(input.appointmentId, input.facilityId, input.facilityId, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.now, input.now, input.now, input.appointmentId, input.facilityId),
     ...auditAndOutboxStatements(d1, {
       actorUserId: "system:scheduler",
       actorRole: "SYSTEM",

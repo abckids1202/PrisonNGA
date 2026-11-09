@@ -515,6 +515,7 @@ export const kioskCredentials = sqliteTable("kiosk_credentials", {
 
 export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   appointmentId: text("appointment_id").primaryKey().references(() => appointments.id),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   state: text("state").notNull().default("NOT_ARRIVED"),
   visitorPresence: text("visitor_presence").notNull().default("absent"),
@@ -534,7 +535,7 @@ export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   version: integer("version").notNull().default(1),
   lastCheckedAt: text("last_checked_at"),
   ...timestamps,
-}, (table) => ({ facilityStateIdx: index("waiting_room_sessions_facility_state_idx").on(table.facilityId, table.state), facilityAppointmentIdx: index("waiting_room_sessions_facility_appointment_idx").on(table.facilityId, table.appointmentId) }));
+}, (table) => ({ facilityStateIdx: index("waiting_room_sessions_facility_state_idx").on(table.facilityId, table.state), organizationStateIdx: index("waiting_room_sessions_organization_state_idx").on(table.organizationId, table.facilityId, table.state), facilityAppointmentIdx: index("waiting_room_sessions_facility_appointment_idx").on(table.facilityId, table.appointmentId) }));
 
 export const visitorWaitingRoomCheckins = sqliteTable("visitor_waiting_room_checkins", {
   id: text("id").primaryKey(),
