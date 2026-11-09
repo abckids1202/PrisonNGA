@@ -49,8 +49,9 @@ export async function POST(request: Request) {
     if (appointmentId && !appointment) throw new SecurityError("SUPPORT_APPOINTMENT_NOT_FOUND", 404);
     const facilityId = appointment?.facility_id || requestedFacilityId;
     if (!facilityId) throw new SecurityError("SUPPORT_FACILITY_REQUIRED", 400);
-    const facility = await d1.prepare("SELECT f.id, f.current_state FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(facilityId).first<{ id: string; current_state: string }>();
+    const facility = await d1.prepare("SELECT f.id, f.organization_id, f.current_state FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(facilityId).first<{ id: string; organization_id: string | null; current_state: string }>();
     if (!facility) throw new SecurityError("SUPPORT_FACILITY_NOT_FOUND", 404);
+    if (!facility.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     // A visitor may still contact the facility about an existing appointment
     // during a closure, but a free-floating support case must target a
     // facility currently accepting visitor traffic. This prevents direct API
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
     const salt = await getSecuritySalt();
     const idempotencyKeyHash = await hashIdentifier(`visitor-support:${visitor.userId}:${idempotencyKey}`, salt);
     const requestHash = await hashIdempotencyPayload(payload);
-    const existing = await d1.prepare("SELECT id, status, version, request_hash FROM incidents WHERE reporter_user_id = ? AND incident_type = 'VISITOR_SUPPORT' AND idempotency_key = ?").bind(visitor.userId, idempotencyKeyHash).first<{ id: string; status: string; version: number; request_hash: string }>();
+    const existing = await d1.prepare("SELECT id, status, version, request_hash FROM incidents WHERE organization_id = ? AND facility_id = ? AND reporter_user_id = ? AND incident_type = 'VISITOR_SUPPORT' AND idempotency_key = ?").bind(facility.organization_id, facilityId, visitor.userId, idempotencyKeyHash).first<{ id: string; status: string; version: number; request_hash: string }>();
     if (existing) {
       if (existing.request_hash !== requestHash) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
       return securityResponse({ caseId: existing.id, status: existing.status, version: existing.version, idempotent: true }, 200, context.requestId);
@@ -85,6 +86,7 @@ export async function POST(request: Request) {
     };
     const results = await d1.batch(createIncidentStatements(d1, {
         id,
+        organizationId: facility.organization_id,
         facilityId,
         incidentType: "VISITOR_SUPPORT",
         severity,

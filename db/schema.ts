@@ -740,6 +740,7 @@ export const notifications = sqliteTable("notifications", {
 
 export const incidents = sqliteTable("incidents", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   incidentType: text("incident_type").notNull(),
   severity: text("severity", { enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] }).notNull(),
@@ -755,14 +756,15 @@ export const incidents = sqliteTable("incidents", {
   resolution: text("resolution"),
   version: integer("version").notNull().default(1),
   ...timestamps,
-}, (table) => ({ facilityStatusIdx: index("incidents_facility_status_idx").on(table.facilityId, table.status, table.createdAt), appointmentIdx: index("incidents_appointment_idx").on(table.appointmentId), severityIdx: index("incidents_severity_idx").on(table.facilityId, table.severity), sourceSecurityEventIdx: uniqueIndex("incidents_source_security_event_idx").on(table.sourceSecurityEventId) }));
+}, (table) => ({ facilityStatusIdx: index("incidents_facility_status_idx").on(table.organizationId, table.facilityId, table.status, table.createdAt), appointmentIdx: index("incidents_appointment_idx").on(table.appointmentId), severityIdx: index("incidents_severity_idx").on(table.organizationId, table.facilityId, table.severity), sourceSecurityEventIdx: uniqueIndex("incidents_source_security_event_idx").on(table.sourceSecurityEventId) }));
 
 export const incidentEvents = sqliteTable("incident_events", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
   incidentId: text("incident_id").notNull().references(() => incidents.id),
   eventType: text("event_type").notNull(),
   actorUserId: text("actor_user_id").notNull().references(() => users.id),
   details: text("details").notNull(),
   correlationId: text("correlation_id").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ incidentIdx: index("incident_events_incident_idx").on(table.incidentId, table.createdAt) }));
+}, (table) => ({ incidentIdx: index("incident_events_incident_idx").on(table.organizationId, table.incidentId, table.createdAt) }));

@@ -11,9 +11,11 @@ export async function GET(request: Request) {
     const authorization = await requirePermission("incident.read");
     const status = new URL(request.url).searchParams.get("status")?.trim();
     const d1 = await getD1();
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const result = status
-      ? await d1.prepare(`SELECT i.*, reporter.display_name AS reporter_name, reporter.user_type AS reporter_type, assignee.display_name AS assignee_name FROM incidents i LEFT JOIN users reporter ON reporter.id = i.reporter_user_id LEFT JOIN users assignee ON assignee.id = i.assigned_user_id AND assignee.user_type = 'STAFF' WHERE i.facility_id = ? AND i.status = ? ORDER BY i.created_at DESC`).bind(authorization.facilityId, status).all()
-      : await d1.prepare(`SELECT i.*, reporter.display_name AS reporter_name, reporter.user_type AS reporter_type, assignee.display_name AS assignee_name FROM incidents i LEFT JOIN users reporter ON reporter.id = i.reporter_user_id LEFT JOIN users assignee ON assignee.id = i.assigned_user_id AND assignee.user_type = 'STAFF' WHERE i.facility_id = ? ORDER BY i.created_at DESC`).bind(authorization.facilityId).all();
+      ? await d1.prepare(`SELECT i.*, reporter.display_name AS reporter_name, reporter.user_type AS reporter_type, assignee.display_name AS assignee_name FROM incidents i LEFT JOIN users reporter ON reporter.id = i.reporter_user_id LEFT JOIN users assignee ON assignee.id = i.assigned_user_id AND assignee.user_type = 'STAFF' WHERE i.organization_id = ? AND i.facility_id = ? AND i.status = ? ORDER BY i.created_at DESC`).bind(facility.organization_id, authorization.facilityId, status).all()
+      : await d1.prepare(`SELECT i.*, reporter.display_name AS reporter_name, reporter.user_type AS reporter_type, assignee.display_name AS assignee_name FROM incidents i LEFT JOIN users reporter ON reporter.id = i.reporter_user_id LEFT JOIN users assignee ON assignee.id = i.assigned_user_id AND assignee.user_type = 'STAFF' WHERE i.organization_id = ? AND i.facility_id = ? ORDER BY i.created_at DESC`).bind(facility.organization_id, authorization.facilityId).all();
     return securityResponse({ incidents: result.results, facilityId: authorization.facilityId }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
@@ -28,6 +30,8 @@ export async function POST(request: Request) {
     const command = body.command as typeof commands[number] | undefined;
     const d1 = await getD1();
     database = d1;
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
     if (!body.incidentId) {
@@ -53,17 +57,17 @@ export async function POST(request: Request) {
       if (resourceId && !resource) throw new SecurityError("INCIDENT_RESOURCE_NOT_FOUND", 404);
       if (sourceSecurityEventId && (!sourceSecurityEvent || sourceSecurityEvent.severity !== "CRITICAL")) throw new SecurityError("INCIDENT_SECURITY_EVENT_NOT_FOUND", 404);
       const salt = await getSecuritySalt();
-      const idempotencyKeyHash = await hashIdentifier(`incident-create:${authorization.facilityId}:${authorization.userId}:${idempotencyKey}`, salt);
+      const idempotencyKeyHash = await hashIdentifier(`incident-create:${facility.organization_id}:${authorization.facilityId}:${authorization.userId}:${idempotencyKey}`, salt);
       const requestHash = await hashIdentifier(JSON.stringify({ incidentType, severity: body.severity, title, description, appointmentId, sessionId, resourceId, sourceSecurityEventId }), salt);
       const id = `INC-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
       const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: "INCIDENT_CREATED", entityType: "incident", entityId: id, reason: description, newValues: { incidentType, severity: body.severity, title, appointmentId, sessionId, resourceId, sourceSecurityEventId }, requestId: context.requestId, correlationId, eventType: "INCIDENT_CREATED", payload: { incidentId: id, severity: body.severity, sourceSecurityEventId } };
-      const results = await d1.batch(createIncidentStatements(d1, { id, facilityId: authorization.facilityId, incidentType, severity: String(body.severity), title, description, appointmentId, sessionId, resourceId, sourceSecurityEventId, reporterUserId: authorization.userId, idempotencyKey: idempotencyKeyHash, requestHash, now, correlationId }, event));
+      const results = await d1.batch(createIncidentStatements(d1, { id, organizationId: facility.organization_id, facilityId: authorization.facilityId, incidentType, severity: String(body.severity), title, description, appointmentId, sessionId, resourceId, sourceSecurityEventId, reporterUserId: authorization.userId, idempotencyKey: idempotencyKeyHash, requestHash, now, correlationId }, event));
       if (!results[0]?.meta.changes) {
         if (sourceSecurityEventId) {
-          const linked = await d1.prepare("SELECT id, status, version FROM incidents WHERE facility_id = ? AND source_security_event_id = ?").bind(authorization.facilityId, sourceSecurityEventId).first<{ id: string; status: string; version: number }>();
+          const linked = await d1.prepare("SELECT id, status, version FROM incidents WHERE organization_id = ? AND facility_id = ? AND source_security_event_id = ?").bind(facility.organization_id, authorization.facilityId, sourceSecurityEventId).first<{ id: string; status: string; version: number }>();
           if (linked) return securityResponse({ incidentId: linked.id, status: linked.status, version: linked.version, idempotent: true }, 200, context.requestId);
         }
-        const existing = await d1.prepare("SELECT id, status, version, request_hash FROM incidents WHERE facility_id = ? AND reporter_user_id = ? AND idempotency_key = ?").bind(authorization.facilityId, authorization.userId, idempotencyKeyHash).first<{ id: string; status: string; version: number; request_hash: string }>();
+        const existing = await d1.prepare("SELECT id, status, version, request_hash FROM incidents WHERE organization_id = ? AND facility_id = ? AND reporter_user_id = ? AND idempotency_key = ?").bind(facility.organization_id, authorization.facilityId, authorization.userId, idempotencyKeyHash).first<{ id: string; status: string; version: number; request_hash: string }>();
         if (!existing) throw new SecurityError("INCIDENT_CREATE_CONFLICT", 409);
         if (existing.request_hash !== requestHash) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
         return securityResponse({ incidentId: existing.id, status: existing.status, version: existing.version, idempotent: true }, 200, context.requestId);
@@ -72,7 +76,7 @@ export async function POST(request: Request) {
       return securityResponse({ incidentId: id, status: "OPEN", version: 1, correlationId }, 201, context.requestId);
     }
     if (!command || !commands.includes(command)) throw new SecurityError("INVALID_INCIDENT_COMMAND", 400);
-    const incident = await d1.prepare("SELECT id, status, version, assigned_user_id FROM incidents WHERE id = ? AND facility_id = ?").bind(String(body.incidentId).trim(), authorization.facilityId).first<{ id: string; status: string; version: number; assigned_user_id: string | null }>();
+    const incident = await d1.prepare("SELECT id, status, version, assigned_user_id FROM incidents WHERE id = ? AND organization_id = ? AND facility_id = ?").bind(String(body.incidentId).trim(), facility.organization_id, authorization.facilityId).first<{ id: string; status: string; version: number; assigned_user_id: string | null }>();
     if (!incident) throw new SecurityError("INCIDENT_NOT_FOUND", 404);
     if (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 1) throw new SecurityError("EXPECTED_VERSION_REQUIRED", 400);
     const reason = assertReason(body.reason);
@@ -103,7 +107,7 @@ export async function POST(request: Request) {
     if (!details) throw new SecurityError("INCIDENT_DETAILS_REQUIRED", 400);
     const responseBody = { incidentId: incident.id, status: nextStatus, assignedUserId: nextAssignee, version: incident.version + 1, correlationId };
     const results = await d1.batch([
-      ...transitionIncidentStatements(d1, { incidentId: incident.id, facilityId: authorization.facilityId, expectedVersion: incident.version, nextStatus, nextAssignee, resolution, actorUserId: authorization.userId, command, details, now, correlationId }, event),
+      ...transitionIncidentStatements(d1, { incidentId: incident.id, organizationId: facility.organization_id, facilityId: authorization.facilityId, expectedVersion: incident.version, nextStatus, nextAssignee, resolution, actorUserId: authorization.userId, command, details, now, correlationId }, event),
       completeIdempotencyStatement(d1, { ...transitionClaim, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM incidents WHERE id = ? AND facility_id = ? AND version = ?)", values: [incident.id, authorization.facilityId, incident.version + 1] } }),
     ]);
     if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("STALE_INCIDENT", 409);
