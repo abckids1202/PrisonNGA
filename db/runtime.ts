@@ -21,3 +21,19 @@ export async function getRecordingBucket(): Promise<R2Bucket | null> {
     return null;
   }
 }
+
+/**
+ * Returns the bound notification queue, not merely its configured name.
+ * Environment variables can survive a broken deployment manifest, so
+ * readiness must verify the actual Cloudflare binding before declaring the
+ * queue dependency available.
+ */
+export async function getNotificationQueue(): Promise<{ send(message: unknown): Promise<void> } | null> {
+  try {
+    const { env } = await import("cloudflare:workers");
+    const queue = (env as unknown as { NOTIFICATION_QUEUE?: { send(message: unknown): Promise<void> } }).NOTIFICATION_QUEUE;
+    return queue || null;
+  } catch {
+    return null;
+  }
+}

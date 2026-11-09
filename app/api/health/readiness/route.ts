@@ -1,4 +1,4 @@
-import { getD1 } from "../../../../db/runtime";
+import { getD1, getNotificationQueue } from "../../../../db/runtime";
 import { getEvidenceBucket, getRecordingBucket } from "../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, requirePermission, securityErrorResponse, securityResponse } from "../../../../lib/server/security";
 import { validateEnvironment } from "../../../../lib/server/config";
@@ -115,13 +115,14 @@ export async function GET() {
       for (const column of columns) if (!available.has(column)) missingColumns.push(`${table}.${column}`);
     }
     const schemaReady = missingTables.length === 0 && missingColumns.length === 0;
-    const [paymentProvider, videoConfig, notificationEmailDelivery, notificationSmsDelivery, evidenceBucket, recordingsBucket, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, , visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
+    const [paymentProvider, videoConfig, notificationEmailDelivery, notificationSmsDelivery, evidenceBucket, recordingsBucket, notificationQueue, evidenceStorageProvider, notificationWebhookUrl, notificationWebhookSecret, , visitorAuthWebhookUrl, visitorAuthWebhookSecret, evidenceScanProvider, evidenceScanWebhookUrl, evidenceScanWebhookSecret, paymentWebhookSecret, staffAuthProvider, staffOidcIssuer, staffOidcClientId, staffOidcClientSecret, staffOidcRedirectUri, staffSamlEntityId, staffSamlMetadataUrl, staffSamlEntryPoint, staffSamlIdpCert, staffSamlCallbackUri, tariffRow, ...configurationValues] = await Promise.all([
       getPaymentProvider(),
       getVideoConfig(),
       readConfiguredNotificationDelivery("EMAIL"),
       readConfiguredNotificationDelivery("SMS"),
       getEvidenceBucket(),
       getRecordingBucket(),
+      getNotificationQueue(),
       getRuntimeValue("EVIDENCE_STORAGE_PROVIDER"),
       getRuntimeValue("NOTIFICATION_WEBHOOK_URL"),
       getRuntimeValue("NOTIFICATION_WEBHOOK_SECRET"),
@@ -199,7 +200,7 @@ export async function GET() {
       visitorAuthChannels: visitorAuthChannels.valid && visitorAuthChannels.channels.length > 0,
       staffIdentity,
       notifications,
-      notificationQueue: environment === "development" || Boolean(configuredString("NOTIFICATION_QUEUE_NAME")),
+      notificationQueue: environment === "development" || Boolean(configuredString("NOTIFICATION_QUEUE_NAME")) && Boolean(notificationQueue),
     };
     // Expose adapter identities, never credentials, so operators can tell
     // whether readiness is evaluating the intended provider in a deployment.
