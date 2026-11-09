@@ -21,6 +21,16 @@ test("cross-origin cookie mutations are rejected", () => {
   assert.equal(isSameOriginMutation(input), false);
 });
 
+test("configured public frontend origin is accepted for a same-site Vercel proxy", () => {
+  const input = request({ cookie: "securevisit_session=session-token", origin: "https://visitor.securevisit.example" });
+  assert.equal(isSameOriginMutation(input, "https://visitor.securevisit.example"), true);
+});
+
+test("invalid configured public origin cannot expand the allow-list", () => {
+  const input = request({ cookie: "securevisit_session=session-token", origin: "https://attacker.example" });
+  assert.equal(isSameOriginMutation(input, "not-a-url"), false);
+});
+
 test("same-origin referer is accepted when Origin is absent", () => {
   const input = request({ cookie: "securevisit_session=session-token", referer: "https://securevisit.example/visitor/visits/visit-1" });
   assert.equal(isSameOriginMutation(input), true);

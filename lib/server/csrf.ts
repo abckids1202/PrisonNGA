@@ -21,14 +21,26 @@ export function isCookieAuthenticatedMutation(request: Request): boolean {
   return hasCookie(cookie, "securevisit_session") || hasCookie(cookie, "securevisit_staff_session");
 }
 
-export function isSameOriginMutation(request: Request): boolean {
+export function isSameOriginMutation(request: Request, configuredPublicOrigin?: string): boolean {
   if (!isCookieAuthenticatedMutation(request)) return true;
   const url = new URL(request.url);
+  const allowedOrigins = new Set([url.origin]);
+  if (configuredPublicOrigin) {
+    try {
+      const publicUrl = new URL(configuredPublicOrigin);
+      if (publicUrl.protocol === "https:" || (publicUrl.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(publicUrl.hostname))) {
+        allowedOrigins.add(publicUrl.origin);
+      }
+    } catch {
+      // Invalid deployment configuration is handled by the environment
+      // validator; it must never expand the CSRF allow-list.
+    }
+  }
   const origin = request.headers.get("origin")?.trim();
-  if (origin && origin !== "null") return origin === url.origin;
+  if (origin && origin !== "null") return allowedOrigins.has(origin);
   const referer = request.headers.get("referer")?.trim();
   if (referer) {
-    try { return new URL(referer).origin === url.origin; }
+    try { return allowedOrigins.has(new URL(referer).origin); }
     catch { return false; }
   }
   return false;
