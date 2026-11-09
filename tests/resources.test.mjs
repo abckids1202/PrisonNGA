@@ -20,12 +20,13 @@ class SQLiteD1 {
   constructor() {
     this.sqlite.exec(`
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
-      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY', last_heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY', last_heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP, organization_id TEXT);
       CREATE TABLE resource_reservations (
         id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL,
         resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, status TEXT NOT NULL,
-        starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, created_at TEXT NOT NULL
+        starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, created_at TEXT NOT NULL, organization_id TEXT
       );
+      INSERT INTO facilities VALUES ('facility-1', 'org-1');
     `);
   }
   prepare(sql) { return new SQLiteD1Statement(this, sql); }
@@ -58,6 +59,7 @@ test("resource selection and room/device reservations are atomic and idempotent"
     assert.equal(first.roomId, "room-1");
     assert.equal(first.deviceId, "device-1");
     assert.equal(first.created, true);
+    assert.equal(d1.sqlite.prepare("SELECT organization_id FROM resource_reservations WHERE appointment_id = 'visit-1' AND resource_type = 'ROOM'").get().organization_id, "org-1");
 
     const replay = await allocateVisitResources(d1, visit);
     assert.equal(replay.roomId, first.roomId);
@@ -105,8 +107,8 @@ test("resource allocation skips conflicting resources and uses another available
 test("resource allocation fails closed when a room or kiosk is unhealthy", async () => {
   const d1 = new SQLiteD1();
   try {
-    d1.sqlite.prepare("INSERT INTO resources VALUES ('room-1', 'facility-1', 'ROOM', 'Room 01', 'AVAILABLE', 'FAILED', CURRENT_TIMESTAMP)").run();
-    d1.sqlite.prepare("INSERT INTO resources VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE', 'HEALTHY', CURRENT_TIMESTAMP)").run();
+    d1.sqlite.prepare("INSERT INTO resources VALUES ('room-1', 'facility-1', 'ROOM', 'Room 01', 'AVAILABLE', 'FAILED', CURRENT_TIMESTAMP, NULL)").run();
+    d1.sqlite.prepare("INSERT INTO resources VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE', 'HEALTHY', CURRENT_TIMESTAMP, NULL)").run();
     await assert.rejects(allocateVisitResources(d1, { facilityId: "facility-1", appointmentId: "visit-1", startsAt: "2026-10-01T09:00:00.000Z", endsAt: "2026-10-01T09:30:00.000Z" }), /RESOURCES_UNAVAILABLE|RESOURCE_RESERVATION_CONFLICT/);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM resource_reservations").get().count, 0);
   } finally { d1.close(); }
@@ -117,8 +119,8 @@ class ReassignmentD1 {
   constructor() {
     this.sqlite.exec(`
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
-      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT, resource_type TEXT, display_name TEXT, status TEXT, health_state TEXT, version INTEGER, updated_at TEXT, last_heartbeat_at TEXT);
-      CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT, appointment_id TEXT, resource_type TEXT, resource_id TEXT, status TEXT, starts_at TEXT, ends_at TEXT, created_at TEXT);
+      CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT, resource_type TEXT, display_name TEXT, status TEXT, health_state TEXT, version INTEGER, updated_at TEXT, last_heartbeat_at TEXT, organization_id TEXT);
+      CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT, appointment_id TEXT, resource_type TEXT, resource_id TEXT, status TEXT, starts_at TEXT, ends_at TEXT, created_at TEXT, organization_id TEXT);
       CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT, assigned_room_id TEXT, assigned_kiosk_id TEXT, version INTEGER, updated_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
@@ -138,12 +140,12 @@ class ReassignmentD1 {
 
 function seedReassignment(d1, withCollision = false) {
   d1.sqlite.exec(`
-    INSERT INTO resources VALUES ('source', 'facility-1', 'DEVICE', 'Kiosk 01', 'OFFLINE', 'FAILED', 1, 'before', CURRENT_TIMESTAMP);
-    INSERT INTO resources VALUES ('target', 'facility-1', 'DEVICE', 'Kiosk 02', 'ONLINE', 'HEALTHY', 1, 'before', CURRENT_TIMESTAMP);
-    INSERT INTO resource_reservations VALUES ('reservation-source', 'facility-1', 'visit-1', 'DEVICE', 'source', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'before');
+    INSERT INTO resources VALUES ('source', 'facility-1', 'DEVICE', 'Kiosk 01', 'OFFLINE', 'FAILED', 1, 'before', CURRENT_TIMESTAMP, NULL);
+    INSERT INTO resources VALUES ('target', 'facility-1', 'DEVICE', 'Kiosk 02', 'ONLINE', 'HEALTHY', 1, 'before', CURRENT_TIMESTAMP, NULL);
+    INSERT INTO resource_reservations VALUES ('reservation-source', 'facility-1', 'visit-1', 'DEVICE', 'source', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'before', NULL);
     INSERT INTO waiting_room_sessions VALUES ('visit-1', 'facility-1', NULL, 'source', 4, 'before');
   `);
-  if (withCollision) d1.sqlite.exec("INSERT INTO resource_reservations VALUES ('reservation-other', 'facility-1', 'visit-2', 'DEVICE', 'target', 'RESERVED', '2026-10-01T09:15:00.000Z', '2026-10-01T09:45:00.000Z', 'before');");
+  if (withCollision) d1.sqlite.exec("INSERT INTO resource_reservations VALUES ('reservation-other', 'facility-1', 'visit-2', 'DEVICE', 'target', 'RESERVED', '2026-10-01T09:15:00.000Z', '2026-10-01T09:45:00.000Z', 'before', NULL);");
 }
 
 function reassignmentInput(d1) {
@@ -183,7 +185,7 @@ test("resource reassignment compensation restores a guarded partial transition",
   try {
     seedReassignment(d1);
     d1.sqlite.exec(`
-      INSERT INTO resource_reservations VALUES ('replacement', 'facility-1', 'visit-1', 'DEVICE', 'target', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'during');
+      INSERT INTO resource_reservations VALUES ('replacement', 'facility-1', 'visit-1', 'DEVICE', 'target', 'RESERVED', '2026-10-01T09:00:00.000Z', '2026-10-01T09:30:00.000Z', 'during', NULL);
       UPDATE resource_reservations SET status = 'RELEASED' WHERE id = 'reservation-source';
       UPDATE resources SET version = 2 WHERE id IN ('source', 'target');
       UPDATE waiting_room_sessions SET assigned_kiosk_id = 'target', version = 5 WHERE appointment_id = 'visit-1';

@@ -478,6 +478,7 @@ export const appointmentStatusEvents = sqliteTable("appointment_status_events", 
 
 export const resourceReservations = sqliteTable("resource_reservations", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   appointmentId: text("appointment_id").notNull().references(() => appointments.id),
   resourceType: text("resource_type", { enum: ["ROOM", "DEVICE", "MONITORING_CAPACITY"] }).notNull(),
@@ -490,6 +491,7 @@ export const resourceReservations = sqliteTable("resource_reservations", {
 
 export const resources = sqliteTable("resources", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   resourceType: text("resource_type", { enum: ["ROOM", "DEVICE"] }).notNull(),
   displayName: text("display_name").notNull(),
@@ -499,10 +501,11 @@ export const resources = sqliteTable("resources", {
   lastHeartbeatAt: text("last_heartbeat_at"),
   version: integer("version").notNull().default(1),
   ...timestamps,
-}, (table) => ({ facilityTypeIdx: index("resources_facility_type_idx").on(table.facilityId, table.resourceType, table.status), facilityNameIdx: uniqueIndex("resources_facility_name_idx").on(table.facilityId, table.displayName) }));
+}, (table) => ({ facilityTypeIdx: index("resources_facility_type_idx").on(table.facilityId, table.resourceType, table.status), organizationTypeIdx: index("resources_organization_type_idx").on(table.organizationId, table.facilityId, table.resourceType, table.status), facilityNameIdx: uniqueIndex("resources_facility_name_idx").on(table.facilityId, table.displayName) }));
 
 export const kioskCredentials = sqliteTable("kiosk_credentials", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   resourceId: text("resource_id").notNull().references(() => resources.id),
   credentialHash: text("credential_hash").notNull(),
@@ -511,7 +514,7 @@ export const kioskCredentials = sqliteTable("kiosk_credentials", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   lastUsedAt: text("last_used_at"),
   revokedAt: text("revoked_at"),
-}, (table) => ({ activeResourceIdx: uniqueIndex("kiosk_credentials_active_resource_idx").on(table.resourceId).where(sql`${table.status} = 'ACTIVE'`), facilityStatusIdx: index("kiosk_credentials_facility_status_idx").on(table.facilityId, table.status) }));
+}, (table) => ({ activeResourceIdx: uniqueIndex("kiosk_credentials_active_resource_idx").on(table.resourceId).where(sql`${table.status} = 'ACTIVE'`), facilityStatusIdx: index("kiosk_credentials_facility_status_idx").on(table.facilityId, table.status), organizationStatusIdx: index("kiosk_credentials_organization_status_idx").on(table.organizationId, table.facilityId, table.status) }));
 
 export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
   appointmentId: text("appointment_id").primaryKey().references(() => appointments.id),

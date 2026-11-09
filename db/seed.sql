@@ -30,22 +30,22 @@ INSERT INTO staff_profiles (user_id, facility_id, employee_reference, job_title,
 VALUES ('staff-local-supervisor', 'facility-central-001', 'LOCAL-001', 'Pilot Supervisor', 'Operations')
 ON CONFLICT(user_id) DO NOTHING;
 
-INSERT INTO resources (id, facility_id, resource_type, display_name, status, room_id, health_state, last_heartbeat_at)
+INSERT INTO resources (id, organization_id, facility_id, resource_type, display_name, status, room_id, health_state, last_heartbeat_at)
 VALUES
-  ('room-01', 'facility-central-001', 'ROOM', 'Room 01', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
-  ('room-02', 'facility-central-001', 'ROOM', 'Room 02', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
-  ('room-03', 'facility-central-001', 'ROOM', 'Room 03', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
-  ('room-04', 'facility-central-001', 'ROOM', 'Room 04', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
-  ('kiosk-02', 'facility-central-001', 'DEVICE', 'Kiosk 02', 'ONLINE', 'room-01', 'HEALTHY', CURRENT_TIMESTAMP),
-  ('kiosk-04', 'facility-central-001', 'DEVICE', 'Kiosk 04', 'OFFLINE', 'room-03', 'FAILED', datetime('now', '-14 minutes')),
-  ('kiosk-06', 'facility-central-001', 'DEVICE', 'Kiosk 06', 'ONLINE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
-  ('kiosk-08', 'facility-central-001', 'DEVICE', 'Kiosk 08', 'MAINTENANCE', NULL, 'WARNING', CURRENT_TIMESTAMP)
+  ('room-01', 'org-local-001', 'facility-central-001', 'ROOM', 'Room 01', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('room-02', 'org-local-001', 'facility-central-001', 'ROOM', 'Room 02', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('room-03', 'org-local-001', 'facility-central-001', 'ROOM', 'Room 03', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('room-04', 'org-local-001', 'facility-central-001', 'ROOM', 'Room 04', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('kiosk-02', 'org-local-001', 'facility-central-001', 'DEVICE', 'Kiosk 02', 'ONLINE', 'room-01', 'HEALTHY', CURRENT_TIMESTAMP),
+  ('kiosk-04', 'org-local-001', 'facility-central-001', 'DEVICE', 'Kiosk 04', 'OFFLINE', 'room-03', 'FAILED', datetime('now', '-14 minutes')),
+  ('kiosk-06', 'org-local-001', 'facility-central-001', 'DEVICE', 'Kiosk 06', 'ONLINE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('kiosk-08', 'org-local-001', 'facility-central-001', 'DEVICE', 'Kiosk 08', 'MAINTENANCE', NULL, 'WARNING', CURRENT_TIMESTAMP)
 ON CONFLICT(id) DO NOTHING;
 
 -- Local-only kiosk acceptance credential. The raw secret is intentionally not stored;
 -- browser acceptance tests provide it through the controlled-device header boundary.
-INSERT INTO kiosk_credentials (id, facility_id, resource_id, credential_hash, status, created_by, created_at)
-VALUES ('credential-local-e2e-kiosk-02', 'facility-central-001', 'kiosk-02', '5537616105e030399d09f6aef4f4ecaae220fd45192dea09015533cad1ac554e', 'ACTIVE', 'staff-local-supervisor', CURRENT_TIMESTAMP)
+INSERT INTO kiosk_credentials (id, organization_id, facility_id, resource_id, credential_hash, status, created_by, created_at)
+VALUES ('credential-local-e2e-kiosk-02', 'org-local-001', 'facility-central-001', 'kiosk-02', '5537616105e030399d09f6aef4f4ecaae220fd45192dea09015533cad1ac554e', 'ACTIVE', 'staff-local-supervisor', CURRENT_TIMESTAMP)
 ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO roles (id, name, description) VALUES

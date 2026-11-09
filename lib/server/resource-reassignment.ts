@@ -32,14 +32,14 @@ export function resourceReassignmentStatements(input: ResourceReassignmentStatem
   const targetStatus = input.sourceResourceType === "ROOM" ? "AVAILABLE" : "ONLINE";
   const reservationId = input.reservationId || crypto.randomUUID();
   const statements: D1PreparedStatement[] = [
-    d1.prepare(`INSERT INTO resource_reservations (id, facility_id, appointment_id, resource_type, resource_id, status, starts_at, ends_at, created_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+    d1.prepare(`INSERT INTO resource_reservations (id, organization_id, facility_id, appointment_id, resource_type, resource_id, status, starts_at, ends_at, created_at)
+      SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?
       WHERE EXISTS (SELECT 1 FROM resources sr WHERE sr.id = ? AND sr.facility_id = ? AND sr.version = ?)
         AND EXISTS (SELECT 1 FROM resources tr WHERE tr.id = ? AND tr.facility_id = ? AND tr.resource_type = ? AND tr.version = ? AND tr.status = ? AND tr.health_state = 'HEALTHY'
           AND (tr.resource_type = 'ROOM' OR (tr.last_heartbeat_at IS NOT NULL AND julianday(tr.last_heartbeat_at) >= julianday('now', '-3 minutes'))))
         AND NOT EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.resource_id = ? AND rr.resource_type = ? AND rr.facility_id = ? AND rr.appointment_id <> ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.starts_at < ? AND rr.ends_at > ?)
         AND (${input.waitingExists ? `EXISTS (SELECT 1 FROM waiting_room_sessions w WHERE w.appointment_id = ? AND w.facility_id = ? AND w.version = ? AND (${waitingAssignmentColumn} IS NULL OR ${waitingAssignmentColumn} = ?))` : "NOT EXISTS (SELECT 1 FROM waiting_room_sessions w0 WHERE w0.appointment_id = ? AND w0.facility_id = ?)"})`)
-      .bind(reservationId, input.facilityId, input.appointmentId, input.sourceResourceType, input.targetResourceId, input.sourceStatus, input.startsAt, input.endsAt, input.now,
+      .bind(reservationId, input.facilityId, input.facilityId, input.appointmentId, input.sourceResourceType, input.targetResourceId, input.sourceStatus, input.startsAt, input.endsAt, input.now,
         input.sourceResourceId, input.facilityId, input.expectedSourceVersion, input.targetResourceId, input.facilityId, input.sourceResourceType, input.expectedTargetVersion, targetStatus,
         input.targetResourceId, input.sourceResourceType, input.facilityId, input.appointmentId, input.endsAt, input.startsAt,
         ...(input.waitingExists ? [input.appointmentId, input.facilityId, input.expectedWaitingVersion, input.sourceResourceId] : [input.appointmentId, input.facilityId])),

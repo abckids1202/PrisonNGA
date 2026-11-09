@@ -281,14 +281,14 @@ function reservationInsertStatement(
   d1: D1Database,
   input: { facilityId: string; appointmentId: string; resourceType: "ROOM" | "DEVICE"; availableStatus: "AVAILABLE" | "ONLINE"; startsAt: string; endsAt: string; now: string; correlationId: string },
 ): D1PreparedStatement {
-  return d1.prepare(`INSERT INTO resource_reservations (id, facility_id, appointment_id, resource_type, resource_id, status, starts_at, ends_at, created_at)
-    SELECT ?, ?, ?, ?, (SELECT r.id FROM resources r WHERE r.facility_id = ? AND r.resource_type = ? AND r.status = ? AND r.health_state = 'HEALTHY'
+  return d1.prepare(`INSERT INTO resource_reservations (id, organization_id, facility_id, appointment_id, resource_type, resource_id, status, starts_at, ends_at, created_at)
+    SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, (SELECT r.id FROM resources r WHERE r.facility_id = ? AND r.resource_type = ? AND r.status = ? AND r.health_state = 'HEALTHY'
       AND (r.resource_type = 'ROOM' OR (r.last_heartbeat_at IS NOT NULL AND julianday(r.last_heartbeat_at) >= julianday('now', '-3 minutes')))
       AND NOT EXISTS (SELECT 1 FROM resource_reservations rr WHERE rr.resource_id = r.id AND rr.facility_id = ? AND rr.appointment_id <> ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE') AND rr.starts_at < ? AND rr.ends_at > ?)
       ORDER BY r.display_name ASC LIMIT 1), 'RESERVED', ?, ?, ?
     WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)
       AND NOT EXISTS (SELECT 1 FROM resource_reservations WHERE appointment_id = ? AND facility_id = ? AND resource_type = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE'))`)
-    .bind(crypto.randomUUID(), input.facilityId, input.appointmentId, input.resourceType, input.facilityId, input.resourceType, input.availableStatus,
+    .bind(crypto.randomUUID(), input.facilityId, input.facilityId, input.appointmentId, input.resourceType, input.facilityId, input.resourceType, input.availableStatus,
       input.facilityId, input.appointmentId, input.endsAt, input.startsAt, input.startsAt, input.endsAt, input.now,
       input.appointmentId, input.facilityId, input.correlationId, input.appointmentId, input.facilityId, input.resourceType);
 }
