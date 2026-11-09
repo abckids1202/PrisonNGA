@@ -14,6 +14,54 @@ export async function GET() {
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
 
+export async function POST(request: Request) {
+  const context = await getRequestContext();
+  let d1: D1Database | null = null;
+  let idempotency: { claimId: string; scope: string; key: string } | null = null;
+  try {
+    const authorization = await requirePermission("appointment_type.manage");
+    const body = await request.json() as { code?: unknown; displayName?: unknown; description?: unknown; durationMinutes?: unknown; creditCost?: unknown; reason?: unknown };
+    const code = typeof body.code === "string" ? body.code.trim().toUpperCase() : "";
+    const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+    const description = typeof body.description === "string" ? body.description.trim() : "";
+    const durationMinutes = Number(body.durationMinutes);
+    const creditCost = Number(body.creditCost);
+    const reason = assertReason(body.reason);
+    const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
+    if (!/^[A-Z0-9]+(?:[_:-][A-Z0-9]+)*$/.test(code) || code.length > 64 || !displayName || displayName.length > 120 || !description || description.length > 500 || !Number.isSafeInteger(durationMinutes) || durationMinutes < 15 || durationMinutes > 120 || durationMinutes % 15 !== 0 || !Number.isSafeInteger(creditCost) || creditCost < 1 || creditCost > 10) throw new SecurityError("INVALID_APPOINTMENT_TYPE", 400);
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
+    d1 = await getD1();
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_FOUND", 404);
+    const duplicate = await d1.prepare("SELECT id FROM appointment_types WHERE facility_id = ? AND code = ?").bind(authorization.facilityId, code).first();
+    if (duplicate) throw new SecurityError("APPOINTMENT_TYPE_CODE_IN_USE", 409);
+    const scope = `appointment-type-create:${authorization.facilityId}:${code}`;
+    const requestHash = await hashIdempotencyPayload({ facilityId: authorization.facilityId, code, displayName, description, durationMinutes, creditCost, reason });
+    const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
+    if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
+    idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
+    await requireStepUp({ purpose: "appointment_type_create", userId: authorization.userId, targetId: authorization.facilityId, payload: { code, displayName, durationMinutes, creditCost, reason } });
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const correlationId = crypto.randomUUID();
+    const snapshot = { id, facilityId: authorization.facilityId, code, displayName, description, durationMinutes, creditCost, status: "ACTIVE", version: 1, updatedAt: now };
+    const responseBody = { appointmentType: snapshot, correlationId };
+    const guard = { sql: "EXISTS (SELECT 1 FROM appointment_types WHERE id = ? AND facility_id = ? AND version = 1)", values: [id, authorization.facilityId] };
+    const results = await d1.batch([
+      d1.prepare(`INSERT INTO appointment_types (id, organization_id, facility_id, code, display_name, description, duration_minutes, credit_cost, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?, ?)`).bind(id, facility.organization_id, authorization.facilityId, code, displayName, description, durationMinutes, creditCost, now, now),
+      d1.prepare(`INSERT INTO appointment_type_history (id, appointment_type_id, facility_id, version, actor_user_id, reason, snapshot, created_at) VALUES (?, ?, ?, 1, ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, authorization.facilityId, authorization.userId, reason, JSON.stringify(snapshot), now),
+      ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "APPOINTMENT_TYPE_CREATED", entityType: "appointment_type", entityId: id, reason, newValues: snapshot, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_TYPE_CREATED", payload: { appointmentTypeId: id, code } }, guard),
+      completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard }),
+    ]);
+    if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("APPOINTMENT_TYPE_CREATE_FAILED", 409);
+    idempotency = null;
+    return securityResponse(responseBody, 201, context.requestId);
+  } catch (error) {
+    if (d1 && idempotency) { try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve original error. */ } }
+    return securityErrorResponse(error, context.requestId);
+  }
+}
+
 export async function PUT(request: Request) {
   const context = await getRequestContext();
   let d1: D1Database | null = null;

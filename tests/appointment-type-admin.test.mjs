@@ -8,6 +8,11 @@ const panel = await readFile(new URL("../app/components/AppointmentTypesPanel.ts
 const permission = await readFile(new URL("../drizzle/0065_appointment_type_manage_permission.sql", import.meta.url), "utf8");
 
 test("appointment type changes require version, idempotency, step-up, history, audit, and outbox", () => {
+  assert.match(route, /export async function POST/);
+  assert.match(route, /appointment-type-create:/);
+  assert.match(route, /APPOINTMENT_TYPE_CODE_IN_USE/);
+  assert.match(route, /purpose: "appointment_type_create"/);
+  assert.match(route, /APPOINTMENT_TYPE_CREATED/);
   assert.match(route, /export async function PUT/);
   assert.match(route, /requirePermission\("appointment_type\.manage"\)/);
   assert.match(route, /requireStepUp\(\{ purpose: "appointment_type_change"/);
@@ -15,7 +20,8 @@ test("appointment type changes require version, idempotency, step-up, history, a
   assert.match(route, /appointment_type_history/);
   assert.match(route, /auditAndOutboxStatements/);
   assert.match(migration, /appointment_type_history/);
-  assert.match(panel, /Save appointment type · requires supervisor step-up/);
+  assert.match(panel, /Create appointment type · requires supervisor step-up/);
+  assert.match(panel, /method: "POST"/);
   assert.match(panel, /duration_minutes/);
   assert.match(panel, /credit_cost/);
   assert.match(permission, /appointment_type\.manage/);
