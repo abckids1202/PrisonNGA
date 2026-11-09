@@ -64,7 +64,7 @@ npm run db:seed:local
 npm run dev
 ```
 
-Before running browser tests against the local Worker, run the migration and seed commands above. The browser suite uses the same persisted `.wrangler/state` D1 database; a stale local schema can otherwise surface as an internal API error when a route references a newly added migration column. CI performs this preparation automatically.
+The browser suite defaults to a disposable isolated D1 state, applies every migration, and loads the fictional seed before starting. This keeps `npm run test:e2e` deterministic and prevents acceptance tests from changing a developer's normal `.wrangler/state` database. Set `SECUREVISIT_E2E_ISOLATED=false` only when deliberately debugging against an already prepared local database; in that mode, run the migration and seed commands above first. CI performs isolated preparation automatically.
 
 To load the controlled synthetic fixture into a separately configured staging D1 database, set `SECUREVISIT_ENVIRONMENT=staging`, `D1_DATABASE_ID`, and `D1_DATABASE_NAME`, then run `npm run db:seed:staging -- --confirm-staging-fixture`. To bootstrap the first real institutional operator, add `--bootstrap-staff-email=operator@example.org` (and optionally `--bootstrap-staff-name` / `--bootstrap-staff-reference`); this creates only a pending staff profile and supervisor role, never a password or session, so the first successful MFA-backed OIDC/SAML login binds to that email. The command refuses development and production, refuses the local placeholder database, creates no visitor sessions, kiosk credentials, payments, or identity evidence, and must be followed by provider-backed acceptance testing.
 
