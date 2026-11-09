@@ -99,7 +99,11 @@ export async function POST(request: Request) {
     if (command === "resolve" && !["OPEN", "ACKNOWLEDGED"].includes(incident.status)) throw new SecurityError("INCIDENT_NOT_RESOLVABLE", 409);
     if (command === "assign" && incident.status === "CLOSED") throw new SecurityError("INCIDENT_CLOSED", 409);
     if (command === "assign" && nextAssignee) {
-      const assignee = await d1.prepare("SELECT 1 AS active FROM users u INNER JOIN staff_profiles sp ON sp.user_id = u.id WHERE u.id = ? AND sp.facility_id = ? AND u.user_type = 'STAFF' AND u.status = 'ACTIVE'").bind(nextAssignee, authorization.facilityId).first();
+      const assignee = await d1.prepare(`SELECT 1 AS active FROM users u
+        WHERE u.id = ? AND u.user_type = 'STAFF' AND u.status = 'ACTIVE'
+          AND (EXISTS (SELECT 1 FROM staff_facility_assignments sfa WHERE sfa.user_id = u.id AND sfa.facility_id = ? AND sfa.status = 'ACTIVE')
+            OR (EXISTS (SELECT 1 FROM staff_profiles sp WHERE sp.user_id = u.id AND sp.facility_id = ?)
+              AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = u.id)))`).bind(nextAssignee, authorization.facilityId, authorization.facilityId).first();
       if (!assignee) throw new SecurityError("INCIDENT_ASSIGNEE_NOT_FOUND", 404);
     }
     const event = { actorUserId: authorization.userId, actorRole: authorization.roles[0] || null, facilityId: authorization.facilityId, actionType: `INCIDENT_${command.toUpperCase()}`, entityType: "incident", entityId: incident.id, reason: command === "resolve" ? resolution : reason, oldValues: { status: incident.status, assignedUserId: incident.assigned_user_id, version: incident.version }, newValues: { status: nextStatus, assignedUserId: nextAssignee, resolution, version: incident.version + 1 }, requestId: context.requestId, correlationId, eventType: `INCIDENT_${command.toUpperCase()}`, payload: { incidentId: incident.id, command } };

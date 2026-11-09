@@ -66,3 +66,9 @@ test("legacy staff profiles cannot bypass modern assignment revocation", async (
   assert.match(security, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments WHERE user_id = \?\)/);
   assert.match(context, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2\.user_id = \?\)/);
 });
+
+test("incident assignment rejects revoked modern staff assignments", async () => {
+  const incidents = await readFile(new URL("../app/api/control/incidents/route.ts", import.meta.url), "utf8");
+  assert.match(incidents, /staff_facility_assignments sfa WHERE sfa\.user_id = u\.id/);
+  assert.match(incidents, /staff_facility_assignments sfa2 WHERE sfa2\.user_id = u\.id/);
+});
