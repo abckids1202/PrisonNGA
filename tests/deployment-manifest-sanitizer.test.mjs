@@ -27,6 +27,26 @@ test("deployment manifest sanitizer replaces local adapters with deployment valu
   assert.equal(result.vars.PAYMENT_PROVIDER, "xendit");
 });
 
+test("deployment manifest sanitizer preserves recording storage runtime configuration", () => {
+  const result = sanitizeDeploymentManifest({ vars: {
+    RECORDING_STORAGE_PROVIDER: "local_test",
+    RECORDINGS_BUCKET_NAME: "local-recordings",
+    R2_S3_ENDPOINT: "http://localhost:9000",
+    R2_S3_REGION: "local",
+  } }, {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    RECORDING_STORAGE_PROVIDER: "livekit_r2",
+    RECORDINGS_BUCKET_NAME: "securevisit-staging-recordings",
+    R2_S3_ENDPOINT: "https://account.r2.cloudflarestorage.com",
+    R2_S3_REGION: "auto",
+  });
+
+  assert.equal(result.vars.RECORDING_STORAGE_PROVIDER, "livekit_r2");
+  assert.equal(result.vars.RECORDINGS_BUCKET_NAME, "securevisit-staging-recordings");
+  assert.equal(result.vars.R2_S3_ENDPOINT, "https://account.r2.cloudflarestorage.com");
+  assert.equal(result.vars.R2_S3_REGION, "auto");
+});
+
 test("deployment manifest sanitizer clears omitted configuration instead of inheriting local values", () => {
   const result = sanitizeDeploymentManifest({ vars: { VISITOR_AUTH_DELIVERY: "console", PUBLIC_APP_URL: "http://localhost:3000" } }, {
     SECUREVISIT_ENVIRONMENT: "production",

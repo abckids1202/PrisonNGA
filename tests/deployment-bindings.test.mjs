@@ -16,6 +16,10 @@ test("deployment build reads explicit remote D1 and R2 binding configuration", a
   assert.match(source, /"PUBLIC_APP_URL"/);
   assert.match(source, /"NOTIFICATION_QUEUE_NAME"/);
   assert.match(source, /"EVIDENCE_SCAN_PROVIDER"/);
+  assert.match(source, /"RECORDING_STORAGE_PROVIDER"/);
+  assert.match(source, /"RECORDINGS_BUCKET_NAME"/);
+  assert.match(source, /"R2_S3_ENDPOINT"/);
+  assert.match(source, /"R2_S3_REGION"/);
   assert.match(source, /"STAFF_OIDC_ISSUER"/);
   assert.match(source, /const nonSecretDeploymentKeys = \[/);
   assert.match(source, /local adapters cannot be[\s\S]*?merged into staging[\s\S]*?production/);
