@@ -9,19 +9,19 @@ VALUES ('org-staging-001', 'SecureVisit Synthetic Staging Organization', 'secure
 INSERT OR IGNORE INTO facilities (id, organization_id, name, timezone, current_state)
 VALUES ('facility-staging-001', 'org-staging-001', 'SecureVisit Staging Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS');
 
-INSERT OR IGNORE INTO visit_policies (id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version)
-VALUES ('policy-staging-default', 'facility-staging-001', 15, 30, 60, 30, '08:00', '17:00', NULL, 'IDR', 1);
+INSERT OR IGNORE INTO visit_policies (id, organization_id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version)
+VALUES ('policy-staging-default', 'org-staging-001', 'facility-staging-001', 15, 30, 60, 30, '08:00', '17:00', NULL, 'IDR', 1);
 
-INSERT OR IGNORE INTO appointment_types (id, facility_id, code, display_name, description, duration_minutes, credit_cost, status, version)
-VALUES ('appointment-type-staging-family', 'facility-staging-001', 'FAMILY', 'Family visit', 'Synthetic staging family visit.', 30, 1, 'ACTIVE', 1);
+INSERT OR IGNORE INTO appointment_types (id, organization_id, facility_id, code, display_name, description, duration_minutes, credit_cost, status, version)
+VALUES ('appointment-type-staging-family', 'org-staging-001', 'facility-staging-001', 'FAMILY', 'Family visit', 'Synthetic staging family visit.', 30, 1, 'ACTIVE', 1);
 
-INSERT OR IGNORE INTO prisoners (id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status)
-VALUES ('prisoner-staging-001', 'facility-staging-001', 'STAGING-001', 'Synthetic Prisoner One', 'Synthetic Unit', 'ACTIVE', 'APPROVED');
+INSERT OR IGNORE INTO prisoners (id, organization_id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status)
+VALUES ('prisoner-staging-001', 'org-staging-001', 'facility-staging-001', 'STAGING-001', 'Synthetic Prisoner One', 'Synthetic Unit', 'ACTIVE', 'APPROVED');
 
-INSERT OR IGNORE INTO resources (id, facility_id, resource_type, display_name, status, room_id, health_state, last_heartbeat_at)
+INSERT OR IGNORE INTO resources (id, organization_id, facility_id, resource_type, display_name, status, room_id, health_state, last_heartbeat_at)
 VALUES
-  ('room-staging-01', 'facility-staging-001', 'ROOM', 'Staging Room 01', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
-  ('kiosk-staging-01', 'facility-staging-001', 'DEVICE', 'Staging Kiosk 01', 'ONLINE', 'room-staging-01', 'HEALTHY', CURRENT_TIMESTAMP);
+  ('room-staging-01', 'org-staging-001', 'facility-staging-001', 'ROOM', 'Staging Room 01', 'AVAILABLE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
+  ('kiosk-staging-01', 'org-staging-001', 'facility-staging-001', 'DEVICE', 'Staging Kiosk 01', 'ONLINE', 'room-staging-01', 'HEALTHY', CURRENT_TIMESTAMP);
 
 INSERT OR IGNORE INTO roles (id, name, description) VALUES
   ('role-scheduling-officer', 'Scheduling Officer', 'Reviews and coordinates visitation appointments.'),
