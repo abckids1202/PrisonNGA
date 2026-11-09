@@ -474,6 +474,7 @@ export const legalHolds = sqliteTable("legal_holds", {
 
 export const appointmentStatusEvents = sqliteTable("appointment_status_events", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   appointmentId: text("appointment_id").notNull().references(() => appointments.id),
   fromStatus: text("from_status"),
   toStatus: text("to_status").notNull(),
@@ -482,7 +483,7 @@ export const appointmentStatusEvents = sqliteTable("appointment_status_events", 
   reasonText: text("reason_text"),
   correlationId: text("correlation_id").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ appointmentIdx: index("appointment_status_events_appointment_idx").on(table.appointmentId, table.createdAt) }));
+}, (table) => ({ appointmentIdx: index("appointment_status_events_appointment_idx").on(table.appointmentId, table.createdAt), organizationIdx: index("appointment_status_events_organization_idx").on(table.organizationId, table.appointmentId, table.createdAt) }));
 
 export const resourceReservations = sqliteTable("resource_reservations", {
   id: text("id").primaryKey(),
@@ -550,6 +551,7 @@ export const waitingRoomSessions = sqliteTable("waiting_room_sessions", {
 
 export const visitorWaitingRoomCheckins = sqliteTable("visitor_waiting_room_checkins", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   appointmentId: text("appointment_id").notNull().references(() => appointments.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
@@ -558,7 +560,7 @@ export const visitorWaitingRoomCheckins = sqliteTable("visitor_waiting_room_chec
   version: integer("version").notNull(),
   correlationId: text("correlation_id").notNull(),
   ...timestamps,
-}, (table) => ({ appointmentIdx: index("visitor_waiting_room_checkins_appointment_idx").on(table.appointmentId, table.createdAt) }));
+}, (table) => ({ appointmentIdx: index("visitor_waiting_room_checkins_appointment_idx").on(table.appointmentId, table.createdAt), organizationIdx: index("visitor_waiting_room_checkins_organization_idx").on(table.organizationId, table.appointmentId, table.createdAt) }));
 
 export const visitSessions = sqliteTable("visit_sessions", {
   id: text("id").primaryKey(),
@@ -583,6 +585,7 @@ export const visitSessions = sqliteTable("visit_sessions", {
 
 export const visitorDeviceCheckAttempts = sqliteTable("visitor_device_check_attempts", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   appointmentId: text("appointment_id").notNull().references(() => appointments.id),
   visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
@@ -593,10 +596,11 @@ export const visitorDeviceCheckAttempts = sqliteTable("visitor_device_check_atte
   latencyMs: integer("latency_ms"),
   correlationId: text("correlation_id").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ idempotencyIdx: uniqueIndex("visitor_device_check_idempotency_idx").on(table.idempotencyKey), appointmentIdx: index("visitor_device_check_appointment_idx").on(table.appointmentId, table.createdAt), visitorIdx: index("visitor_device_check_visitor_idx").on(table.visitorUserId, table.createdAt) }));
+}, (table) => ({ idempotencyIdx: uniqueIndex("visitor_device_check_idempotency_idx").on(table.idempotencyKey), appointmentIdx: index("visitor_device_check_appointment_idx").on(table.appointmentId, table.createdAt), visitorIdx: index("visitor_device_check_visitor_idx").on(table.visitorUserId, table.createdAt), organizationIdx: index("visitor_device_check_organization_idx").on(table.organizationId, table.facilityId, table.createdAt) }));
 
 export const visitSessionEvents = sqliteTable("visit_session_events", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   sessionId: text("session_id").notNull().references(() => visitSessions.id),
   eventType: text("event_type").notNull(),
   source: text("source").notNull(),
@@ -604,10 +608,11 @@ export const visitSessionEvents = sqliteTable("visit_session_events", {
   metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
   correlationId: text("correlation_id").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ sessionIdx: index("visit_session_events_session_idx").on(table.sessionId, table.createdAt) }));
+}, (table) => ({ sessionIdx: index("visit_session_events_session_idx").on(table.sessionId, table.createdAt), organizationIdx: index("visit_session_events_organization_idx").on(table.organizationId, table.sessionId, table.createdAt) }));
 
 export const visitSessionParticipants = sqliteTable("visit_session_participants", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   sessionId: text("session_id").notNull().references(() => visitSessions.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   identity: text("identity").notNull(),
@@ -618,10 +623,11 @@ export const visitSessionParticipants = sqliteTable("visit_session_participants"
   lastSeenAt: text("last_seen_at").notNull(),
   disconnectedAt: text("disconnected_at"),
   metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
-}, (table) => ({ identityIdx: uniqueIndex("visit_session_participants_identity_idx").on(table.sessionId, table.identity), facilityStatusIdx: index("visit_session_participants_facility_status_idx").on(table.facilityId, table.status, table.lastSeenAt) }));
+}, (table) => ({ identityIdx: uniqueIndex("visit_session_participants_identity_idx").on(table.sessionId, table.identity), facilityStatusIdx: index("visit_session_participants_facility_status_idx").on(table.facilityId, table.status, table.lastSeenAt), organizationStatusIdx: index("visit_session_participants_organization_status_idx").on(table.organizationId, table.facilityId, table.status, table.lastSeenAt) }));
 
 export const recordingConsents = sqliteTable("recording_consents", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   sessionId: text("session_id").notNull().references(() => visitSessions.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   participantUserId: text("participant_user_id").notNull().references(() => users.id),
@@ -632,7 +638,7 @@ export const recordingConsents = sqliteTable("recording_consents", {
   decidedAt: text("decided_at").notNull(),
   correlationId: text("correlation_id").notNull(),
   ...timestamps,
-}, (table) => ({ sessionParticipantIdx: uniqueIndex("recording_consents_session_participant_idx").on(table.sessionId, table.participantUserId), facilityIdx: index("recording_consents_facility_idx").on(table.facilityId, table.decidedAt) }));
+}, (table) => ({ sessionParticipantIdx: uniqueIndex("recording_consents_session_participant_idx").on(table.sessionId, table.participantUserId), facilityIdx: index("recording_consents_facility_idx").on(table.facilityId, table.decidedAt), organizationIdx: index("recording_consents_organization_idx").on(table.organizationId, table.facilityId, table.decidedAt) }));
 
 export const recordings = sqliteTable("recordings", {
   id: text("id").primaryKey(),
