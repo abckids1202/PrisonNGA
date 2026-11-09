@@ -39,13 +39,13 @@ export function expiredEvidenceRetentionStatements(d1: D1Database, input: Expire
 export function claimExpiredEvidenceRetentionStatement(d1: D1Database, input: Pick<ExpiredEvidenceRetentionInput, "id" | "facilityId" | "now">): D1PreparedStatement {
   return d1.prepare(`UPDATE evidence_documents
     SET status = 'PENDING_DELETION', updated_at = ?
-    WHERE id = ? AND facility_id = ? AND status = 'AVAILABLE' AND legal_hold = 0 AND retention_until <= ?`)
+    WHERE id = ? AND facility_id = ? AND status IN ('AVAILABLE', 'QUARANTINED') AND legal_hold = 0 AND retention_until <= ?`)
     .bind(input.now, input.id, input.facilityId, input.now);
 }
 
 export function restoreClaimedEvidenceRetentionStatement(d1: D1Database, input: Pick<ExpiredEvidenceRetentionInput, "id" | "facilityId" | "now">): D1PreparedStatement {
   return d1.prepare(`UPDATE evidence_documents
-    SET status = 'AVAILABLE', updated_at = ?
+    SET status = CASE WHEN scan_status = 'PENDING' THEN 'QUARANTINED' ELSE 'AVAILABLE' END, updated_at = ?
     WHERE id = ? AND facility_id = ? AND status = 'PENDING_DELETION'`)
     .bind(input.now, input.id, input.facilityId);
 }

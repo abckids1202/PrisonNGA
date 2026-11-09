@@ -2,7 +2,7 @@ import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, requireVisitorIdentity, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { MAX_EVIDENCE_BYTES, validateEvidenceUpload } from "../../../../../lib/server/evidence-validation";
-import { scanEvidence } from "../../../../../lib/server/evidence-scanner";
+import { requestEvidenceScan } from "../../../../../lib/server/evidence-scanner";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { getEvidenceStore } from "../../../../../lib/server/evidence-storage";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../lib/server/idempotency";
@@ -18,7 +18,7 @@ export async function GET() {
   try {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
-    const result = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.original_filename, ed.content_type, ed.byte_size, ed.status, ed.retention_until, ed.legal_hold, ed.created_at
+    const result = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.original_filename, ed.content_type, ed.byte_size, ed.status, ed.scan_status, ed.scan_error, ed.retention_until, ed.legal_hold, ed.created_at
       FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id
       WHERE ed.visitor_user_id = ? AND vr.visitor_user_id = ? AND ed.status <> 'DELETED' ORDER BY ed.created_at DESC`).bind(visitor.userId, visitor.userId).all();
     return securityResponse({ evidence: result.results }, 200, context.requestId);
@@ -57,11 +57,11 @@ export async function POST(request: Request) {
     const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
-    const existingEvidence = await d1.prepare(`SELECT id, retention_until FROM evidence_documents WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE' ORDER BY created_at DESC LIMIT 1`)
-      .bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null }>();
+    const existingEvidence = await d1.prepare(`SELECT id, retention_until, status, scan_status FROM evidence_documents WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status IN ('AVAILABLE', 'QUARANTINED') ORDER BY created_at DESC LIMIT 1`)
+      .bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null; status: string; scan_status: string }>();
     if (existingEvidence) {
-      const responseBody = { evidenceId: existingEvidence.id, status: "AVAILABLE", retentionUntil: existingEvidence.retention_until, idempotent: true };
-      const completed = await d1.batch([completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status = 'AVAILABLE')", values: [existingEvidence.id, verificationCaseId, visitor.userId] } })]);
+      const responseBody = { evidenceId: existingEvidence.id, status: existingEvidence.status, scanStatus: existingEvidence.scan_status, retentionUntil: existingEvidence.retention_until, idempotent: true };
+      const completed = await d1.batch([completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED'))", values: [existingEvidence.id, verificationCaseId, visitor.userId] } })]);
       if (!completed[0]?.meta.changes) throw new SecurityError("EVIDENCE_IDEMPOTENCY_CONFLICT", 409);
       idempotency = null;
       return securityResponse(responseBody, 200, context.requestId);
@@ -73,30 +73,34 @@ export async function POST(request: Request) {
     if (!Number.isSafeInteger(configuredRetentionDays) || configuredRetentionDays < 1 || configuredRetentionDays > 3650) throw new SecurityError("EVIDENCE_RETENTION_NOT_CONFIGURED", 503);
     const retentionDays = configuredRetentionDays;
     const retentionUntil = new Date(now.getTime() + retentionDays * 86400000).toISOString();
-    let scanVerdict: Awaited<ReturnType<typeof scanEvidence>>;
+    let scanResult: Awaited<ReturnType<typeof requestEvidenceScan>>;
     let evidenceCommitted = false;
     let evidenceUploaded = false;
     try {
-      scanVerdict = await scanEvidence({ bytes, contentType: file.type, sha256, byteSize: bytes.length });
+      scanResult = await requestEvidenceScan({ bytes, contentType: file.type, sha256, byteSize: bytes.length });
     } catch (error) {
       const code = error instanceof Error ? error.message : "EVIDENCE_SCAN_FAILED";
       if (code === "EVIDENCE_SCAN_NOT_CONFIGURED" || code === "EVIDENCE_SCAN_PROVIDER_UNSUPPORTED") throw new SecurityError(code, 503);
       throw new SecurityError("EVIDENCE_SCAN_UNAVAILABLE", 503);
     }
-    if (scanVerdict === "INFECTED") throw new SecurityError("EVIDENCE_MALWARE_DETECTED", 422);
+    if (scanResult.verdict === "INFECTED") throw new SecurityError("EVIDENCE_MALWARE_DETECTED", 422);
     await bucket.put(storageKey, bytes, { httpMetadata: { contentType: file.type } });
     evidenceUploaded = true;
     const correlationId = crypto.randomUUID();
-    const responseBody = { evidenceId: id, status: "AVAILABLE", retentionUntil, correlationId };
+    const available = scanResult.verdict === "CLEAN";
+    const evidenceStatus = available ? "AVAILABLE" : "QUARANTINED";
+    const scanStatus = available ? "CLEAN" : "PENDING";
+    const responseStatus = available ? 201 : 202;
+    const responseBody = { evidenceId: id, status: evidenceStatus, scanStatus, retentionUntil, correlationId };
     try {
       const inserted = await d1.batch([
-        d1.prepare(`INSERT INTO evidence_documents (id, organization_id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, retention_until, legal_hold, created_by, created_at, updated_at)
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, 0, ?, ?, ?
+        d1.prepare(`INSERT INTO evidence_documents (id, organization_id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, scan_status, scan_provider, scan_reference, scan_requested_at, scan_completed_at, retention_until, legal_hold, created_by, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?
           WHERE NOT EXISTS (
             SELECT 1 FROM evidence_documents
-            WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE'
+            WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status IN ('AVAILABLE', 'QUARANTINED')
           )`)
-          .bind(id, ownedCase.organization_id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256),
+          .bind(id, ownedCase.organization_id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, evidenceStatus, scanStatus, (await getRuntimeValue("EVIDENCE_SCAN_PROVIDER")) || "unknown", scanResult.providerReference || null, now.toISOString(), available ? now.toISOString() : null, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256),
         ...auditAndOutboxStatements(d1, {
           actorUserId: visitor.userId,
           actorRole: "VISITOR",
@@ -105,22 +109,22 @@ export async function POST(request: Request) {
           entityType: "evidence_document",
           entityId: id,
           reason: "Visitor uploaded supporting evidence for relationship verification.",
-          newValues: { verificationCaseId, contentType: file.type, byteSize: file.size, sha256, status: "AVAILABLE", retentionDays },
+          newValues: { verificationCaseId, contentType: file.type, byteSize: file.size, sha256, status: evidenceStatus, scanStatus, scanReference: scanResult.providerReference || null, retentionDays },
           requestId: context.requestId,
           correlationId,
           eventType: "EVIDENCE_UPLOADED",
           payload: { evidenceId: id, verificationCaseId, visitorUserId: visitor.userId },
         }, { sql: "changes() > 0", values: [] }),
-        completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status = 'AVAILABLE')", values: [id, verificationCaseId, visitor.userId] } }),
+        completeIdempotencyStatement(d1, { ...idempotency, status: responseStatus, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED'))", values: [id, verificationCaseId, visitor.userId] } }),
       ]);
       if (!inserted[0]?.meta.changes) {
         await bucket.delete(storageKey);
         await releaseIdempotencyClaim(d1, idempotency);
         idempotency = null;
-        const duplicate = await d1.prepare(`SELECT id, retention_until FROM evidence_documents
-          WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status = 'AVAILABLE'
-          ORDER BY created_at DESC LIMIT 1`).bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null }>();
-        if (duplicate) return securityResponse({ evidenceId: duplicate.id, status: "AVAILABLE", retentionUntil: duplicate.retention_until, idempotent: true }, 200, context.requestId);
+        const duplicate = await d1.prepare(`SELECT id, retention_until, status, scan_status FROM evidence_documents
+          WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status IN ('AVAILABLE', 'QUARANTINED')
+          ORDER BY created_at DESC LIMIT 1`).bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null; status: string; scan_status: string }>();
+        if (duplicate) return securityResponse({ evidenceId: duplicate.id, status: duplicate.status, scanStatus: duplicate.scan_status, retentionUntil: duplicate.retention_until, idempotent: true }, 200, context.requestId);
         throw new SecurityError("EVIDENCE_UPLOAD_NOT_PERSISTED", 409);
       }
       // The evidence row, audit event, outbox event, and idempotency record
@@ -158,7 +162,7 @@ export async function POST(request: Request) {
       }
       throw error;
     }
-    return securityResponse(responseBody, 201, context.requestId);
+    return securityResponse(responseBody, responseStatus, context.requestId);
   } catch (error) {
     if (d1 && idempotency) {
       try { await releaseIdempotencyClaim(d1, idempotency); } catch { /* Preserve the original evidence error. */ }

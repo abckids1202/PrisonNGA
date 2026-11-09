@@ -49,8 +49,20 @@ test("staging and production require the configured evidence scanner adapter", a
 
 test("visitor evidence cannot become available before a clean scan", async () => {
   const source = await readFile(new URL("../app/api/visitor/verification/evidence/route.ts", import.meta.url), "utf8");
-  assert.match(source, /await scanEvidence\(/);
+  assert.match(source, /await requestEvidenceScan\(/);
   assert.match(source, /EVIDENCE_MALWARE_DETECTED/);
   assert.match(source, /await bucket\.put\(storageKey/);
-  assert.ok(source.indexOf("await scanEvidence(") < source.indexOf("await bucket.put(storageKey"));
+  assert.ok(source.indexOf("await requestEvidenceScan(") < source.indexOf("await bucket.put(storageKey"));
+  assert.match(source, /"QUARANTINED"/);
+  assert.match(source, /scan_status/);
+});
+
+test("scanner callbacks support an accepted reference without treating it as clean", async () => {
+  const scanner = await readFile(new URL("../lib/server/evidence-scanner.ts", import.meta.url), "utf8");
+  const callback = await readFile(new URL("../app/api/webhooks/evidence-scan/route.ts", import.meta.url), "utf8");
+  assert.match(scanner, /result\.status === "accepted"/);
+  assert.match(scanner, /verdict: "PENDING"/);
+  assert.match(callback, /EVIDENCE_SCAN_SIGNATURE_INVALID/);
+  assert.match(callback, /status = 'QUARANTINED'/);
+  assert.match(callback, /nextStatus = callback\.verdict === "clean" \? "AVAILABLE"/);
 });

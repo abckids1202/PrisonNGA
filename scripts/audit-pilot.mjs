@@ -116,8 +116,8 @@ const externalIntegrationChecks = [
   {
     id: "evidence-scanner",
     label: "Evidence malware scanner",
-    configured: configuredValue("EVIDENCE_SCAN_PROVIDER") === "webhook" && httpsUrl("EVIDENCE_SCAN_WEBHOOK_URL") && present("EVIDENCE_SCAN_WEBHOOK_SECRET"),
-    detail: "non-development scanner with signed callback",
+    configured: configuredValue("EVIDENCE_SCAN_PROVIDER") === "webhook" && httpsUrl("EVIDENCE_SCAN_WEBHOOK_URL") && httpsUrl("EVIDENCE_SCAN_CALLBACK_URL") && present("EVIDENCE_SCAN_WEBHOOK_SECRET"),
+    detail: "non-development scanner with signed request and callback",
     action: "Configure a protected malware-scanning adapter and quarantine callback",
   },
   {

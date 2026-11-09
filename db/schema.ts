@@ -446,12 +446,31 @@ export const evidenceDocuments = sqliteTable("evidence_documents", {
   byteSize: integer("byte_size").notNull(),
   sha256: text("sha256").notNull(),
   status: text("status", { enum: ["PENDING_UPLOAD", "AVAILABLE", "PENDING_DELETION", "QUARANTINED", "DELETED"] }).notNull().default("AVAILABLE"),
+  scanStatus: text("scan_status", { enum: ["PENDING", "CLEAN", "INFECTED", "FAILED"] }).notNull().default("CLEAN"),
+  scanProvider: text("scan_provider"),
+  scanReference: text("scan_reference"),
+  scanRequestedAt: text("scan_requested_at"),
+  scanCompletedAt: text("scan_completed_at"),
+  scanError: text("scan_error"),
   retentionUntil: text("retention_until").notNull(),
   legalHold: integer("legal_hold", { mode: "boolean" }).notNull().default(false),
   createdBy: text("created_by").notNull(),
   deletedAt: text("deleted_at"),
   ...timestamps,
 }, (table) => ({ caseIdx: index("evidence_documents_case_idx").on(table.organizationId, table.verificationCaseId, table.createdAt), facilityRetentionIdx: index("evidence_documents_retention_idx").on(table.organizationId, table.facilityId, table.retentionUntil, table.legalHold) }));
+
+export const evidenceScanEvents = sqliteTable("evidence_scan_events", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id").notNull(),
+  provider: text("provider").notNull(),
+  scanReference: text("scan_reference").notNull(),
+  evidenceId: text("evidence_id"),
+  organizationId: text("organization_id").references(() => organizations.id),
+  facilityId: text("facility_id").references(() => facilities.id),
+  verdict: text("verdict").notNull(),
+  payload: text("payload").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({ eventIdx: uniqueIndex("evidence_scan_events_provider_event_idx").on(table.provider, table.eventId), referenceIdx: index("evidence_scan_events_reference_idx").on(table.provider, table.scanReference, table.createdAt), organizationIdx: index("evidence_scan_events_organization_idx").on(table.organizationId, table.facilityId, table.createdAt) }));
 
 export const retentionPolicies = sqliteTable("retention_policies", {
   id: text("id").primaryKey(),

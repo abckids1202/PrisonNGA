@@ -73,6 +73,7 @@ test("pilot audit reports real integration readiness without exposing provider s
     LIVEKIT_API_SECRET: "lk-secret-must-not-appear",
     EVIDENCE_SCAN_PROVIDER: "webhook",
     EVIDENCE_SCAN_WEBHOOK_URL: "https://scanner.example.test/callback",
+    EVIDENCE_SCAN_CALLBACK_URL: "https://staging.example.test/api/webhooks/evidence-scan",
     EVIDENCE_SCAN_WEBHOOK_SECRET: "scanner-secret-must-not-appear",
     NOTIFICATION_EMAIL_DELIVERY: "resend",
     NOTIFICATION_SMS_DELIVERY: "twilio",

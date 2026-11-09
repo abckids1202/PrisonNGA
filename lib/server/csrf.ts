@@ -5,6 +5,7 @@ const FEDERATION_CALLBACKS = new Set([
   "/api/webhooks/payments",
   "/api/webhooks/xendit",
   "/api/webhooks/notifications/status",
+  "/api/webhooks/evidence-scan",
 ]);
 
 function hasCookie(cookieHeader: string | null, name: string): boolean {
