@@ -61,7 +61,10 @@ export function canonicalizeXenditWebhook(body: XenditWebhook): { eventId: strin
     // Disputes are deliberately terminal in the local payment state machine.
     // A later WON event is retained as an audited provider event and requires
     // finance review; it must never silently recreate visitor credits.
-    return { eventId: `xendit:${event}:${disputeId}`, eventType: "PAYMENT_DISPUTED", paymentIntentId, providerReference: disputeId, status: "DISPUTED", currency };
+    // The dispute ID is not the payment-session reference stored on the
+    // intent. Keep it in the immutable event key rather than presenting it as
+    // providerReference, which would correctly trip the payment binding guard.
+    return { eventId: `xendit:${event}:${disputeId}`, eventType: "PAYMENT_DISPUTED", paymentIntentId, status: "DISPUTED", currency };
   }
   throw new SecurityError("XENDIT_WEBHOOK_UNSUPPORTED", 400);
 }

@@ -52,7 +52,6 @@ test("Xendit top-level dispute notifications map to an audited disputed payment"
     eventId: "xendit:dispute.action_required:mi-dspt-123",
     eventType: "PAYMENT_DISPUTED",
     paymentIntentId: "payment-intent-123",
-    providerReference: "mi-dspt-123",
     status: "DISPUTED",
     currency: "IDR",
   });
