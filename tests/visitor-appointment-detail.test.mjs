@@ -15,7 +15,7 @@ class D1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
-      CREATE TABLE facilities (id TEXT PRIMARY KEY, name TEXT, current_state TEXT);
+      CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT, name TEXT, current_state TEXT);
       CREATE TABLE users (id TEXT PRIMARY KEY);
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT, prisoner_number TEXT, display_name TEXT, status TEXT, visitation_status TEXT);
       CREATE TABLE appointments (id TEXT PRIMARY KEY, facility_id TEXT, visitor_user_id TEXT, prisoner_id TEXT, status TEXT, requested_start TEXT, requested_end TEXT, timezone TEXT, appointment_type TEXT, version INTEGER, created_at TEXT, updated_at TEXT);
@@ -27,7 +27,7 @@ class D1 {
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER DEFAULT 0, reason TEXT DEFAULT '', created_at TEXT);
       CREATE TABLE appointment_status_events (id TEXT PRIMARY KEY, appointment_id TEXT, from_status TEXT, to_status TEXT, reason_text TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
-      INSERT INTO facilities VALUES ('f1', 'Central Facility', 'NORMAL_OPERATIONS');
+      INSERT INTO facilities VALUES ('f1', 'org-1', 'Central Facility', 'NORMAL_OPERATIONS');
       INSERT INTO users VALUES ('visitor-1'), ('visitor-2');
       INSERT INTO prisoners VALUES ('p1', 'f1', 'P-001', 'Person One', 'ACTIVE', 'APPROVED');
       INSERT INTO appointments VALUES ('a1', 'f1', 'visitor-1', 'p1', 'APPROVED', '2026-09-23T02:00:00.000Z', '2026-09-23T02:20:00.000Z', 'Asia/Jakarta', 'FAMILY', 2, '2026-09-20T00:00:00.000Z', '2026-09-21T00:00:00.000Z');

@@ -20,14 +20,14 @@ class SQLiteD1 {
     this.sqlite.exec(`
       CREATE TABLE appointments (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, prisoner_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, requested_start TEXT NOT NULL, requested_end TEXT NOT NULL, timezone TEXT, policy_version INTEGER, duration_minutes INTEGER, updated_at TEXT NOT NULL, last_transition_id TEXT);
       CREATE TABLE appointment_status_events (id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL, from_status TEXT, to_status TEXT NOT NULL, actor_user_id TEXT, reason_code TEXT, reason_text TEXT, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
-      CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
-      CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
+      CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, user_id TEXT NOT NULL, available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT NOT NULL, appointment_id TEXT, entry_type TEXT NOT NULL, amount INTEGER NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, reason TEXT, created_by TEXT, created_at TEXT NOT NULL);
       CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY', last_heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, status TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, state TEXT NOT NULL, visitor_presence TEXT NOT NULL DEFAULT 'absent', visitor_presence_at TEXT, prisoner_presence TEXT NOT NULL DEFAULT 'absent', prisoner_presence_at TEXT, version INTEGER NOT NULL, last_checked_at TEXT, updated_at TEXT NOT NULL);
-      CREATE TABLE facilities (id TEXT PRIMARY KEY, current_state TEXT NOT NULL, timezone TEXT NOT NULL);
+      CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT, current_state TEXT NOT NULL, timezone TEXT NOT NULL);
       CREATE TABLE visit_policies (facility_id TEXT PRIMARY KEY, version INTEGER NOT NULL, min_duration_minutes INTEGER NOT NULL, max_duration_minutes INTEGER NOT NULL, min_advance_minutes INTEGER NOT NULL, max_advance_days INTEGER NOT NULL, daily_start_time TEXT NOT NULL, daily_end_time TEXT NOT NULL);
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, visitation_status TEXT NOT NULL);
       CREATE TABLE visitor_relationships (facility_id TEXT NOT NULL, prisoner_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, status TEXT NOT NULL);
@@ -35,7 +35,7 @@ class SQLiteD1 {
       INSERT INTO credit_accounts VALUES ('credit-1', 'facility-1', 'visitor-1', 2, 0, 1, 'before');
       INSERT INTO resources (id, facility_id, resource_type, display_name, status) VALUES ('room-1', 'facility-1', 'ROOM', 'Room 01', 'AVAILABLE');
       INSERT INTO resources (id, facility_id, resource_type, display_name, status) VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE');
-      INSERT INTO facilities VALUES ('facility-1', 'NORMAL_OPERATIONS', 'Asia/Jakarta');
+      INSERT INTO facilities VALUES ('facility-1', 'org-1', 'NORMAL_OPERATIONS', 'Asia/Jakarta');
       INSERT INTO visit_policies VALUES ('facility-1', 1, 15, 30, 60, 30, '08:00', '17:00');
       INSERT INTO prisoners VALUES ('prisoner-1', 'facility-1', 'ACTIVE', 'APPROVED');
       INSERT INTO visitor_relationships VALUES ('facility-1', 'prisoner-1', 'visitor-1', 'APPROVED');

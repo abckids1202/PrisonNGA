@@ -28,17 +28,17 @@ export function auditAndOutboxStatements(
 
   return [
     d1.prepare(guard ? `INSERT INTO audit_events
-      (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}` : `INSERT INTO audit_events
-      (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(auditId, input.actorUserId, input.actorRole, input.facilityId, input.actionType, input.entityType, input.entityId, input.reason, input.oldValues ? JSON.stringify(input.oldValues) : null, input.newValues ? JSON.stringify(input.newValues) : null, correlationId, input.requestId, createdAt, ...(guard?.values || [])),
+      (id, organization_id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
+      SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}` : `INSERT INTO audit_events
+      (id, organization_id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
+      VALUES (?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(auditId, input.facilityId, input.actorUserId, input.actorRole, input.facilityId, input.actionType, input.entityType, input.entityId, input.reason, input.oldValues ? JSON.stringify(input.oldValues) : null, input.newValues ? JSON.stringify(input.newValues) : null, correlationId, input.requestId, createdAt, ...(guard?.values || [])),
     d1.prepare(guard ? `INSERT INTO outbox_events
-      (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}` : `INSERT INTO outbox_events
-      (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(outboxId, input.eventType, input.entityType, input.entityId, input.facilityId, JSON.stringify(input.payload), correlationId, createdAt, ...(guard?.values || [])),
+      (id, organization_id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
+      SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}` : `INSERT INTO outbox_events
+      (id, organization_id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
+      VALUES (?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(outboxId, input.facilityId, input.eventType, input.entityType, input.entityId, input.facilityId, JSON.stringify(input.payload), correlationId, createdAt, ...(guard?.values || [])),
   ];
 }
 

@@ -19,6 +19,7 @@ class SQLiteD1 {
       );
       CREATE TABLE outbox_events (
         id TEXT PRIMARY KEY,
+        organization_id TEXT,
         facility_id TEXT,
         status TEXT NOT NULL,
         attempt_count INTEGER NOT NULL
@@ -107,7 +108,7 @@ test("resource reconciliation alarms use the resource entity boundary", async ()
 test("notification dead letters create one durable facility-scoped alarm", async () => {
   const d1 = new SQLiteD1();
   try {
-    d1.sqlite.prepare("INSERT INTO outbox_events VALUES (?, ?, 'DEAD_LETTER', ?)").run("outbox-1", "facility-1", 5);
+    d1.sqlite.prepare("INSERT INTO outbox_events (id, facility_id, status, attempt_count) VALUES (?, ?, 'DEAD_LETTER', ?)").run("outbox-1", "facility-1", 5);
     const statement = notificationDeadLetterStatement(d1, {
       facilityId: "facility-1",
       outboxEventId: "outbox-1",

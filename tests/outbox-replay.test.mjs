@@ -7,9 +7,10 @@ class D1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
-      CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, status TEXT, attempt_count INTEGER, available_at TEXT, processed_at TEXT, last_error TEXT, created_at TEXT);
-      CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
-      INSERT INTO outbox_events VALUES ('event-1', 'VISIT_APPROVED', 'appointment', 'visit-1', 'facility-1', '{}', 'original-correlation', 'DEAD_LETTER', 6, 'before', NULL, 'delivery failed', 'before');
+      CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
+      CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, status TEXT, attempt_count INTEGER, available_at TEXT, processed_at TEXT, last_error TEXT, created_at TEXT);
+      CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
+      INSERT INTO outbox_events VALUES ('event-1', 'org-1', 'VISIT_APPROVED', 'appointment', 'visit-1', 'facility-1', '{}', 'original-correlation', 'DEAD_LETTER', 6, 'before', NULL, 'delivery failed', 'before');
     `);
   }
   prepare(sql) {

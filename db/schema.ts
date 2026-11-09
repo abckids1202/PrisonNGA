@@ -277,6 +277,7 @@ export const rateLimitBuckets = sqliteTable("rate_limit_buckets", {
 
 export const auditEvents = sqliteTable("audit_events", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   actorUserId: text("actor_user_id"),
   actorRole: text("actor_role"),
   facilityId: text("facility_id"),
@@ -289,7 +290,7 @@ export const auditEvents = sqliteTable("audit_events", {
   correlationId: text("correlation_id").notNull(),
   requestId: text("request_id"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ facilityIdx: index("audit_events_facility_idx").on(table.facilityId), createdIdx: index("audit_events_created_idx").on(table.createdAt) }));
+}, (table) => ({ facilityIdx: index("audit_events_facility_idx").on(table.organizationId, table.facilityId), createdIdx: index("audit_events_created_idx").on(table.createdAt) }));
 
 export const auditExportManifests = sqliteTable("audit_export_manifests", {
   id: text("id").primaryKey(),
@@ -324,6 +325,7 @@ export const breakGlassRequests = sqliteTable("break_glass_requests", {
 
 export const outboxEvents = sqliteTable("outbox_events", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   eventType: text("event_type").notNull(),
   aggregateType: text("aggregate_type").notNull(),
   aggregateId: text("aggregate_id"),
@@ -337,7 +339,7 @@ export const outboxEvents = sqliteTable("outbox_events", {
   processedAt: text("processed_at"),
   lastError: text("last_error"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ statusIdx: index("outbox_events_status_idx").on(table.status, table.availableAt), correlationIdx: index("outbox_events_correlation_idx").on(table.correlationId) }));
+}, (table) => ({ statusIdx: index("outbox_events_status_idx").on(table.organizationId, table.facilityId, table.status, table.availableAt), correlationIdx: index("outbox_events_correlation_idx").on(table.correlationId) }));
 
 export const appointments = sqliteTable("appointments", {
   id: text("id").primaryKey(),

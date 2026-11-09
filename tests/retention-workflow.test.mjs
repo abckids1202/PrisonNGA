@@ -8,9 +8,10 @@ class D1 {
 
   constructor() {
     this.sqlite.exec(`
+      CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
       CREATE TABLE evidence_documents (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, storage_key TEXT NOT NULL, status TEXT NOT NULL, legal_hold INTEGER NOT NULL, retention_until TEXT NOT NULL, deleted_at TEXT, updated_at TEXT);
-      CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
-      CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
+      CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
+      CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
       INSERT INTO evidence_documents VALUES ('evidence-1', 'facility-1', 'facility-1/verification/evidence-1', 'AVAILABLE', 0, '2026-09-01T00:00:00.000Z', NULL, '2026-08-01T00:00:00.000Z');
       INSERT INTO evidence_documents VALUES ('evidence-hold', 'facility-1', 'facility-1/verification/evidence-hold', 'AVAILABLE', 1, '2026-09-01T00:00:00.000Z', NULL, '2026-08-01T00:00:00.000Z');
     `);

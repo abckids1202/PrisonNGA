@@ -20,6 +20,7 @@ class TestD1 {
 function createDatabase() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(`
+    CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
     CREATE TABLE waiting_room_sessions (
       appointment_id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, state TEXT NOT NULL,
       visitor_presence TEXT NOT NULL, prisoner_presence TEXT NOT NULL,
@@ -33,12 +34,12 @@ function createDatabase() {
       status TEXT, created_at TEXT
     );
     CREATE TABLE audit_events (
-      id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT,
+      id TEXT, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT,
       entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT,
       correlation_id TEXT, request_id TEXT, created_at TEXT
     );
     CREATE TABLE outbox_events (
-      id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT,
+      id TEXT, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT,
       payload TEXT, correlation_id TEXT, created_at TEXT
     );
   `);

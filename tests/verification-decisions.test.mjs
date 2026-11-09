@@ -17,11 +17,12 @@ class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
+      CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
       CREATE TABLE verification_cases (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, facility_id TEXT NOT NULL, relationship_id TEXT NOT NULL, status TEXT NOT NULL, evidence_required INTEGER NOT NULL, reviewed_by TEXT, reviewed_at TEXT, review_reason TEXT, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE visitor_relationships (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, reviewed_by TEXT, reviewed_at TEXT, review_reason TEXT, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE evidence_documents (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, facility_id TEXT NOT NULL, verification_case_id TEXT NOT NULL, status TEXT NOT NULL);
-      CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
-      CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
+      CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
       INSERT INTO verification_cases VALUES ('case-1', 'org-1', 'facility-1', 'relationship-1', 'PENDING', 1, NULL, NULL, NULL, 4, 'before');
       INSERT INTO visitor_relationships VALUES ('relationship-1', 'facility-1', 'PENDING', NULL, NULL, NULL, 2, 'before');
     `);
