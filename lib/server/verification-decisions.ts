@@ -3,6 +3,7 @@ import { auditAndOutboxStatements } from "./events";
 export type VerificationDecisionInput = {
   verificationCaseId: string;
   relationshipId: string;
+  organizationId: string;
   facilityId: string;
   fromStatus: string;
   toStatus: string;
@@ -21,8 +22,8 @@ export type VerificationDecisionInput = {
 
 export function verificationDecisionStatements(d1: D1Database, input: VerificationDecisionInput): D1PreparedStatement[] {
   const caseTransition = {
-    sql: "EXISTS (SELECT 1 FROM verification_cases vc WHERE vc.id = ? AND vc.facility_id = ? AND vc.status = ? AND vc.version = ? AND vc.reviewed_by = ? AND vc.reviewed_at = ?)",
-    values: [input.verificationCaseId, input.facilityId, input.toStatus, input.expectedCaseVersion + 1, input.actorUserId, input.now],
+    sql: "EXISTS (SELECT 1 FROM verification_cases vc WHERE vc.id = ? AND vc.organization_id = ? AND vc.facility_id = ? AND vc.status = ? AND vc.version = ? AND vc.reviewed_by = ? AND vc.reviewed_at = ?)",
+    values: [input.verificationCaseId, input.organizationId, input.facilityId, input.toStatus, input.expectedCaseVersion + 1, input.actorUserId, input.now],
   };
   const relationshipTransition = {
     sql: "EXISTS (SELECT 1 FROM visitor_relationships vr WHERE vr.id = ? AND vr.facility_id = ? AND vr.status = ? AND vr.version = ? AND vr.reviewed_by = ? AND vr.reviewed_at = ?)",
@@ -31,12 +32,12 @@ export function verificationDecisionStatements(d1: D1Database, input: Verificati
   const completedTransition = { sql: `${caseTransition.sql} AND ${relationshipTransition.sql}`, values: [...caseTransition.values, ...relationshipTransition.values] };
   return [
     d1.prepare(`UPDATE verification_cases SET status = ?, reviewed_by = ?, reviewed_at = ?, review_reason = ?, version = version + 1, updated_at = ?
-      WHERE id = ? AND facility_id = ? AND status = ? AND version = ?
+      WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = ? AND version = ?
         AND EXISTS (SELECT 1 FROM visitor_relationships vr WHERE vr.id = ? AND vr.facility_id = ? AND vr.status = ? AND vr.version = ?)
         AND (? = 0 OR ? <> 'APPROVED' OR evidence_required = 0
-          OR EXISTS (SELECT 1 FROM evidence_documents ed WHERE ed.verification_case_id = verification_cases.id AND ed.facility_id = verification_cases.facility_id AND ed.status = 'AVAILABLE'))`)
+          OR EXISTS (SELECT 1 FROM evidence_documents ed WHERE ed.verification_case_id = verification_cases.id AND ed.organization_id = verification_cases.organization_id AND ed.facility_id = verification_cases.facility_id AND ed.status = 'AVAILABLE'))`)
       .bind(input.toStatus, input.actorUserId, input.now, input.reason, input.now,
-        input.verificationCaseId, input.facilityId, input.fromStatus, input.expectedCaseVersion,
+        input.verificationCaseId, input.organizationId, input.facilityId, input.fromStatus, input.expectedCaseVersion,
         input.relationshipId, input.facilityId, input.fromRelationshipStatus, input.expectedRelationshipVersion,
         input.evidenceRequired ? 1 : 0, input.toStatus),
     d1.prepare(`UPDATE visitor_relationships SET status = ?, reviewed_by = ?, reviewed_at = ?, review_reason = ?, version = version + 1, updated_at = ?

@@ -3,6 +3,7 @@ import { auditAndOutboxStatements } from "./events";
 export type CreateVisitorRelationshipInput = {
   relationshipId: string;
   verificationId: string;
+  organizationId: string;
   facilityId: string;
   visitorUserId: string;
   prisonerId: string;
@@ -19,9 +20,9 @@ export function createVisitorRelationshipStatements(
   const caseCreated = {
     sql: `EXISTS (SELECT 1 FROM verification_cases vc
       INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id
-      WHERE vc.id = ? AND vc.facility_id = ? AND vc.relationship_id = ? AND vc.status = 'PENDING'
+      WHERE vc.id = ? AND vc.organization_id = ? AND vc.facility_id = ? AND vc.relationship_id = ? AND vc.status = 'PENDING'
         AND vr.visitor_user_id = ? AND vr.prisoner_id = ? AND vr.status = 'PENDING')`,
-    values: [input.verificationId, input.facilityId, input.relationshipId, input.visitorUserId, input.prisonerId],
+    values: [input.verificationId, input.organizationId, input.facilityId, input.relationshipId, input.visitorUserId, input.prisonerId],
   };
 
   return [
@@ -34,11 +35,11 @@ export function createVisitorRelationshipStatements(
       .bind(input.relationshipId, input.facilityId, input.visitorUserId, input.prisonerId, input.relationshipType,
         input.now, input.now, input.prisonerId, input.facilityId),
     d1.prepare(`INSERT INTO verification_cases
-      (id, facility_id, relationship_id, status, evidence_required, submitted_at, version, created_at, updated_at)
-      SELECT ?, ?, ?, 'PENDING', 1, ?, 1, ?, ?
+      (id, organization_id, facility_id, relationship_id, status, evidence_required, submitted_at, version, created_at, updated_at)
+      SELECT ?, ?, ?, ?, 'PENDING', 1, ?, 1, ?, ?
       WHERE EXISTS (SELECT 1 FROM visitor_relationships WHERE id = ? AND facility_id = ?
         AND visitor_user_id = ? AND prisoner_id = ? AND status = 'PENDING')`)
-      .bind(input.verificationId, input.facilityId, input.relationshipId, input.now, input.now, input.now,
+      .bind(input.verificationId, input.organizationId, input.facilityId, input.relationshipId, input.now, input.now, input.now,
         input.relationshipId, input.facilityId, input.visitorUserId, input.prisonerId),
     ...auditAndOutboxStatements(d1, {
       actorUserId: input.visitorUserId,

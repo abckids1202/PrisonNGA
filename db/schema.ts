@@ -400,6 +400,7 @@ export const visitorRelationships = sqliteTable("visitor_relationships", {
 
 export const verificationCases = sqliteTable("verification_cases", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   relationshipId: text("relationship_id").notNull().references(() => visitorRelationships.id),
   status: text("status", { enum: ["PENDING", "IN_REVIEW", "APPROVED", "REJECTED", "MORE_INFO"] }).notNull().default("PENDING"),
@@ -412,7 +413,7 @@ export const verificationCases = sqliteTable("verification_cases", {
   ...timestamps,
 }, (table) => ({
   relationshipIdx: uniqueIndex("verification_cases_relationship_idx").on(table.relationshipId),
-  facilityStatusIdx: index("verification_cases_facility_status_idx").on(table.facilityId, table.status),
+  facilityStatusIdx: index("verification_cases_facility_status_idx").on(table.organizationId, table.facilityId, table.status),
 }));
 
 export const evidenceDocuments = sqliteTable("evidence_documents", {

@@ -12,8 +12,8 @@ export async function GET() {
     const authorization = await requirePermission("verification.review");
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT vc.id, vc.relationship_id, vc.status, vc.evidence_required, vc.submitted_at, vc.reviewed_at, vc.review_reason, vc.version, vr.visitor_user_id, vr.prisoner_id, vr.relationship_type, u.display_name AS visitor_name, p.prisoner_number, p.display_name AS prisoner_name,
-        (SELECT COUNT(*) FROM evidence_documents ed WHERE ed.verification_case_id = vc.id AND ed.facility_id = vc.facility_id AND ed.status = 'AVAILABLE') AS evidence_count
-      FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN users u ON u.id = vr.visitor_user_id AND u.user_type = 'VISITOR' INNER JOIN prisoners p ON p.id = vr.prisoner_id AND p.facility_id = vr.facility_id
+        (SELECT COUNT(*) FROM evidence_documents ed WHERE ed.verification_case_id = vc.id AND ed.organization_id = vc.organization_id AND ed.facility_id = vc.facility_id AND ed.status = 'AVAILABLE') AS evidence_count
+      FROM verification_cases vc INNER JOIN facilities f ON f.id = vc.facility_id AND f.organization_id = vc.organization_id INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN users u ON u.id = vr.visitor_user_id AND u.user_type = 'VISITOR' INNER JOIN prisoners p ON p.id = vr.prisoner_id AND p.facility_id = vr.facility_id
       WHERE vc.facility_id = ? ORDER BY vc.submitted_at ASC`).bind(authorization.facilityId).all();
     return securityResponse({ cases: result.results, facilityId: authorization.facilityId }, 200, context.requestId);
   } catch (error) {
@@ -33,8 +33,9 @@ export async function POST(request: Request) {
     if (!verificationCaseId || !reviewStatuses.includes(status)) throw new SecurityError("INVALID_VERIFICATION_REVIEW", 400);
     const reason = assertReason(body.reason);
     d1 = await getD1();
-    const current = await d1.prepare(`SELECT vc.id, vc.relationship_id, vc.status, vc.evidence_required, vc.version, vr.status AS relationship_status, vr.version AS relationship_version FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id WHERE vc.id = ? AND vc.facility_id = ?`).bind(verificationCaseId, authorization.facilityId).first<{ id: string; relationship_id: string; status: string; evidence_required: number; version: number; relationship_status: string; relationship_version: number }>();
+    const current = await d1.prepare(`SELECT vc.id, vc.organization_id, vc.relationship_id, vc.status, vc.evidence_required, vc.version, vr.status AS relationship_status, vr.version AS relationship_version FROM verification_cases vc INNER JOIN facilities f ON f.id = vc.facility_id AND f.organization_id = vc.organization_id INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id WHERE vc.id = ? AND vc.facility_id = ?`).bind(verificationCaseId, authorization.facilityId).first<{ id: string; organization_id: string | null; relationship_id: string; status: string; evidence_required: number; version: number; relationship_status: string; relationship_version: number }>();
     if (!current) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
+    if (!current.organization_id) throw new SecurityError("VERIFICATION_CASE_ORGANIZATION_SCOPE_MISSING", 503);
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     const idempotencyScope = `verification-review:${authorization.facilityId}:${authorization.userId}:${verificationCaseId}`;
@@ -55,10 +56,11 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
     const responseBody = { verificationCaseId, status, relationshipStatus, version: current.version + 1, correlationId };
-    const completedGuard = { sql: "EXISTS (SELECT 1 FROM verification_cases WHERE id = ? AND facility_id = ? AND status = ? AND version = ?) AND EXISTS (SELECT 1 FROM visitor_relationships WHERE id = ? AND facility_id = ? AND status = ? AND version = ?)", values: [verificationCaseId, authorization.facilityId, status, current.version + 1, current.relationship_id, authorization.facilityId, relationshipStatus, current.relationship_version + 1] };
+    const completedGuard = { sql: "EXISTS (SELECT 1 FROM verification_cases WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = ? AND version = ?) AND EXISTS (SELECT 1 FROM visitor_relationships WHERE id = ? AND facility_id = ? AND status = ? AND version = ?)", values: [verificationCaseId, current.organization_id, authorization.facilityId, status, current.version + 1, current.relationship_id, authorization.facilityId, relationshipStatus, current.relationship_version + 1] };
     const results = await d1.batch([...verificationDecisionStatements(d1, {
       verificationCaseId,
       relationshipId: current.relationship_id,
+      organizationId: current.organization_id,
       facilityId: authorization.facilityId,
       fromStatus: current.status,
       toStatus: status,
@@ -76,7 +78,7 @@ export async function POST(request: Request) {
     }), completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: completedGuard })]);
     if (!results[0]?.meta.changes) {
       if (status === "APPROVED" && current.evidence_required) {
-        const evidence = await d1.prepare("SELECT 1 AS present FROM evidence_documents WHERE verification_case_id = ? AND facility_id = ? AND status = 'AVAILABLE' LIMIT 1").bind(verificationCaseId, authorization.facilityId).first();
+        const evidence = await d1.prepare("SELECT 1 AS present FROM evidence_documents WHERE verification_case_id = ? AND organization_id = ? AND facility_id = ? AND status = 'AVAILABLE' LIMIT 1").bind(verificationCaseId, current.organization_id, authorization.facilityId).first();
         if (!evidence) throw new SecurityError("VERIFICATION_EVIDENCE_REQUIRED", 409);
       }
       throw new SecurityError("STALE_VERIFICATION_CASE", 409);
