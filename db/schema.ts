@@ -304,6 +304,7 @@ export const auditExportManifests = sqliteTable("audit_export_manifests", {
 
 export const breakGlassRequests = sqliteTable("break_glass_requests", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   requestedBy: text("requested_by").notNull().references(() => users.id),
   approvedBy: text("approved_by").references(() => users.id),
@@ -319,7 +320,7 @@ export const breakGlassRequests = sqliteTable("break_glass_requests", {
   version: integer("version").notNull().default(1),
   correlationId: text("correlation_id").notNull(),
   ...timestamps,
-}, (table) => ({ facilityStatusIdx: index("break_glass_requests_facility_status_idx").on(table.facilityId, table.status, table.createdAt), targetIdx: index("break_glass_requests_target_idx").on(table.facilityId, table.targetType, table.targetId, table.status) }));
+}, (table) => ({ facilityStatusIdx: index("break_glass_requests_facility_status_idx").on(table.organizationId, table.facilityId, table.status, table.createdAt), targetIdx: index("break_glass_requests_target_idx").on(table.organizationId, table.facilityId, table.targetType, table.targetId, table.status) }));
 
 export const outboxEvents = sqliteTable("outbox_events", {
   id: text("id").primaryKey(),

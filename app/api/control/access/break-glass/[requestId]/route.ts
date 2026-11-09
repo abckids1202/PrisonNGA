@@ -20,8 +20,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ req
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     d1 = await getD1();
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const current = await d1.prepare(`SELECT id, requested_by, target_type, target_id, reason, duration_minutes, status, version
-      FROM break_glass_requests WHERE id = ? AND facility_id = ?`).bind(requestId, authorization.facilityId).first<{ id: string; requested_by: string; target_type: string; target_id: string; reason: string; duration_minutes: number; status: string; version: number }>();
+      FROM break_glass_requests WHERE id = ? AND organization_id = ? AND facility_id = ?`).bind(requestId, facility.organization_id, authorization.facilityId).first<{ id: string; requested_by: string; target_type: string; target_id: string; reason: string; duration_minutes: number; status: string; version: number }>();
     if (!current) throw new SecurityError("BREAK_GLASS_REQUEST_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_BREAK_GLASS_REQUEST", 409);
     const expectedStatus = action === "APPROVE" || action === "DENY" ? "PENDING" : "APPROVED";
@@ -39,8 +41,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ req
     const correlationId = crypto.randomUUID();
     const responseBody = { requestId, status: nextStatus, expiresAt, correlationId };
     const updated = await d1.batch([
-      d1.prepare(`UPDATE break_glass_requests SET status = ?, approved_by = CASE WHEN ? = 'APPROVE' THEN ? ELSE approved_by END, approved_at = CASE WHEN ? = 'APPROVE' THEN ? ELSE approved_at END, expires_at = CASE WHEN ? = 'APPROVE' THEN ? ELSE expires_at END, revoked_at = CASE WHEN ? = 'REVOKE' THEN ? ELSE revoked_at END, decision_reason = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = ? AND version = ?`)
-        .bind(nextStatus, action, authorization.userId, action, now, action, expiresAt, action, now, reason, now, requestId, authorization.facilityId, expectedStatus, current.version),
+      d1.prepare(`UPDATE break_glass_requests SET status = ?, approved_by = CASE WHEN ? = 'APPROVE' THEN ? ELSE approved_by END, approved_at = CASE WHEN ? = 'APPROVE' THEN ? ELSE approved_at END, expires_at = CASE WHEN ? = 'APPROVE' THEN ? ELSE expires_at END, revoked_at = CASE WHEN ? = 'REVOKE' THEN ? ELSE revoked_at END, decision_reason = ?, version = version + 1, updated_at = ? WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = ? AND version = ?`)
+        .bind(nextStatus, action, authorization.userId, action, now, action, expiresAt, action, now, reason, now, requestId, facility.organization_id, authorization.facilityId, expectedStatus, current.version),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: `BREAK_GLASS_${action}`, entityType: "break_glass_request", entityId: requestId, reason, oldValues: { status: current.status, version: current.version }, newValues: { status: nextStatus, expiresAt, version: current.version + 1 }, requestId: context.requestId, correlationId, eventType: `BREAK_GLASS_${action}`, payload: { requestId, targetType: current.target_type, targetId: current.target_id, status: nextStatus } }, { sql: "EXISTS (SELECT 1 FROM break_glass_requests WHERE id = ? AND status = ? AND version = ?)", values: [requestId, nextStatus, current.version + 1] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM break_glass_requests WHERE id = ? AND status = ? AND version = ?)", values: [requestId, nextStatus, current.version + 1] } }),
     ]);

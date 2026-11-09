@@ -10,8 +10,10 @@ export async function GET() {
   try {
     const authorization = await requirePermission("access.break_glass.request");
     const d1 = await getD1();
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const rows = await d1.prepare(`SELECT id, requested_by, approved_by, target_type, target_id, reason, decision_reason, status, expires_at, approved_at, revoked_at, version, correlation_id, created_at, updated_at
-      FROM break_glass_requests WHERE facility_id = ? ORDER BY created_at DESC LIMIT 100`).bind(authorization.facilityId).all();
+      FROM break_glass_requests WHERE organization_id = ? AND facility_id = ? ORDER BY created_at DESC LIMIT 100`).bind(facility.organization_id, authorization.facilityId).all();
     return securityResponse({ requests: rows.results, facilityId: authorization.facilityId }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
@@ -35,6 +37,8 @@ export async function POST(request: Request) {
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     const payload = { targetType, targetId, reason, durationMinutes };
     d1 = await getD1();
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const target = targetType === "evidence_document"
       ? await d1.prepare("SELECT ed.id FROM evidence_documents ed INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id WHERE ed.id = ? AND ed.facility_id = ? AND ed.status = 'AVAILABLE'").bind(targetId, authorization.facilityId).first()
       : targetType === "visit_session"
@@ -52,8 +56,8 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const responseBody = { requestId, targetType, targetId, status: "PENDING", correlationId };
     const inserted = await d1.batch([
-      d1.prepare(`INSERT INTO break_glass_requests (id, facility_id, requested_by, target_type, target_id, reason, duration_minutes, status, version, correlation_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 1, ?, ?, ?)`)
-        .bind(requestId, authorization.facilityId, authorization.userId, targetType, targetId, reason, durationMinutes, correlationId, now, now),
+      d1.prepare(`INSERT INTO break_glass_requests (id, organization_id, facility_id, requested_by, target_type, target_id, reason, duration_minutes, status, version, correlation_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 1, ?, ?, ?)`)
+        .bind(requestId, facility.organization_id, authorization.facilityId, authorization.userId, targetType, targetId, reason, durationMinutes, correlationId, now, now),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Staff", facilityId: authorization.facilityId, actionType: "BREAK_GLASS_REQUESTED", entityType: "break_glass_request", entityId: requestId, reason, newValues: { targetType, targetId, status: "PENDING", durationMinutes }, requestId: context.requestId, correlationId, eventType: "BREAK_GLASS_REQUESTED", payload: { requestId, targetType, targetId } }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 202, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM break_glass_requests WHERE id = ? AND status = 'PENDING')", values: [requestId] } }),
     ]);

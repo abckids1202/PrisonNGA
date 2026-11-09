@@ -736,14 +736,14 @@ async function purgeExpiredStepUpAssertions(env: Env): Promise<void> {
 
 async function expireBreakGlassRequests(env: Env): Promise<void> {
   const rows = await env.DB.prepare(`SELECT id, facility_id, target_type, target_id, version
-    FROM break_glass_requests WHERE status = 'APPROVED' AND expires_at IS NOT NULL AND julianday(expires_at) <= julianday('now') LIMIT 50`)
+    FROM break_glass_requests WHERE organization_id IS NOT NULL AND status = 'APPROVED' AND expires_at IS NOT NULL AND julianday(expires_at) <= julianday('now') LIMIT 50`)
     .all<{ id: string; facility_id: string; target_type: string; target_id: string; version: number }>();
   for (const row of rows.results) {
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
     try {
       const results = await env.DB.batch([
-        env.DB.prepare("UPDATE break_glass_requests SET status = 'EXPIRED', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'APPROVED' AND version = ?")
+        env.DB.prepare("UPDATE break_glass_requests SET status = 'EXPIRED', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND organization_id IS NOT NULL AND status = 'APPROVED' AND version = ?")
           .bind(now, row.id, row.facility_id, row.version),
         ...auditAndOutboxStatements(env.DB, {
           actorUserId: "system:scheduler",
