@@ -9,16 +9,16 @@ class D1 {
 
   constructor() {
     this.sqlite.exec(`
-      CREATE TABLE payment_intents (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, provider TEXT, credit_quantity INTEGER, amount_minor INTEGER, currency TEXT, status TEXT, version INTEGER, provider_reference TEXT, updated_at TEXT);
+      CREATE TABLE payment_intents (id TEXT PRIMARY KEY, organization_id TEXT, facility_id TEXT, user_id TEXT, provider TEXT, credit_quantity INTEGER, amount_minor INTEGER, currency TEXT, status TEXT, version INTEGER, provider_reference TEXT, updated_at TEXT);
       CREATE TABLE users (id TEXT PRIMARY KEY, user_type TEXT NOT NULL);
       CREATE TABLE payment_provider_events (id TEXT PRIMARY KEY, provider TEXT, event_key TEXT, status TEXT, processed_at TEXT, last_error TEXT);
-      CREATE TABLE payment_refund_requests (id TEXT PRIMARY KEY, payment_intent_id TEXT, provider_reference TEXT, status TEXT, updated_at TEXT);
+      CREATE TABLE payment_refund_requests (id TEXT PRIMARY KEY, organization_id TEXT, payment_intent_id TEXT, provider_reference TEXT, status TEXT, updated_at TEXT);
       CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, available_credits INTEGER, reserved_credits INTEGER, version INTEGER, created_at TEXT, updated_at TEXT);
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, idempotency_key TEXT UNIQUE, reason TEXT, created_by TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
       INSERT INTO users VALUES ('visitor-1', 'VISITOR');
-      INSERT INTO payment_intents VALUES ('payment-1', 'facility-1', 'visitor-1', 'webhook', 2, 100000, 'IDR', 'CHECKOUT_CREATED', 1, 'provider-1', 'before');
+      INSERT INTO payment_intents VALUES ('payment-1', 'org-1', 'facility-1', 'visitor-1', 'webhook', 2, 100000, 'IDR', 'CHECKOUT_CREATED', 1, 'provider-1', 'before');
       INSERT INTO payment_provider_events VALUES ('event-row', 'webhook', 'event-1', 'PROCESSING', NULL, NULL);
     `);
   }
@@ -51,7 +51,7 @@ test("payment settlement rejects a provider reference mismatch before writing cr
 
 test("payment settlement ignores an intent owned by a staff account", async () => {
   const d1 = new D1();
-  d1.sqlite.exec("INSERT INTO users VALUES ('staff-1', 'STAFF'); INSERT INTO payment_intents VALUES ('staff-payment', 'facility-1', 'staff-1', 'webhook', 9, 900000, 'IDR', 'CHECKOUT_CREATED', 1, 'staff-provider', 'before');");
+  d1.sqlite.exec("INSERT INTO users VALUES ('staff-1', 'STAFF'); INSERT INTO payment_intents VALUES ('staff-payment', 'org-1', 'facility-1', 'staff-1', 'webhook', 9, 900000, 'IDR', 'CHECKOUT_CREATED', 1, 'staff-provider', 'before');");
   const result = await processPaymentProviderEvent(d1, {
     provider: "webhook",
     eventKey: "event-1",
@@ -217,7 +217,7 @@ test("stale failure events are ignored after a payment has succeeded", async () 
 
 test("payment webhook status reads and mutations retain facility and visitor scope", async () => {
   const source = await readFile(new URL("../lib/server/payments/process-event.ts", import.meta.url), "utf8");
-  assert.match(source, /SELECT status FROM payment_intents WHERE id = \? AND facility_id = \? AND user_id = \?/);
-  assert.match(source, /WHERE id = \? AND facility_id = \? AND user_id = \? AND status IN \('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED'\)/);
-  assert.match(source, /pi\.facility_id = \? AND pi\.user_id = \?/);
+  assert.match(source, /SELECT status FROM payment_intents WHERE id = \? AND organization_id = \? AND facility_id = \? AND user_id = \?/);
+  assert.match(source, /WHERE id = \? AND organization_id = \? AND facility_id = \? AND user_id = \? AND status IN \('PENDING', 'CHECKOUT_CREATED', 'FAILED', 'EXPIRED'\)/);
+  assert.match(source, /pi\.organization_id = payment_refund_requests\.organization_id AND pi\.facility_id = \? AND pi\.user_id = \?/);
 });

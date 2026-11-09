@@ -51,7 +51,9 @@ export async function POST(request: Request) {
     if (!facilityId || !Number.isInteger(creditQuantity) || creditQuantity < 1 || creditQuantity > 20) throw new SecurityError("INVALID_CREDIT_PURCHASE", 400);
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `payment-create:${visitor.userId}`, limit: 10, windowSeconds: 60 * 60 });
-    let existing = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE idempotency_key IN (?, ?) AND user_id = ? LIMIT 1").bind(storedIdempotencyKey, idempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
+    const facility = await d1.prepare("SELECT id, organization_id FROM facilities WHERE id = ? AND current_state = 'NORMAL_OPERATIONS'").bind(facilityId).first<{ id: string; organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_NOT_AVAILABLE", 409);
+    let existing = await d1.prepare("SELECT id, facility_id, organization_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE organization_id = ? AND facility_id = ? AND idempotency_key IN (?, ?) AND user_id = ? LIMIT 1").bind(facility.organization_id, facilityId, storedIdempotencyKey, idempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
     if (existing && (existing.facility_id !== facilityId || Number(existing.credit_quantity) !== creditQuantity)) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
     if (existing && ["CHECKOUT_CREATED", "SUCCEEDED", "REFUNDED", "DISPUTED"].includes(String(existing.status))) {
       return securityResponse({ paymentIntent: existing, idempotent: true }, 200, context.requestId);
@@ -59,8 +61,6 @@ export async function POST(request: Request) {
     // Revalidate operational state on retries as well as first checkout. A
     // pending or failed intent must not become payable after the facility has
     // entered lockdown or another restricted state.
-    const facility = await d1.prepare("SELECT id FROM facilities WHERE id = ? AND current_state = 'NORMAL_OPERATIONS'").bind(facilityId).first<{ id: string }>();
-    if (!facility) throw new SecurityError("FACILITY_NOT_AVAILABLE", 409);
     const provider = await getPaymentProvider();
     if (!provider) throw new SecurityError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
     const publicAppOrigin = await getPublicAppOrigin(request);
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new SecurityError("CREDIT_PRICE_INVALID", 503);
     if (!existing) {
       const now = new Date().toISOString();
-      const created = await d1.prepare(`INSERT OR IGNORE INTO payment_intents (id, facility_id, user_id, provider, credit_quantity, amount_minor, currency, status, idempotency_key, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'IDR', 'PENDING', ?, 1, ?, ?)`).bind(paymentIntentId, facilityId, visitor.userId, provider.name, creditQuantity, amountMinor, storedIdempotencyKey, now, now).run();
+      const created = await d1.prepare(`INSERT OR IGNORE INTO payment_intents (id, organization_id, facility_id, user_id, provider, credit_quantity, amount_minor, currency, status, idempotency_key, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'IDR', 'PENDING', ?, 1, ?, ?)`).bind(paymentIntentId, facility.organization_id, facilityId, visitor.userId, provider.name, creditQuantity, amountMinor, storedIdempotencyKey, now, now).run();
       if (!created.meta.changes) {
         existing = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE idempotency_key = ? AND user_id = ?").bind(storedIdempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
         if (!existing || existing.facility_id !== facilityId || Number(existing.credit_quantity) !== creditQuantity) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
