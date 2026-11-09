@@ -343,6 +343,7 @@ export const outboxEvents = sqliteTable("outbox_events", {
 
 export const appointments = sqliteTable("appointments", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   visitorUserId: text("visitor_user_id").notNull().references(() => users.id),
   prisonerId: text("prisoner_id").notNull(),
@@ -356,7 +357,7 @@ export const appointments = sqliteTable("appointments", {
   version: integer("version").notNull().default(1),
   lastTransitionId: text("last_transition_id"),
   ...timestamps,
-}, (table) => ({ facilityStatusIdx: index("appointments_facility_status_idx").on(table.facilityId, table.status), visitorIdx: index("appointments_visitor_idx").on(table.visitorUserId) }));
+}, (table) => ({ facilityStatusIdx: index("appointments_facility_status_idx").on(table.facilityId, table.status), organizationStatusIdx: index("appointments_organization_status_idx").on(table.organizationId, table.facilityId, table.status), visitorIdx: index("appointments_visitor_idx").on(table.visitorUserId) }));
 
 export const prisoners = sqliteTable("prisoners", {
   id: text("id").primaryKey(),

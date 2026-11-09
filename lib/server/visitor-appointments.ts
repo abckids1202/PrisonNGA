@@ -36,8 +36,8 @@ export function createVisitorAppointmentStatements(d1: D1Database, input: Create
 
   return [
     d1.prepare(`INSERT INTO appointments
-      (id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, policy_version, duration_minutes, appointment_type, version, created_at, updated_at, last_transition_id)
-      SELECT ?, ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?
+      (id, organization_id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, policy_version, duration_minutes, appointment_type, version, created_at, updated_at, last_transition_id)
+      SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?
       WHERE EXISTS (SELECT 1 FROM idempotency_records WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING')
         AND EXISTS (
           SELECT 1 FROM visitor_relationships vr
@@ -65,7 +65,7 @@ export function createVisitorAppointmentStatements(d1: D1Database, input: Create
             AND a.requested_start < ? AND a.requested_end > ?
         )`)
       .bind(
-        input.appointmentId, input.facilityId, input.visitorUserId, input.prisonerId,
+        input.appointmentId, input.facilityId, input.facilityId, input.visitorUserId, input.prisonerId,
         input.requestedStart, input.requestedEnd, input.timezone, input.policyVersion,
         input.durationMinutes, input.appointmentType, input.now, input.now, input.correlationId,
         input.idempotency.claimId, input.idempotency.scope, input.idempotency.key,

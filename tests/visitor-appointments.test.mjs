@@ -24,7 +24,7 @@ class D1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
-      CREATE TABLE appointments (id TEXT PRIMARY KEY, facility_id TEXT, visitor_user_id TEXT, prisoner_id TEXT, status TEXT, requested_start TEXT, requested_end TEXT, timezone TEXT, policy_version INTEGER, duration_minutes INTEGER, appointment_type TEXT, version INTEGER, created_at TEXT, updated_at TEXT, last_transition_id TEXT);
+      CREATE TABLE appointments (id TEXT PRIMARY KEY, organization_id TEXT, facility_id TEXT, visitor_user_id TEXT, prisoner_id TEXT, status TEXT, requested_start TEXT, requested_end TEXT, timezone TEXT, policy_version INTEGER, duration_minutes INTEGER, appointment_type TEXT, version INTEGER, created_at TEXT, updated_at TEXT, last_transition_id TEXT);
       CREATE TABLE idempotency_records (id TEXT PRIMARY KEY, scope TEXT, idempotency_key TEXT, request_hash TEXT, status TEXT, response_status INTEGER, response_body TEXT, created_at TEXT, completed_at TEXT);
       CREATE TABLE visitor_relationships (id TEXT PRIMARY KEY, facility_id TEXT, visitor_user_id TEXT, prisoner_id TEXT, status TEXT);
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT, status TEXT, visitation_status TEXT);
@@ -114,6 +114,7 @@ test("appointment create atomically rejects overlapping visitor slots without pa
   const db = new D1();
   try {
     assert.equal((await submit(db, input("a1")))[0].meta.changes, 1);
+    assert.equal(db.sqlite.prepare("SELECT organization_id FROM appointments WHERE id = 'a1'").get().organization_id, "org-1");
     assert.equal((await submit(db, input("a2", { prisoner: "p2", relationship: "r2" })))[0].meta.changes, 0);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointments").get().n, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_events").get().n, 1);
