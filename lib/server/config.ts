@@ -82,6 +82,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (!value(env, "LIVEKIT_API_KEY")) missing.push("LIVEKIT_API_KEY");
   requireSecret(env, "LIVEKIT_API_SECRET", missing);
   if (value(env, "RECORDING_STORAGE_PROVIDER") !== "livekit_r2") missing.push("RECORDING_STORAGE_PROVIDER=livekit_r2");
+  if (!value(env, "RECORDINGS_ENCRYPTION_KEY_REFERENCE")) missing.push("RECORDINGS_ENCRYPTION_KEY_REFERENCE");
   if (!isSecureHttpsEndpoint(value(env, "R2_S3_ENDPOINT"))) missing.push("R2_S3_ENDPOINT (must be an https:// URL without credentials or fragments)");
   if (!value(env, "RECORDINGS_BUCKET_NAME") && !value(env, "R2_BUCKET_NAME")) missing.push("RECORDINGS_BUCKET_NAME");
   if (!value(env, "R2_S3_ACCESS_KEY_ID")) missing.push("R2_S3_ACCESS_KEY_ID");

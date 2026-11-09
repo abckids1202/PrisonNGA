@@ -24,7 +24,7 @@ const protectedEvidenceStorage = environment === "development"
   : evidenceProvider === "r2" && present("EVIDENCE_BUCKET_NAME");
 const protectedRecordingStorage = environment === "development"
   ? true
-  : String(values.RECORDING_STORAGE_PROVIDER || "").trim().toLowerCase() === "livekit_r2" && present("RECORDINGS_BUCKET_NAME");
+  : String(values.RECORDING_STORAGE_PROVIDER || "").trim().toLowerCase() === "livekit_r2" && present("RECORDINGS_BUCKET_NAME") && present("RECORDINGS_ENCRYPTION_KEY_REFERENCE");
 const httpsUrl = (key) => {
   if (!present(key)) return false;
   try {
@@ -140,7 +140,7 @@ const checks = [
   { id: "public-domain", label: "HTTPS public application domain", ok: httpsUrl("PUBLIC_APP_URL"), detail: "PUBLIC_APP_URL" },
   { id: "remote-database", label: "Remote D1 identity", ok: realD1Id && present("D1_DATABASE_NAME"), detail: "D1_DATABASE_ID plus D1_DATABASE_NAME" },
   { id: "evidence-storage", label: "Protected evidence storage", ok: protectedEvidenceStorage, detail: environment === "development" ? "development storage permitted" : "EVIDENCE_STORAGE_PROVIDER=r2 plus EVIDENCE_BUCKET_NAME" },
-  { id: "recording-storage", label: "Protected recording storage", ok: protectedRecordingStorage, detail: environment === "development" ? "development storage permitted" : "RECORDING_STORAGE_PROVIDER=livekit_r2 plus RECORDINGS_BUCKET_NAME" },
+  { id: "recording-storage", label: "Protected recording storage", ok: protectedRecordingStorage, detail: environment === "development" ? "development storage permitted" : "RECORDING_STORAGE_PROVIDER=livekit_r2 plus RECORDINGS_BUCKET_NAME and RECORDINGS_ENCRYPTION_KEY_REFERENCE" },
   { id: "queue", label: "Notification queue binding", ok: environment === "development" || present("NOTIFICATION_QUEUE_NAME"), detail: present("NOTIFICATION_QUEUE_NAME") ? "configured" : environment === "development" ? "development-only cron fallback" : "required for staging/production" },
   { id: "environment-config", label: "Provider and secret configuration", ok: environmentCheck.ok, detail: environmentCheck.ok ? "validated" : `${environmentCheck.missing.length} requirement(s) missing` },
   { id: "release-gates", label: "Institutional release evidence", ok: environment === "development" || releaseGates.ready, detail: environment === "development" ? "development-only gates not evaluated" : releaseGates.ready ? "all required gates attested" : `${releaseGates.missing.length} gate(s) missing` },
@@ -153,7 +153,7 @@ const operationalActions = {
   "public-domain": "Set PUBLIC_APP_URL to the deployed HTTPS application URL",
   "remote-database": "Set D1_DATABASE_ID and D1_DATABASE_NAME to the real remote database identity",
   "evidence-storage": "Configure EVIDENCE_STORAGE_PROVIDER=r2 and EVIDENCE_BUCKET_NAME for the protected evidence bucket",
-  "recording-storage": "Configure RECORDING_STORAGE_PROVIDER=livekit_r2 and RECORDINGS_BUCKET_NAME for the separate protected recordings bucket",
+  "recording-storage": "Configure RECORDING_STORAGE_PROVIDER=livekit_r2, RECORDINGS_BUCKET_NAME, and RECORDINGS_ENCRYPTION_KEY_REFERENCE for the separate protected recordings bucket",
   queue: "Configure NOTIFICATION_QUEUE_NAME for the deployed environment",
   "release-artifacts": "Restore the required release documentation artifacts before accepting pilot evidence",
 };

@@ -17,6 +17,7 @@ const base = {
   LIVEKIT_API_KEY: "key",
   LIVEKIT_API_SECRET: "l".repeat(32),
   RECORDING_STORAGE_PROVIDER: "livekit_r2",
+  RECORDINGS_ENCRYPTION_KEY_REFERENCE: "r2-managed:securevisit-staging-recordings:v1",
   R2_S3_ENDPOINT: "https://account.r2.cloudflarestorage.com",
   R2_S3_ACCESS_KEY_ID: "r2-access",
   R2_S3_SECRET_ACCESS_KEY: "r".repeat(32),
