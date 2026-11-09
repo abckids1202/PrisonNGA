@@ -92,7 +92,11 @@ export async function PATCH(request: Request) {
     const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope: idempotencyScope, key: idempotencyKey, requestHash });
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope: idempotencyScope, key: idempotencyKey };
-    const current = await d1.prepare("SELECT u.id, u.status, u.version FROM users u INNER JOIN staff_profiles sp ON sp.user_id = u.id WHERE u.id = ? AND u.user_type = 'STAFF' AND sp.facility_id = ?").bind(userId, authorization.facilityId).first<{ id: string; status: string; version: number }>();
+    const current = await d1.prepare(`SELECT u.id, u.status, u.version FROM users u
+      WHERE u.id = ? AND u.user_type = 'STAFF'
+        AND (EXISTS (SELECT 1 FROM staff_facility_assignments sfa WHERE sfa.user_id = u.id AND sfa.facility_id = ? AND sfa.status = 'ACTIVE')
+          OR (EXISTS (SELECT 1 FROM staff_profiles sp WHERE sp.user_id = u.id AND sp.facility_id = ?)
+            AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = u.id)))`).bind(userId, authorization.facilityId, authorization.facilityId).first<{ id: string; status: string; version: number }>();
     if (!current) throw new SecurityError("STAFF_NOT_FOUND", 404);
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) throw new SecurityError("STALE_STAFF_RECORD", 409);
     if (status === "DISABLED") await requireStepUp({ purpose: "staff_disable", userId: authorization.userId, targetId: userId, payload: { status, expectedVersion: body.expectedVersion ?? current.version, reason } });

@@ -79,3 +79,14 @@ test("facility identity editing uses organization scope rather than a removed fa
   assert.doesNotMatch(facilities, /requirePermission\("organization\.manage"/);
   assert.match(facilities, /f\.organization_id = \?/);
 });
+
+test("federated staff login and status changes require an active modern assignment", async () => {
+  const oidc = await readFile(new URL("../app/api/auth/staff/oidc/callback/route.ts", import.meta.url), "utf8");
+  const saml = await readFile(new URL("../app/api/auth/staff/saml/callback/route.ts", import.meta.url), "utf8");
+  const staff = await readFile(new URL("../app/api/control/staff/route.ts", import.meta.url), "utf8");
+  for (const source of [oidc, saml, staff]) {
+    assert.match(source, /staff_facility_assignments/);
+    assert.match(source, /status = 'ACTIVE'/);
+    assert.match(source, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments/);
+  }
+});

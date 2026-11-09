@@ -55,7 +55,11 @@ export async function GET(request: Request) {
       user = await d1.prepare("SELECT id, email, display_name, external_id, status FROM users WHERE lower(email) = lower(?) AND user_type = 'STAFF'").bind(claims.email).first<{ id: string; email: string; display_name: string; external_id: string | null; status: string }>();
     }
     if (!user || user.status !== "ACTIVE") throw new SecurityError("STAFF_ACCOUNT_NOT_PROVISIONED", 403);
-    const profile = await d1.prepare("SELECT facility_id FROM staff_profiles WHERE user_id = ?").bind(user.id).first<{ facility_id: string }>();
+    const profile = await d1.prepare(`SELECT facility_id FROM staff_facility_assignments
+      WHERE user_id = ? AND status = 'ACTIVE'
+      UNION ALL SELECT facility_id FROM staff_profiles
+        WHERE user_id = ? AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments WHERE user_id = ?)
+      ORDER BY facility_id LIMIT 1`).bind(user.id, user.id, user.id).first<{ facility_id: string }>();
     if (!profile) throw new SecurityError("STAFF_FACILITY_SCOPE_MISSING", 403);
     const token = crypto.randomUUID() + crypto.randomUUID();
     const now = new Date().toISOString();
