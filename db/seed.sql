@@ -6,14 +6,14 @@ INSERT INTO facilities (id, organization_id, name, timezone, current_state)
 VALUES ('facility-central-001', 'org-local-001', 'Central Correctional Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS')
 ON CONFLICT(id) DO NOTHING;
 
-INSERT INTO visit_policies (id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version)
-VALUES ('policy-central-default', 'facility-central-001', 15, 30, 60, 30, '08:00', '17:00', 50000, 'IDR', 1)
+INSERT INTO visit_policies (id, organization_id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version)
+VALUES ('policy-central-default', 'org-local-001', 'facility-central-001', 15, 30, 60, 30, '08:00', '17:00', 50000, 'IDR', 1)
 ON CONFLICT(facility_id) DO NOTHING;
 
-INSERT INTO appointment_types (id, facility_id, code, display_name, description, duration_minutes, credit_cost, status, version)
+INSERT INTO appointment_types (id, organization_id, facility_id, code, display_name, description, duration_minutes, credit_cost, status, version)
 VALUES
-  ('appointment-type-family-central', 'facility-central-001', 'FAMILY', 'Family visit', 'Standard approved visitor relationship visit.', 30, 1, 'ACTIVE', 1),
-  ('appointment-type-legal-central', 'facility-central-001', 'LEGAL', 'Legal visit', 'Professional or legal representative visit subject to facility review.', 30, 1, 'ACTIVE', 1)
+  ('appointment-type-family-central', 'org-local-001', 'facility-central-001', 'FAMILY', 'Family visit', 'Standard approved visitor relationship visit.', 30, 1, 'ACTIVE', 1),
+  ('appointment-type-legal-central', 'org-local-001', 'facility-central-001', 'LEGAL', 'Legal visit', 'Professional or legal representative visit subject to facility review.', 30, 1, 'ACTIVE', 1)
 ON CONFLICT(facility_id, code) DO NOTHING;
 
 INSERT INTO prisoners (id, organization_id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status)

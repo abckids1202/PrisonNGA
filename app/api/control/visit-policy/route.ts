@@ -114,9 +114,9 @@ export async function PUT(request: Request) {
         credit_price_minor = ?, credit_currency = ?, recording_policy = ?, recording_retention_days = ?, version = version + 1, updated_at = ? WHERE facility_id = ? AND version = ?`)
         .bind(policy.minDurationMinutes, policy.maxDurationMinutes, policy.minAdvanceMinutes, policy.maxAdvanceDays,
           policy.dailyStartTime, policy.dailyEndTime, policy.weeklyHoursJson, policy.creditPriceMinor, policy.creditCurrency, policy.recordingPolicy, policy.recordingRetentionDays, now, authorization.facilityId, current.version),
-      database.prepare(`INSERT INTO visit_policy_history (id, facility_id, version, actor_user_id, reason, snapshot, created_at)
-        SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), authorization.facilityId, nextVersion, authorization.userId, reason,
+      database.prepare(`INSERT INTO visit_policy_history (id, organization_id, facility_id, version, actor_user_id, reason, snapshot, created_at)
+        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
+        .bind(crypto.randomUUID(), authorization.facilityId, authorization.facilityId, nextVersion, authorization.userId, reason,
           JSON.stringify(nextSnapshot), now),
       ...auditAndOutboxStatements(database, {
         actorUserId: authorization.userId,
