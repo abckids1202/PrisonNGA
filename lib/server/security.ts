@@ -187,7 +187,7 @@ export async function requireOrganizationPermission(permissionKey: string): Prom
       INNER JOIN roles r ON r.id = ora.role_id
       INNER JOIN role_permissions rp ON rp.role_id = r.id
       INNER JOIN permissions p ON p.id = rp.permission_id AND p.permission_key = ?
-      LEFT JOIN facilities f ON f.organization_id = ora.organization_id AND f.status = 'ACTIVE'
+      LEFT JOIN facilities f ON f.organization_id = ora.organization_id
       WHERE ora.user_id = ? AND ora.status = 'ACTIVE'
       GROUP BY ora.organization_id`).bind(permissionKey, user.id).all<{ organization_id: string; facility_id: string | null }>();
     if (organizationRows.results.length !== 1 || !organizationRows.results[0].facility_id) throw new SecurityError(organizationRows.results.length > 1 ? "ORGANIZATION_CONTEXT_REQUIRED" : "FACILITY_SCOPE_DENIED", 403);
