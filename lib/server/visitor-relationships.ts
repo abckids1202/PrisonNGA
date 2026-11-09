@@ -27,12 +27,12 @@ export function createVisitorRelationshipStatements(
 
   return [
     d1.prepare(`INSERT INTO visitor_relationships
-      (id, facility_id, visitor_user_id, prisoner_id, relationship_type, status, version, created_at, updated_at)
-      SELECT ?, ?, ?, ?, ?, 'PENDING', 1, ?, ?
+      (id, organization_id, facility_id, visitor_user_id, prisoner_id, relationship_type, status, version, created_at, updated_at)
+      SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, 'PENDING', 1, ?, ?
       FROM prisoners p
       WHERE p.id = ? AND p.facility_id = ? AND p.status = 'ACTIVE' AND p.visitation_status = 'APPROVED'
       ON CONFLICT(visitor_user_id, prisoner_id) DO NOTHING`)
-      .bind(input.relationshipId, input.facilityId, input.visitorUserId, input.prisonerId, input.relationshipType,
+      .bind(input.relationshipId, input.facilityId, input.facilityId, input.visitorUserId, input.prisonerId, input.relationshipType,
         input.now, input.now, input.prisonerId, input.facilityId),
     d1.prepare(`INSERT INTO verification_cases
       (id, organization_id, facility_id, relationship_id, status, evidence_required, submitted_at, version, created_at, updated_at)

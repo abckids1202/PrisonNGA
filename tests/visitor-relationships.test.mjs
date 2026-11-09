@@ -28,12 +28,13 @@ class SQLiteD1 {
   constructor() {
     this.sqlite.exec(`
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
-      CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, visitation_status TEXT NOT NULL);
-      CREATE TABLE visitor_relationships (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, prisoner_id TEXT NOT NULL, relationship_type TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(visitor_user_id, prisoner_id));
+      CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, visitation_status TEXT NOT NULL, organization_id TEXT);
+      CREATE TABLE visitor_relationships (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, prisoner_id TEXT NOT NULL, relationship_type TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, organization_id TEXT, UNIQUE(visitor_user_id, prisoner_id));
       CREATE TABLE verification_cases (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, facility_id TEXT NOT NULL, relationship_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL, evidence_required INTEGER NOT NULL, submitted_at TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
-      INSERT INTO prisoners VALUES ('prisoner-1', 'facility-1', 'ACTIVE', 'APPROVED');
+      INSERT INTO facilities VALUES ('facility-1', 'org-1');
+      INSERT INTO prisoners VALUES ('prisoner-1', 'facility-1', 'ACTIVE', 'APPROVED', NULL);
     `);
   }
   prepare(sql) { return new SQLiteD1Statement(this, sql); }
@@ -71,6 +72,7 @@ test("relationship, verification case, audit, and outbox are created together", 
     const results = await d1.batch(createVisitorRelationshipStatements(d1, input));
     assert.deepEqual(results.map((result) => result.meta.changes), [1, 1, 1, 1]);
     assert.equal(d1.sqlite.prepare("SELECT status FROM visitor_relationships WHERE id = 'relationship-1'").get().status, "PENDING");
+    assert.equal(d1.sqlite.prepare("SELECT organization_id FROM visitor_relationships WHERE id = 'relationship-1'").get().organization_id, "org-1");
     assert.equal(d1.sqlite.prepare("SELECT relationship_id FROM verification_cases WHERE id = 'verification-1'").get().relationship_id, "relationship-1");
     assert.equal(d1.sqlite.prepare("SELECT action_type FROM audit_events").get().action_type, "RELATIONSHIP_SUBMITTED");
     assert.equal(d1.sqlite.prepare("SELECT event_type FROM outbox_events").get().event_type, "RELATIONSHIP_SUBMITTED");
@@ -80,7 +82,7 @@ test("relationship, verification case, audit, and outbox are created together", 
 test("duplicate submission creates no orphan case, duplicate audit, or duplicate event", async () => {
   const d1 = new SQLiteD1();
   try {
-    d1.sqlite.exec(`INSERT INTO visitor_relationships VALUES ('existing-relationship', 'facility-1', 'visitor-1', 'prisoner-1', 'Sibling', 'PENDING', 1, 'before', 'before');`);
+    d1.sqlite.exec(`INSERT INTO visitor_relationships VALUES ('existing-relationship', 'facility-1', 'visitor-1', 'prisoner-1', 'Sibling', 'PENDING', 1, 'before', 'before', NULL);`);
     const results = await d1.batch(createVisitorRelationshipStatements(d1, input));
     assert.deepEqual(results.map((result) => result.meta.changes), [0, 0, 0, 0]);
     for (const table of ["visitor_relationships", "verification_cases", "audit_events", "outbox_events"]) {

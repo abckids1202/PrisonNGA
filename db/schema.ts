@@ -367,11 +367,13 @@ export const prisoners = sqliteTable("prisoners", {
   housingUnit: text("housing_unit"),
   status: text("status", { enum: ["ACTIVE", "TRANSFERRED", "RELEASED", "INACTIVE"] }).notNull().default("ACTIVE"),
   visitationStatus: text("visitation_status", { enum: ["APPROVED", "RESTRICTED", "SUSPENDED"] }).notNull().default("APPROVED"),
+  organizationId: text("organization_id").references(() => organizations.id),
   version: integer("version").notNull().default(1),
   ...timestamps,
 }, (table) => ({
   facilityNumberIdx: uniqueIndex("prisoners_facility_number_idx").on(table.facilityId, table.prisonerNumber),
   facilityStatusIdx: index("prisoners_facility_status_idx").on(table.facilityId, table.status, table.visitationStatus),
+  organizationStatusIdx: index("prisoners_organization_status_idx").on(table.organizationId, table.facilityId, table.status, table.visitationStatus),
 }));
 
 export const visitorProfiles = sqliteTable("visitor_profiles", {
@@ -395,11 +397,13 @@ export const visitorRelationships = sqliteTable("visitor_relationships", {
   reviewedBy: text("reviewed_by").references(() => users.id),
   reviewedAt: text("reviewed_at"),
   reviewReason: text("review_reason"),
+  organizationId: text("organization_id").references(() => organizations.id),
   version: integer("version").notNull().default(1),
   ...timestamps,
 }, (table) => ({
   visitorPrisonerIdx: uniqueIndex("visitor_relationships_pair_idx").on(table.visitorUserId, table.prisonerId),
   facilityStatusIdx: index("visitor_relationships_facility_status_idx").on(table.facilityId, table.status),
+  organizationStatusIdx: index("visitor_relationships_organization_status_idx").on(table.organizationId, table.facilityId, table.status),
 }));
 
 export const verificationCases = sqliteTable("verification_cases", {

@@ -16,8 +16,8 @@ VALUES
   ('appointment-type-legal-central', 'facility-central-001', 'LEGAL', 'Legal visit', 'Professional or legal representative visit subject to facility review.', 30, 1, 'ACTIVE', 1)
 ON CONFLICT(facility_id, code) DO NOTHING;
 
-INSERT INTO prisoners (id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status)
-VALUES ('prisoner-ar-001', 'facility-central-001', 'AR-2041', 'A. Rahman', 'Unit 4', 'ACTIVE', 'APPROVED')
+INSERT INTO prisoners (id, organization_id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status)
+VALUES ('prisoner-ar-001', 'org-local-001', 'facility-central-001', 'AR-2041', 'A. Rahman', 'Unit 4', 'ACTIVE', 'APPROVED')
 ON CONFLICT(id) DO NOTHING;
 
 -- Local-only staff identity used by browser acceptance tests. This seed is never

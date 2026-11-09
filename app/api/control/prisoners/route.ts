@@ -71,9 +71,9 @@ export async function POST(request: Request) {
     const correlationId = crypto.randomUUID();
     const responseBody = { prisoner: { id, facilityId: authorization.facilityId, ...prisoner, version: 1, createdAt: now, updatedAt: now }, correlationId };
     const statements = await d1.batch([
-      d1.prepare(`INSERT INTO prisoners (id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status, version, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
-        .bind(id, authorization.facilityId, prisoner.prisonerNumber, prisoner.displayName, prisoner.housingUnit, prisoner.status, prisoner.visitationStatus, now, now),
+      d1.prepare(`INSERT INTO prisoners (id, organization_id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status, version, created_at, updated_at)
+        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, 1, ?, ?`)
+        .bind(id, authorization.facilityId, authorization.facilityId, prisoner.prisonerNumber, prisoner.displayName, prisoner.housingUnit, prisoner.status, prisoner.visitationStatus, now, now),
       ...auditAndOutboxStatements(d1, {
         actorUserId: authorization.userId,
         actorRole: authorization.roles[0] || null,
