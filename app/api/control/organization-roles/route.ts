@@ -118,10 +118,18 @@ export async function PATCH(request: Request) {
     const guard = { sql: "EXISTS (SELECT 1 FROM organization_role_assignments WHERE user_id = ? AND organization_id = ? AND role_id = ? AND status = 'REVOKED' AND version = ?)", values: [userId, authorization.organizationId, roleId, expectedVersion + 1] };
     const results = await d1.batch([
       d1.prepare("UPDATE organization_role_assignments SET status = 'REVOKED', version = version + 1, updated_at = ? WHERE user_id = ? AND organization_id = ? AND role_id = ? AND status = 'ACTIVE' AND version = ?").bind(now, userId, authorization.organizationId, roleId, expectedVersion),
+      // Organization roles are one of the two authoritative staff-access
+      // sources. Invalidate sessions only when the user has no remaining
+      // facility membership or organization role anywhere in SecureVisit.
+      d1.prepare(`UPDATE auth_sessions SET revoked_at = ?
+        WHERE user_id = ? AND revoked_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM organization_memberships WHERE user_id = ? AND status = 'ACTIVE')
+          AND NOT EXISTS (SELECT 1 FROM organization_role_assignments WHERE user_id = ? AND status = 'ACTIVE')`)
+        .bind(now, userId, userId, userId),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Organization Administrator", facilityId: authorization.facilityId, actionType: "ORGANIZATION_ROLE_REVOKED", entityType: "organization_role_assignment", entityId: `${authorization.organizationId}:${userId}:${roleId}`, reason, oldValues: current, newValues: responseBody, requestId: context.requestId, correlationId, eventType: "ORGANIZATION_ROLE_REVOKED", payload: { organizationId: authorization.organizationId, userId, roleId } }, guard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard }),
     ]);
-    if (!results[0]?.meta.changes || !results.slice(1).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("ORGANIZATION_ROLE_REVOKE_FAILED", 409);
+    if (!results[0]?.meta.changes || !results[1] || !results.slice(2).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("ORGANIZATION_ROLE_REVOKE_FAILED", 409);
     idempotency = null;
     return securityResponse(responseBody, 200, context.requestId);
   } catch (error) {

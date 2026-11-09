@@ -52,3 +52,10 @@ test("last staff membership revocation invalidates the target's active sessions"
   assert.match(source, /NOT EXISTS \(SELECT 1 FROM organization_memberships WHERE user_id = \? AND status = 'ACTIVE'\)/);
   assert.match(source, /NOT EXISTS \(SELECT 1 FROM organization_role_assignments WHERE user_id = \? AND status = 'ACTIVE'\)/);
 });
+
+test("last organization role revocation invalidates the target's active sessions", async () => {
+  const source = await readFile(new URL("../app/api/control/organization-roles/route.ts", import.meta.url), "utf8");
+  assert.match(source, /UPDATE auth_sessions SET revoked_at/);
+  assert.match(source, /NOT EXISTS \(SELECT 1 FROM organization_memberships WHERE user_id = \? AND status = 'ACTIVE'\)/);
+  assert.match(source, /NOT EXISTS \(SELECT 1 FROM organization_role_assignments WHERE user_id = \? AND status = 'ACTIVE'\)/);
+});
