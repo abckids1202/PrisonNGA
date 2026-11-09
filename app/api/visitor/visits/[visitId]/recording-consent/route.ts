@@ -113,7 +113,7 @@ export async function POST(request: Request, context: RouteContext) {
       ...auditAndOutboxStatements(d1, event),
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM recording_consents WHERE id = ? AND facility_id = ?)", values: [consentId, current.facility_id] } }),
     ]);
-    if (!result[0]?.meta.changes || !result[1]?.meta.changes || !result[2]?.meta.changes || !result[3]?.meta.changes || !result[4]?.meta.changes) throw new SecurityError("RECORDING_CONSENT_PERSISTENCE_INCOMPLETE", 503);
+    if (!result.every((entry) => Boolean(entry?.meta.changes))) throw new SecurityError("RECORDING_CONSENT_PERSISTENCE_INCOMPLETE", 503);
     idempotency = null;
     return securityResponse(responseBody, 201, requestContext.requestId);
   } catch (error) {

@@ -96,7 +96,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         SELECT ?, 'VISITOR_WAITING_ROOM_CHECKED_IN', 'appointment', ?, ?, ?, ?, ? WHERE changes() > 0`)
         .bind(crypto.randomUUID(), appointmentId, current.facility_id, JSON.stringify({ appointmentId, state: nextState }), correlationId, now),
     ]);
-    if (!result.every((entry) => entry?.meta.changes === 1)) {
+    if (!result.every((entry) => Boolean(entry?.meta.changes))) {
       // D1 reports a zero-row optimistic-concurrency match as a successful
       // statement. Restore every earlier write while its incremented version
       // is still owned by this request, including deleting a newly created

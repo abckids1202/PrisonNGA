@@ -5,7 +5,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const isolated = process.env.SECUREVISIT_E2E_ISOLATED === "true";
+// Browser acceptance tests must be safe to run from a developer checkout and
+// deterministic in CI. An explicit opt-out is retained for debugging against
+// an already prepared local database, but the default is disposable state.
+const isolated = process.env.SECUREVISIT_E2E_ISOLATED !== "false";
 const isolatedStatePath = isolated ? await mkdtemp(path.join(os.tmpdir(), "securevisit-e2e-state-")) : null;
 const childEnvironment = isolatedStatePath
   ? {

@@ -80,10 +80,14 @@ export async function POST(request: Request) {
       idempotency: activeClaim!,
       responseBody,
     }));
-    if (!created.every((result) => result?.meta.changes === 1)) {
-      const visitorOverlap = await d1.prepare(`SELECT id FROM appointments WHERE visitor_user_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(visitor.userId, ...activeStatuses, canonicalEnd, canonicalStart).first();
+    if (!created.every((result) => Boolean(result?.meta.changes))) {
+      // Exclude the candidate row itself when diagnosing a failed batch. D1
+      // batches are expected to be atomic, but if a deployment/runtime returns
+      // a partial result, reporting the just-created candidate as an overlap
+      // hides the real persistence conflict and makes recovery unsafe.
+      const visitorOverlap = await d1.prepare(`SELECT id FROM appointments WHERE id <> ? AND visitor_user_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(appointmentId, visitor.userId, ...activeStatuses, canonicalEnd, canonicalStart).first();
       if (visitorOverlap) throw new SecurityError("APPOINTMENT_OVERLAP", 409);
-      const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(relationship.facility_id, relationship.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first();
+      const prisonerOverlap = await d1.prepare(`SELECT id FROM appointments WHERE id <> ? AND facility_id = ? AND prisoner_id = ? AND status IN (${activeStatuses.map(() => "?").join(",")}) AND requested_start < ? AND requested_end > ? LIMIT 1`).bind(appointmentId, relationship.facility_id, relationship.prisoner_id, ...activeStatuses, canonicalEnd, canonicalStart).first();
       if (prisonerOverlap) throw new SecurityError("PRISONER_APPOINTMENT_OVERLAP", 409);
       const currentRelationship = await d1.prepare(`SELECT vr.status, p.status AS prisoner_status, p.visitation_status FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id AND p.facility_id = vr.facility_id WHERE vr.id = ? AND vr.facility_id = ? AND vr.visitor_user_id = ?`).bind(relationshipId, relationship.facility_id, visitor.userId).first<{ status: string; prisoner_status: string; visitation_status: string }>();
       if (!currentRelationship || currentRelationship.status !== "APPROVED" || currentRelationship.prisoner_status !== "ACTIVE" || currentRelationship.visitation_status !== "APPROVED") throw new SecurityError("RELATIONSHIP_NOT_APPROVED", 409);
@@ -149,7 +153,7 @@ export async function PATCH(request: Request) {
         idempotency: activeClaim,
         responseBody,
       }));
-      if (!cancelled.every((result) => result?.meta.changes === 1)) throw new SecurityError("APPOINTMENT_CANCEL_INCOMPLETE", 503);
+      if (!cancelled.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("APPOINTMENT_CANCEL_INCOMPLETE", 503);
       activeClaim = null;
       return securityResponse(responseBody, 200, context.requestId);
     }
@@ -207,7 +211,7 @@ export async function PATCH(request: Request) {
       idempotency: activeClaim,
       responseBody,
     }));
-    if (!rescheduled.every((result) => result?.meta.changes === 1)) {
+    if (!rescheduled.every((result) => Boolean(result?.meta.changes))) {
       const current = await d1.prepare("SELECT status, version FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ?").bind(appointmentId, appointment.facility_id, visitor.userId).first<{ status: string; version: number }>();
       if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);
       if (Number(current.version) !== Number(appointment.version)) throw new SecurityError("STALE_APPOINTMENT", 409);
