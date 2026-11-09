@@ -6,6 +6,8 @@ import { getD1 } from "../../../../db/runtime";
 
 type XenditData = Record<string, unknown>;
 type XenditWebhook = { event?: unknown; created?: unknown; data?: unknown; id?: unknown; reference_id?: unknown; payment_id?: unknown; currency?: unknown; amount?: unknown; status?: unknown };
+const supportedDisputeEvents = new Set(["dispute.action_required", "dispute.under_review", "dispute.won", "dispute.lost", "dispute.due_date_approaching"]);
+const supportedDisputeStatuses = new Set(["ACTION_REQUIRED", "UNDER_REVIEW", "WON", "LOST"]);
 
 async function matchesCallbackToken(supplied: string | null, expected: string): Promise<boolean> {
   if (!supplied || !expected || supplied.length > 512) return false;
@@ -57,7 +59,7 @@ export function canonicalizeXenditWebhook(body: XenditWebhook): { eventId: strin
   if (event.startsWith("dispute.")) {
     const disputeId = stringField(payload, "id");
     const disputeStatus = stringField(payload, "status").toUpperCase();
-    if (!disputeId || !disputeStatus || !currency) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
+    if (!supportedDisputeEvents.has(event) || !disputeId || !supportedDisputeStatuses.has(disputeStatus) || !currency) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
     // Disputes are deliberately terminal in the local payment state machine.
     // A later WON event is retained as an audited provider event and requires
     // finance review; it must never silently recreate visitor credits.

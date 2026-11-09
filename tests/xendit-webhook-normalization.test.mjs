@@ -56,3 +56,13 @@ test("Xendit top-level dispute notifications map to an audited disputed payment"
     currency: "IDR",
   });
 });
+
+test("unknown Xendit dispute lifecycle events fail closed", () => {
+  assert.throws(() => canonicalizeXenditWebhook({
+    event: "dispute.injected",
+    id: "mi-dspt-123",
+    reference_id: "payment-intent-123",
+    status: "ACTION_REQUIRED",
+    currency: "IDR",
+  }), /XENDIT_WEBHOOK_INVALID/);
+});
