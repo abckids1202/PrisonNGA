@@ -116,6 +116,7 @@ export const appointmentTypes = sqliteTable("appointment_types", {
 
 export const staffProfiles = sqliteTable("staff_profiles", {
   userId: text("user_id").primaryKey().references(() => users.id),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   employeeReference: text("employee_reference").notNull(),
   jobTitle: text("job_title").notNull(),
@@ -123,10 +124,11 @@ export const staffProfiles = sqliteTable("staff_profiles", {
   shiftStart: text("shift_start"),
   shiftEnd: text("shift_end"),
   ...timestamps,
-}, (table) => ({ facilityIdx: index("staff_profiles_facility_idx").on(table.facilityId) }));
+}, (table) => ({ facilityIdx: index("staff_profiles_facility_idx").on(table.facilityId), organizationIdx: index("staff_profiles_organization_idx").on(table.organizationId, table.facilityId) }));
 
 export const staffFacilityAssignments = sqliteTable("staff_facility_assignments", {
   userId: text("user_id").notNull().references(() => users.id),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   employeeReference: text("employee_reference").notNull(),
   jobTitle: text("job_title").notNull(),
@@ -135,7 +137,7 @@ export const staffFacilityAssignments = sqliteTable("staff_facility_assignments"
   assignedBy: text("assigned_by").references(() => users.id),
   version: integer("version").notNull().default(1),
   ...timestamps,
-}, (table) => ({ assignmentIdx: uniqueIndex("staff_facility_assignments_scope_idx").on(table.userId, table.facilityId), facilityIdx: index("staff_facility_assignments_facility_idx").on(table.facilityId, table.status), userIdx: index("staff_facility_assignments_user_idx").on(table.userId, table.status) }));
+}, (table) => ({ assignmentIdx: uniqueIndex("staff_facility_assignments_scope_idx").on(table.userId, table.facilityId), facilityIdx: index("staff_facility_assignments_facility_idx").on(table.facilityId, table.status), userIdx: index("staff_facility_assignments_user_idx").on(table.userId, table.status), organizationIdx: index("staff_facility_assignments_organization_idx").on(table.organizationId, table.facilityId, table.status) }));
 
 export const roles = sqliteTable("roles", {
   id: text("id").primaryKey(),
@@ -152,12 +154,14 @@ export const permissions = sqliteTable("permissions", {
 export const userRoles = sqliteTable("user_roles", {
   userId: text("user_id").notNull().references(() => users.id),
   roleId: text("role_id").notNull().references(() => roles.id),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   assignedBy: text("assigned_by"),
   assignedAt: text("assigned_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({
   userFacilityRoleIdx: uniqueIndex("user_roles_scope_idx").on(table.userId, table.roleId, table.facilityId),
   facilityIdx: index("user_roles_facility_idx").on(table.facilityId),
+  organizationIdx: index("user_roles_organization_idx").on(table.organizationId, table.facilityId),
 }));
 
 export const rolePermissions = sqliteTable("role_permissions", {
@@ -262,6 +266,7 @@ export const samlRequestCache = sqliteTable("saml_request_cache", {
 export const securityEvents = sqliteTable("security_events", {
   id: text("id").primaryKey(),
   userId: text("user_id"),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id"),
   eventType: text("event_type").notNull(),
   severity: text("severity", { enum: ["INFO", "WARNING", "CRITICAL"] }).notNull().default("INFO"),
@@ -270,7 +275,7 @@ export const securityEvents = sqliteTable("security_events", {
   userAgentHash: text("user_agent_hash"),
   metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ userIdx: index("security_events_user_idx").on(table.userId), facilityIdx: index("security_events_facility_idx").on(table.facilityId) }));
+}, (table) => ({ userIdx: index("security_events_user_idx").on(table.userId), facilityIdx: index("security_events_facility_idx").on(table.facilityId), organizationIdx: index("security_events_organization_idx").on(table.organizationId, table.facilityId, table.createdAt) }));
 
 export const rateLimitBuckets = sqliteTable("rate_limit_buckets", {
   keyHash: text("key_hash").primaryKey(),
@@ -298,6 +303,7 @@ export const auditEvents = sqliteTable("audit_events", {
 
 export const auditExportManifests = sqliteTable("audit_export_manifests", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   requestedBy: text("requested_by").notNull().references(() => users.id),
   sha256: text("sha256").notNull(),
@@ -305,7 +311,7 @@ export const auditExportManifests = sqliteTable("audit_export_manifests", {
   fromAt: text("from_at"),
   toAt: text("to_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ hashIdx: uniqueIndex("audit_export_manifests_sha256_idx").on(table.facilityId, table.sha256), createdIdx: index("audit_export_manifests_created_idx").on(table.facilityId, table.createdAt) }));
+}, (table) => ({ hashIdx: uniqueIndex("audit_export_manifests_sha256_idx").on(table.facilityId, table.sha256), createdIdx: index("audit_export_manifests_created_idx").on(table.facilityId, table.createdAt), organizationIdx: index("audit_export_manifests_organization_idx").on(table.organizationId, table.facilityId, table.createdAt) }));
 
 export const breakGlassRequests = sqliteTable("break_glass_requests", {
   id: text("id").primaryKey(),
@@ -449,6 +455,7 @@ export const evidenceDocuments = sqliteTable("evidence_documents", {
 
 export const retentionPolicies = sqliteTable("retention_policies", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   evidenceType: text("evidence_type").notNull().default("VISITOR_VERIFICATION"),
   retentionDays: integer("retention_days").notNull(),
@@ -456,7 +463,7 @@ export const retentionPolicies = sqliteTable("retention_policies", {
   effectiveAt: text("effective_at").notNull(),
   createdBy: text("created_by").notNull(),
   ...timestamps,
-}, (table) => ({ facilityTypeIdx: uniqueIndex("retention_policies_facility_type_idx").on(table.facilityId, table.evidenceType) }));
+}, (table) => ({ facilityTypeIdx: uniqueIndex("retention_policies_facility_type_idx").on(table.facilityId, table.evidenceType), organizationIdx: index("retention_policies_organization_idx").on(table.organizationId, table.facilityId, table.evidenceType) }));
 
 export const legalHolds = sqliteTable("legal_holds", {
   id: text("id").primaryKey(),
