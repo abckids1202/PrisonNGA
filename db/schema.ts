@@ -723,6 +723,7 @@ export const paymentRefundRequests = sqliteTable("payment_refund_requests", {
 
 export const notifications = sqliteTable("notifications", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
   facilityId: text("facility_id").references(() => facilities.id),
   userId: text("user_id").notNull().references(() => users.id),
   channel: text("channel", { enum: ["IN_APP", "EMAIL", "SMS"] }).notNull().default("IN_APP"),
@@ -738,7 +739,7 @@ export const notifications = sqliteTable("notifications", {
   lastError: text("last_error"),
   idempotencyKey: text("idempotency_key").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ idempotencyIdx: uniqueIndex("notifications_idempotency_idx").on(table.idempotencyKey), userStatusIdx: index("notifications_user_status_idx").on(table.userId, table.status, table.createdAt), facilityIdx: index("notifications_facility_idx").on(table.facilityId, table.createdAt) }));
+}, (table) => ({ idempotencyIdx: uniqueIndex("notifications_idempotency_idx").on(table.idempotencyKey), userStatusIdx: index("notifications_user_status_idx").on(table.userId, table.status, table.createdAt), facilityIdx: index("notifications_facility_idx").on(table.organizationId, table.facilityId, table.createdAt) }));
 
 export const incidents = sqliteTable("incidents", {
   id: text("id").primaryKey(),

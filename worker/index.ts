@@ -410,6 +410,8 @@ async function processOutbox(env: Env): Promise<void> {
         throw new Error("OUTBOX_RECIPIENT_MISMATCH");
       }
       if (visitorUserId) {
+        const facility = row.facility_id ? await env.DB.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(row.facility_id).first<{ organization_id: string | null }>() : null;
+        if (!facility?.organization_id) throw new Error("OUTBOX_FACILITY_ORGANIZATION_NOT_CONFIGURED");
         const copy = notificationCopy(row.event_type, payload);
         const notificationPayload = { aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload };
         const visitor = await env.DB.prepare("SELECT email, phone, email_verified_at, phone_verified_at FROM users WHERE id = ? AND user_type = 'VISITOR' AND status = 'ACTIVE'").bind(visitorUserId).first<{ email: string | null; phone: string | null; email_verified_at: string | null; phone_verified_at: string | null }>();
@@ -423,8 +425,8 @@ async function processOutbox(env: Env): Promise<void> {
           const alreadyAccepted = await env.DB.prepare("SELECT id FROM notifications WHERE idempotency_key = ? AND status IN ('SENT', 'DELIVERED') LIMIT 1").bind(externalNotificationKey).first<{ id: string }>();
           if (!alreadyAccepted) {
             const deliveryReceipt = await deliverNotification({ notificationId: row.id, email: channel === "EMAIL" ? visitor.email : null, phone: channel === "SMS" ? visitor.phone : null, template: row.event_type, title: copy.title, body: copy.body, payload: notificationPayload });
-            await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SENT', 1, ?, NULL, ?, ?)`).bind(`${row.id}:${channel.toLowerCase()}`, row.facility_id, visitorUserId, channel, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, externalNotificationKey, now).run();
+            await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, organization_id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SENT', 1, ?, NULL, ?, ?)`).bind(`${row.id}:${channel.toLowerCase()}`, facility.organization_id, row.facility_id, visitorUserId, channel, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, externalNotificationKey, now).run();
             const providerReference = deliveryReceipt.providerReference;
             if (!providerReference) throw new Error("NOTIFICATION_DELIVERY_REFERENCE_MISSING");
             await env.DB.prepare("UPDATE notification_delivery_attempts SET provider_reference = ? WHERE id = ? AND status = 'PROCESSING'").bind(providerReference, externalAttemptId).run();
@@ -437,8 +439,8 @@ async function processOutbox(env: Env): Promise<void> {
         } else {
           await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'SKIPPED', error_message = 'External delivery is not configured for this environment.', finished_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, externalAttemptId).run();
         }
-        await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
-          VALUES (?, ?, ?, 'IN_APP', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:in-app`, row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:in-app`, now).run();
+        await env.DB.prepare(`INSERT OR IGNORE INTO notifications (id, organization_id, facility_id, user_id, channel, template, title, body, payload, status, attempt_count, available_at, delivered_at, idempotency_key, created_at)
+          VALUES (?, ?, ?, ?, 'IN_APP', ?, ?, ?, ?, 'DELIVERED', 1, ?, ?, ?, ?)`).bind(`${row.id}:in-app`, facility.organization_id, row.facility_id, visitorUserId, row.event_type, copy.title, copy.body, JSON.stringify(notificationPayload), now, now, `${row.id}:visitor:in-app`, now).run();
         await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'DELIVERED', finished_at = ? WHERE id = ? AND status = 'PROCESSING'").bind(now, inAppAttemptId).run();
       } else {
         await env.DB.prepare("UPDATE notification_delivery_attempts SET status = 'SKIPPED', error_message = 'No visitor recipient associated with event.', finished_at = ? WHERE outbox_event_id = ? AND attempt_number = ? AND status = 'PROCESSING'").bind(now, row.id, attemptNumber).run();
