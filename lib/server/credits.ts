@@ -5,8 +5,8 @@ type CreditSettlementGuard = { sql: string; values: unknown[] };
 
 export async function ensureCreditAccount(d1: D1Database, input: { facilityId: string; userId: string }): Promise<string> {
   const now = new Date().toISOString();
-  await d1.prepare("INSERT OR IGNORE INTO credit_accounts (id, facility_id, user_id, available_credits, reserved_credits, version, created_at, updated_at) VALUES (?, ?, ?, 0, 0, 1, ?, ?)")
-    .bind(crypto.randomUUID(), input.facilityId, input.userId, now, now).run();
+  await d1.prepare("INSERT OR IGNORE INTO credit_accounts (id, organization_id, facility_id, user_id, available_credits, reserved_credits, version, created_at, updated_at) SELECT ?, organization_id, ?, ?, 0, 0, 1, ?, ? FROM facilities WHERE id = ?")
+    .bind(crypto.randomUUID(), input.facilityId, input.userId, now, now, input.facilityId).run();
   const account = await d1.prepare("SELECT id FROM credit_accounts WHERE user_id = ? AND facility_id = ?").bind(input.userId, input.facilityId).first<{ id: string }>();
   if (!account) throw new SecurityError("CREDIT_ACCOUNT_NOT_FOUND", 500);
   return account.id;

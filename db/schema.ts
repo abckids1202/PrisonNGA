@@ -665,16 +665,18 @@ export const recordingAccessEvents = sqliteTable("recording_access_events", {
 
 export const creditAccounts = sqliteTable("credit_accounts", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   userId: text("user_id").notNull().references(() => users.id),
   availableCredits: integer("available_credits").notNull().default(0),
   reservedCredits: integer("reserved_credits").notNull().default(0),
   version: integer("version").notNull().default(1),
   ...timestamps,
-}, (table) => ({ userFacilityIdx: uniqueIndex("credit_accounts_user_facility_idx").on(table.userId, table.facilityId) }));
+}, (table) => ({ userFacilityIdx: uniqueIndex("credit_accounts_user_facility_idx").on(table.userId, table.facilityId), organizationIdx: index("credit_accounts_organization_idx").on(table.organizationId, table.facilityId, table.userId) }));
 
 export const creditLedgerEntries = sqliteTable("credit_ledger_entries", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id").references(() => organizations.id),
   creditAccountId: text("credit_account_id").notNull().references(() => creditAccounts.id),
   appointmentId: text("appointment_id"),
   entryType: text("entry_type", { enum: ["PURCHASE", "RESERVATION", "RESERVATION_RELEASE", "CONSUMPTION", "REFUND", "MANUAL_ADJUSTMENT"] }).notNull(),
@@ -683,7 +685,7 @@ export const creditLedgerEntries = sqliteTable("credit_ledger_entries", {
   reason: text("reason"),
   createdBy: text("created_by"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({ idempotencyIdx: uniqueIndex("credit_ledger_idempotency_idx").on(table.idempotencyKey), accountIdx: index("credit_ledger_account_idx").on(table.creditAccountId, table.createdAt) }));
+}, (table) => ({ idempotencyIdx: uniqueIndex("credit_ledger_idempotency_idx").on(table.idempotencyKey), accountIdx: index("credit_ledger_account_idx").on(table.creditAccountId, table.createdAt), organizationIdx: index("credit_ledger_organization_idx").on(table.organizationId, table.creditAccountId, table.createdAt) }));
 
 export const paymentIntents = sqliteTable("payment_intents", {
   id: text("id").primaryKey(),

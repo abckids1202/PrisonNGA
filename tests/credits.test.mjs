@@ -28,16 +28,18 @@ class SQLiteD1 {
 
   constructor() {
     this.sqlite.exec(`
+      CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
       CREATE TABLE credit_accounts (
         id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, user_id TEXT NOT NULL,
         available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL,
         version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        organization_id TEXT,
         UNIQUE(user_id, facility_id)
       );
       CREATE TABLE credit_ledger_entries (
         id TEXT PRIMARY KEY, credit_account_id TEXT NOT NULL, appointment_id TEXT,
         entry_type TEXT NOT NULL, amount INTEGER NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
-        reason TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
+        reason TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, organization_id TEXT
       );
       CREATE TABLE payment_intents (
         id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, user_id TEXT NOT NULL, status TEXT NOT NULL
@@ -45,6 +47,7 @@ class SQLiteD1 {
       CREATE TABLE appointments (
         id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL
       );
+      INSERT INTO facilities VALUES ('facility-1', 'org-1'), ('facility-2', 'org-2');
       INSERT INTO appointments VALUES
         ('visit-1', 'facility-1', 'visitor-1'),
         ('visit-2', 'facility-1', 'visitor-1'),
@@ -179,7 +182,7 @@ test("refund reversal is atomic, idempotent, and refuses to overdraw a credit ac
 test("direct refund helper cannot resolve another visitor's purchase", async () => {
   const d1 = new SQLiteD1();
   try {
-    d1.sqlite.exec("INSERT INTO credit_accounts VALUES ('account-other', 'facility-2', 'visitor-other', 2, 0, 1, 'before', 'before'); INSERT INTO credit_ledger_entries VALUES ('purchase-other', 'account-other', NULL, 'PURCHASE', 2, 'payment:payment-cross-scope:purchase', 'paid', 'system', 'before');");
+    d1.sqlite.exec("INSERT INTO credit_accounts VALUES ('account-other', 'facility-2', 'visitor-other', 2, 0, 1, 'before', 'before', NULL); INSERT INTO credit_ledger_entries VALUES ('purchase-other', 'account-other', NULL, 'PURCHASE', 2, 'payment:payment-cross-scope:purchase', 'paid', 'system', 'before', NULL);");
     assert.deepEqual(await refundPurchasedCredits(d1, { paymentIntentId: "payment-cross-scope", facilityId: "facility-1", userId: "visitor-1", actorUserId: "system", reason: "Cross-scope refund." }), { refunded: false, pending: true });
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries WHERE entry_type = 'REFUND'").get().count, 0);
   } finally { d1.close(); }
@@ -189,7 +192,7 @@ test("visit credit reservation is atomic and duplicate approval cannot debit twi
   const d1 = new SQLiteD1();
   const now = new Date().toISOString();
   try {
-    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("account-1", "facility-1", "visitor-1", 1, 0, 1, now, now);
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("account-1", "facility-1", "visitor-1", 1, 0, 1, now, now, null);
     const input = { accountId: "account-1", appointmentId: "visit-1", actorUserId: "staff-1", reason: "Approved visit." };
     assert.deepEqual(await reserveVisitCredit(d1, input), { creditAccountId: "account-1", appointmentId: "visit-1", created: true });
     assert.deepEqual(await reserveVisitCredit(d1, input), { creditAccountId: "account-1", appointmentId: "visit-1", created: false });
@@ -204,8 +207,8 @@ test("visit credit reservation is atomic and duplicate approval cannot debit twi
 test("credit reservation cannot cross the appointment visitor boundary", async () => {
   const d1 = new SQLiteD1();
   try {
-    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run("account-other", "facility-1", "visitor-other", 3, 0, 1, "before", "before");
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("account-other", "facility-1", "visitor-other", 3, 0, 1, "before", "before", null);
     await assert.rejects(reserveVisitCredit(d1, {
       accountId: "account-other",
       appointmentId: "visit-1",
@@ -220,7 +223,7 @@ test("credit reservation compensates a zero-row balance write instead of leaving
   const d1 = new SQLiteD1();
   try {
     const now = new Date().toISOString();
-    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("account-partial", "facility-1", "visitor-1", 1, 0, 1, now, now);
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("account-partial", "facility-1", "visitor-1", 1, 0, 1, now, now, null);
     d1.zeroReservationBalanceUpdate = true;
     await assert.rejects(reserveVisitCredit(d1, {
       accountId: "account-partial",
@@ -244,7 +247,7 @@ test("credit settlement transitions compensate ledger entries when their balance
 
     d1.zeroCreditBalanceUpdate = false;
     const now = new Date().toISOString();
-    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("account-transition", "facility-1", "visitor-1", 2, 0, 1, now, now);
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("account-transition", "facility-1", "visitor-1", 2, 0, 1, now, now, null);
     const input = { accountId: "account-transition", appointmentId: "visit-1", actorUserId: "staff-1", reason: "Transition test." };
     await reserveVisitCredit(d1, input);
     d1.zeroCreditBalanceUpdate = true;
@@ -268,7 +271,7 @@ test("reservation release and consumption keep the account and append-only ledge
   const d1 = new SQLiteD1();
   const now = new Date().toISOString();
   try {
-    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("account-2", "facility-1", "visitor-2", 2, 0, 1, now, now);
+    d1.sqlite.prepare("INSERT INTO credit_accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("account-2", "facility-1", "visitor-2", 2, 0, 1, now, now, null);
     const first = { accountId: "account-2", appointmentId: "visit-release", actorUserId: "staff-1", reason: "Approved visit." };
     await reserveVisitCredit(d1, first);
     d1.sqlite.exec("CREATE TRIGGER fail_credit_balance BEFORE UPDATE ON credit_accounts BEGIN SELECT RAISE(ABORT, 'simulated credit transition failure'); END;");

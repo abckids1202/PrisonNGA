@@ -14,10 +14,11 @@ class D1 {
       CREATE TABLE users (id TEXT PRIMARY KEY, user_type TEXT NOT NULL);
       CREATE TABLE payment_provider_events (id TEXT PRIMARY KEY, provider TEXT, event_key TEXT, status TEXT, processed_at TEXT, last_error TEXT);
       CREATE TABLE payment_refund_requests (id TEXT PRIMARY KEY, organization_id TEXT, payment_intent_id TEXT, provider_reference TEXT, status TEXT, updated_at TEXT);
-      CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, available_credits INTEGER, reserved_credits INTEGER, version INTEGER, created_at TEXT, updated_at TEXT);
-      CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, idempotency_key TEXT UNIQUE, reason TEXT, created_by TEXT, created_at TEXT);
+      CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT, user_id TEXT, available_credits INTEGER, reserved_credits INTEGER, version INTEGER, created_at TEXT, updated_at TEXT, organization_id TEXT);
+      CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, idempotency_key TEXT UNIQUE, reason TEXT, created_by TEXT, created_at TEXT, organization_id TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
+      INSERT INTO facilities VALUES ('facility-1', 'org-1');
       INSERT INTO users VALUES ('visitor-1', 'VISITOR');
       INSERT INTO payment_intents VALUES ('payment-1', 'org-1', 'facility-1', 'visitor-1', 'webhook', 2, 100000, 'IDR', 'CHECKOUT_CREATED', 1, 'provider-1', 'before');
       INSERT INTO payment_provider_events VALUES ('event-row', 'webhook', 'event-1', 'PROCESSING', NULL, NULL);
@@ -141,8 +142,8 @@ test("payment refund rolls back the refund ledger and intent status when audit p
   const d1 = new D1();
   d1.sqlite.exec(`
     UPDATE payment_intents SET status = 'SUCCEEDED', version = 2;
-    INSERT INTO credit_accounts VALUES ('account-1', 'facility-1', 'visitor-1', 2, 0, 2, 'before', 'before');
-    INSERT INTO credit_ledger_entries VALUES ('purchase-1', 'account-1', NULL, 'PURCHASE', 2, 'payment:payment-1:purchase', 'paid', 'system:payment-webhook', 'before');
+    INSERT INTO credit_accounts VALUES ('account-1', 'facility-1', 'visitor-1', 2, 0, 2, 'before', 'before', NULL);
+    INSERT INTO credit_ledger_entries VALUES ('purchase-1', 'account-1', NULL, 'PURCHASE', 2, 'payment:payment-1:purchase', 'paid', 'system:payment-webhook', 'before', NULL);
     UPDATE payment_provider_events SET event_key = 'refund-1', status = 'PROCESSING';
   `);
   d1.sqlite.exec("CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END;");
@@ -160,8 +161,8 @@ test("payment refund replay under a new provider event key is acknowledged witho
   const d1 = new D1();
   d1.sqlite.exec(`
     UPDATE payment_intents SET status = 'SUCCEEDED', version = 2;
-    INSERT INTO credit_accounts VALUES ('account-1', 'facility-1', 'visitor-1', 2, 0, 2, 'before', 'before');
-    INSERT INTO credit_ledger_entries VALUES ('purchase-1', 'account-1', NULL, 'PURCHASE', 2, 'payment:payment-1:purchase', 'paid', 'system:payment-webhook', 'before');
+    INSERT INTO credit_accounts VALUES ('account-1', 'facility-1', 'visitor-1', 2, 0, 2, 'before', 'before', NULL);
+    INSERT INTO credit_ledger_entries VALUES ('purchase-1', 'account-1', NULL, 'PURCHASE', 2, 'payment:payment-1:purchase', 'paid', 'system:payment-webhook', 'before', NULL);
     UPDATE payment_provider_events SET event_key = 'refund-1', status = 'PROCESSING';
   `);
   await processPaymentProviderEvent(d1, {
@@ -185,8 +186,8 @@ test("payment refund refuses a purchase ledger entry from another visitor or fac
   const d1 = new D1();
   d1.sqlite.exec(`
     UPDATE payment_intents SET status = 'SUCCEEDED', version = 2;
-    INSERT INTO credit_accounts VALUES ('account-other', 'facility-2', 'visitor-other', 2, 0, 1, 'before', 'before');
-    INSERT INTO credit_ledger_entries VALUES ('purchase-other', 'account-other', NULL, 'PURCHASE', 2, 'payment:payment-1:purchase', 'paid', 'system:payment-webhook', 'before');
+    INSERT INTO credit_accounts VALUES ('account-other', 'facility-2', 'visitor-other', 2, 0, 1, 'before', 'before', NULL);
+    INSERT INTO credit_ledger_entries VALUES ('purchase-other', 'account-other', NULL, 'PURCHASE', 2, 'payment:payment-1:purchase', 'paid', 'system:payment-webhook', 'before', NULL);
     UPDATE payment_provider_events SET event_key = 'refund-cross-scope', status = 'PROCESSING';
   `);
   await assert.rejects(processPaymentProviderEvent(d1, {
