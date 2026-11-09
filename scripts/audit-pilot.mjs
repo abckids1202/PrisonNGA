@@ -123,10 +123,19 @@ const externalIntegrationChecks = [
   {
     id: "notification-delivery",
     label: "Operational notification delivery",
-    configured: emailDeliveryConfigured(notificationEmailDelivery, values.NOTIFICATION_WEBHOOK_URL, values.NOTIFICATION_WEBHOOK_SECRET)
-      && smsDeliveryConfigured(notificationSmsDelivery, values.NOTIFICATION_WEBHOOK_URL, values.NOTIFICATION_WEBHOOK_SECRET),
-    detail: "real email/SMS adapter or signed notification delivery webhook",
-    action: "Configure operational email/SMS delivery, signed callbacks, retry, and dead-letter replay",
+    configured: (() => {
+      const emailConfigured = notificationEmailDelivery
+        ? emailDeliveryConfigured(notificationEmailDelivery, values.NOTIFICATION_WEBHOOK_URL, values.NOTIFICATION_WEBHOOK_SECRET)
+        : false;
+      const smsConfigured = notificationSmsDelivery
+        ? smsDeliveryConfigured(notificationSmsDelivery, values.NOTIFICATION_WEBHOOK_URL, values.NOTIFICATION_WEBHOOK_SECRET)
+        : false;
+      return (emailConfigured || smsConfigured)
+        && (!notificationEmailDelivery || emailConfigured)
+        && (!notificationSmsDelivery || smsConfigured);
+    })(),
+    detail: "at least one real email/SMS adapter; every configured channel must be valid",
+    action: "Configure at least one operational email/SMS delivery channel, signed callbacks, retry, and dead-letter replay",
   },
 ];
 

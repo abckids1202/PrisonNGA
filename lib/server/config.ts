@@ -115,9 +115,12 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   const legacyNotificationDelivery = value(env, "NOTIFICATION_DELIVERY");
   const notificationEmailDelivery = value(env, "NOTIFICATION_EMAIL_DELIVERY") || legacyNotificationDelivery;
   const notificationSmsDelivery = value(env, "NOTIFICATION_SMS_DELIVERY") || legacyNotificationDelivery;
-  const notificationDeliveries = [notificationEmailDelivery, notificationSmsDelivery];
-  if (!legacyNotificationDelivery && !notificationEmailDelivery && !notificationSmsDelivery) missing.push("NOTIFICATION_DELIVERY=webhook");
-  else if (!notificationEmailDelivery || !notificationSmsDelivery || !notificationDeliveries.every((delivery) => ["webhook", "resend", "twilio"].includes(delivery)) || !["webhook", "resend"].includes(notificationEmailDelivery) || !["webhook", "twilio"].includes(notificationSmsDelivery)) missing.push("NOTIFICATION_DELIVERY=webhook, or configure NOTIFICATION_EMAIL_DELIVERY/NOTIFICATION_SMS_DELIVERY");
+  const notificationDeliveries = [notificationEmailDelivery, notificationSmsDelivery].filter(Boolean);
+  const notificationDeliveryConfigurationValid = notificationDeliveries.length > 0
+    && notificationDeliveries.every((delivery) => ["webhook", "resend", "twilio"].includes(delivery))
+    && (!notificationEmailDelivery || ["webhook", "resend"].includes(notificationEmailDelivery))
+    && (!notificationSmsDelivery || ["webhook", "twilio"].includes(notificationSmsDelivery));
+  if (!notificationDeliveryConfigurationValid) missing.push("NOTIFICATION_DELIVERY=webhook, or configure at least one of NOTIFICATION_EMAIL_DELIVERY/NOTIFICATION_SMS_DELIVERY");
   if (notificationDeliveries.includes("webhook")) {
     if (!isSecureHttpsEndpoint(value(env, "NOTIFICATION_WEBHOOK_URL"))) missing.push("NOTIFICATION_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
     requireSecret(env, "NOTIFICATION_WEBHOOK_SECRET", missing);

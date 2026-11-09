@@ -87,6 +87,19 @@ test("notification-only direct providers still require their server credentials"
   assert.ok(result.missing.includes("VISITOR_SMS_TWILIO_FROM or VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID"));
 });
 
+test("email-only notification delivery is accepted for an email-first pilot", () => {
+  const result = validateEnvironment({
+    ...withDatabase,
+    SECUREVISIT_ENVIRONMENT: "staging",
+    NOTIFICATION_EMAIL_DELIVERY: "resend",
+    NOTIFICATION_SMS_DELIVERY: "",
+    RESEND_API_KEY: "resend-test-key",
+    VISITOR_EMAIL_FROM: "SecureVisit <no-reply@example.test>",
+  });
+  assert.equal(result.missing.some((item) => item.includes("NOTIFICATION_DELIVERY")), false);
+  assert.equal(result.missing.some((item) => item.includes("VISITOR_SMS_TWILIO")), false);
+});
+
 test("staging and production reject weak webhook signing secrets", () => {
   const base = {
     ...withDatabase,

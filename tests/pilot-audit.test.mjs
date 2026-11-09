@@ -88,6 +88,21 @@ test("pilot audit reports real integration readiness without exposing provider s
   assert.doesNotMatch(result.stdout, /provider-secret-must-not-appear|lk-secret-must-not-appear|scanner-secret-must-not-appear/);
 });
 
+test("pilot audit accepts an email-only notification channel", async () => {
+  const result = await runAudit([], {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    VISITOR_AUTH_CHANNELS: "EMAIL",
+    SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL: "approved",
+    VISITOR_EMAIL_DELIVERY: "resend",
+    RESEND_API_KEY: "resend-test-key",
+    VISITOR_EMAIL_FROM: "SecureVisit <no-reply@example.test>",
+    NOTIFICATION_EMAIL_DELIVERY: "resend",
+    NOTIFICATION_SMS_DELIVERY: "",
+  });
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.externalIntegrationChecks.find((check) => check.id === "notification-delivery")?.configured, true);
+});
+
 test("strict pilot audit fails closed outside development until configuration and evidence exist", async () => {
   const result = await runAudit(["--strict"], { SECUREVISIT_ENVIRONMENT: "staging" });
   assert.notEqual(result.code, 0);
