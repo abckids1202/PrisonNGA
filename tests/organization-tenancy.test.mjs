@@ -108,3 +108,12 @@ test("organization authorization can resolve an owner without facility membershi
   assert.match(security, /ORGANIZATION_CONTEXT_REQUIRED/);
   assert.match(security, /MIN\(f\.id\) AS facility_id/);
 });
+
+test("organization-level facility creation provisions a modern assignment without legacy profile dependency", async () => {
+  const facilities = await readFile(new URL("../app/api/control/facilities/route.ts", import.meta.url), "utf8");
+  assert.match(facilities, /SELECT id AS role_id, name FROM roles WHERE name = 'Supervisor'/);
+  assert.match(facilities, /FROM users u LEFT JOIN staff_profiles sp/);
+  assert.match(facilities, /INSERT INTO staff_facility_assignments \(user_id, organization_id, facility_id/);
+  assert.match(facilities, /INSERT INTO user_roles \(user_id, role_id, organization_id, facility_id/);
+  assert.doesNotMatch(facilities, /FROM staff_profiles WHERE user_id = \? AND facility_id = \?/);
+});

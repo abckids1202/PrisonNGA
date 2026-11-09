@@ -42,15 +42,22 @@ export async function POST(request: Request) {
     const facilityId = crypto.randomUUID();
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
-    const role = await d1.prepare(`SELECT ur.role_id, r.name FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND ur.facility_id = ? ORDER BY CASE WHEN r.name = 'Supervisor' THEN 0 ELSE 1 END LIMIT 1`).bind(authorization.userId, authorization.facilityId).first<{ role_id: string; name: string }>();
-    if (!role) throw new SecurityError("STAFF_ROLE_NOT_FOUND", 409);
+    const [role, actor] = await Promise.all([
+      d1.prepare("SELECT id AS role_id, name FROM roles WHERE name = 'Supervisor' LIMIT 1").first<{ role_id: string; name: string }>(),
+      d1.prepare(`SELECT u.display_name, sp.employee_reference, sp.job_title, sp.department
+        FROM users u LEFT JOIN staff_profiles sp ON sp.user_id = u.id WHERE u.id = ? AND u.user_type = 'STAFF' AND u.status = 'ACTIVE'`)
+        .bind(authorization.userId).first<{ display_name: string; employee_reference: string | null; job_title: string | null; department: string | null }>(),
+    ]);
+    if (!role || !actor) throw new SecurityError("STAFF_ROLE_NOT_FOUND", 409);
+    const employeeReference = actor.employee_reference || `ORG-${authorization.userId.slice(0, 12).toUpperCase()}`;
+    const jobTitle = actor.job_title || "Facility Administrator";
     const responseBody = { facility: { id: facilityId, organizationId: organization.id, name, timezone, address: null, contactEmail: null, contactPhone: null, currentState: "NORMAL_OPERATIONS", version: 1 }, correlationId };
     const guard = { sql: "EXISTS (SELECT 1 FROM facilities WHERE id = ? AND organization_id = ? AND version = 1)", values: [facilityId, organization.id] };
     const results = await d1.batch([
       d1.prepare(`INSERT INTO facilities (id, organization_id, name, timezone, current_state, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'NORMAL_OPERATIONS', 1, ?, ?)`).bind(facilityId, organization.id, name, timezone, now, now),
       d1.prepare(`INSERT INTO visit_policies (id, organization_id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_currency, recording_policy, version, created_at, updated_at) VALUES (?, ?, ?, 15, 30, 60, 30, '08:00', '17:00', 'IDR', 'OFF', 1, ?, ?)`).bind(crypto.randomUUID(), organization.id, facilityId, now, now),
-      d1.prepare(`INSERT INTO staff_facility_assignments (user_id, facility_id, employee_reference, job_title, department, status, assigned_by, version, created_at, updated_at) SELECT ?, ?, employee_reference, job_title, department, 'ACTIVE', ?, 1, ?, ? FROM staff_profiles WHERE user_id = ? AND facility_id = ?`).bind(authorization.userId, facilityId, authorization.userId, now, now, authorization.userId, authorization.facilityId),
-      d1.prepare(`INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?, ?)`).bind(authorization.userId, role.role_id, facilityId, authorization.userId, now),
+      d1.prepare(`INSERT INTO staff_facility_assignments (user_id, organization_id, facility_id, employee_reference, job_title, department, status, assigned_by, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, 1, ?, ?)`).bind(authorization.userId, organization.id, facilityId, employeeReference, jobTitle, actor.department, authorization.userId, now, now),
+      d1.prepare(`INSERT INTO user_roles (user_id, role_id, organization_id, facility_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?, ?, ?)`).bind(authorization.userId, role.role_id, organization.id, facilityId, authorization.userId, now),
       d1.prepare(`INSERT INTO organization_memberships (id, organization_id, user_id, facility_id, role, status, assigned_by, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, 1, ?, ?)`).bind(crypto.randomUUID(), organization.id, authorization.userId, facilityId, role.name, authorization.userId, now, now),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId, actionType: "FACILITY_CREATED", entityType: "facility", entityId: facilityId, reason, newValues: responseBody.facility, requestId: context.requestId, correlationId, eventType: "FACILITY_CREATED", payload: { facilityId, organizationId: organization.id } }, guard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard }),
