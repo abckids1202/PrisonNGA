@@ -41,7 +41,7 @@ const visitorEmailDelivery = deliveryValue("VISITOR_EMAIL_DELIVERY", "VISITOR_AU
 const visitorSmsDelivery = deliveryValue("VISITOR_SMS_DELIVERY", "VISITOR_AUTH_DELIVERY");
 const notificationEmailDelivery = deliveryValue("NOTIFICATION_EMAIL_DELIVERY", "NOTIFICATION_DELIVERY");
 const notificationSmsDelivery = deliveryValue("NOTIFICATION_SMS_DELIVERY", "NOTIFICATION_DELIVERY");
-const emailDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => isDeliveryConfigured({
+const realEmailDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => delivery !== "in_app" && isDeliveryConfigured({
   environment,
   delivery,
   channel: "EMAIL",
@@ -50,7 +50,7 @@ const emailDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => isDeliv
   resendApiKey: values.RESEND_API_KEY,
   emailFrom: values.VISITOR_EMAIL_FROM,
 });
-const smsDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => isDeliveryConfigured({
+const realSmsDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => delivery !== "in_app" && isDeliveryConfigured({
   environment,
   delivery,
   channel: "SMS",
@@ -61,6 +61,8 @@ const smsDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => isDeliver
   twilioFrom: values.VISITOR_SMS_TWILIO_FROM,
   twilioMessagingServiceSid: values.VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID,
 });
+const emailDeliveryConfigured = realEmailDeliveryConfigured;
+const smsDeliveryConfigured = realSmsDeliveryConfigured;
 const visitorAuthChannels = String(values.VISITOR_AUTH_CHANNELS || "EMAIL,SMS").trim().toUpperCase();
 const visitorSmsRequired = visitorAuthChannels !== "EMAIL";
 const visitorEmailOnlyApproved = visitorAuthChannels === "EMAIL" && configuredValue("SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL") === "approved";

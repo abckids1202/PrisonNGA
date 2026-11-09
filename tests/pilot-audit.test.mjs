@@ -103,6 +103,18 @@ test("pilot audit accepts an email-only notification channel", async () => {
   assert.equal(report.externalIntegrationChecks.find((check) => check.id === "notification-delivery")?.configured, true);
 });
 
+test("pilot audit does not mistake development in-app notifications for a real provider", async () => {
+  const result = await runAudit([], {
+    SECUREVISIT_ENVIRONMENT: "development",
+    NOTIFICATION_DELIVERY: "in_app",
+  });
+  const report = JSON.parse(result.stdout);
+  const notification = report.externalIntegrationChecks.find((check) => check.id === "notification-delivery");
+  assert.equal(notification?.configured, false);
+  assert.equal(notification?.evaluation, "waived");
+  assert.ok(report.waivedExternalIntegrations.includes("notification-delivery"));
+});
+
 test("strict pilot audit fails closed outside development until configuration and evidence exist", async () => {
   const result = await runAudit(["--strict"], { SECUREVISIT_ENVIRONMENT: "staging" });
   assert.notEqual(result.code, 0);
