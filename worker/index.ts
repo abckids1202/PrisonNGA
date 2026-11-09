@@ -106,6 +106,54 @@ type ExpiredSession = { id: string; appointment_id: string; facility_id: string;
 type PaymentRetryEvent = { id: string; facility_id: string | null; provider: string; event_key: string; event_type: string; payload: string; attempt_count: number };
 type AbandonedPaymentIntent = { id: string; facility_id: string; user_id: string; credit_quantity: number; amount_minor: number; currency: string; version: number };
 
+type TenantIntegrityIssue = { facility_id: string; organization_id: string | null; mismatch_count: number };
+
+// Facility-owned records must carry the same organization as their facility.
+// This check runs independently of request paths so imports, callbacks, and
+// recovery jobs also produce a durable alarm when the tenant invariant breaks.
+const tenantScopedFacilityTables = [
+  "visit_policies", "visit_policy_history", "appointment_types", "appointments", "prisoners",
+  "visitor_relationships", "verification_cases", "evidence_documents", "retention_policies",
+  "legal_holds", "appointment_status_events", "resource_reservations", "resources", "kiosk_credentials",
+  "waiting_room_sessions", "visitor_waiting_room_checkins", "visit_sessions", "visitor_device_check_attempts",
+  "visit_session_events", "visit_session_participants", "recording_consents", "recordings", "recording_access_events",
+  "credit_accounts", "payment_intents", "payment_refund_requests", "notifications",
+  "incidents", "audit_export_manifests", "staff_profiles", "staff_facility_assignments", "user_roles",
+] as const;
+
+async function reconcileTenantIntegrity(env: Env): Promise<void> {
+  const checks = await env.DB.batch(tenantScopedFacilityTables.map((table) => env.DB.prepare(`
+    SELECT f.id AS facility_id, f.organization_id, COUNT(t.rowid) AS mismatch_count
+    FROM facilities f
+    INNER JOIN ${table} t ON t.facility_id = f.id
+    WHERE t.organization_id IS NULL OR t.organization_id <> f.organization_id
+    GROUP BY f.id, f.organization_id
+    HAVING mismatch_count > 0
+    LIMIT 50
+  `)));
+  const now = new Date().toISOString();
+  const correlationId = crypto.randomUUID();
+  const statements: D1PreparedStatement[] = [];
+  checks.forEach((result, index) => {
+    const table = tenantScopedFacilityTables[index];
+    for (const issue of (result.results as TenantIntegrityIssue[])) {
+      const metadata = JSON.stringify({ source: "SECUREVISIT_TENANT_INTEGRITY_RECONCILIATION", table, mismatchCount: Number(issue.mismatch_count), requiresStaffReview: true });
+      statements.push(env.DB.prepare(`
+        INSERT INTO security_events (id, organization_id, facility_id, event_type, severity, request_id, metadata, created_at)
+        SELECT ?, ?, ?, 'TENANT_INTEGRITY_RECONCILIATION_REQUIRED', 'CRITICAL', ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM security_events se
+          WHERE se.facility_id = ?
+            AND se.event_type = 'TENANT_INTEGRITY_RECONCILIATION_REQUIRED'
+            AND json_extract(se.metadata, '$.table') = ?
+            AND julianday(se.created_at) >= julianday('now', '-15 minutes')
+        )
+      `).bind(crypto.randomUUID(), issue.organization_id, issue.facility_id, correlationId, metadata, now, issue.facility_id, table));
+    }
+  });
+  for (let offset = 0; offset < statements.length; offset += 25) await env.DB.batch(statements.slice(offset, offset + 25));
+}
+
 async function reconcileStaleKioskHealth(env: Env): Promise<void> {
   const stale = await env.DB.prepare(`SELECT id, facility_id, display_name, version, last_heartbeat_at
     FROM resources
@@ -1074,6 +1122,7 @@ const worker = {
       runScheduledJob(env, "idempotency-cleanup", () => purgeExpiredIdempotencyRecords(env.DB)),
       runScheduledJob(env, "rate-limit-cleanup", () => purgeStaleRateLimitBuckets(env.DB)),
       runScheduledJob(env, "live-session-reconciliation", () => reconcileExpiredSessions(env)),
+      runScheduledJob(env, "tenant-integrity", () => reconcileTenantIntegrity(env)),
     ]));
   },
   async queue(batch: NotificationQueueBatch, env: Env): Promise<void> {
