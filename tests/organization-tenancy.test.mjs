@@ -117,3 +117,13 @@ test("organization-level facility creation provisions a modern assignment withou
   assert.match(facilities, /INSERT INTO user_roles \(user_id, role_id, organization_id, facility_id/);
   assert.doesNotMatch(facilities, /FROM staff_profiles WHERE user_id = \? AND facility_id = \?/);
 });
+
+test("staff provisioning and directory reads use facility assignments as the multi-facility source of truth", async () => {
+  const staff = await readFile(new URL("../app/api/control/staff/route.ts", import.meta.url), "utf8");
+  assert.match(staff, /LEFT JOIN staff_facility_assignments sfa ON sfa\.user_id = u\.id/);
+  assert.match(staff, /sfa\.facility_id = \? AND sfa\.status = 'ACTIVE'/);
+  assert.match(staff, /COALESCE\(sfa\.employee_reference, sp\.employee_reference\)/);
+  assert.match(staff, /INSERT INTO staff_facility_assignments \(user_id, organization_id, facility_id/);
+  assert.match(staff, /INSERT INTO user_roles \(user_id, role_id, organization_id, facility_id/);
+  assert.match(staff, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2\.user_id = u\.id\)/);
+});

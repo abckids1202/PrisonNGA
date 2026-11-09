@@ -10,12 +10,19 @@ export async function GET() {
   try {
     const authorization = await requirePermission("facility.read");
     const d1 = await getD1();
-    const result = await d1.prepare(`SELECT u.id, u.email, u.display_name, u.external_id, u.status, u.last_login_at, u.version, sp.employee_reference, sp.job_title, sp.department, GROUP_CONCAT(r.name, ', ') AS roles
-      FROM users u INNER JOIN staff_profiles sp ON sp.user_id = u.id LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.facility_id = sp.facility_id LEFT JOIN roles r ON r.id = ur.role_id
-      WHERE sp.facility_id = ? AND u.user_type = 'STAFF'
-        AND (EXISTS (SELECT 1 FROM staff_facility_assignments sfa WHERE sfa.user_id = u.id AND sfa.facility_id = ? AND sfa.status = 'ACTIVE')
-          OR NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = u.id))
-      GROUP BY u.id ORDER BY u.display_name`).bind(authorization.facilityId, authorization.facilityId).all();
+    const result = await d1.prepare(`SELECT u.id, u.email, u.display_name, u.external_id, u.status, u.last_login_at, u.version,
+        COALESCE(sfa.employee_reference, sp.employee_reference) AS employee_reference,
+        COALESCE(sfa.job_title, sp.job_title) AS job_title,
+        COALESCE(sfa.department, sp.department) AS department,
+        GROUP_CONCAT(r.name, ', ') AS roles
+      FROM users u
+      LEFT JOIN staff_facility_assignments sfa ON sfa.user_id = u.id AND sfa.facility_id = ? AND sfa.status = 'ACTIVE'
+      LEFT JOIN staff_profiles sp ON sp.user_id = u.id AND sp.facility_id = ?
+      LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.facility_id = ?
+      LEFT JOIN roles r ON r.id = ur.role_id
+      WHERE u.user_type = 'STAFF'
+        AND (sfa.user_id IS NOT NULL OR (sp.user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = u.id)))
+      GROUP BY u.id ORDER BY u.display_name`).bind(authorization.facilityId, authorization.facilityId, authorization.facilityId).all();
     return securityResponse({ staff: result.results, facilityId: authorization.facilityId }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }
@@ -59,8 +66,9 @@ export async function POST(request: Request) {
     const results = await d1.batch([
       d1.prepare("INSERT INTO users (id, external_id, email, display_name, user_type, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'STAFF', 'ACTIVE', 1, ?, ?)").bind(userId, `pending:staff:${userId}`, email, displayName, now, now),
       d1.prepare("INSERT INTO staff_profiles (user_id, facility_id, employee_reference, job_title, department, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(userId, authorization.facilityId, employeeReference, jobTitle, department, now, now),
+      d1.prepare("INSERT INTO staff_facility_assignments (user_id, organization_id, facility_id, employee_reference, job_title, department, status, assigned_by, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, 1, ?, ?)").bind(userId, facility.organization_id, authorization.facilityId, employeeReference, jobTitle, department, authorization.userId, now, now),
       d1.prepare("INSERT INTO organization_memberships (id, organization_id, user_id, facility_id, role, status, version, assigned_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'ACTIVE', 1, ?, ?, ?)").bind(`membership-${userId}-${authorization.facilityId}`, facility.organization_id, userId, authorization.facilityId, role.name, authorization.userId, now, now),
-      d1.prepare("INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?, ?)").bind(userId, role.id, authorization.facilityId, authorization.userId, now),
+      d1.prepare("INSERT INTO user_roles (user_id, role_id, organization_id, facility_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, role.id, facility.organization_id, authorization.facilityId, authorization.userId, now),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "STAFF_PROVISIONED", entityType: "staff_user", entityId: userId, reason, newValues: { email, displayName, employeeReference, jobTitle, department, role: role.name, status: "ACTIVE" }, requestId: context.requestId, correlationId, eventType: "STAFF_PROVISIONED", payload: { userId, email } }, auditGuard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: auditGuard }),
     ]);
