@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const facilityId = crypto.randomUUID();
+    const appointmentTypeId = crypto.randomUUID();
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
     const [role, actor] = await Promise.all([
@@ -51,18 +52,19 @@ export async function POST(request: Request) {
     if (!role || !actor) throw new SecurityError("STAFF_ROLE_NOT_FOUND", 409);
     const employeeReference = actor.employee_reference || `ORG-${authorization.userId.slice(0, 12).toUpperCase()}`;
     const jobTitle = actor.job_title || "Facility Administrator";
-    const responseBody = { facility: { id: facilityId, organizationId: organization.id, name, timezone, address: null, contactEmail: null, contactPhone: null, currentState: "NORMAL_OPERATIONS", version: 1 }, correlationId };
+    const responseBody = { facility: { id: facilityId, organizationId: organization.id, name, timezone, address: null, contactEmail: null, contactPhone: null, currentState: "NORMAL_OPERATIONS", version: 1 }, appointmentType: { id: appointmentTypeId, code: "FAMILY_VIDEO", displayName: "Family video visit", durationMinutes: 30, creditCost: 1, status: "ACTIVE" }, correlationId };
     const guard = { sql: "EXISTS (SELECT 1 FROM facilities WHERE id = ? AND organization_id = ? AND version = 1)", values: [facilityId, organization.id] };
     const results = await d1.batch([
       d1.prepare(`INSERT INTO facilities (id, organization_id, name, timezone, current_state, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'NORMAL_OPERATIONS', 1, ?, ?)`).bind(facilityId, organization.id, name, timezone, now, now),
       d1.prepare(`INSERT INTO visit_policies (id, organization_id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_currency, recording_policy, version, created_at, updated_at) VALUES (?, ?, ?, 15, 30, 60, 30, '08:00', '17:00', 'IDR', 'OFF', 1, ?, ?)`).bind(crypto.randomUUID(), organization.id, facilityId, now, now),
+      d1.prepare(`INSERT INTO appointment_types (id, organization_id, facility_id, code, display_name, description, duration_minutes, credit_cost, status, version, created_at, updated_at) VALUES (?, ?, ?, 'FAMILY_VIDEO', 'Family video visit', 'Standard video visitation appointment.', 30, 1, 'ACTIVE', 1, ?, ?)`).bind(appointmentTypeId, organization.id, facilityId, now, now),
       d1.prepare(`INSERT INTO staff_facility_assignments (user_id, organization_id, facility_id, employee_reference, job_title, department, status, assigned_by, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, 1, ?, ?)`).bind(authorization.userId, organization.id, facilityId, employeeReference, jobTitle, actor.department, authorization.userId, now, now),
       d1.prepare(`INSERT INTO user_roles (user_id, role_id, organization_id, facility_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?, ?, ?)`).bind(authorization.userId, role.role_id, organization.id, facilityId, authorization.userId, now),
       d1.prepare(`INSERT INTO organization_memberships (id, organization_id, user_id, facility_id, role, status, assigned_by, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, 1, ?, ?)`).bind(crypto.randomUUID(), organization.id, authorization.userId, facilityId, role.name, authorization.userId, now, now),
       ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId, actionType: "FACILITY_CREATED", entityType: "facility", entityId: facilityId, reason, newValues: responseBody.facility, requestId: context.requestId, correlationId, eventType: "FACILITY_CREATED", payload: { facilityId, organizationId: organization.id } }, guard),
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard }),
     ]);
-    if (!results[0]?.meta.changes || !results[1]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes || !results[4]?.meta.changes || !results.slice(5).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("FACILITY_CREATE_FAILED", 409);
+    if (!results[0]?.meta.changes || !results[1]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes || !results[4]?.meta.changes || !results[5]?.meta.changes || !results.slice(6).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("FACILITY_CREATE_FAILED", 409);
     idempotency = null;
     return securityResponse(responseBody, 201, context.requestId);
   } catch (error) {

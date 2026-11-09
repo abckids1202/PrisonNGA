@@ -115,6 +115,8 @@ test("organization-level facility creation provisions a modern assignment withou
   assert.match(facilities, /FROM users u LEFT JOIN staff_profiles sp/);
   assert.match(facilities, /INSERT INTO staff_facility_assignments \(user_id, organization_id, facility_id/);
   assert.match(facilities, /INSERT INTO user_roles \(user_id, role_id, organization_id, facility_id/);
+  assert.match(facilities, /INSERT INTO appointment_types \(id, organization_id, facility_id/);
+  assert.match(facilities, /'FAMILY_VIDEO', 'Family video visit'/);
   assert.doesNotMatch(facilities, /FROM staff_profiles WHERE user_id = \? AND facility_id = \?/);
 });
 
