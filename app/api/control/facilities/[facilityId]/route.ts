@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../../lib/server/idempotency";
-import { assertReason, getRequestContext, requirePermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
+import { assertReason, getRequestContext, requireOrganizationPermission, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 
 const timezonePattern = /^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)+$/;
 
@@ -11,7 +11,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ fa
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
     const { facilityId } = await params;
-    const authorization = await requirePermission("organization.manage", facilityId);
+    const authorization = await requireOrganizationPermission("organization.manage");
     const body = await request.json() as { name?: unknown; timezone?: unknown; address?: unknown; contactEmail?: unknown; contactPhone?: unknown; expectedVersion?: unknown; reason?: unknown };
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 160) : "";
     const timezone = typeof body.timezone === "string" ? body.timezone.trim() : "";
@@ -24,7 +24,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ fa
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
     d1 = await getD1();
-    const current = await d1.prepare("SELECT f.id, f.organization_id, f.name, f.timezone, f.address, f.contact_email, f.contact_phone, f.current_state, f.version FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id WHERE f.id = ? AND o.status = 'ACTIVE'").bind(facilityId).first<{ id: string; organization_id: string; name: string; timezone: string; address: string | null; contact_email: string | null; contact_phone: string | null; current_state: string; version: number }>();
+    const current = await d1.prepare("SELECT f.id, f.organization_id, f.name, f.timezone, f.address, f.contact_email, f.contact_phone, f.current_state, f.version FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id WHERE f.id = ? AND f.organization_id = ? AND o.status = 'ACTIVE'").bind(facilityId, authorization.organizationId).first<{ id: string; organization_id: string; name: string; timezone: string; address: string | null; contact_email: string | null; contact_phone: string | null; current_state: string; version: number }>();
     if (!current) throw new SecurityError("FACILITY_NOT_FOUND", 404);
     const scope = `facility-details:${facilityId}`;
     const requestHash = await hashIdempotencyPayload({ facilityId, name, timezone, address, contactEmail, contactPhone, expectedVersion: body.expectedVersion, reason });

@@ -72,3 +72,10 @@ test("incident assignment rejects revoked modern staff assignments", async () =>
   assert.match(incidents, /staff_facility_assignments sfa WHERE sfa\.user_id = u\.id/);
   assert.match(incidents, /staff_facility_assignments sfa2 WHERE sfa2\.user_id = u\.id/);
 });
+
+test("facility identity editing uses organization scope rather than a removed facility permission", async () => {
+  const facilities = await readFile(new URL("../app/api/control/facilities/[facilityId]/route.ts", import.meta.url), "utf8");
+  assert.match(facilities, /requireOrganizationPermission\("organization\.manage"\)/);
+  assert.doesNotMatch(facilities, /requirePermission\("organization\.manage"/);
+  assert.match(facilities, /f\.organization_id = \?/);
+});
