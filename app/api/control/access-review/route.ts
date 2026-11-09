@@ -24,8 +24,10 @@ export async function GET() {
       LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.facility_id = sp.facility_id
       LEFT JOIN roles r ON r.id = ur.role_id
       WHERE sp.facility_id = ? AND u.user_type = 'STAFF'
+        AND (EXISTS (SELECT 1 FROM staff_facility_assignments sfa WHERE sfa.user_id = u.id AND sfa.facility_id = ? AND sfa.status = 'ACTIVE')
+          OR NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = u.id))
       GROUP BY u.id
-      ORDER BY CASE u.status WHEN 'ACTIVE' THEN 0 WHEN 'SUSPENDED' THEN 1 ELSE 2 END, u.display_name`).bind(now, authorization.facilityId).all();
+      ORDER BY CASE u.status WHEN 'ACTIVE' THEN 0 WHEN 'SUSPENDED' THEN 1 ELSE 2 END, u.display_name`).bind(now, authorization.facilityId, authorization.facilityId).all();
 
     const staff = result.results;
     const summary = staff.reduce<{ total: number; active: number; suspended: number; disabled: number; activeSessions: number }>((counts, member) => {

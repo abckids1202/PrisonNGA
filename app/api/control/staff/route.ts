@@ -12,7 +12,10 @@ export async function GET() {
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT u.id, u.email, u.display_name, u.external_id, u.status, u.last_login_at, u.version, sp.employee_reference, sp.job_title, sp.department, GROUP_CONCAT(r.name, ', ') AS roles
       FROM users u INNER JOIN staff_profiles sp ON sp.user_id = u.id LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.facility_id = sp.facility_id LEFT JOIN roles r ON r.id = ur.role_id
-      WHERE sp.facility_id = ? AND u.user_type = 'STAFF' GROUP BY u.id ORDER BY u.display_name`).bind(authorization.facilityId).all();
+      WHERE sp.facility_id = ? AND u.user_type = 'STAFF'
+        AND (EXISTS (SELECT 1 FROM staff_facility_assignments sfa WHERE sfa.user_id = u.id AND sfa.facility_id = ? AND sfa.status = 'ACTIVE')
+          OR NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = u.id))
+      GROUP BY u.id ORDER BY u.display_name`).bind(authorization.facilityId, authorization.facilityId).all();
     return securityResponse({ staff: result.results, facilityId: authorization.facilityId }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
 }

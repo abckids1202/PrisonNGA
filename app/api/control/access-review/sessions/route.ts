@@ -22,9 +22,11 @@ export async function GET() {
       FROM auth_sessions s
       INNER JOIN users u ON u.id = s.user_id AND u.user_type = 'STAFF'
       INNER JOIN staff_profiles sp ON sp.user_id = s.user_id AND sp.facility_id = ?
+        AND (EXISTS (SELECT 1 FROM staff_facility_assignments sfa WHERE sfa.user_id = s.user_id AND sfa.facility_id = ? AND sfa.status = 'ACTIVE')
+          OR NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = s.user_id))
       WHERE s.revoked_at IS NULL AND julianday(s.expires_at) > julianday(?)
       ORDER BY s.last_seen_at DESC, s.created_at DESC
-      LIMIT 250`).bind(authorization.facilityId, now).all();
+      LIMIT 250`).bind(authorization.facilityId, authorization.facilityId, now).all();
     return securityResponse({ facilityId: authorization.facilityId, generatedAt: now, sessions: result.results }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
@@ -50,7 +52,9 @@ export async function POST(request: Request) {
       FROM auth_sessions s
       INNER JOIN users u ON u.id = s.user_id AND u.user_type = 'STAFF'
       INNER JOIN staff_profiles sp ON sp.user_id = s.user_id AND sp.facility_id = ?
-      WHERE s.id = ? AND s.user_id = ?`).bind(authorization.facilityId, sessionId, userId).first<{ id: string; user_id: string; display_name: string; revoked_at: string | null }>();
+        AND (EXISTS (SELECT 1 FROM staff_facility_assignments sfa WHERE sfa.user_id = s.user_id AND sfa.facility_id = ? AND sfa.status = 'ACTIVE')
+          OR NOT EXISTS (SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2.user_id = s.user_id))
+      WHERE s.id = ? AND s.user_id = ?`).bind(authorization.facilityId, authorization.facilityId, sessionId, userId).first<{ id: string; user_id: string; display_name: string; revoked_at: string | null }>();
     if (!target) throw new SecurityError("STAFF_SESSION_NOT_FOUND", 404);
 
     const scope = `staff-session-revoke:${authorization.facilityId}:${sessionId}`;

@@ -90,3 +90,14 @@ test("federated staff login and status changes require an active modern assignme
     assert.match(source, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments/);
   }
 });
+
+test("staff directory and access review hide revoked modern assignments", async () => {
+  const staff = await readFile(new URL("../app/api/control/staff/route.ts", import.meta.url), "utf8");
+  const review = await readFile(new URL("../app/api/control/access-review/route.ts", import.meta.url), "utf8");
+  const sessions = await readFile(new URL("../app/api/control/access-review/sessions/route.ts", import.meta.url), "utf8");
+  for (const source of [staff, review, sessions]) {
+    assert.match(source, /staff_facility_assignments sfa/);
+    assert.match(source, /sfa\.status = 'ACTIVE'/);
+    assert.match(source, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments sfa2/);
+  }
+});
