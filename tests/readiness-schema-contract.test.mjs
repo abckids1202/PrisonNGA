@@ -19,9 +19,9 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /facility_closures.*appointment_status_events/);
   assert.match(source, /kiosk_device_check_attempts.*waiting_room_sessions/);
   assert.match(source, /visit_session_participants.*visitor_device_check_attempts/);
-  assert.match(source, /appointments: \["last_transition_id", "policy_version", "duration_minutes"\]/);
+  assert.match(source, /appointments: \["organization_id", "last_transition_id", "policy_version", "duration_minutes"\]/);
   assert.match(source, /payment_provider_events: \["attempt_count", "available_at", "last_error", "processing_started_at"\]/);
-  assert.match(source, /waiting_room_sessions: \["assigned_room_id", "assigned_kiosk_id", "visitor_presence_at", "prisoner_presence_at", "kiosk_camera_state", "kiosk_microphone_state", "kiosk_network_state", "kiosk_device_checked_at"\]/);
+  assert.match(source, /waiting_room_sessions: \["organization_id", "assigned_room_id", "assigned_kiosk_id", "visitor_presence_at", "prisoner_presence_at", "kiosk_camera_state", "kiosk_microphone_state", "kiosk_network_state", "kiosk_device_checked_at"\]/);
   assert.match(source, /saml_request_cache: \["state_hash"\]/);
   assert.match(source, /PRAGMA table_info\(\$\{table\}\)/);
   assert.match(source, /schemaMissing: \{ tables: missingTables, columns: missingColumns \}/);
