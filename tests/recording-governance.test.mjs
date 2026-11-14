@@ -170,6 +170,8 @@ test("scheduled recording reconciliation prefers R2 checksums and alarms on over
   assert.match(worker, /RECORDING_INTEGRITY_METADATA_MISSING/);
   assert.match(worker, /recordingIntegrityFailureStatement/);
   assert.match(reconciliation, /RECORDING_OBJECT_INTEGRITY_FAILED/);
+  assert.match(reconciliation, /\(id, organization_id, facility_id, event_type, severity, request_id, metadata, created_at\)/);
+  assert.match(reconciliation, /FROM facilities f\s+WHERE f\.id = \? AND f\.organization_id IS NOT NULL/);
   const normalizedWorker = worker.replaceAll("\r\n", "\n");
   const reconciliationTry = normalizedWorker.indexOf("try {\n      const object = await env.RECORDINGS_BUCKET.get(row.storage_key);");
   const integrityGuard = normalizedWorker.indexOf("RECORDING_INTEGRITY_METADATA_MISSING");

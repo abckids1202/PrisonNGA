@@ -275,8 +275,10 @@ export function recordingIntegrityFailureStatement(
   },
 ): D1PreparedStatement {
   return database.prepare(`INSERT OR IGNORE INTO security_events
-    (id, facility_id, event_type, severity, request_id, metadata, created_at)
-    VALUES (?, ?, 'RECORDING_OBJECT_INTEGRITY_FAILED', 'CRITICAL', ?, ?, ?)`).bind(
+    (id, organization_id, facility_id, event_type, severity, request_id, metadata, created_at)
+    SELECT ?, f.organization_id, ?, 'RECORDING_OBJECT_INTEGRITY_FAILED', 'CRITICAL', ?, ?, ?
+    FROM facilities f
+    WHERE f.id = ? AND f.organization_id IS NOT NULL`).bind(
     `recording-integrity-failed:${input.recordingId}`,
     input.facilityId,
     input.requestId,
@@ -291,6 +293,7 @@ export function recordingIntegrityFailureStatement(
       retryable: true,
     }),
     input.now,
+    input.facilityId,
   );
 }
 
