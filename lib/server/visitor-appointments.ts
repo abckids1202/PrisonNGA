@@ -30,8 +30,8 @@ export type CreateVisitorAppointmentInput = {
 export function createVisitorAppointmentStatements(d1: D1Database, input: CreateVisitorAppointmentInput): D1PreparedStatement[] {
   const activePlaceholders = activeAppointmentStatuses.map(() => "?").join(", ");
   const transitionGuard = {
-    sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND last_transition_id = ? AND status = 'SUBMITTED')",
-    values: [input.appointmentId, input.correlationId],
+    sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND last_transition_id = ? AND status = 'SUBMITTED') AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)",
+    values: [input.appointmentId, input.correlationId, input.facilityId],
   };
 
   return [
@@ -125,8 +125,8 @@ export type RescheduleVisitorAppointmentInput = {
 export function rescheduleVisitorAppointmentStatements(d1: D1Database, input: RescheduleVisitorAppointmentInput): D1PreparedStatement[] {
   const activePlaceholders = activeAppointmentStatuses.map(() => "?").join(", ");
   const transitionGuard = {
-    sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND last_transition_id = ? AND version = ? AND status = 'UNDER_REVIEW')",
-    values: [input.appointmentId, input.correlationId, input.expectedVersion + 1],
+    sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND last_transition_id = ? AND version = ? AND status = 'UNDER_REVIEW') AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)",
+    values: [input.appointmentId, input.correlationId, input.expectedVersion + 1, input.facilityId],
   };
 
   return [

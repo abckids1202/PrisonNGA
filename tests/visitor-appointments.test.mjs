@@ -264,3 +264,10 @@ test("visitor appointment cancellation writes require an active organization", (
   assert.match(helperSource, /UPDATE waiting_room_sessions[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
   assert.match(helperSource, /UPDATE resource_reservations SET status = 'RELEASED'[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
+
+test("visitor appointment history and outbox guards remain tenant-scoped", () => {
+  const source = String(createVisitorAppointmentStatements);
+  const rescheduleSource = String(rescheduleVisitorAppointmentStatements);
+  assert.match(source, /last_transition_id = \? AND status = 'SUBMITTED'[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(rescheduleSource, /last_transition_id = \? AND version = \? AND status = 'UNDER_REVIEW'[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+});
