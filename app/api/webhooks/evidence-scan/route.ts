@@ -53,12 +53,14 @@ export async function POST(request: Request) {
       return securityResponse({ accepted: true, idempotent: true, eventId: callback.eventId }, 200, context.requestId);
     }
 
-    const evidence = await d1.prepare(`SELECT id, organization_id, facility_id, storage_key, sha256, status, scan_status
-      FROM evidence_documents
-      WHERE scan_provider = ? AND scan_reference = ?
-        AND (? IS NULL OR id = ?)
-        AND (? IS NULL OR sha256 = ?)
-      ORDER BY created_at DESC LIMIT 1`)
+    const evidence = await d1.prepare(`SELECT ed.id, ed.organization_id, ed.facility_id, ed.storage_key, ed.sha256, ed.status, ed.scan_status
+      FROM evidence_documents ed
+      INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE ed.scan_provider = ? AND ed.scan_reference = ?
+        AND (? IS NULL OR ed.id = ?)
+        AND (? IS NULL OR ed.sha256 = ?)
+      ORDER BY ed.created_at DESC LIMIT 1`)
       .bind(callback.provider, callback.scanReference, callback.evidenceId || null, callback.evidenceId || null, callback.sha256 || null, callback.sha256 || null)
       .first<{ id: string; organization_id: string; facility_id: string; storage_key: string; sha256: string; status: string; scan_status: string }>();
 

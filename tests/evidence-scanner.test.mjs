@@ -66,3 +66,9 @@ test("scanner callbacks support an accepted reference without treating it as cle
   assert.match(callback, /status = 'QUARANTINED'/);
   assert.match(callback, /nextStatus = callback\.verdict === "clean" \? "AVAILABLE"/);
 });
+
+test("scanner callbacks fail closed for disabled organizations", async () => {
+  const callback = await readFile(new URL("../app/api/webhooks/evidence-scan/route.ts", import.meta.url), "utf8");
+  assert.match(callback, /INNER JOIN facilities f ON f\.id = ed\.facility_id AND f\.organization_id = ed\.organization_id/);
+  assert.match(callback, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+});
