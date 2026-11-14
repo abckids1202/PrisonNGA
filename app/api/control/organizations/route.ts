@@ -2,6 +2,7 @@ import { getD1 } from "../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { enforceRateLimit } from "../../../../lib/server/rate-limit";
+import { readTextBodyWithinLimit } from "../../../../lib/server/request-body";
 import { assertReason, getRequestContext, requireOrganizationPermission, requirePlatformProvisioning, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const timezonePattern = /^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)+$/;
@@ -14,7 +15,15 @@ export async function POST(request: Request) {
     d1 = await getD1();
     await enforceRateLimit(d1, { key: `platform-provisioning:${context.ipAddress || "unknown"}`, limit: 10, windowSeconds: 15 * 60 });
     const operator = await requirePlatformProvisioning(request);
-    const body = await request.json() as { organizationName?: unknown; organizationSlug?: unknown; facilityName?: unknown; timezone?: unknown; ownerEmail?: unknown; ownerName?: unknown; ownerReference?: unknown };
+    const rawBody = await readTextBodyWithinLimit(request, 32 * 1024);
+    let body: { organizationName?: unknown; organizationSlug?: unknown; facilityName?: unknown; timezone?: unknown; ownerEmail?: unknown; ownerName?: unknown; ownerReference?: unknown };
+    try {
+      const parsed = JSON.parse(rawBody) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid object");
+      body = parsed as typeof body;
+    } catch {
+      throw new SecurityError("INVALID_ORGANIZATION_PROVISIONING", 400);
+    }
     const organizationName = typeof body.organizationName === "string" ? body.organizationName.trim().slice(0, 160) : "";
     const organizationSlug = typeof body.organizationSlug === "string" ? body.organizationSlug.trim().toLowerCase().slice(0, 100) : "";
     const facilityName = typeof body.facilityName === "string" ? body.facilityName.trim().slice(0, 160) : "";

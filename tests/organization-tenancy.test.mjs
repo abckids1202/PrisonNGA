@@ -30,6 +30,8 @@ test("organization administration uses a dedicated organization-role boundary", 
   assert.match(organizations, /requirePlatformProvisioning/);
   assert.match(organizations, /platform-provisioning:/);
   assert.match(organizations, /enforceRateLimit/);
+  assert.match(organizations, /readTextBodyWithinLimit\(request, 32 \* 1024\)/);
+  assert.match(organizations, /INVALID_ORGANIZATION_PROVISIONING/);
   assert.match(organizations, /ORGANIZATION_PROVISIONED/);
   assert.match(organizations, /ORGANIZATION_UPDATED/);
   assert.match(organizations, /STALE_ORGANIZATION/);
