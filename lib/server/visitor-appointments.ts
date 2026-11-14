@@ -212,23 +212,25 @@ export type CancelVisitorAppointmentInput = {
 
 export function cancelVisitorAppointmentStatements(d1: D1Database, input: CancelVisitorAppointmentInput): D1PreparedStatement[] {
   const transitionGuard = {
-    sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND status = 'CANCELLED_BY_VISITOR' AND version = ? AND last_transition_id = ?)",
-    values: [input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion + 1, input.correlationId],
+    sql: "EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND status = 'CANCELLED_BY_VISITOR' AND version = ? AND last_transition_id = ?) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)",
+    values: [input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion + 1, input.correlationId, input.facilityId],
   };
   const requiresSettlement = ["APPROVED", "WAITING"].includes(input.previousStatus);
   const statements: D1PreparedStatement[] = [
     d1.prepare(`UPDATE appointments SET status = 'CANCELLED_BY_VISITOR', version = version + 1, updated_at = ?, last_transition_id = ?
       WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND version = ? AND status = ?
+        AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)
         AND (? = 0 OR (EXISTS (SELECT 1 FROM credit_ledger_entries r WHERE r.appointment_id = ? AND r.credit_account_id = ? AND r.entry_type = 'RESERVATION'
           AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries t WHERE t.appointment_id = ? AND t.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION')))
           AND (SELECT COUNT(*) FROM resource_reservations rr WHERE rr.appointment_id = ? AND rr.facility_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')) >= 2))`)
-      .bind(input.now, input.correlationId, input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion, input.previousStatus,
+      .bind(input.now, input.correlationId, input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion, input.previousStatus, input.facilityId,
         requiresSettlement ? 1 : 0, input.appointmentId, input.creditAccountId || "", input.appointmentId, input.appointmentId, input.facilityId),
     d1.prepare(`UPDATE waiting_room_sessions
       SET state = 'CANCELLED', visitor_presence = 'absent', visitor_presence_at = ?, prisoner_presence = 'absent', prisoner_presence_at = ?, version = version + 1, last_checked_at = ?, updated_at = ?
       WHERE appointment_id = ? AND facility_id = ? AND state NOT IN ('LIVE', 'COMPLETED', 'CANCELLED', 'NO_SHOW')
-        AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND status = 'CANCELLED_BY_VISITOR' AND version = ? AND last_transition_id = ?)`)
-      .bind(input.now, input.now, input.now, input.now, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion + 1, input.correlationId),
+        AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND visitor_user_id = ? AND status = 'CANCELLED_BY_VISITOR' AND version = ? AND last_transition_id = ?)
+        AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+      .bind(input.now, input.now, input.now, input.now, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.visitorUserId, input.expectedVersion + 1, input.correlationId, input.facilityId),
   ];
 
   if (requiresSettlement) {
@@ -240,7 +242,7 @@ export function cancelVisitorAppointmentStatements(d1: D1Database, input: Cancel
       now: input.now,
       guard: transitionGuard,
     }));
-    statements.push(d1.prepare("UPDATE resource_reservations SET status = 'RELEASED' WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')").bind(input.appointmentId, input.facilityId));
+    statements.push(d1.prepare("UPDATE resource_reservations SET status = 'RELEASED' WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE') AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)").bind(input.appointmentId, input.facilityId, input.facilityId));
   }
 
   statements.push(

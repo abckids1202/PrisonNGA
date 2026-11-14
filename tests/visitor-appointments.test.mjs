@@ -65,13 +65,11 @@ class D1 {
 }
 
 function input(id, { visitor = "v1", prisoner = "p1", relationship = "r1" } = {}) {
-  const prisonerId = prisoner;
-  const relationshipId = relationship;
   const scope = `visitor:${visitor}:appointment:create`;
   const now = "2026-09-22T03:00:00.000Z";
   const correlationId = `cor-${id}`;
   return {
-    appointmentId: id, facilityId: "f1", visitorUserId: visitor, prisonerId, relationshipId,
+    appointmentId: id, facilityId: "f1", visitorUserId: visitor, prisonerId: prisoner, relationshipId: relationship,
     requestedStart: "2026-10-01T02:00:00.000Z", requestedEnd: "2026-10-01T02:30:00.000Z",
     timezone: "Asia/Jakarta", policyVersion: 4, durationMinutes: 30, appointmentType: "FAMILY",
     now, correlationId, requestId: `req-${id}`,
@@ -186,7 +184,6 @@ test("visitor reschedule refuses a conflicting slot without partial writes", asy
       .run(data.requestedStart, data.requestedEnd);
     db.sqlite.prepare("INSERT INTO idempotency_records (id, scope, idempotency_key, request_hash, status, created_at) VALUES (?, ?, ?, 'hash', 'PROCESSING', ?)")
       .run(data.idempotency.claimId, data.idempotency.scope, data.idempotency.key, data.now);
-
     assert.equal((await db.batch(rescheduleVisitorAppointmentStatements(db, data)))[0].meta.changes, 0);
     assert.equal(db.sqlite.prepare("SELECT requested_start FROM appointments WHERE id = 'visit-1'").get().requested_start, "2026-10-01T02:00:00.000Z");
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_events").get().n, 0);
@@ -202,7 +199,6 @@ test("visitor reschedule rolls back its time update if audit writing fails", asy
     db.sqlite.prepare("INSERT INTO idempotency_records (id, scope, idempotency_key, request_hash, status, created_at) VALUES (?, ?, ?, 'hash', 'PROCESSING', ?)")
       .run(data.idempotency.claimId, data.idempotency.scope, data.idempotency.key, data.now);
     db.sqlite.exec("CREATE TRIGGER reject_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END;");
-
     await assert.rejects(db.batch(rescheduleVisitorAppointmentStatements(db, data)), /audit unavailable/);
     assert.equal(db.sqlite.prepare("SELECT requested_start, version FROM appointments WHERE id = 'visit-1'").get().requested_start, "2026-10-01T02:00:00.000Z");
     assert.equal(db.sqlite.prepare("SELECT version FROM appointments WHERE id = 'visit-1'").get().version, 2);
@@ -260,4 +256,11 @@ test("visitor cancellation rolls back the appointment and settlement when audit 
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM credit_ledger_entries WHERE appointment_id = 'visit-1'").get().n, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM appointment_status_events WHERE to_status = 'CANCELLED_BY_VISITOR'").get().n, 0);
   } finally { db.close(); }
+});
+
+test("visitor appointment cancellation writes require an active organization", () => {
+  const helperSource = String(cancelVisitorAppointmentStatements);
+  assert.match(helperSource, /UPDATE appointments SET status = 'CANCELLED_BY_VISITOR'[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(helperSource, /UPDATE waiting_room_sessions[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(helperSource, /UPDATE resource_reservations SET status = 'RELEASED'[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
