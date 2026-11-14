@@ -3,6 +3,7 @@ import { finalizeLiveSessionStatements, finalizationCommitted, requestLiveSessio
 import { assertReason, getRequestContext, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "@/lib/server/security";
 import { assertSessionProvider, getStaffSession } from "@/lib/server/video/session";
 import { createLiveKitProvider, getVideoConfig } from "@/lib/server/video/provider";
+import { stopLiveKitRecording } from "@/lib/server/video/recording";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "@/lib/server/idempotency";
 import { auditAndOutboxStatements } from "@/lib/server/events";
 import { operationalLog } from "@/lib/server/observability";
@@ -98,6 +99,19 @@ export async function POST(request: Request, context: RouteContext) {
       const videoConfig = await getVideoConfig();
       if (!videoConfig.configured) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
       assertSessionProvider(session, videoConfig.provider);
+      const activeRecording = await d1.prepare(`SELECT provider_reference, status
+        FROM recordings
+        WHERE session_id = ? AND facility_id = ? AND status = 'PROCESSING'
+        ORDER BY updated_at DESC LIMIT 1`).bind(session.id, authorization.facilityId)
+        .first<{ provider_reference: string | null; status: string }>();
+      if (activeRecording?.provider_reference && !activeRecording.provider_reference.startsWith("pending:")) {
+        if (!videoConfig.url || !videoConfig.apiKey || !videoConfig.apiSecret) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
+        // Stop egress before closing the room so LiveKit emits a terminal
+        // callback for the governed recording while the room is still bound.
+        // If this fails, the session remains ENDING and the existing provider
+        // reconciliation alarm prevents credit settlement from being hidden.
+        await stopLiveKitRecording({ liveKitUrl: videoConfig.url, apiKey: videoConfig.apiKey, apiSecret: videoConfig.apiSecret, egressId: activeRecording.provider_reference });
+      }
       const provider = await createLiveKitProvider();
       await provider.endRoom(session.provider_room_name);
     } catch (error) {
