@@ -147,6 +147,8 @@ pilot deployment.
 - Protected readiness now performs a bounded tenant-integrity scan and fails
   closed when persisted facility records have missing or mismatched organization
   scope; the scheduled reconciliation alarm remains the recovery path.
+- Facilities themselves now require an active organization at the D1 boundary,
+  closing the root of the organization-to-facility tenant hierarchy.
 - Release verifier, deployment validator, route security matrix, local restore
   drill, browser smoke tests, and redacted operational logging.
 
