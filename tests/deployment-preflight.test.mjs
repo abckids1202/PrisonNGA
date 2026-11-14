@@ -5,7 +5,7 @@ import { evaluateDeploymentConfig } from "../scripts/validate-deployment.mjs";
 
 function config(overrides = {}) {
   return {
-    vars: { SECUREVISIT_ENVIRONMENT: "staging", VIDEO_PROVIDER: "livekit" },
+    vars: { SECUREVISIT_ENVIRONMENT: "staging", VIDEO_PROVIDER: "livekit", RECORDINGS_ENCRYPTION_MODE: "r2_managed" },
     d1_databases: [{ binding: "DB", database_name: "securevisit-staging", database_id: "123e4567-e89b-12d3-a456-426614174000" }],
     r2_buckets: [{ binding: "EVIDENCE_BUCKET", bucket_name: "securevisit-staging-evidence" }, { binding: "RECORDINGS_BUCKET", bucket_name: "securevisit-staging-recordings" }],
     triggers: { crons: ["*/1 * * * *"] },
@@ -51,6 +51,12 @@ test("deployment preflight rejects placeholder D1 and R2 resource names", () => 
   assert.equal(result.ok, false);
   assert.match(result.failures.join("\n"), /real database name/);
   assert.match(result.failures.join("\n"), /real bucket name/);
+});
+
+test("deployment preflight requires the governed recording encryption mode", () => {
+  const result = evaluateDeploymentConfig(config({ vars: { SECUREVISIT_ENVIRONMENT: "staging", VIDEO_PROVIDER: "livekit" } }), "staging", { NOTIFICATION_QUEUE_NAME: "securevisit-staging-notifications" });
+  assert.equal(result.ok, false);
+  assert.match(result.failures.join("\n"), /RECORDINGS_ENCRYPTION_MODE must be r2_managed/);
 });
 
 test("deployment preflight rejects credentials embedded in Worker vars", () => {

@@ -31,18 +31,21 @@ test("deployment manifest sanitizer preserves recording storage runtime configur
   const result = sanitizeDeploymentManifest({ vars: {
     PLATFORM_PROVISIONING_SECRET: "secret",
     RECORDING_STORAGE_PROVIDER: "local_test",
+    RECORDINGS_ENCRYPTION_MODE: "local_test",
     RECORDINGS_BUCKET_NAME: "local-recordings",
     R2_S3_ENDPOINT: "http://localhost:9000",
     R2_S3_REGION: "local",
   } }, {
     SECUREVISIT_ENVIRONMENT: "staging",
     RECORDING_STORAGE_PROVIDER: "livekit_r2",
+    RECORDINGS_ENCRYPTION_MODE: "r2_managed",
     RECORDINGS_BUCKET_NAME: "securevisit-staging-recordings",
     R2_S3_ENDPOINT: "https://account.r2.cloudflarestorage.com",
     R2_S3_REGION: "auto",
   });
 
   assert.equal(result.vars.RECORDING_STORAGE_PROVIDER, "livekit_r2");
+  assert.equal(result.vars.RECORDINGS_ENCRYPTION_MODE, "r2_managed");
   assert.equal(result.vars.RECORDINGS_BUCKET_NAME, "securevisit-staging-recordings");
   assert.equal(result.vars.R2_S3_ENDPOINT, "https://account.r2.cloudflarestorage.com");
   assert.equal(result.vars.R2_S3_REGION, "auto");
