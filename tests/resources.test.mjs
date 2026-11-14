@@ -19,6 +19,7 @@ class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
+      CREATE TABLE organizations (id TEXT PRIMARY KEY, status TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
       CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY', last_heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP, organization_id TEXT);
       CREATE TABLE resource_reservations (
@@ -26,6 +27,7 @@ class SQLiteD1 {
         resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, status TEXT NOT NULL,
         starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, created_at TEXT NOT NULL, organization_id TEXT
       );
+      INSERT INTO organizations VALUES ('org-1', 'ACTIVE');
       INSERT INTO facilities VALUES ('facility-1', 'org-1');
     `);
   }
