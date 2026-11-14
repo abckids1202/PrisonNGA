@@ -26,6 +26,9 @@ Secrets must be managed by the deployment secret store. Do not paste secrets int
 For the Xendit-specific payment sequence and evidence requirements, use the
 [Xendit staging acceptance checklist](XENDIT_STAGING_ACCEPTANCE.md).
 
+For the visitor email provider setup, callback relay, and OTP-specific evidence
+requirements, use the [email delivery staging acceptance checklist](EMAIL_DELIVERY_STAGING_ACCEPTANCE.md).
+
 ## 2. Environment separation
 
 Maintain separate credentials, D1 databases, R2 buckets, LiveKit projects, webhook endpoints, payment accounts, and identity-provider applications for local, staging, and production. Local adapters and fictional seed data prove developer behavior only; they do not prove provider readiness.
