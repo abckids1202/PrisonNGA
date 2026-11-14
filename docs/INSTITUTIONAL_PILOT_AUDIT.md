@@ -1,9 +1,9 @@
 # SecureVisit Institutional Pilot Audit and Completion Plan
 
 Date: 2026-10-13
-Scope: current repository, single-facility Indonesian pilot, Cloudflare Worker + D1 + LiveKit
+Scope: current repository, organization-to-facility tenant model with an initial Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `460e414` (`Fix kiosk device check transaction validation`).
+Latest verified code commit: `a01911d` (`Refresh institutional validation baseline`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
 The release verifier baseline now has 699 server test cases and 19 browser tests,
@@ -13,9 +13,9 @@ This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
 The release verifier reports 699 passing server test cases plus 19 browser tests
-on `460e414`, including the trigger-aware kiosk device-check transaction fix and
-failed recording-integrity alarm coverage;
-coverage; this is the current repository evidence record.
+on `a01911d`, including the governed recording-encryption checks, deployment
+preflight enforcement, and current browser/server validation; this is the
+current repository evidence record.
 
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the
 development environment. The report identifies the expected missing deployment
@@ -277,7 +277,7 @@ Visitor signs in
 - An appointment cannot be approved without an approved relationship, eligible prisoner, valid facility policy, non-conflicting resource and available credit.
 - A credit cannot be reserved twice, consumed twice, refunded twice or made available by a non-authoritative UI action.
 - Waiting Room admission requires recent visitor device readiness, valid kiosk credential, recent kiosk heartbeat, presence signals, policy approval, healthy resource and no operational restriction.
-- A LiveKit token is scoped to one session, one participant role and a short expiry. Observers cannot publish. Recording is disabled.
+- A LiveKit token is scoped to one session, one participant role and a short expiry. Observers cannot publish. Recording is only enabled when facility policy, explicit consent, governed R2 storage, and the recording lifecycle controls all pass; otherwise the session remains unrecorded.
 - Provider webhooks are authenticated, replay-window checked, event-key idempotent and amount/currency/reference validated.
 - All staff decisions and sensitive administrative actions have actor, facility, request and correlation identifiers.
 - Failed provider, database, kiosk and notification operations remain visible and retryable; no UI substitutes invented success data.
