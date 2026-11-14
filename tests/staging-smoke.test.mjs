@@ -13,6 +13,9 @@ test("staging smoke is scheduled for public monitoring and keeps authenticated r
   const workflow = await readFile(".github/workflows/staging-smoke.yml", "utf8");
   assert.match(workflow, /schedule:[\s\S]*- cron: ["']\*\/15 \* \* \* \*["']/);
   assert.match(workflow, /STAGING_SMOKE_REQUIRE_READINESS: \$\{\{ github\.event_name == 'workflow_dispatch'/);
+  assert.match(workflow, /STAGING_SMOKE_EVIDENCE_PATH: evidence\/staging-smoke-\$\{\{ github\.run_id \}\}\.json/);
+  assert.match(workflow, /actions\/upload-artifact@v4/);
+  assert.match(workflow, /if-no-files-found: error/);
 });
 
 function runSmoke(baseUrl, extra = {}) {

@@ -22,6 +22,8 @@ jobs:
       STAGING_SMOKE_REQUIRE_READINESS: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
       STAGING_SMOKE_ALLOW_INSECURE: "false"
       STAGING_SMOKE_TIMEOUT_MS: "10000"
+      STAGING_SMOKE_EVIDENCE_PATH: evidence/staging-smoke-${{ github.run_id }}.json
+      SECUREVISIT_RELEASE_EVIDENCE_ID: ${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,3 +39,12 @@ jobs:
 
       - name: Run staging smoke
         run: npm run staging:smoke
+
+      - name: Upload staging smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: securevisit-staging-smoke-${{ github.run_id }}
+          path: evidence/staging-smoke-${{ github.run_id }}.json
+          if-no-files-found: error
+          retention-days: 30

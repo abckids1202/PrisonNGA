@@ -1,4 +1,5 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 const baseUrl = String(process.env.STAGING_DOMAIN || "").trim().replace(/\/$/, "");
 const readinessCookie = String(process.env.STAGING_READINESS_COOKIE || "").trim();
@@ -140,6 +141,7 @@ if (evidencePath) {
     readinessChecked: Boolean(readinessCookie),
   };
   try {
+    await mkdir(dirname(evidencePath), { recursive: true });
     await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
     console.log(`Evidence artifact written: ${evidencePath}`);
   } catch (error) {
