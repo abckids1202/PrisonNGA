@@ -137,6 +137,10 @@ pilot deployment.
   Waiting Room records, resources, kiosk credentials, identity records, and
   payment/refund records. These guards reject organization/facility mismatches
   even if a trusted writer bypasses an application query predicate.
+- The same database boundary now covers verification cases, evidence,
+  incidents, policies, credit accounts, recordings, legal holds, and retention
+  policies, with recording-consent compatibility preserved for session-derived
+  organization scope.
 - Release verifier, deployment validator, route security matrix, local restore
   drill, browser smoke tests, and redacted operational logging.
 
