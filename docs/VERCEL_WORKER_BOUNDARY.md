@@ -17,8 +17,8 @@ fragments. `WORKER_API_ORIGIN` is configuration, not a secret. Provider
 credentials remain in Cloudflare/Vercel secret stores and never reach the
 browser.
 
-Configure a Vercel external-origin rewrite for every API path, preserving the
-browser-visible path so cookies and CSRF checks remain same-origin:
+The repository's `next.config.ts` emits the external-origin rewrite during the
+Vercel build. The equivalent Vercel routing shape is:
 
 ```json
 {
