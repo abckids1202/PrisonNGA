@@ -18,6 +18,7 @@ class SQLiteD1 {
   constructor() {
     this.sqlite.exec(`
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
+      CREATE TABLE organizations (id TEXT PRIMARY KEY, status TEXT NOT NULL);
       CREATE TABLE visit_sessions (id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL, facility_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, actual_ended_at TEXT, termination_reason TEXT, updated_at TEXT NOT NULL);
       CREATE TABLE appointments (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE credit_accounts (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, user_id TEXT NOT NULL, available_credits INTEGER NOT NULL, reserved_credits INTEGER NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
@@ -27,6 +28,8 @@ class SQLiteD1 {
       CREATE TABLE visit_session_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, event_type TEXT NOT NULL, source TEXT NOT NULL, participant_role TEXT, metadata TEXT, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
+      INSERT INTO organizations VALUES ('org-1', 'ACTIVE');
+      INSERT INTO facilities VALUES ('facility-1', 'org-1');
       INSERT INTO visit_sessions VALUES ('session-1', 'visit-1', 'facility-1', 'ACTIVE', 3, NULL, NULL, 'before');
       INSERT INTO appointments VALUES ('visit-1', 'facility-1', 'visitor-1', 'IN_PROGRESS', 5, 'before');
       INSERT INTO credit_accounts VALUES ('account-1', 'facility-1', 'visitor-1', 0, 1, 2, 'before');
@@ -230,6 +233,31 @@ test("missing active reservation prevents every finalization side effect", async
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 0);
     assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 0);
   } finally { d1.close(); }
+});
+
+test("disabled organizations block live-session end transitions and settlement", async () => {
+  const d1 = new SQLiteD1();
+  d1.sqlite.prepare("UPDATE organizations SET status = 'DISABLED'").run();
+  const results = await d1.batch(requestLiveSessionEndStatements(d1, {
+    sessionId: "session-1",
+    appointmentId: "visit-1",
+    facilityId: "facility-1",
+    sessionVersion: 3,
+    sessionStatus: "ACTIVE",
+    appointmentVersion: 5,
+    creditAccountId: "account-1",
+    actorUserId: "staff-1",
+    actorRole: "STAFF",
+    requestId: "request-disabled",
+    correlationId: "correlation-disabled",
+    now: "2026-09-22T12:00:00.000Z",
+    reason: "Organization disabled.",
+    mode: "terminate",
+  }));
+  assert.equal(results[0].meta.changes, 0);
+  assert.equal(d1.sqlite.prepare("SELECT status FROM visit_sessions WHERE id = 'session-1'").get().status, "ACTIVE");
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 0);
+  d1.close();
 });
 
 test("staff termination records technical failure and releases rather than consumes the credit", async () => {

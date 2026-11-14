@@ -89,14 +89,18 @@ export function requestLiveSessionEndStatements(d1: D1Database, input: RequestLi
     AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries t
       WHERE t.appointment_id = ? AND t.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))`;
   const reservationValues = [input.creditAccountId, input.facilityId, input.creditAccountId, input.appointmentId, input.appointmentId];
+  const activeOrganization = `EXISTS (SELECT 1 FROM facilities f
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE f.id = ?)`;
   const endingState = `EXISTS (SELECT 1 FROM visit_sessions vs INNER JOIN appointments a
       ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
       WHERE vs.id = ? AND vs.facility_id = ? AND vs.appointment_id = ? AND vs.status = 'ENDING'
         AND vs.version = ? AND vs.termination_reason IS ?
         AND a.status = 'IN_PROGRESS' AND a.version = ?)
-    AND ${activeReservation}`;
+    AND ${activeReservation}
+    AND ${activeOrganization}`;
   const endingStateValues = [input.sessionId, input.facilityId, input.appointmentId, input.sessionVersion + 1,
-    terminationReason, input.appointmentVersion, ...reservationValues];
+    terminationReason, input.appointmentVersion, ...reservationValues, input.facilityId];
   const guard = { sql: endingState, values: endingStateValues };
 
   return [
@@ -104,10 +108,11 @@ export function requestLiveSessionEndStatements(d1: D1Database, input: RequestLi
       WHERE id = ? AND facility_id = ? AND appointment_id = ? AND status = ? AND version = ?
         AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ?
           AND a.status = 'IN_PROGRESS' AND a.version = ?)
-        AND ${activeReservation}`)
+        AND ${activeReservation}
+        AND ${activeOrganization}`)
       .bind(terminationReason, input.now, input.sessionId, input.facilityId, input.appointmentId,
         input.sessionStatus, input.sessionVersion, input.appointmentId, input.facilityId, input.appointmentVersion,
-        ...reservationValues),
+        ...reservationValues, input.facilityId),
     d1.prepare(`INSERT INTO visit_session_events
       (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
       SELECT ?, ?, 'SESSION_END_REQUESTED', 'STAFF', 'FACILITY', ?, ?, ? WHERE ${endingState}`)
@@ -138,6 +143,9 @@ export function finalizeLiveSessionStatements(d1: D1Database, input: FinalizeLiv
     AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries t
       WHERE t.appointment_id = ? AND t.entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))`;
   const reservationValues = [input.creditAccountId, input.facilityId, input.creditAccountId, input.appointmentId, input.appointmentId];
+  const activeOrganization = `EXISTS (SELECT 1 FROM facilities f
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE f.id = ?)`;
   const eventExists = `EXISTS (SELECT 1 FROM visit_session_events e
     WHERE e.id = ? AND e.session_id = ? AND e.event_type = ? AND e.source = ?)`;
   const eventValues = [input.event.id, input.sessionId, input.event.eventType, input.event.source];
@@ -145,9 +153,10 @@ export function finalizeLiveSessionStatements(d1: D1Database, input: FinalizeLiv
       INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
       WHERE vs.id = ? AND vs.facility_id = ? AND vs.appointment_id = ? AND vs.status = '${input.finalSessionStatus}'
         AND vs.version = ? AND vs.actual_ended_at = ?
-        AND a.status = '${input.finalAppointmentStatus}' AND a.version = ?)`;
+        AND a.status = '${input.finalAppointmentStatus}' AND a.version = ?)
+    AND ${activeOrganization}`;
   const finalStateValues = [input.sessionId, input.facilityId, input.appointmentId, input.sessionVersion + 1, input.now,
-    input.appointmentVersion + 1];
+    input.appointmentVersion + 1, input.facilityId];
 
   const transitionGuard = {
     sql: `${finalState} AND ${reservationAvailable}`,
@@ -163,27 +172,30 @@ export function finalizeLiveSessionStatements(d1: D1Database, input: FinalizeLiv
         WHERE vs.id = ? AND vs.facility_id = ? AND vs.appointment_id = ?
           AND vs.status = ? AND vs.version = ?
           AND a.status = 'IN_PROGRESS' AND a.version = ?)
-        AND ${reservationAvailable}`)
+        AND ${reservationAvailable}
+        AND ${activeOrganization}`)
       .bind(input.event.id, input.sessionId, input.event.eventType, input.event.source, input.event.participantRole,
         JSON.stringify(input.event.metadata), input.correlationId, input.now,
         input.sessionId, input.facilityId, input.appointmentId, input.sessionStatus, input.sessionVersion,
-        input.appointmentVersion, ...reservationValues),
+        input.appointmentVersion, ...reservationValues, input.facilityId),
     d1.prepare(`UPDATE visit_sessions SET status = '${input.finalSessionStatus}', actual_ended_at = ?, version = version + 1,
         updated_at = ?, termination_reason = ?
       WHERE id = ? AND facility_id = ? AND appointment_id = ? AND status = ? AND version = ?
         AND ${eventExists}
         AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ?
           AND a.status = 'IN_PROGRESS' AND a.version = ?)
-        AND ${reservationAvailable}`)
+        AND ${reservationAvailable}
+        AND ${activeOrganization}`)
       .bind(input.now, input.now, input.creditOutcome === "RELEASE" ? input.reason : null, input.sessionId, input.facilityId, input.appointmentId, input.sessionStatus,
         input.sessionVersion, ...eventValues, input.appointmentId, input.facilityId, input.appointmentVersion,
-        ...reservationValues),
+        ...reservationValues, input.facilityId),
     d1.prepare(`UPDATE appointments SET status = '${input.finalAppointmentStatus}', version = version + 1, updated_at = ?
       WHERE id = ? AND facility_id = ? AND status = 'IN_PROGRESS' AND version = ?
         AND EXISTS (SELECT 1 FROM visit_sessions vs WHERE vs.id = ? AND vs.facility_id = ?
-          AND vs.appointment_id = ? AND vs.status = '${input.finalSessionStatus}' AND vs.version = ? AND vs.actual_ended_at = ?)`)
+          AND vs.appointment_id = ? AND vs.status = '${input.finalSessionStatus}' AND vs.version = ? AND vs.actual_ended_at = ?)
+        AND ${activeOrganization}`)
       .bind(input.now, input.appointmentId, input.facilityId, input.appointmentVersion,
-        input.sessionId, input.facilityId, input.appointmentId, input.sessionVersion + 1, input.now),
+        input.sessionId, input.facilityId, input.appointmentId, input.sessionVersion + 1, input.now, input.facilityId),
     d1.prepare(`UPDATE resource_reservations SET status = 'RELEASED'
       WHERE appointment_id = ? AND facility_id = ? AND status IN ('HELD', 'RESERVED', 'ACTIVE')
         AND ${finalState}`)
