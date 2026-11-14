@@ -20,6 +20,8 @@ test("Cloudflare local Worker vars include env-file values without overriding ex
   assert.match(source, /"VISITOR_SMS_TWILIO_AUTH_TOKEN"/);
   assert.match(source, /"VISITOR_AUTH_WEBHOOK_SECRET"/);
   assert.match(source, /"EVIDENCE_SCAN_WEBHOOK_SECRET"/);
+  assert.match(source, /"R2_S3_ACCESS_KEY_ID"/);
+  assert.match(source, /"R2_S3_SECRET_ACCESS_KEY"/);
   assert.match(source, /PAYMENT_PROVIDER: "local_test"/);
   assert.match(source, /PAYMENT_WEBHOOK_SECRET: "local-development-payment-webhook-secret-0123456789"/);
   assert.match(source, /EVIDENCE_STORAGE_PROVIDER: "local_test"/);

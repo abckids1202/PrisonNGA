@@ -51,6 +51,8 @@ const localOnlyProviderSecrets = new Set([
   "EVIDENCE_SCAN_WEBHOOK_SECRET",
   "STAFF_OIDC_CLIENT_SECRET",
   "STAFF_SAML_IDP_CERT",
+  "R2_S3_ACCESS_KEY_ID",
+  "R2_S3_SECRET_ACCESS_KEY",
 ]);
 
 // These values are required by the Worker at runtime but are not credentials.
@@ -162,6 +164,8 @@ for (const key of [
   "EVIDENCE_SCAN_WEBHOOK_SECRET",
   "STAFF_OIDC_CLIENT_SECRET",
   "STAFF_SAML_IDP_CERT",
+  "R2_S3_ACCESS_KEY_ID",
+  "R2_S3_SECRET_ACCESS_KEY",
   "VISIT_CREDIT_PRICE_MINOR",
   "EVIDENCE_STORAGE_PROVIDER",
   "SECUREVISIT_E2E_ISOLATED",

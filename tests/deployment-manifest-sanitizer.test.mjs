@@ -66,6 +66,8 @@ test("deployment manifest sanitizer removes forbidden credentials", () => {
     VISITOR_AUTH_WEBHOOK_SECRET: "secret",
     VISITOR_SMS_TWILIO_AUTH_TOKEN: "secret",
     EVIDENCE_SCAN_WEBHOOK_SECRET: "secret",
+    R2_S3_ACCESS_KEY_ID: "secret",
+    R2_S3_SECRET_ACCESS_KEY: "secret",
     SECUREVISIT_ENVIRONMENT: "production",
   } }, { SECUREVISIT_ENVIRONMENT: "production" });
 
@@ -77,4 +79,6 @@ test("deployment manifest sanitizer removes forbidden credentials", () => {
   assert.equal(Object.hasOwn(result.vars, "VISITOR_AUTH_WEBHOOK_SECRET"), false);
   assert.equal(Object.hasOwn(result.vars, "VISITOR_SMS_TWILIO_AUTH_TOKEN"), false);
   assert.equal(Object.hasOwn(result.vars, "EVIDENCE_SCAN_WEBHOOK_SECRET"), false);
+  assert.equal(Object.hasOwn(result.vars, "R2_S3_ACCESS_KEY_ID"), false);
+  assert.equal(Object.hasOwn(result.vars, "R2_S3_SECRET_ACCESS_KEY"), false);
 });
