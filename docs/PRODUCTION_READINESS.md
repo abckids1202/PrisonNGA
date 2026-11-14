@@ -13,22 +13,22 @@ Use the [pilot evidence register](./PILOT_EVIDENCE_REGISTER.md) to assign owners
 - Cloudflare Worker and D1 workflow foundation is present.
 - Visitor email/SMS OTP, session revocation, profile, relationship, evidence metadata, appointments, credits, Waiting Room, kiosk, LiveKit, audit, incidents, retention, and notification outbox boundaries are persisted.
 - Sensitive mutations use facility scope, permission checks, version checks, idempotency where required, audit events, and outbox events.
-- Recording is disabled by policy and must remain disabled for the pilot.
+- Governed recording is available only when the facility policy permits it, explicit participant consent is persisted, private R2 storage and encryption controls are configured, retention/legal-hold rules are active, playback is authorized and audited, and the staging recording evidence gate has passed. Otherwise recording remains disabled.
 - Development OTP delivery and development simulation controls are environment-gated and are not pilot capabilities.
 - Staging and production environment validation requires both institutional staff federation paths (`STAFF_AUTH_PROVIDER=both`), with OIDC and SAML MFA claims configured independently; development may use a local-only provider shape.
 - Production release gates require a named release-evidence manifest ID, matching future expiry metadata, and one named, unexpired evidence record for every gate; readiness rejects missing, malformed, stale, or incomplete manifests.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, deployment-header smoke tests (including LiveKit connectivity), and dependency audit must pass before every pushed phase.
 
-### Baseline verification — 2026-10-11
+### Baseline verification — 2026-11-14
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run test:quick`: 520 application tests passed across 516 subtests at the latest release verification. The release verifier additionally runs migration verification, the local backup/restore drill, deployment-manifest preflight, staging-smoke contract tests, and the production dependency audit as separate release gates. These checks prove repository behavior only; external provider and institutional evidence remains required.
+- `npm run test:quick`: 701 application tests passed across 697 subtests at the latest release verification. The release verifier additionally runs migration verification, the local backup/restore drill, deployment-manifest preflight, staging-smoke contract tests, and the production dependency audit as separate release gates. These checks prove repository behavior only; external provider and institutional evidence remains required.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
 - Local D1 migration verification: passed.
-- Browser smoke suite: 17 tests passed on an isolated local port with the disposable D1 state shared by migrations and the Worker process.
+- Browser smoke suite: 19 tests passed on an isolated local port with the disposable D1 state shared by migrations and the Worker process.
 - Staging smoke contract: 3 tests passed, including rejection when CSP blocks LiveKit Cloud and hosted WebSocket/HTTPS connections.
 - `npm audit --audit-level=high`: 0 vulnerabilities reported.
 - `git status --short`: clean after the release-evidence manifest and LiveKit CSP-connectivity milestones; every API route is now required to match a documented security-matrix family, and a manual GitHub Actions workflow can run the deployed staging smoke check with masked staging secrets. Incomplete staff Waiting Room, resource-reassignment, kiosk credential, notification dead-letter, payment reconciliation dead-letter, LiveKit provider-close failure, blocked-finalization, and evidence-retention deletion-failure paths now create durable reconciliation/privacy alarms, terminal notification-provider failures immediately expire linked visitor OTP challenges, provider `SENT` callbacks remain accepted/in-progress rather than being reported as delivered, contradictory payment event/status combinations are rejected before credit mutation, Compliance reports use persisted appointment and incident counts, Compliance can create incidents from those alarms with a persisted security-event link, production readiness requires explicit institutional release-gate attestations including tariff and refund-policy approval, Administration exposes those gates, the Live Sessions drawer exposes persisted participant connectivity, facility lockdown and restoration controls wait for durable API confirmation before reporting success, release evidence now requires a matching future-dated per-gate manifest, and the deployed-origin smoke command checks liveness, security headers, CSP, camera/microphone policy, same-origin API connectivity, LiveKit Cloud/hosted connectivity, and authenticated readiness when credentials are supplied.

@@ -88,7 +88,7 @@ The session finalizer must be safe when triggered by staff, provider webhook, sc
 6. Close or reconcile the provider room.
 7. Leave a visible incident when provider cleanup fails.
 
-Recording remains disabled until a separate approved policy covers consent, encryption, retention, legal hold, access approval, export, and deletion.
+Recording is conditionally enabled only after an approved facility policy covers consent, encryption, retention, legal hold, access approval, export, and deletion; without those controls, the session remains non-recorded.
 
 ## 6. Staging evidence required before pilot approval
 

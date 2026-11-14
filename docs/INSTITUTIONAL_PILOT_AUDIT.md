@@ -1,19 +1,19 @@
 # SecureVisit Institutional Pilot Audit and Completion Plan
 
-Date: 2026-10-13
+Date: 2026-11-14
 Scope: current repository, organization-to-facility tenant model with an initial Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `a01911d` (`Refresh institutional validation baseline`).
+Latest verified code commit: `6d6525e` (`Fail closed for disabled kiosk organizations`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The release verifier baseline now has 699 server test cases and 19 browser tests,
+The release verifier baseline now has 703 passing server tests and 19 browser tests,
 fresh migration verification, a disposable backup/restore drill, typecheck,
 lint, production build, and a zero-vulnerability production dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The release verifier reports 699 passing server test cases plus 19 browser tests
-on `a01911d`, including the governed recording-encryption checks, deployment
+The release verifier reports 703 passing server tests plus 19 browser tests
+on `6d6525e`, including the governed recording-encryption checks, deployment
 preflight enforcement, and current browser/server validation; this is the
 current repository evidence record.
 
@@ -233,7 +233,7 @@ The current repository already includes:
 - Waiting Room's time-window selector now filters the persisted queue by the next two hours, facility-local today, or all approved records instead of being visual-only; queue counts use the selected window.
 - Control appointments and facility state now refresh from protected APIs every 15 seconds with no-store caching and explicit unavailable-state handling, so operational screens do not remain silently stale after mount.
 - The Control top-bar notification action now reads facility-scoped persisted security events and distinguishes loading, empty, and unavailable states instead of claiming there are no notifications without an API read.
-- Live-session staff observation and provider webhook behavior need a real deployment test. Recording remains intentionally disabled and must not be silently enabled.
+- Live-session staff observation and provider webhook behavior need a real deployment test. Recording remains policy-gated and must not be silently enabled.
 - Provider-close failure records are now visible through the facility audit feed and notification operations path; staging must still prove the actual provider outage, retry, visitor delivery, and staff recovery experience.
 - Live-session join validation now rejects participant tokens before the authorized start window, with a one-minute clock-skew grace, in addition to the existing expiry and recording-policy checks.
 - Administration now exposes the protected deployment-readiness API, including database, schema, provider, storage, visitor-auth, staff-identity and notification checks without returning secret values.
@@ -394,5 +394,5 @@ The pilot is ready only when all of these are true:
 - No pilot page depends on demo query state or invented success records.
 - Every money, access, appointment, session, incident and retention mutation has audit evidence.
 - Backups restore successfully and operators can execute outage/runbook procedures.
-- Recording remains disabled unless a separately approved policy and storage workflow exists.
+- Recording is conditionally available only when the governed policy, consent, private storage, retention, legal-hold, playback-authorization, and audit workflow exists; otherwise it remains disabled.
 - Security, privacy, correctional-policy and institutional operations owners sign the go/no-go decision.
