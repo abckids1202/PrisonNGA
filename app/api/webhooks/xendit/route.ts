@@ -9,6 +9,20 @@ type XenditWebhook = { event?: unknown; created?: unknown; data?: unknown; id?: 
 const supportedDisputeEvents = new Set(["dispute.action_required", "dispute.under_review", "dispute.won", "dispute.lost", "dispute.due_date_approaching"]);
 const supportedDisputeStatuses = new Set(["ACTION_REQUIRED", "UNDER_REVIEW", "WON", "LOST"]);
 
+/**
+ * Xendit supplies a unique webhook-id for every delivery. Use that provider
+ * identifier as the durable idempotency key instead of deriving identity from
+ * mutable payment payload fields. The callback token authenticates the sender;
+ * webhook-id protects duplicate and conflicting-delivery handling.
+ */
+export function normalizeXenditWebhookId(value: unknown): string {
+  const id = typeof value === "string" ? value.trim() : "";
+  // Leave room for the `xendit:webhook:` namespace in the bounded internal
+  // event key stored by the canonical payment processor.
+  if (!id || id.length > 220 || /[\u0000-\u001f\u007f]/.test(id)) throw new SecurityError("XENDIT_WEBHOOK_ID_REQUIRED", 400);
+  return id;
+}
+
 async function matchesCallbackToken(supplied: string | null, expected: string): Promise<boolean> {
   if (!supplied || !expected || supplied.length > 512) return false;
   // Compare HMACs through Web Crypto rather than using a direct string
@@ -84,7 +98,11 @@ export async function POST(request: Request) {
     try { parsed = JSON.parse(rawBody); } catch { throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400); }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
     const canonical = canonicalizeXenditWebhook(parsed as XenditWebhook);
-    if (canonical.eventId.length > 256 || /[\u0000-\u001f\u007f]/.test(canonical.eventId)) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
+    const webhookId = normalizeXenditWebhookId(request.headers.get("webhook-id"));
+    // Keep the canonical payload identity for business validation, but use the
+    // provider's delivery identifier for the durable replay boundary.
+    const delivery = { ...canonical, eventId: `xendit:webhook:${webhookId}` };
+    if (delivery.eventId.length > 256 || /[\u0000-\u001f\u007f]/.test(delivery.eventId)) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
 
     // Reuse the canonical signed handler so Xendit events receive the same
     // durable event record, claim/retry behavior, settlement invariants, and
@@ -92,11 +110,11 @@ export async function POST(request: Request) {
     const paymentWebhookSecret = await getRuntimeValue("PAYMENT_WEBHOOK_SECRET");
     if (!paymentWebhookSecret) throw new SecurityError("PAYMENT_WEBHOOK_NOT_CONFIGURED", 503);
     const timestamp = String(Math.floor(Date.now() / 1000));
-    const canonicalBody = JSON.stringify(canonical);
+    const canonicalBody = JSON.stringify(delivery);
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(paymentWebhookSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     const signatureBytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${canonicalBody}`)));
     const signature = Array.from(signatureBytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-    const headers = new Headers({ "content-type": "application/json", "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}`, "x-payment-provider": "xendit", "x-payment-event-id": canonical.eventId });
+    const headers = new Headers({ "content-type": "application/json", "x-securevisit-timestamp": timestamp, "x-securevisit-signature": `sha256=${signature}`, "x-payment-provider": "xendit", "x-payment-event-id": delivery.eventId });
     const forwardedFor = request.headers.get("x-forwarded-for");
     if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
     const result = await canonicalPaymentWebhook(new Request(new URL("/api/webhooks/payments", request.url), { method: "POST", headers, body: canonicalBody }));

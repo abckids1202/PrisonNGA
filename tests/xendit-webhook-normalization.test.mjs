@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canonicalizeXenditWebhook } from "../app/api/webhooks/xendit/route.ts";
+import { canonicalizeXenditWebhook, normalizeXenditWebhookId } from "../app/api/webhooks/xendit/route.ts";
+
+test("Xendit webhook delivery identity requires the provider webhook-id", () => {
+  assert.equal(normalizeXenditWebhookId("wh_123"), "wh_123");
+  assert.throws(() => normalizeXenditWebhookId(""), /XENDIT_WEBHOOK_ID_REQUIRED/);
+  assert.throws(() => normalizeXenditWebhookId("x\ninvalid"), /XENDIT_WEBHOOK_ID_REQUIRED/);
+});
 
 test("Xendit payment-session completion maps to the canonical settlement contract", () => {
   const payload = canonicalizeXenditWebhook({
