@@ -1,6 +1,39 @@
 import { getD1 } from "../../../../../../db/runtime";
 import { getRecordingStore, MAX_FALLBACK_INTEGRITY_BYTES } from "../../../../../../lib/server/evidence-storage";
+import { recordingIntegrityFailureStatement } from "../../../../../../lib/server/reconciliation";
+import { operationalLog, safeOperationalErrorMessage } from "../../../../../../lib/server/observability";
 import { applySecurityHeaders, getRequestContext, requireActiveBreakGlass, requirePermission, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
+
+async function recordIntegrityFailure(input: {
+  database: D1Database;
+  facilityId: string;
+  recordingId: string;
+  storageKey: string;
+  reason: string;
+  requestId: string;
+}): Promise<void> {
+  const correlationId = crypto.randomUUID();
+  try {
+    const result = await input.database.batch([recordingIntegrityFailureStatement(input.database, {
+      facilityId: input.facilityId,
+      recordingId: input.recordingId,
+      storageKey: input.storageKey,
+      error: input.reason,
+      requestId: input.requestId,
+      correlationId,
+      now: new Date().toISOString(),
+    })]);
+    if (!result[0]?.meta.changes) throw new Error("RECORDING_INTEGRITY_ALARM_NOT_PERSISTED");
+  } catch (error) {
+    operationalLog("error", {
+      event: "RECORDING_PLAYBACK_INTEGRITY_ALARM_FAILED",
+      facilityId: input.facilityId,
+      requestId: input.requestId,
+      correlationId,
+      error: safeOperationalErrorMessage(error, "RECORDING_INTEGRITY_ALARM_FAILED"),
+    });
+  }
+}
 
 export async function GET(_request: Request, { params }: { params: Promise<{ recordingId: string }> }) {
   const context = await getRequestContext();
@@ -36,15 +69,27 @@ export async function GET(_request: Request, { params }: { params: Promise<{ rec
     const store = await getRecordingStore();
     if (!store) throw new SecurityError("RECORDING_STORAGE_NOT_CONFIGURED", 503);
     const object = await store.get(recording.storage_key);
-    if (!object || object.size !== recording.byte_size) throw new SecurityError("RECORDING_NOT_AVAILABLE", 404);
+    if (!object || object.size !== recording.byte_size) {
+      await recordIntegrityFailure({ database: d1, facilityId: recording.facility_id, recordingId: recording.id, storageKey: recording.storage_key, reason: "The recorded object is missing or its persisted size does not match.", requestId: context.requestId });
+      throw new SecurityError("RECORDING_NOT_AVAILABLE", 404);
+    }
     if (object.checksumSha256) {
-      if (object.checksumSha256 !== recording.sha256) throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
+      if (object.checksumSha256 !== recording.sha256) {
+        await recordIntegrityFailure({ database: d1, facilityId: recording.facility_id, recordingId: recording.id, storageKey: recording.storage_key, reason: "The recorded object checksum does not match the persisted recording digest.", requestId: context.requestId });
+        throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
+      }
     } else {
-      if (object.size > MAX_FALLBACK_INTEGRITY_BYTES) throw new SecurityError("RECORDING_INTEGRITY_METADATA_MISSING", 503);
+      if (object.size > MAX_FALLBACK_INTEGRITY_BYTES) {
+        await recordIntegrityFailure({ database: d1, facilityId: recording.facility_id, recordingId: recording.id, storageKey: recording.storage_key, reason: "The recorded object has no provider checksum and exceeds the bounded fallback verification size.", requestId: context.requestId });
+        throw new SecurityError("RECORDING_INTEGRITY_METADATA_MISSING", 503);
+      }
       const bytes = new Uint8Array(await object.arrayBuffer());
       const digest = await crypto.subtle.digest("SHA-256", bytes);
       const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-      if (sha256 !== recording.sha256) throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
+      if (sha256 !== recording.sha256) {
+        await recordIntegrityFailure({ database: d1, facilityId: recording.facility_id, recordingId: recording.id, storageKey: recording.storage_key, reason: "The recorded object fallback digest does not match the persisted recording digest.", requestId: context.requestId });
+        throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
+      }
     }
     const correlationId = crypto.randomUUID();
     const audited = await d1.prepare(`INSERT INTO recording_access_events

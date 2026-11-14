@@ -146,6 +146,14 @@ test("recording playback streams verified objects and bounds fallback hashing", 
   assert.match(route, /RECORDING_ORGANIZATION_SCOPE_MISSING/);
 });
 
+test("playback integrity failures create a durable security alarm", async () => {
+  const route = await readFile(new URL("../app/api/control/recordings/[recordingId]/playback/route.ts", import.meta.url), "utf8");
+  assert.match(route, /recordingIntegrityFailureStatement/);
+  assert.match(route, /RECORDING_PLAYBACK_INTEGRITY_ALARM_FAILED/);
+  assert.match(route, /The recorded object checksum does not match/);
+  assert.match(route, /The recorded object is missing or its persisted size does not match/);
+});
+
 test("LiveKit egress ingestion does not buffer large recordings when R2 has no checksum", async () => {
   const webhook = await readFile(new URL("../app/api/webhooks/livekit/route.ts", import.meta.url), "utf8");
   assert.match(webhook, /object\.checksumSha256 \|\| null/);
