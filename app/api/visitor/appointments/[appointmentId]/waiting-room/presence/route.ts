@@ -61,15 +61,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
       const cleared = await d1.batch([
         d1.prepare(`UPDATE waiting_room_sessions
           SET state = ?, visitor_presence = 'absent', visitor_presence_at = ?, version = ?, last_checked_at = ?, updated_at = ?
-          WHERE appointment_id = ? AND facility_id = ? AND version = ? AND visitor_presence = 'present'`)
-          .bind(nextState, now, nextVersion, now, now, appointmentId, current.facility_id, Number(current.waiting_version)),
+          WHERE appointment_id = ? AND facility_id = ? AND version = ? AND visitor_presence = 'present'
+            AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+          .bind(nextState, now, nextVersion, now, now, appointmentId, current.facility_id, Number(current.waiting_version), current.facility_id),
         d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
           SELECT ?, ?, 'VISITOR', ?, 'VISITOR_PRESENCE_CLEARED', 'appointment', ?, 'Visitor presence was cleared when the browser left the waiting room or live visit.', ?, ?, ?, ?, ?
           WHERE EXISTS (
             SELECT 1 FROM waiting_room_sessions wr
             WHERE wr.appointment_id = ? AND wr.facility_id = ? AND wr.version = ? AND wr.visitor_presence = 'absent'
-          )`)
-          .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ state: currentState, visitorPresence: "present", version: Number(current.waiting_version) }), JSON.stringify({ state: nextState, visitorPresence: "absent", version: nextVersion }), correlationId, context.requestId, now, appointmentId, current.facility_id, nextVersion),
+          ) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+          .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ state: currentState, visitorPresence: "present", version: Number(current.waiting_version) }), JSON.stringify({ state: nextState, visitorPresence: "absent", version: nextVersion }), correlationId, context.requestId, now, appointmentId, current.facility_id, nextVersion, current.facility_id),
       ]);
       if (!cleared[0]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
       if (!cleared[1]?.meta.changes) {
@@ -93,8 +94,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     if (current.visitor_presence === "present" && current.state !== "NOT_ARRIVED") {
       const refreshed = await d1.prepare(`UPDATE waiting_room_sessions
         SET visitor_presence_at = ?, last_checked_at = ?, updated_at = ?
-        WHERE appointment_id = ? AND facility_id = ? AND version = ? AND visitor_presence = 'present'`)
-        .bind(now, now, now, appointmentId, current.facility_id, Number(current.waiting_version)).run();
+        WHERE appointment_id = ? AND facility_id = ? AND version = ? AND visitor_presence = 'present'
+          AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+        .bind(now, now, now, appointmentId, current.facility_id, Number(current.waiting_version), current.facility_id).run();
       if (!refreshed.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
       return securityResponse({ presence: "present", state: current.state, visitorPresenceAt: now, prisonerPresence: prisonerPresent ? "present" : "waiting", prisonerPresenceAt: prisonerPresent ? current.prisoner_presence_at || null : null, version: Number(current.waiting_version), idempotent: true }, 200, context.requestId);
     }
@@ -102,11 +104,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     const result = await d1.batch([
       d1.prepare(`UPDATE waiting_room_sessions SET state = CASE WHEN state IN ('NOT_ARRIVED', 'VISITOR_WAITING', 'PRISONER_WAITING', 'BOTH_PRESENT') THEN ? ELSE state END,
           visitor_presence = 'present', visitor_presence_at = ?, version = version + 1, last_checked_at = ?, updated_at = ?
-        WHERE appointment_id = ? AND facility_id = ? AND version = ?`)
-        .bind(nextState, now, now, now, appointmentId, current.facility_id, Number(current.waiting_version)),
+        WHERE appointment_id = ? AND facility_id = ? AND version = ?
+          AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+        .bind(nextState, now, now, now, appointmentId, current.facility_id, Number(current.waiting_version), current.facility_id),
       d1.prepare(`UPDATE appointments SET status = CASE WHEN status = 'APPROVED' THEN 'WAITING' ELSE status END, version = version + 1, updated_at = ?
-        WHERE id = ? AND facility_id = ? AND version = ? AND status IN ('APPROVED', 'WAITING', 'IN_PROGRESS')`)
-        .bind(now, appointmentId, current.facility_id, Number(current.appointment_version)),
+        WHERE id = ? AND facility_id = ? AND version = ? AND status IN ('APPROVED', 'WAITING', 'IN_PROGRESS')
+          AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+        .bind(now, appointmentId, current.facility_id, Number(current.appointment_version), current.facility_id),
     ]);
     if (!result[0]?.meta.changes || !result[1]?.meta.changes) {
       // D1 batches are atomic for SQL errors, but a statement that matches zero

@@ -10,6 +10,7 @@ test("repeat visitor waiting-room heartbeats refresh freshness without version c
   assert.match(source, /current\.visitor_presence === "present" && current\.state !== "NOT_ARRIVED"/);
   assert.match(source, /visitor_presence_at = \?, last_checked_at = \?, updated_at = \?/);
   assert.match(source, /AND version = \? AND visitor_presence = 'present'/);
+  assert.match(source, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
   assert.match(source, /idempotent: true/);
 });
 
