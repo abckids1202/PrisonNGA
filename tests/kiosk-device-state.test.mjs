@@ -19,4 +19,7 @@ test("kiosk device checks compensate a partial evidence write", () => {
   assert.match(route, /WAITING_ROOM_RECONCILIATION_REQUIRED/);
   assert.match(route, /SET kiosk_camera_state = \?, kiosk_microphone_state = \?, kiosk_network_state = \?, kiosk_device_checked_at = \?, kiosk_state = \?, version = \?, last_checked_at = \?, updated_at = \?/);
   assert.match(route, /if \(result\[0\]\?\.meta\.changes\) \{/);
+  assert.match(route, /WHERE EXISTS \(SELECT 1 FROM waiting_room_sessions WHERE appointment_id = \? AND facility_id = \? AND version = \? AND kiosk_device_checked_at = \?\)/);
+  assert.doesNotMatch(route, /WHERE changes\(\) > 0/);
+  assert.match(route, /Number\(entry\?\.meta\.changes \|\| 0\) > 0/);
 });

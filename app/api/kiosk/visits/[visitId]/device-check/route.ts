@@ -3,6 +3,7 @@ import { authenticateKiosk } from "../../../../../../lib/server/kiosk-credential
 import { enforceRateLimit } from "../../../../../../lib/server/rate-limit";
 import { getRequestContext, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
 import { recordWaitingRoomReconciliationRequired } from "../../../../../../lib/server/reconciliation";
+import { operationalLog } from "../../../../../../lib/server/observability";
 
 const deviceResults = ["ready", "warning", "failed"] as const;
 const networkResults = ["stable", "fair", "poor", "unknown"] as const;
@@ -53,17 +54,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
         WHERE appointment_id = ? AND facility_id = ? AND version = ? AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ? AND a.version = ? AND a.status IN ('APPROVED', 'WAITING', 'IN_PROGRESS'))`)
         .bind(body.cameraResult, body.microphoneResult, body.networkResult, now, kioskState, nextVersion, now, now, visitId, kiosk.facilityId, Number(current.waiting_version || 0), visitId, kiosk.facilityId, Number(current.appointment_version || 1)),
       d1.prepare(`INSERT INTO kiosk_device_check_attempts (id, facility_id, appointment_id, resource_id, idempotency_key, camera_result, microphone_result, network_result, latency_ms, correlation_id, created_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(checkId, kiosk.facilityId, visitId, kiosk.resourceId, storedKey, body.cameraResult, body.microphoneResult, body.networkResult, latencyMs, correlationId, now),
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM waiting_room_sessions WHERE appointment_id = ? AND facility_id = ? AND version = ? AND kiosk_device_checked_at = ?)`)
+        .bind(checkId, kiosk.facilityId, visitId, kiosk.resourceId, storedKey, body.cameraResult, body.microphoneResult, body.networkResult, latencyMs, correlationId, now, visitId, kiosk.facilityId, nextVersion, now),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
-        SELECT ?, NULL, 'KIOSK', ?, 'KIOSK_DEVICE_CHECK_RECORDED', 'waiting_room', ?, 'Controlled kiosk reported device readiness.', ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), kiosk.facilityId, visitId, JSON.stringify({ version: current.waiting_version || 0, state: current.state || "NOT_ARRIVED" }), JSON.stringify({ version: nextVersion, cameraResult: body.cameraResult, microphoneResult: body.microphoneResult, networkResult: body.networkResult }), correlationId, context.requestId, now),
+        SELECT ?, NULL, 'KIOSK', ?, 'KIOSK_DEVICE_CHECK_RECORDED', 'waiting_room', ?, 'Controlled kiosk reported device readiness.', ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM waiting_room_sessions WHERE appointment_id = ? AND facility_id = ? AND version = ? AND kiosk_device_checked_at = ?)`)
+        .bind(crypto.randomUUID(), kiosk.facilityId, visitId, JSON.stringify({ version: current.waiting_version || 0, state: current.state || "NOT_ARRIVED" }), JSON.stringify({ version: nextVersion, cameraResult: body.cameraResult, microphoneResult: body.microphoneResult, networkResult: body.networkResult }), correlationId, context.requestId, now, visitId, kiosk.facilityId, nextVersion, now),
       d1.prepare(`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
-        SELECT ?, 'KIOSK_DEVICE_CHECK_RECORDED', 'appointment', ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), visitId, kiosk.facilityId, JSON.stringify({ appointmentId: visitId, resourceId: kiosk.resourceId, cameraResult: body.cameraResult, microphoneResult: body.microphoneResult, networkResult: body.networkResult }), correlationId, now),
+        SELECT ?, 'KIOSK_DEVICE_CHECK_RECORDED', 'appointment', ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM waiting_room_sessions WHERE appointment_id = ? AND facility_id = ? AND version = ? AND kiosk_device_checked_at = ?)`)
+        .bind(crypto.randomUUID(), visitId, kiosk.facilityId, JSON.stringify({ appointmentId: visitId, resourceId: kiosk.resourceId, cameraResult: body.cameraResult, microphoneResult: body.microphoneResult, networkResult: body.networkResult }), correlationId, now, visitId, kiosk.facilityId, nextVersion, now),
     ];
     const result = await d1.batch(statements);
-    if (!result.every((entry) => entry?.meta.changes === 1)) {
+    if (!result.every((entry) => Number(entry?.meta.changes || 0) > 0)) {
+      operationalLog("error", {
+        event: "KIOSK_DEVICE_CHECK_BATCH_INCOMPLETE",
+        facilityId: kiosk.facilityId,
+        actorId: "kiosk",
+        sessionId: visitId,
+        requestId: context.requestId,
+        changes: result.map((entry) => entry?.meta.changes ?? null),
+      });
       // The evidence insert can lose an idempotency race even after the
       // waiting-room update matched. Restore the readiness snapshot while the
       // incremented version is still owned by this request.
