@@ -9,4 +9,5 @@ test("scheduled reconciliation marks stale kiosks failed with audit and outbox e
   assert.match(source, /julianday\('now', '-3 minutes'\)/);
   assert.match(source, /KIOSK_HEALTH_FAILED/);
   assert.match(source, /reconcileStaleKioskHealth\(env\)/);
+  assert.match(source, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });

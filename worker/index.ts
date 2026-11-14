@@ -180,11 +180,13 @@ async function reconcileTenantIntegrity(env: Env): Promise<void> {
 }
 
 async function reconcileStaleKioskHealth(env: Env): Promise<void> {
-  const stale = await env.DB.prepare(`SELECT id, facility_id, display_name, version, last_heartbeat_at
-    FROM resources
-    WHERE resource_type = 'DEVICE' AND status = 'ONLINE' AND health_state = 'HEALTHY'
-      AND (last_heartbeat_at IS NULL OR julianday(last_heartbeat_at) < julianday('now', '-3 minutes'))
-    ORDER BY updated_at ASC LIMIT 25`).all<{ id: string; facility_id: string; display_name: string; version: number; last_heartbeat_at: string | null }>();
+  const stale = await env.DB.prepare(`SELECT r.id, r.facility_id, r.display_name, r.version, r.last_heartbeat_at
+    FROM resources r
+    INNER JOIN facilities f ON f.id = r.facility_id
+    INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+    WHERE r.resource_type = 'DEVICE' AND r.status = 'ONLINE' AND r.health_state = 'HEALTHY'
+      AND (r.last_heartbeat_at IS NULL OR julianday(r.last_heartbeat_at) < julianday('now', '-3 minutes'))
+    ORDER BY r.updated_at ASC LIMIT 25`).all<{ id: string; facility_id: string; display_name: string; version: number; last_heartbeat_at: string | null }>();
 
   for (const resource of stale.results) {
     const now = new Date().toISOString();
