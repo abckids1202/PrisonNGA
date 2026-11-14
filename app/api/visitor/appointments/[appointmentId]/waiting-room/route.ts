@@ -67,12 +67,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     const checkInId = crypto.randomUUID();
     const result = await d1.batch([
       d1.prepare(`UPDATE appointments SET status = 'WAITING', version = version + 1, updated_at = ?
-        WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('APPROVED', 'WAITING')`)
-        .bind(now, appointmentId, visitor.userId, Number(current.appointment_version || 1)),
+        WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('APPROVED', 'WAITING')
+          AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+        .bind(now, appointmentId, visitor.userId, Number(current.appointment_version || 1), current.facility_id),
       d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, organization_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
         SELECT ?, (SELECT f.organization_id FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?), ?, ?, 'present', ?, ?, ?, 'pass', ?, ?, ?, 'pass', 'pending', 'pass', NULL, NULL, NULL, ?, ?, ?, ?
         WHERE EXISTS (
           SELECT 1 FROM appointments a
+          INNER JOIN facilities f ON f.id = a.facility_id
+          INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
           WHERE a.id = ? AND a.visitor_user_id = ? AND a.facility_id = ? AND a.version = ? AND a.status = 'WAITING'
         )
         ON CONFLICT(appointment_id) DO UPDATE SET
@@ -99,12 +102,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         .bind(checkInId, appointmentId, current.facility_id, visitor.userId, existingKey, nextState, nextVersion, correlationId, now, appointmentId, current.facility_id, nextVersion),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
         SELECT ?, ?, 'VISITOR', ?, 'VISITOR_WAITING_ROOM_CHECK_IN', 'appointment', ?, 'Visitor entered the waiting room.', ?, ?, ?, ?, ?
-        WHERE EXISTS (SELECT 1 FROM visitor_waiting_room_checkins WHERE id = ? AND appointment_id = ? AND facility_id = ?)`)
-        .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ appointmentStatus: current.appointment_status, state: current.state || "NOT_ARRIVED", version: current.waiting_version || 0 }), JSON.stringify({ appointmentStatus: "WAITING", state: nextState, visitorPresence: "present", version: nextVersion }), correlationId, context.requestId, now, checkInId, appointmentId, current.facility_id),
+        WHERE EXISTS (SELECT 1 FROM visitor_waiting_room_checkins WHERE id = ? AND appointment_id = ? AND facility_id = ?)
+          AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+        .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ appointmentStatus: current.appointment_status, state: current.state || "NOT_ARRIVED", version: current.waiting_version || 0 }), JSON.stringify({ appointmentStatus: "WAITING", state: nextState, visitorPresence: "present", version: nextVersion }), correlationId, context.requestId, now, checkInId, appointmentId, current.facility_id, current.facility_id),
       d1.prepare(`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
         SELECT ?, 'VISITOR_WAITING_ROOM_CHECKED_IN', 'appointment', ?, ?, ?, ?, ?
-        WHERE EXISTS (SELECT 1 FROM visitor_waiting_room_checkins WHERE id = ? AND appointment_id = ? AND facility_id = ?)`)
-        .bind(crypto.randomUUID(), appointmentId, current.facility_id, JSON.stringify({ appointmentId, state: nextState }), correlationId, now, checkInId, appointmentId, current.facility_id),
+        WHERE EXISTS (SELECT 1 FROM visitor_waiting_room_checkins WHERE id = ? AND appointment_id = ? AND facility_id = ?)
+          AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+        .bind(crypto.randomUUID(), appointmentId, current.facility_id, JSON.stringify({ appointmentId, state: nextState }), correlationId, now, checkInId, appointmentId, current.facility_id, current.facility_id),
     ]);
     if (!result.every((entry) => Boolean(entry?.meta.changes))) {
       // D1 reports a zero-row optimistic-concurrency match as a successful
