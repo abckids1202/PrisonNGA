@@ -75,7 +75,7 @@ test("staging smoke passes the public deployment contract", async () => {
 
 test("staging smoke can write a redacted evidence artifact", async () => {
   const directory = await mkdtemp(join(tmpdir(), "securevisit-smoke-"));
-  const evidencePath = join(directory, "smoke.json");
+  const evidencePath = join(directory, "evidence", "smoke.json");
   const { server, baseUrl } = await startServer();
   try {
     const result = await runSmoke(baseUrl, { STAGING_SMOKE_EVIDENCE_PATH: evidencePath, SECUREVISIT_RELEASE_EVIDENCE_ID: "release-test-001" });
