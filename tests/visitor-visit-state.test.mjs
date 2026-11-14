@@ -104,5 +104,7 @@ test("visitor recording consent is unavailable for disabled organizations", asyn
   const route = await readFile(new URL("../app/api/visitor/visits/[visitId]/recording-consent/route.ts", import.meta.url), "utf8");
   assert.match(route, /INNER JOIN facilities f ON f\.id = vs\.facility_id/);
   assert.match(route, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(route, /INSERT INTO recording_consents[\s\S]*WHERE EXISTS \(SELECT 1 FROM facilities f/);
+  assert.match(route, /UPDATE visit_sessions SET recording_status[\s\S]*AND EXISTS \(SELECT 1 FROM facilities f/);
 });
 

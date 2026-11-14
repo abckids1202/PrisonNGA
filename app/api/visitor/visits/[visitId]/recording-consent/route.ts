@@ -110,12 +110,14 @@ export async function POST(request: Request, context: RouteContext) {
     };
     const result = await d1.batch([
       d1.prepare(`INSERT INTO recording_consents (id, session_id, facility_id, participant_user_id, participant_role, decision, policy_version, notice_version, decided_at, correlation_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'VISITOR', ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(consentId, current.session_id, current.facility_id, visitor.userId, decision, current.policy_version, noticeVersion, now, correlationId, now, now),
-      d1.prepare(`UPDATE visit_sessions SET recording_status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND recording_status = ?`)
-        .bind(nextRecordingStatus, now, current.session_id, current.facility_id, current.recording_status),
-      ...auditAndOutboxStatements(d1, event),
-      completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM recording_consents WHERE id = ? AND facility_id = ?)", values: [consentId, current.facility_id] } }),
+        SELECT ?, ?, ?, ?, 'VISITOR', ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+        .bind(consentId, current.session_id, current.facility_id, visitor.userId, decision, current.policy_version, noticeVersion, now, correlationId, now, now, current.facility_id),
+      d1.prepare(`UPDATE visit_sessions SET recording_status = ?, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND recording_status = ?
+        AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+        .bind(nextRecordingStatus, now, current.session_id, current.facility_id, current.recording_status, current.facility_id),
+      ...auditAndOutboxStatements(d1, event, { sql: "EXISTS (SELECT 1 FROM recording_consents WHERE id = ? AND facility_id = ?) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)", values: [consentId, current.facility_id, current.facility_id] }),
+      completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM recording_consents WHERE id = ? AND facility_id = ?) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)", values: [consentId, current.facility_id, current.facility_id] } }),
     ]);
     if (!result.every((entry) => Boolean(entry?.meta.changes))) throw new SecurityError("RECORDING_CONSENT_PERSISTENCE_INCOMPLETE", 503);
     idempotency = null;
