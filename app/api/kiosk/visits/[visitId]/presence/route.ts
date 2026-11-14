@@ -62,11 +62,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
           AND EXISTS (SELECT 1 FROM waiting_room_sessions wr WHERE wr.appointment_id = ? AND wr.facility_id = ? AND wr.version = ?)`)
         .bind(body.presence, now, visitId, kiosk.facilityId, Number(current.appointment_version || 1), visitId, kiosk.facilityId, nextVersion),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
-        SELECT ?, NULL, 'KIOSK', ?, ?, 'waiting_room', ?, 'Controlled kiosk reported prisoner presence.', ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), kiosk.facilityId, `KIOSK_PRISONER_${String(body.presence).toUpperCase()}`, visitId, JSON.stringify({ state: current.state || "NOT_ARRIVED", prisonerPresence: current.prisoner_presence || "waiting", version: currentVersion }), JSON.stringify({ state: nextState, prisonerPresence: body.presence, version: nextVersion, resourceId: kiosk.resourceId }), correlationId, context.requestId, now),
+        SELECT ?, NULL, 'KIOSK', ?, ?, 'waiting_room', ?, 'Controlled kiosk reported prisoner presence.', ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM waiting_room_sessions WHERE appointment_id = ? AND facility_id = ? AND version = ? AND prisoner_presence = ?)`)
+        .bind(crypto.randomUUID(), kiosk.facilityId, `KIOSK_PRISONER_${String(body.presence).toUpperCase()}`, visitId, JSON.stringify({ state: current.state || "NOT_ARRIVED", prisonerPresence: current.prisoner_presence || "waiting", version: currentVersion }), JSON.stringify({ state: nextState, prisonerPresence: body.presence, version: nextVersion, resourceId: kiosk.resourceId }), correlationId, context.requestId, now, visitId, kiosk.facilityId, nextVersion, body.presence),
       d1.prepare(`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
-        SELECT ?, ?, 'appointment', ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), `KIOSK_PRISONER_${String(body.presence).toUpperCase()}`, visitId, kiosk.facilityId, JSON.stringify({ appointmentId: visitId, state: nextState, prisonerPresence: body.presence, resourceId: kiosk.resourceId }), correlationId, now),
+        SELECT ?, ?, 'appointment', ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM waiting_room_sessions WHERE appointment_id = ? AND facility_id = ? AND version = ? AND prisoner_presence = ?)`)
+        .bind(crypto.randomUUID(), `KIOSK_PRISONER_${String(body.presence).toUpperCase()}`, visitId, kiosk.facilityId, JSON.stringify({ appointmentId: visitId, state: nextState, prisonerPresence: body.presence, resourceId: kiosk.resourceId }), correlationId, now, visitId, kiosk.facilityId, nextVersion, body.presence),
     ]);
     if (!result[0]?.meta.changes || !result[1]?.meta.changes) {
       // A zero-row optimistic-concurrency result is not a D1 SQL error. Undo

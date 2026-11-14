@@ -70,7 +70,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         .bind(now, appointmentId, visitor.userId, Number(current.appointment_version || 1)),
       d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, organization_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
         SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, 'present', ?, ?, ?, 'pass', ?, ?, ?, 'pass', 'pending', 'pass', NULL, NULL, NULL, ?, ?, ?, ?
-        WHERE changes() > 0
+        WHERE EXISTS (
+          SELECT 1 FROM appointments a
+          WHERE a.id = ? AND a.visitor_user_id = ? AND a.facility_id = ? AND a.version = ? AND a.status = 'WAITING'
+        )
         ON CONFLICT(appointment_id) DO UPDATE SET
           state = CASE WHEN waiting_room_sessions.state IN ('NOT_ARRIVED', 'VISITOR_WAITING', 'PRISONER_WAITING', 'BOTH_PRESENT') THEN excluded.state ELSE waiting_room_sessions.state END,
           visitor_presence = 'present',
@@ -85,16 +88,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
           version = excluded.version,
           updated_at = excluded.updated_at
         WHERE waiting_room_sessions.version = ?`)
-        .bind(appointmentId, current.facility_id, current.facility_id, nextState, now, nextPrisonerPresence, prisonerPresent ? (current.prisoner_presence_at || now) : null, String(current.camera_result) === "ready" ? "pass" : "warning", String(current.microphone_result) === "ready" ? "pass" : "warning", String(current.network_result) === "stable" || String(current.network_result) === "fair" ? "pass" : "warning", nextVersion, now, now, now, waitingVersion),
+        .bind(appointmentId, current.facility_id, current.facility_id, nextState, now, nextPrisonerPresence, prisonerPresent ? (current.prisoner_presence_at || now) : null, String(current.camera_result) === "ready" ? "pass" : "warning", String(current.microphone_result) === "ready" ? "pass" : "warning", String(current.network_result) === "stable" || String(current.network_result) === "fair" ? "pass" : "warning", nextVersion, now, now, now, appointmentId, visitor.userId, current.facility_id, Number(current.appointment_version || 1) + 1, waitingVersion),
       d1.prepare(`INSERT INTO visitor_waiting_room_checkins (id, appointment_id, facility_id, visitor_user_id, idempotency_key, state, version, correlation_id, created_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(checkInId, appointmentId, current.facility_id, visitor.userId, existingKey, nextState, nextVersion, correlationId, now),
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM waiting_room_sessions wr
+          WHERE wr.appointment_id = ? AND wr.facility_id = ? AND wr.version = ? AND wr.visitor_presence = 'present'
+        )`)
+        .bind(checkInId, appointmentId, current.facility_id, visitor.userId, existingKey, nextState, nextVersion, correlationId, now, appointmentId, current.facility_id, nextVersion),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
-        SELECT ?, ?, 'VISITOR', ?, 'VISITOR_WAITING_ROOM_CHECK_IN', 'appointment', ?, 'Visitor entered the waiting room.', ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ appointmentStatus: current.appointment_status, state: current.state || "NOT_ARRIVED", version: current.waiting_version || 0 }), JSON.stringify({ appointmentStatus: "WAITING", state: nextState, visitorPresence: "present", version: nextVersion }), correlationId, context.requestId, now),
+        SELECT ?, ?, 'VISITOR', ?, 'VISITOR_WAITING_ROOM_CHECK_IN', 'appointment', ?, 'Visitor entered the waiting room.', ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM visitor_waiting_room_checkins WHERE id = ? AND appointment_id = ? AND facility_id = ?)`)
+        .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ appointmentStatus: current.appointment_status, state: current.state || "NOT_ARRIVED", version: current.waiting_version || 0 }), JSON.stringify({ appointmentStatus: "WAITING", state: nextState, visitorPresence: "present", version: nextVersion }), correlationId, context.requestId, now, checkInId, appointmentId, current.facility_id),
       d1.prepare(`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
-        SELECT ?, 'VISITOR_WAITING_ROOM_CHECKED_IN', 'appointment', ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), appointmentId, current.facility_id, JSON.stringify({ appointmentId, state: nextState }), correlationId, now),
+        SELECT ?, 'VISITOR_WAITING_ROOM_CHECKED_IN', 'appointment', ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM visitor_waiting_room_checkins WHERE id = ? AND appointment_id = ? AND facility_id = ?)`)
+        .bind(crypto.randomUUID(), appointmentId, current.facility_id, JSON.stringify({ appointmentId, state: nextState }), correlationId, now, checkInId, appointmentId, current.facility_id),
     ]);
     if (!result.every((entry) => Boolean(entry?.meta.changes))) {
       // D1 reports a zero-row optimistic-concurrency match as a successful

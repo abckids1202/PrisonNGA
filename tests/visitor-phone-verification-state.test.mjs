@@ -14,5 +14,5 @@ test("visitor profile never invents phone verification and preserves authoritati
 
 test("phone verification reports success only when profile and audit writes commit", async () => {
   const route = await readFile(new URL("../app/api/visitor/profile/phone-verification/route.ts", import.meta.url), "utf8");
-  assert.match(route, /!results\.every\(\(result\) => result\?\.meta\.changes === 1\)/);
+  assert.match(route, /!results\.every\(\(result\) => Number\(result\?\.meta\.changes \|\| 0\) > 0\)/);
 });

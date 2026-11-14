@@ -64,8 +64,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
           .bind(nextState, now, nextVersion, now, now, appointmentId, current.facility_id, Number(current.waiting_version)),
         d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
           SELECT ?, ?, 'VISITOR', ?, 'VISITOR_PRESENCE_CLEARED', 'appointment', ?, 'Visitor presence was cleared when the browser left the waiting room or live visit.', ?, ?, ?, ?, ?
-          WHERE changes() > 0`)
-          .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ state: currentState, visitorPresence: "present", version: Number(current.waiting_version) }), JSON.stringify({ state: nextState, visitorPresence: "absent", version: nextVersion }), correlationId, context.requestId, now),
+          WHERE EXISTS (
+            SELECT 1 FROM waiting_room_sessions wr
+            WHERE wr.appointment_id = ? AND wr.facility_id = ? AND wr.version = ? AND wr.visitor_presence = 'absent'
+          )`)
+          .bind(crypto.randomUUID(), visitor.userId, current.facility_id, appointmentId, JSON.stringify({ state: currentState, visitorPresence: "present", version: Number(current.waiting_version) }), JSON.stringify({ state: nextState, visitorPresence: "absent", version: nextVersion }), correlationId, context.requestId, now, appointmentId, current.facility_id, nextVersion),
       ]);
       if (!cleared[0]?.meta.changes) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
       if (!cleared[1]?.meta.changes) {
