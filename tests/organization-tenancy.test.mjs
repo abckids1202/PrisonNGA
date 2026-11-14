@@ -102,7 +102,15 @@ test("federated staff login accepts organization-only administrators without inv
     assert.match(source, /profile(?:Scope)?\.facility_id \? 'FACILITY' : 'ORGANIZATION'/);
     assert.match(source, /scope_rank/);
     assert.match(source, /ORDER BY scope_rank, facility_id LIMIT 1/);
+    assert.match(source, /organizations o ON o\.id =/);
+    assert.match(source, /o\.status = 'ACTIVE'/);
   }
+});
+
+test("organization authorization fails closed for disabled organizations", async () => {
+  const security = await readFile(new URL("../lib/server/security.ts", import.meta.url), "utf8");
+  assert.match(security, /SELECT id FROM organizations WHERE id = \? AND status = 'ACTIVE'/);
+  assert.match(security, /ORGANIZATION_SCOPE_DENIED/);
 });
 
 test("staff directory and access review hide revoked modern assignments", async () => {

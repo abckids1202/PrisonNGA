@@ -58,16 +58,19 @@ export async function POST(request: Request) {
       user = await d1.prepare("SELECT id, email, display_name, external_id, status FROM users WHERE lower(email) = lower(?) AND user_type = 'STAFF'").bind(email).first<{ id: string; email: string; display_name: string; external_id: string | null; status: string }>();
     }
     if (!user || user.status !== "ACTIVE") throw new SecurityError("STAFF_ACCOUNT_NOT_PROVISIONED", 403);
-    const profileScope = await d1.prepare(`SELECT sfa.facility_id, COALESCE(sfa.organization_id, f.organization_id) AS organization_id, 0 AS scope_rank
+    const profileScope = await d1.prepare(`SELECT sfa.facility_id, f.organization_id, 0 AS scope_rank
       FROM staff_facility_assignments sfa INNER JOIN facilities f ON f.id = sfa.facility_id
-      WHERE sfa.user_id = ? AND sfa.status = 'ACTIVE'
-      UNION ALL SELECT sp.facility_id, COALESCE(sp.organization_id, f.organization_id) AS organization_id, 0 AS scope_rank
+        INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE sfa.user_id = ? AND sfa.status = 'ACTIVE' AND (sfa.organization_id IS NULL OR sfa.organization_id = f.organization_id)
+      UNION ALL SELECT sp.facility_id, f.organization_id, 0 AS scope_rank
         FROM staff_profiles sp INNER JOIN facilities f ON f.id = sp.facility_id
-        WHERE sp.user_id = ? AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments WHERE user_id = ?)
+          INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+        WHERE sp.user_id = ? AND (sp.organization_id IS NULL OR sp.organization_id = f.organization_id) AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments WHERE user_id = ?)
       UNION ALL SELECT NULL AS facility_id, ora.organization_id, 1 AS scope_rank
         FROM organization_role_assignments ora
         INNER JOIN role_permissions rp ON rp.role_id = ora.role_id
         INNER JOIN permissions p ON p.id = rp.permission_id AND p.permission_key = 'organization.manage'
+        INNER JOIN organizations o ON o.id = ora.organization_id AND o.status = 'ACTIVE'
         WHERE ora.user_id = ? AND ora.status = 'ACTIVE'
       ORDER BY scope_rank, facility_id LIMIT 1`).bind(user.id, user.id, user.id, user.id).first<{ facility_id: string | null; organization_id: string | null; scope_rank: number }>();
     if (!profileScope?.organization_id) throw new SecurityError("STAFF_SCOPE_MISSING", 403);

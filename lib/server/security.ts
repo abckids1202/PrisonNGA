@@ -194,6 +194,8 @@ export async function requireOrganizationPermission(permissionKey: string): Prom
     organizationId = organizationRows.results[0].organization_id;
     facilityId = organizationRows.results[0].facility_id;
   }
+  const activeOrganization = await d1.prepare("SELECT id FROM organizations WHERE id = ? AND status = 'ACTIVE'").bind(organizationId).first<{ id: string }>();
+  if (!activeOrganization) throw new SecurityError("ORGANIZATION_SCOPE_DENIED", 403);
   const roles = await d1.prepare(`SELECT r.name AS role_name
     FROM organization_role_assignments ora
     INNER JOIN roles r ON r.id = ora.role_id
