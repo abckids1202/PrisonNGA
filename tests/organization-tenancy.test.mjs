@@ -113,6 +113,17 @@ test("organization authorization fails closed for disabled organizations", async
   assert.match(security, /ORGANIZATION_SCOPE_DENIED/);
 });
 
+test("organization-only administration supports an organization with no facilities yet", async () => {
+  const security = await readFile(new URL("../lib/server/security.ts", import.meta.url), "utf8");
+  const events = await readFile(new URL("../lib/server/events.ts", import.meta.url), "utf8");
+  const organizations = await readFile(new URL("../app/api/control/organizations/route.ts", import.meta.url), "utf8");
+  assert.match(security, /MIN\(f\.id\) AS facility_id/);
+  assert.match(security, /facilityId = organizationRows\.results\[0\]\.facility_id \|\| ""/);
+  assert.match(events, /COALESCE\(\?, \(SELECT organization_id FROM facilities WHERE id = \?\)\)/);
+  assert.match(organizations, /organizationId: authorization\.organizationId/);
+  assert.match(organizations, /facilityId: authorization\.facilityId \|\| null/);
+});
+
 test("staff directory and access review hide revoked modern assignments", async () => {
   const staff = await readFile(new URL("../app/api/control/staff/route.ts", import.meta.url), "utf8");
   const review = await readFile(new URL("../app/api/control/access-review/route.ts", import.meta.url), "utf8");
