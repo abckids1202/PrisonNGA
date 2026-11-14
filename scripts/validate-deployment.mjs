@@ -7,6 +7,7 @@ const PLACEHOLDER_D1_NAME = "site-creator-d1";
 const PLACEHOLDER_R2_NAME = "site-creator-r2";
 const forbiddenManifestSecrets = [
   "SECUREVISIT_HASH_SALT",
+  "PLATFORM_PROVISIONING_SECRET",
   "STAFF_STEP_UP_SECRET",
   "VISITOR_AUTH_WEBHOOK_SECRET",
   "RESEND_API_KEY",

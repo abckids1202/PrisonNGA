@@ -29,6 +29,7 @@ test("deployment manifest sanitizer replaces local adapters with deployment valu
 
 test("deployment manifest sanitizer preserves recording storage runtime configuration", () => {
   const result = sanitizeDeploymentManifest({ vars: {
+    PLATFORM_PROVISIONING_SECRET: "secret",
     RECORDING_STORAGE_PROVIDER: "local_test",
     RECORDINGS_BUCKET_NAME: "local-recordings",
     R2_S3_ENDPOINT: "http://localhost:9000",
@@ -72,6 +73,7 @@ test("deployment manifest sanitizer removes forbidden credentials", () => {
   } }, { SECUREVISIT_ENVIRONMENT: "production" });
 
   assert.equal(Object.hasOwn(result.vars, "LIVEKIT_API_SECRET"), false);
+  assert.equal(Object.hasOwn(result.vars, "PLATFORM_PROVISIONING_SECRET"), false);
   assert.equal(Object.hasOwn(result.vars, "PAYMENT_WEBHOOK_SECRET"), false);
   assert.equal(Object.hasOwn(result.vars, "XENDIT_SECRET_KEY"), false);
   assert.equal(Object.hasOwn(result.vars, "XENDIT_WEBHOOK_TOKEN"), false);

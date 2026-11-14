@@ -75,6 +75,7 @@ export const nonSecretDeploymentKeys = [
 
 export const forbiddenManifestSecrets = [
   "SECUREVISIT_HASH_SALT",
+  "PLATFORM_PROVISIONING_SECRET",
   "STAFF_STEP_UP_SECRET",
   "VISITOR_AUTH_WEBHOOK_SECRET",
   "RESEND_API_KEY",
