@@ -22,7 +22,7 @@ function paymentEventTrail(d1: D1Database, input: { intentId: string; facilityId
     correlationId: input.correlationId,
     eventType: "PAYMENT_STATUS_UPDATED",
     payload: { paymentIntentId: input.intentId, visitorUserId: input.userId, status: input.status, providerEventType: input.eventType },
-  }, { sql: "changes() > 0", values: [] });
+  }, { sql: "EXISTS (SELECT 1 FROM payment_intents WHERE id = ? AND facility_id = ? AND user_id = ? AND status = ?)", values: [input.intentId, input.facilityId, input.userId, input.status] });
 }
 
 function paymentEventEvidenceGuard(input: { intentId: string; correlationId: string; facilityId?: string; userId?: string; ledgerKey?: string; accountId?: string }) {

@@ -76,7 +76,7 @@ export function releaseLegalHoldStatements(d1: D1Database, input: LegalHoldRelea
       d1.prepare(`UPDATE legal_holds SET status = 'RELEASED', released_by = ?, released_at = ?, updated_at = ?
         WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = 'ACTIVE'`)
         .bind(input.actorUserId, input.now, input.now, input.id, input.organizationId, input.facilityId),
-      ...auditAndOutboxStatements(d1, event, { sql: "changes() > 0", values: [] }),
+      ...auditAndOutboxStatements(d1, event, { sql: "EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = 'RELEASED') AND NOT EXISTS (SELECT 1 FROM outbox_events WHERE facility_id = ? AND correlation_id = ? AND event_type = 'LEGAL_HOLD_RELEASED')", values: [input.id, input.organizationId, input.facilityId, input.facilityId, event.correlationId || null] }),
       d1.prepare(`UPDATE recordings SET legal_hold = 0, updated_at = ?
         WHERE id = ? AND organization_id = ? AND facility_id = ?
         AND NOT EXISTS (SELECT 1 FROM legal_holds WHERE organization_id = ? AND facility_id = ? AND entity_type = 'recording' AND entity_id = ? AND status = 'ACTIVE')
@@ -88,12 +88,12 @@ export function releaseLegalHoldStatements(d1: D1Database, input: LegalHoldRelea
     d1.prepare(`UPDATE legal_holds SET status = 'RELEASED', released_by = ?, released_at = ?, updated_at = ?
       WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = 'ACTIVE'`)
       .bind(input.actorUserId, input.now, input.now, input.id, input.organizationId, input.facilityId),
-    ...auditAndOutboxStatements(d1, event, { sql: "changes() > 0", values: [] }),
+    ...auditAndOutboxStatements(d1, event, { sql: "EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = 'RELEASED') AND NOT EXISTS (SELECT 1 FROM outbox_events WHERE facility_id = ? AND correlation_id = ? AND event_type = 'LEGAL_HOLD_RELEASED')", values: [input.id, input.organizationId, input.facilityId, input.facilityId, event.correlationId || null] }),
     d1.prepare(`UPDATE evidence_documents SET legal_hold = 0, updated_at = ? WHERE organization_id = ? AND facility_id = ?
       AND ((? = 'verification_case' AND verification_case_id = ?) OR (? = 'evidence_document' AND id = ?))
-      AND changes() > 0
+      AND EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = 'RELEASED')
       AND NOT EXISTS (SELECT 1 FROM legal_holds WHERE organization_id = ? AND facility_id = ? AND entity_type = ? AND entity_id = ? AND status = 'ACTIVE')
       AND EXISTS (SELECT 1 FROM legal_holds WHERE id = ? AND organization_id = ? AND facility_id = ? AND status = 'RELEASED')`)
-      .bind(input.now, input.organizationId, input.facilityId, input.entityType, input.entityId, input.entityType, input.entityId, input.organizationId, input.facilityId, input.entityType, input.entityId, input.id, input.organizationId, input.facilityId),
+      .bind(input.now, input.organizationId, input.facilityId, input.entityType, input.entityId, input.entityType, input.entityId, input.id, input.organizationId, input.facilityId, input.organizationId, input.facilityId, input.entityType, input.entityId, input.id, input.organizationId, input.facilityId),
   ];
 }

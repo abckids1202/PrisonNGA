@@ -97,7 +97,7 @@ export async function POST(request: Request) {
       correlationId: callback.eventId,
       eventType: "EVIDENCE_SCAN_COMPLETED",
       payload: { evidenceId: evidence.id, verdict: callback.verdict, provider: callback.provider, scanReference: callback.scanReference },
-    }, { sql: "changes() > 0", values: [] }));
+    }, { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND facility_id = ? AND status = ? AND scan_status = ?)", values: [evidence.id, evidence.facility_id, nextStatus, nextScanStatus] }));
     const results = await d1.batch(statements);
     if (!results.slice(0, 4).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("EVIDENCE_SCAN_STATE_NOT_PERSISTED", 503);
     return securityResponse({ accepted: true, matched: true, evidenceId: evidence.id, status: nextStatus, scanStatus: nextScanStatus, eventId: callback.eventId }, 200, context.requestId);

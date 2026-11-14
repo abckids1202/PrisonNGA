@@ -114,7 +114,7 @@ export async function POST(request: Request) {
           correlationId,
           eventType: "EVIDENCE_UPLOADED",
           payload: { evidenceId: id, verificationCaseId, visitorUserId: visitor.userId },
-        }, { sql: "changes() > 0", values: [] }),
+        }, { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED'))", values: [id, verificationCaseId, visitor.userId] }),
         completeIdempotencyStatement(d1, { ...idempotency, status: responseStatus, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED'))", values: [id, verificationCaseId, visitor.userId] } }),
       ]);
       if (!inserted[0]?.meta.changes) {

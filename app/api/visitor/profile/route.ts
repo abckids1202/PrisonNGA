@@ -89,7 +89,7 @@ export async function PUT(request: Request) {
         correlationId,
         eventType: "VISITOR_PROFILE_UPDATED",
         payload: { userId: visitor.userId, changedFields: ["legalName", "preferredName", "phone"] },
-      }, { sql: current ? "changes() > 0" : "EXISTS (SELECT 1 FROM visitor_profiles WHERE user_id = ? AND version = 1 AND profile_status = 'ACTIVE')", values: current ? [] : [visitor.userId] }),
+      }, { sql: "EXISTS (SELECT 1 FROM visitor_profiles WHERE user_id = ? AND version = ? AND profile_status = 'ACTIVE')", values: [visitor.userId, nextVersion] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: { ...responseBody, correlationId }, guard: { sql: "EXISTS (SELECT 1 FROM visitor_profiles WHERE user_id = ? AND version = ? AND profile_status = 'ACTIVE')", values: [visitor.userId, nextVersion] } }),
     ]);
     if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("PROFILE_UPDATE_CONFLICT", 409);

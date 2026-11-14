@@ -32,7 +32,7 @@ export function expiredEvidenceRetentionStatements(d1: D1Database, input: Expire
       correlationId: input.correlationId,
       eventType: "EVIDENCE_RETENTION_DELETED",
       payload: { evidenceId: input.id },
-    }, { sql: "changes() > 0", values: [] }),
+    }, { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND facility_id = ? AND status = 'DELETED' AND deleted_at = ?) AND NOT EXISTS (SELECT 1 FROM outbox_events WHERE facility_id = ? AND correlation_id = ? AND event_type = 'EVIDENCE_RETENTION_DELETED')", values: [input.id, input.facilityId, input.now, input.facilityId, input.correlationId] }),
   ];
 }
 
@@ -95,6 +95,6 @@ export function expiredRecordingRetentionStatements(d1: D1Database, input: Expir
       correlationId: input.correlationId,
       eventType: "RECORDING_RETENTION_DELETED",
       payload: { recordingId: input.id },
-    }, { sql: "changes() > 0", values: [] }),
+    }, { sql: "EXISTS (SELECT 1 FROM recordings WHERE id = ? AND facility_id = ? AND status = 'DELETED' AND storage_key IS NULL) AND NOT EXISTS (SELECT 1 FROM outbox_events WHERE facility_id = ? AND correlation_id = ? AND event_type = 'RECORDING_RETENTION_DELETED')", values: [input.id, input.facilityId, input.facilityId, input.correlationId] }),
   ];
 }

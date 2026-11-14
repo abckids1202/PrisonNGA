@@ -48,6 +48,6 @@ export function openScheduledWaitingRoomStatements(d1: D1Database, input: Schedu
       correlationId: input.correlationId,
       eventType: "WAITING_ROOM_OPENED",
       payload: { appointmentId: input.appointmentId, requestedStart: input.requestedStart, requestedEnd: input.requestedEnd },
-    }, { sql: "changes() > 0", values: [] }),
+    }, { sql: "EXISTS (SELECT 1 FROM waiting_room_sessions WHERE appointment_id = ? AND facility_id = ?) AND NOT EXISTS (SELECT 1 FROM outbox_events WHERE facility_id = ? AND correlation_id = ? AND event_type = 'WAITING_ROOM_OPENED')", values: [input.appointmentId, input.facilityId, input.facilityId, input.correlationId] }),
   ];
 }
