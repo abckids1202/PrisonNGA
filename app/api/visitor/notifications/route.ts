@@ -37,8 +37,12 @@ export async function PATCH(request: Request) {
     if ("replay" in claimed) return securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const responseBody = { ok: true, markedRead: ids.length };
+    const activeNotificationGuard = {
+      sql: `(SELECT COUNT(*) FROM notifications n INNER JOIN facilities f ON f.id = n.facility_id AND f.organization_id = n.organization_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE n.id IN (${ids.map(() => '?').join(', ')}) AND n.user_id = ?) = ?`,
+      values: [...ids, visitor.userId, ids.length],
+    };
     const results = await d1.batch([
-      ...ids.map((id) => database.prepare("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND user_id = ? AND organization_id IS NOT NULL AND read_at IS NULL AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = notifications.facility_id AND f.organization_id = notifications.organization_id)").bind(now, id, visitor.userId)),
+      ...ids.map((id) => database.prepare("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND user_id = ? AND organization_id IS NOT NULL AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = notifications.facility_id AND f.organization_id = notifications.organization_id)").bind(now, id, visitor.userId)),
       ...auditAndOutboxStatements(database, {
         actorUserId: visitor.userId,
         actorRole: "VISITOR",
@@ -51,8 +55,8 @@ export async function PATCH(request: Request) {
         requestId: context.requestId,
         eventType: "VISITOR_NOTIFICATIONS_READ",
         payload: { userId: visitor.userId, notificationCount: ids.length },
-      }),
-      completeIdempotencyStatement(database, { ...idempotency, status: 200, body: responseBody }),
+      }, activeNotificationGuard),
+      completeIdempotencyStatement(database, { ...idempotency, status: 200, body: responseBody, guard: activeNotificationGuard }),
     ]);
     if (!results.slice(ids.length).every((result) => result?.meta?.changes === 1)) throw new SecurityError("NOTIFICATION_UPDATE_INCOMPLETE", 503);
     idempotency = null;
