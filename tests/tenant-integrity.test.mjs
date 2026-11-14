@@ -24,7 +24,7 @@ test("facility closures carry organization scope and database guards", async () 
   assert.match(migration, /facility_closures_organization_fill/);
   assert.match(migration, /facility_closures_organization_update_guard/);
   assert.match(readiness, /facility_closures: \["organization_id"\]/);
-  assert.match(source, /"legal_holds", "facility_closures", "appointment_status_events"/);
+  assert.match(source, /"legal_holds", "facility_closures", "break_glass_requests", "appointment_status_events"/);
 });
 
 test("kiosk device-check evidence carries organization scope and database guards", async () => {
@@ -37,4 +37,10 @@ test("kiosk device-check evidence carries organization scope and database guards
   assert.match(migration, /kiosk_device_check_organization_update_guard/);
   assert.match(readiness, /kiosk_device_check_attempts: \["organization_id"\]/);
   assert.match(source, /visitor_device_check_attempts", "kiosk_device_check_attempts/);
+});
+
+test("tenant integrity reconciliation covers scoped evidence, audit, access, and outbox records", async () => {
+  const source = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  assert.match(source, /"legal_holds", "facility_closures", "break_glass_requests"/);
+  assert.match(source, /"incidents", "evidence_scan_events", "audit_events", "outbox_events", "security_events"/);
 });
