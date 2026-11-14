@@ -23,6 +23,8 @@ test("scheduled maintenance isolates named jobs and records failures", async () 
   assert.match(source, /json_valid\(ppe\.payload\) = 1/);
   assert.match(source, /pi\.id = json_extract\(ppe\.payload, '\$\.paymentIntentId'\)/);
   assert.match(source, /pi\.provider_reference = json_extract\(ppe\.payload, '\$\.providerReference'\)/);
+  assert.match(source, /LEFT JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(source, /es\.facility_id IS NULL OR o\.id IS NOT NULL/);
   assert.match(source, /runScheduledJob\(env, "live-session-reconciliation", \(\) => reconcileExpiredSessions\(env\)\)/);
   assert.match(source, /ctx\.waitUntil\(Promise\.all\(\[/);
 });

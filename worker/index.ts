@@ -321,18 +321,26 @@ async function reconcilePaymentEvents(env: Env): Promise<void> {
   // duplicate facility ownership. Resolve it through the immutable payment
   // intent so scheduled retries can still raise a facility-scoped dead-letter
   // alarm without relying on a column that is not part of the schema.
-  const rows = await env.DB.prepare(`SELECT ppe.id,
-      COALESCE(
-        (SELECT pi.facility_id FROM payment_intents pi
-          WHERE json_valid(ppe.payload) = 1 AND pi.provider = ppe.provider
-            AND pi.id = json_extract(ppe.payload, '$.paymentIntentId') LIMIT 1),
-        (SELECT pi.facility_id FROM payment_intents pi
-          WHERE json_valid(ppe.payload) = 1 AND pi.provider = ppe.provider
-            AND pi.provider_reference = json_extract(ppe.payload, '$.providerReference') LIMIT 1)
-      ) AS facility_id,
-      ppe.provider, ppe.event_key, ppe.event_type, ppe.payload, ppe.attempt_count
+  const rows = await env.DB.prepare(`WITH event_scope AS (
+      SELECT ppe.id,
+        COALESCE(
+          (SELECT pi.facility_id FROM payment_intents pi
+            WHERE json_valid(ppe.payload) = 1 AND pi.provider = ppe.provider
+              AND pi.id = json_extract(ppe.payload, '$.paymentIntentId') LIMIT 1),
+          (SELECT pi.facility_id FROM payment_intents pi
+            WHERE json_valid(ppe.payload) = 1 AND pi.provider = ppe.provider
+              AND pi.provider_reference = json_extract(ppe.payload, '$.providerReference') LIMIT 1)
+        ) AS facility_id
+      FROM payment_provider_events ppe
+    )
+    SELECT ppe.id, es.facility_id, ppe.provider, ppe.event_key, ppe.event_type, ppe.payload, ppe.attempt_count
     FROM payment_provider_events ppe
-    WHERE ppe.status IN ('RECEIVED', 'FAILED') AND julianday(ppe.available_at) <= julianday('now')
+    INNER JOIN event_scope es ON es.id = ppe.id
+    LEFT JOIN facilities f ON f.id = es.facility_id
+    LEFT JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+    WHERE ppe.status IN ('RECEIVED', 'FAILED')
+      AND julianday(ppe.available_at) <= julianday('now')
+      AND (es.facility_id IS NULL OR o.id IS NOT NULL)
     ORDER BY ppe.created_at ASC LIMIT 25`).all<PaymentRetryEvent>();
   for (const row of rows.results) {
     const claim = await env.DB.prepare("UPDATE payment_provider_events SET status = 'PROCESSING', attempt_count = attempt_count + 1, processing_started_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status IN ('RECEIVED', 'FAILED') AND julianday(available_at) <= julianday('now')").bind(row.id).run();
