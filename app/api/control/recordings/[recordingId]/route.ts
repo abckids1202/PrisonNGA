@@ -14,7 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ rec
       .first<{ organization_id: string | null }>();
     if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const recording = await d1.prepare(`SELECT r.id, r.organization_id, r.facility_id, r.session_id, r.provider,
-        r.provider_reference, r.status, r.content_type, r.byte_size, r.sha256, r.encryption_key_reference,
+        r.provider_reference, r.status, r.content_type, r.byte_size, r.sha256,
         r.retention_until, r.legal_hold, r.failure_reason, r.created_at, r.updated_at,
         vs.status AS session_status, vs.recording_policy, vs.recording_status, vs.actual_started_at, vs.actual_ended_at,
         a.id AS appointment_id, a.requested_start, a.requested_end,
