@@ -12,6 +12,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pay
       cle.id AS ledger_entry_id, cle.created_at AS settled_at
       FROM payment_intents pi
       INNER JOIN facilities f ON f.id = pi.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       INNER JOIN credit_ledger_entries cle ON cle.idempotency_key = 'payment:' || pi.id || ':purchase' AND cle.entry_type = 'PURCHASE'
       INNER JOIN credit_accounts ca ON ca.id = cle.credit_account_id AND ca.facility_id = pi.facility_id AND ca.user_id = pi.user_id
       WHERE pi.id = ? AND pi.user_id = ? AND pi.status = 'SUCCEEDED'

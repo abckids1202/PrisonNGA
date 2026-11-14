@@ -29,6 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         f.current_state AS facility_state, wr.version AS waiting_version, wr.state, wr.visitor_presence, wr.visitor_presence_at, wr.prisoner_presence, wr.prisoner_presence_at, wr.last_checked_at
       FROM appointments a
       INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       LEFT JOIN waiting_room_sessions wr ON wr.appointment_id = a.id AND wr.facility_id = a.facility_id
       WHERE a.id = ? AND a.visitor_user_id = ?`).bind(appointmentId, visitor.userId).first<Record<string, string | number | null>>();
     if (!current) throw new SecurityError("APPOINTMENT_NOT_FOUND", 404);

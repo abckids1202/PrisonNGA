@@ -24,6 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         dc.id AS device_check_id, dc.camera_result, dc.microphone_result, dc.network_result, dc.created_at AS device_checked_at
       FROM appointments a
       INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       LEFT JOIN waiting_room_sessions wr ON wr.appointment_id = a.id AND wr.facility_id = a.facility_id
       LEFT JOIN visitor_device_check_attempts dc ON dc.id = (
@@ -69,7 +70,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         WHERE id = ? AND visitor_user_id = ? AND version = ? AND status IN ('APPROVED', 'WAITING')`)
         .bind(now, appointmentId, visitor.userId, Number(current.appointment_version || 1)),
       d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, organization_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
-        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, 'present', ?, ?, ?, 'pass', ?, ?, ?, 'pass', 'pending', 'pass', NULL, NULL, NULL, ?, ?, ?, ?
+        SELECT ?, (SELECT f.organization_id FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?), ?, ?, 'present', ?, ?, ?, 'pass', ?, ?, ?, 'pass', 'pending', 'pass', NULL, NULL, NULL, ?, ?, ?, ?
         WHERE EXISTS (
           SELECT 1 FROM appointments a
           WHERE a.id = ? AND a.visitor_user_id = ? AND a.facility_id = ? AND a.version = ? AND a.status = 'WAITING'

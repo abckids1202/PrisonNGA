@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
-    const result = await d1.prepare("SELECT n.id, n.channel, n.template, n.title, n.body, n.payload, n.status, n.created_at, n.read_at FROM notifications n INNER JOIN facilities f ON f.id = n.facility_id AND f.organization_id = n.organization_id WHERE n.user_id = ? AND n.organization_id IS NOT NULL ORDER BY n.created_at DESC LIMIT 50").bind(visitor.userId).all();
+    const result = await d1.prepare("SELECT n.id, n.channel, n.template, n.title, n.body, n.payload, n.status, n.created_at, n.read_at FROM notifications n INNER JOIN facilities f ON f.id = n.facility_id AND f.organization_id = n.organization_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE n.user_id = ? AND n.organization_id IS NOT NULL ORDER BY n.created_at DESC LIMIT 50").bind(visitor.userId).all();
     return securityResponse({ notifications: result.results }, 200, context.requestId);
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
@@ -38,7 +38,7 @@ export async function PATCH(request: Request) {
     idempotency = { claimId: claimed.claimId, scope, key: idempotencyKey };
     const responseBody = { ok: true, markedRead: ids.length };
     const results = await d1.batch([
-      ...ids.map((id) => database.prepare("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND user_id = ? AND organization_id IS NOT NULL AND read_at IS NULL").bind(now, id, visitor.userId)),
+      ...ids.map((id) => database.prepare("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND user_id = ? AND organization_id IS NOT NULL AND read_at IS NULL AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = notifications.facility_id AND f.organization_id = notifications.organization_id)").bind(now, id, visitor.userId)),
       ...auditAndOutboxStatements(database, {
         actorUserId: visitor.userId,
         actorRole: "VISITOR",

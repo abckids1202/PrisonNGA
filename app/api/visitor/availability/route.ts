@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const duration = Number(search.get("duration") || "15");
     if (!facilityId || !prisonerId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isInteger(duration)) throw new SecurityError("INVALID_AVAILABILITY_REQUEST", 400);
     const d1 = await getD1();
-    const facility = await d1.prepare("SELECT id, timezone, current_state FROM facilities WHERE id = ?").bind(facilityId).first<{ id: string; timezone: string; current_state: string }>();
+    const facility = await d1.prepare("SELECT f.id, f.timezone, f.current_state FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?").bind(facilityId).first<{ id: string; timezone: string; current_state: string }>();
     const policy = await d1.prepare("SELECT min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, weekly_hours_json FROM visit_policies WHERE facility_id = ?").bind(facilityId).first<{ min_duration_minutes: number; max_duration_minutes: number; min_advance_minutes: number; max_advance_days: number; daily_start_time: string; daily_end_time: string; weekly_hours_json: string | null }>();
     if (!facility || !policy) throw new SecurityError("FACILITY_POLICY_NOT_CONFIGURED", 503);
     if (facility.current_state !== "NORMAL_OPERATIONS") return securityResponse({ facilityId, date, duration, slots: [], reason: "FACILITY_NOT_ACCEPTING_REQUESTS" }, 200, context.requestId);

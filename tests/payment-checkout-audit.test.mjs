@@ -9,7 +9,7 @@ test("visitor payment checkout records success and failure audit/outbox events",
   assert.match(source, /auditAndOutboxStatements/);
   assert.match(source, /provider_reference = \?/);
   assert.match(source, /Revalidate operational state on retries/);
-  assert.match(source, /SELECT id, organization_id FROM facilities WHERE id = \? AND current_state = 'NORMAL_OPERATIONS'/);
+  assert.match(source, /SELECT f\.id, f\.organization_id FROM facilities f INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE' WHERE f\.id = \? AND f\.current_state = 'NORMAL_OPERATIONS'/);
   assert.match(source, /TARIFF_APPROVAL_REQUIRED/);
   assert.doesNotMatch(source, /const facility = existing \?/);
 });

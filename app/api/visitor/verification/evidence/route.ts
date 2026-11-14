@@ -19,7 +19,7 @@ export async function GET() {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT ed.id, ed.verification_case_id, ed.original_filename, ed.content_type, ed.byte_size, ed.status, ed.scan_status, ed.scan_error, ed.retention_until, ed.legal_hold, ed.created_at
-      FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id
+      FROM evidence_documents ed INNER JOIN verification_cases vc ON vc.id = ed.verification_case_id AND vc.facility_id = ed.facility_id INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       WHERE ed.visitor_user_id = ? AND vr.visitor_user_id = ? AND ed.status <> 'DELETED' ORDER BY ed.created_at DESC`).bind(visitor.userId, visitor.userId).all();
     return securityResponse({ evidence: result.results }, 200, context.requestId);
   } catch (error) { return securityErrorResponse(error, context.requestId); }
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     try { validateEvidenceUpload({ contentType: file.type, bytes }); }
     catch (error) { throw new SecurityError(error instanceof Error ? error.message : "EVIDENCE_FILE_NOT_ALLOWED", 400); }
-    const ownedCase = await d1.prepare(`SELECT vc.id, vc.facility_id, f.organization_id FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN facilities f ON f.id = vc.facility_id WHERE vc.id = ? AND vr.visitor_user_id = ? AND f.organization_id IS NOT NULL`).bind(verificationCaseId, visitor.userId).first<{ id: string; facility_id: string; organization_id: string }>();
+    const ownedCase = await d1.prepare(`SELECT vc.id, vc.facility_id, f.organization_id FROM verification_cases vc INNER JOIN visitor_relationships vr ON vr.id = vc.relationship_id AND vr.facility_id = vc.facility_id INNER JOIN facilities f ON f.id = vc.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE vc.id = ? AND vr.visitor_user_id = ? AND f.organization_id IS NOT NULL`).bind(verificationCaseId, visitor.userId).first<{ id: string; facility_id: string; organization_id: string }>();
     if (!ownedCase) throw new SecurityError("VERIFICATION_CASE_NOT_FOUND", 404);
     const retentionPolicy = await d1.prepare("SELECT retention_days FROM retention_policies WHERE facility_id = ? AND evidence_type = 'VISITOR_VERIFICATION'").bind(ownedCase.facility_id).first<{ retention_days: number }>();
     const digest = await crypto.subtle.digest("SHA-256", bytes);

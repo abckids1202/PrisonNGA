@@ -17,7 +17,7 @@ export async function GET() {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT i.id, i.title, i.description, i.status, i.severity, i.appointment_id, i.resolution, i.version, i.created_at, i.updated_at, f.name AS facility_name
-      FROM incidents i INNER JOIN facilities f ON f.id = i.facility_id
+      FROM incidents i INNER JOIN facilities f ON f.id = i.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       WHERE i.reporter_user_id = ? AND i.incident_type = 'VISITOR_SUPPORT'
       ORDER BY i.created_at DESC LIMIT 20`).bind(visitor.userId).all();
     return securityResponse({ cases: result.results }, 200, context.requestId);
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     if (appointmentId && !appointment) throw new SecurityError("SUPPORT_APPOINTMENT_NOT_FOUND", 404);
     const facilityId = appointment?.facility_id || requestedFacilityId;
     if (!facilityId) throw new SecurityError("SUPPORT_FACILITY_REQUIRED", 400);
-    const facility = await d1.prepare("SELECT f.id, f.organization_id, f.current_state FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(facilityId).first<{ id: string; organization_id: string | null; current_state: string }>();
+    const facility = await d1.prepare("SELECT f.id, f.organization_id, f.current_state FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?").bind(facilityId).first<{ id: string; organization_id: string | null; current_state: string }>();
     if (!facility) throw new SecurityError("SUPPORT_FACILITY_NOT_FOUND", 404);
     if (!facility.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     // A visitor may still contact the facility about an existing appointment

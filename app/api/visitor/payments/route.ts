@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     if (!facilityId || !Number.isInteger(creditQuantity) || creditQuantity < 1 || creditQuantity > 20) throw new SecurityError("INVALID_CREDIT_PURCHASE", 400);
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `payment-create:${visitor.userId}`, limit: 10, windowSeconds: 60 * 60 });
-    const facility = await d1.prepare("SELECT id, organization_id FROM facilities WHERE id = ? AND current_state = 'NORMAL_OPERATIONS'").bind(facilityId).first<{ id: string; organization_id: string | null }>();
+    const facility = await d1.prepare("SELECT f.id, f.organization_id FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ? AND f.current_state = 'NORMAL_OPERATIONS'").bind(facilityId).first<{ id: string; organization_id: string | null }>();
     if (!facility?.organization_id) throw new SecurityError("FACILITY_NOT_AVAILABLE", 409);
     let existing = await d1.prepare("SELECT id, facility_id, organization_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE organization_id = ? AND facility_id = ? AND idempotency_key IN (?, ?) AND user_id = ? LIMIT 1").bind(facility.organization_id, facilityId, storedIdempotencyKey, idempotencyKey, visitor.userId).first<Record<string, string | number | null>>();
     if (existing && (existing.facility_id !== facilityId || Number(existing.credit_quantity) !== creditQuantity)) throw new SecurityError("IDEMPOTENCY_KEY_REUSED", 409);
@@ -142,7 +142,7 @@ export async function GET() {
       getPaymentProvider(),
     ]);
     const pricingRows = await d1.prepare(`SELECT f.id AS facility_id, vp.credit_price_minor, vp.credit_currency
-      FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id
+      FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' INNER JOIN visit_policies vp ON vp.facility_id = f.id
       WHERE f.current_state = 'NORMAL_OPERATIONS'`).all<{ facility_id: string; credit_price_minor: number | null; credit_currency: string }>();
     const pricingByFacility: Record<string, CreditPricing> = {};
     for (const row of pricingRows.results) {

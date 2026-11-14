@@ -7,7 +7,8 @@ export async function GET() {
     await requireVisitorIdentity();
     const d1 = await getD1();
     const result = await d1.prepare(`SELECT f.id, f.name, f.timezone, f.current_state
-      FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id
+      FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      INNER JOIN visit_policies vp ON vp.facility_id = f.id
       WHERE f.current_state = 'NORMAL_OPERATIONS' ORDER BY f.name`).all();
     return securityResponse({ facilities: result.results }, 200, context.requestId);
   } catch (error) {

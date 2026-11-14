@@ -26,6 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     const d1 = await getD1();
     const eligible = await d1.prepare(`SELECT a.facility_id FROM appointments a
       INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       WHERE a.id = ? AND a.visitor_user_id = ? AND a.status IN ('APPROVED', 'WAITING')
         AND a.requested_end > ? AND f.current_state = 'NORMAL_OPERATIONS'

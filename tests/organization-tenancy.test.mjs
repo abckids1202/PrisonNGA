@@ -90,6 +90,29 @@ test("staff facility authorization fails closed when the organization is disable
   assert.match(context, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
 
+test("visitor facility-backed reads fail closed when the organization is disabled", async () => {
+  const routes = [
+    "../app/api/visitor/facilities/route.ts",
+    "../app/api/visitor/prisoners/route.ts",
+    "../app/api/visitor/availability/route.ts",
+    "../app/api/visitor/appointment-types/route.ts",
+    "../app/api/visitor/appointments/route.ts",
+    "../app/api/visitor/payments/route.ts",
+    "../app/api/visitor/relationships/route.ts",
+    "../app/api/visitor/support/route.ts",
+    "../app/api/visitor/notifications/route.ts",
+    "../app/api/visitor/verification/evidence/route.ts",
+    "../app/api/visitor/appointments/[appointmentId]/device-check/route.ts",
+    "../app/api/visitor/appointments/[appointmentId]/waiting-room/route.ts",
+    "../app/api/visitor/appointments/[appointmentId]/waiting-room/presence/route.ts",
+    "../app/api/visitor/payments/[paymentIntentId]/receipt/route.ts",
+  ];
+  for (const route of routes) {
+    const source = await readFile(new URL(route, import.meta.url), "utf8");
+    assert.match(source, /organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/, route);
+  }
+});
+
 test("incident assignment rejects revoked modern staff assignments", async () => {
   const incidents = await readFile(new URL("../app/api/control/incidents/route.ts", import.meta.url), "utf8");
   assert.match(incidents, /staff_facility_assignments sfa WHERE sfa\.user_id = u\.id/);
