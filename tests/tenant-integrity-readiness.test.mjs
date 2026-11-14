@@ -25,3 +25,15 @@ test("tenant readiness scan includes inherited ledger and incident children", as
   assert.equal(result.ok, false);
   assert.deepEqual(result.issues[0], { table: "credit_ledger_entries", facilityId: "facility-a", organizationId: "org-a", mismatchCount: 1 });
 });
+
+test("tenant readiness scan remains bounded at twenty-five issues", async () => {
+  const database = {
+    prepare: (sql) => ({ sql }),
+    batch: async (statements) => statements.map(() => ({
+      results: Array.from({ length: 30 }, (_, index) => ({ facility_id: `facility-${index}`, organization_id: "org-a", mismatch_count: 1 })),
+    })),
+  };
+  const result = await checkTenantIntegrity(database);
+  assert.equal(result.ok, false);
+  assert.equal(result.issues.length, 25);
+});

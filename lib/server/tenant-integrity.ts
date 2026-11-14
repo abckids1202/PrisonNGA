@@ -61,6 +61,7 @@ export async function checkTenantIntegrity(database: D1Database): Promise<{ ok: 
   ]);
   const issues: TenantIntegrityIssue[] = [];
   results.forEach((result, index) => {
+    if (issues.length >= 25) return;
     for (const row of (result.results as Array<{ facility_id: string; organization_id: string | null; mismatch_count: number }>)) {
       const table = index < tenantScopedFacilityTables.length
         ? tenantScopedFacilityTables[index]
