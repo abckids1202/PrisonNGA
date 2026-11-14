@@ -23,6 +23,9 @@ Assign an owner and an evidence location for every item before the run begins.
 
 Secrets must be managed by the deployment secret store. Do not paste secrets into tickets, test evidence, shell history, screenshots, or this repository.
 
+For the Xendit-specific payment sequence and evidence requirements, use the
+[Xendit staging acceptance checklist](XENDIT_STAGING_ACCEPTANCE.md).
+
 ## 2. Environment separation
 
 Maintain separate credentials, D1 databases, R2 buckets, LiveKit projects, webhook endpoints, payment accounts, and identity-provider applications for local, staging, and production. Local adapters and fictional seed data prove developer behavior only; they do not prove provider readiness.
