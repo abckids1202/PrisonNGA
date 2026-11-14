@@ -18,8 +18,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ rec
     }
     const { recordingId } = await params;
     const d1 = await getD1();
+    const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?")
+      .bind(authorization.facilityId)
+      .first<{ organization_id: string | null }>();
+    if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const recording = await d1.prepare(`SELECT id, organization_id, facility_id, storage_key, status, content_type, byte_size, sha256, retention_until, legal_hold
-      FROM recordings WHERE id = ? AND facility_id = ?`).bind(recordingId, authorization.facilityId)
+      FROM recordings WHERE id = ? AND organization_id = ? AND facility_id = ?`).bind(recordingId, facility.organization_id, authorization.facilityId)
       .first<{ id: string; organization_id: string | null; facility_id: string; storage_key: string | null; status: string; content_type: string | null; byte_size: number | null; sha256: string | null; retention_until: string | null; legal_hold: number }>();
     if (!recording) throw new SecurityError("RECORDING_NOT_FOUND", 404);
     if (!recording.organization_id) throw new SecurityError("RECORDING_ORGANIZATION_SCOPE_MISSING", 503);

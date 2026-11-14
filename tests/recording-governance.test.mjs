@@ -79,6 +79,8 @@ test("recording inventory exposes facility-scoped access history", async () => {
   assert.match(route, /f\.organization_id = \?/);
   assert.match(route, /r\.organization_id = f\.organization_id/);
   assert.match(playback, /requirePermission\("recording\.manage"\)/);
+  assert.match(playback, /FROM facilities WHERE id = \?/);
+  assert.match(playback, /organization_id = \? AND facility_id = \?/);
   assert.match(route, /recording_access_events rae WHERE rae\.recording_id = r\.id AND rae\.facility_id = r\.facility_id/);
   assert.match(route, /access_count/);
   assert.match(route, /last_accessed_at/);
