@@ -64,7 +64,7 @@ export async function POST(request: Request) {
         correlationId,
         eventType: "RETENTION_POLICY_CHANGED",
         payload: { evidenceType, retentionDays, expectedVersion },
-      }, { sql: "changes() > 0", values: [] }),
+      }, { sql: "EXISTS (SELECT 1 FROM retention_policies WHERE facility_id = ? AND evidence_type = ? AND version = ?)", values: [authorization.facilityId, evidenceType, nextVersion] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: { evidenceType, retentionDays, effectiveAt: now, version: nextVersion, correlationId }, guard: { sql: "EXISTS (SELECT 1 FROM retention_policies WHERE facility_id = ? AND evidence_type = ? AND version = ?)", values: [authorization.facilityId, evidenceType, nextVersion] } }),
     ]);
     if (!results.every((result) => result?.meta?.changes === 1)) throw new SecurityError("RETENTION_POLICY_CONFLICT", 409);

@@ -87,7 +87,7 @@ export async function POST(request: Request) {
         correlationId,
         eventType: "PRISONER_CREATED",
         payload: { prisonerId: id, status: prisoner.status, visitationStatus: prisoner.visitationStatus },
-      }, { sql: "changes() > 0", values: [] }),
+      }, { sql: "EXISTS (SELECT 1 FROM prisoners WHERE id = ? AND facility_id = ? AND version = 1)", values: [id, authorization.facilityId] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM prisoners WHERE id = ? AND facility_id = ? AND version = 1)", values: [id, authorization.facilityId] } }),
     ]);
     if (!statements.every((statement) => Boolean(statement?.meta.changes))) throw new SecurityError("PRISONER_CREATE_FAILED", 409);
@@ -147,7 +147,7 @@ export async function PATCH(request: Request) {
         correlationId,
         eventType: "PRISONER_UPDATED",
         payload: { prisonerId: id, status: prisoner.status, visitationStatus: prisoner.visitationStatus, version: nextVersion },
-      }, { sql: "changes() > 0", values: [] }),
+      }, { sql: "EXISTS (SELECT 1 FROM prisoners WHERE id = ? AND facility_id = ? AND version = ?)", values: [id, authorization.facilityId, nextVersion] }),
       completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM prisoners WHERE id = ? AND facility_id = ? AND version = ?)", values: [id, authorization.facilityId, nextVersion] } }),
     ]);
     if (!statements.every((statement) => Boolean(statement?.meta.changes))) throw new SecurityError("STALE_PRISONER_RECORD", 409);
