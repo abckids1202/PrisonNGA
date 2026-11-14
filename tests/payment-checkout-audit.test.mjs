@@ -12,6 +12,9 @@ test("visitor payment checkout records success and failure audit/outbox events",
   assert.match(source, /SELECT f\.id, f\.organization_id FROM facilities f INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE' WHERE f\.id = \? AND f\.current_state = 'NORMAL_OPERATIONS'/);
   assert.match(source, /TARIFF_APPROVAL_REQUIRED/);
   assert.doesNotMatch(source, /const facility = existing \?/);
+  assert.match(source, /UPDATE payment_intents SET version = version \+ 1[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(source, /status = 'CHECKOUT_CREATED'[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(source, /SELECT pi\.id, pi\.facility_id[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
 
 test("production checkout redirects use the configured public application origin", async () => {

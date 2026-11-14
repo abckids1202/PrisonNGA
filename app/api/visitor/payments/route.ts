@@ -81,8 +81,8 @@ export async function POST(request: Request) {
       }
     }
     const claimVersion = Number(existing?.version || 1);
-    const claim = await d1.prepare("UPDATE payment_intents SET version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED')")
-      .bind(new Date().toISOString(), paymentIntentId, claimVersion)
+    const claim = await d1.prepare("UPDATE payment_intents SET version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED') AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = payment_intents.facility_id AND f.id = ?)")
+      .bind(new Date().toISOString(), paymentIntentId, claimVersion, facilityId)
       .run();
     if (!claim.meta.changes) {
       const current = await d1.prepare("SELECT id, facility_id, status, provider, checkout_url, amount_minor, credit_quantity, currency, version FROM payment_intents WHERE id = ? AND user_id = ?")
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       const now = new Date().toISOString();
       const message = safeOperationalErrorMessage(error, "PAYMENT_CHECKOUT_FAILED");
       const failureWrites = await d1.batch([
-        d1.prepare("UPDATE payment_intents SET status = 'FAILED', updated_at = ?, version = version + 1 WHERE id = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED')").bind(now, paymentIntentId),
+        d1.prepare("UPDATE payment_intents SET status = 'FAILED', updated_at = ?, version = version + 1 WHERE id = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED') AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = payment_intents.facility_id AND f.id = ?)").bind(now, paymentIntentId, facilityId),
         ...auditAndOutboxStatements(d1, { actorUserId: visitor.userId, actorRole: "Visitor", facilityId, actionType: "PAYMENT_CHECKOUT_FAILED", entityType: "payment_intent", entityId: paymentIntentId, reason: "Payment checkout provider failed.", oldValues: { status: "PENDING", creditQuantity, amountMinor, currency: "IDR" }, newValues: { status: "FAILED", error: message }, requestId: context.requestId, eventType: "PAYMENT_CHECKOUT_FAILED", payload: { paymentIntentId, creditQuantity, amountMinor, currency: "IDR", error: message } }, { sql: "EXISTS (SELECT 1 FROM payment_intents WHERE id = ? AND status = 'FAILED')", values: [paymentIntentId] }),
       ]);
       if (!failureWrites.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("PAYMENT_CHECKOUT_FAILURE_NOT_PERSISTED", 503);
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();
     const updated = await d1.batch([
-      d1.prepare("UPDATE payment_intents SET provider = ?, provider_reference = ?, checkout_url = ?, status = 'CHECKOUT_CREATED', updated_at = ?, version = version + 1 WHERE id = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED')").bind(checkout.provider, checkout.providerReference, checkout.checkoutUrl, now, paymentIntentId),
+      d1.prepare("UPDATE payment_intents SET provider = ?, provider_reference = ?, checkout_url = ?, status = 'CHECKOUT_CREATED', updated_at = ?, version = version + 1 WHERE id = ? AND status IN ('PENDING', 'FAILED', 'EXPIRED') AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = payment_intents.facility_id AND f.id = ?)").bind(checkout.provider, checkout.providerReference, checkout.checkoutUrl, now, paymentIntentId, facilityId),
       ...auditAndOutboxStatements(d1, { actorUserId: visitor.userId, actorRole: "Visitor", facilityId, actionType: "PAYMENT_CHECKOUT_CREATED", entityType: "payment_intent", entityId: paymentIntentId, reason: "Visitor started a visit credit checkout.", oldValues: { status: "PENDING", creditQuantity, amountMinor, currency: "IDR" }, newValues: { status: "CHECKOUT_CREATED", provider: checkout.provider, providerReference: checkout.providerReference }, requestId: context.requestId, correlationId, eventType: "PAYMENT_CHECKOUT_CREATED", payload: { paymentIntentId, provider: checkout.provider, providerReference: checkout.providerReference, creditQuantity, amountMinor, currency: "IDR" } }, { sql: "EXISTS (SELECT 1 FROM payment_intents WHERE id = ? AND status = 'CHECKOUT_CREATED' AND provider_reference = ?)", values: [paymentIntentId, checkout.providerReference] }),
     ]);
     if (!updated.every((result) => Boolean(result?.meta.changes))) {
@@ -138,7 +138,7 @@ export async function GET() {
     const visitor = await requireVisitorIdentity();
     const d1 = await getD1();
     const [result, provider] = await Promise.all([
-      d1.prepare(`SELECT id, facility_id, provider, credit_quantity, amount_minor, currency, status, provider_reference, checkout_url, version, created_at, updated_at FROM payment_intents WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`).bind(visitor.userId).all(),
+      d1.prepare(`SELECT pi.id, pi.facility_id, pi.provider, pi.credit_quantity, pi.amount_minor, pi.currency, pi.status, pi.provider_reference, pi.checkout_url, pi.version, pi.created_at, pi.updated_at FROM payment_intents pi INNER JOIN facilities f ON f.id = pi.facility_id AND f.organization_id = pi.organization_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE pi.user_id = ? ORDER BY pi.created_at DESC LIMIT 50`).bind(visitor.userId).all(),
       getPaymentProvider(),
     ]);
     const pricingRows = await d1.prepare(`SELECT f.id AS facility_id, vp.credit_price_minor, vp.credit_currency
