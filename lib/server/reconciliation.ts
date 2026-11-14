@@ -262,6 +262,38 @@ export function recordingRetentionFailureStatement(
   );
 }
 
+export function recordingIntegrityFailureStatement(
+  database: ReconciliationDatabase,
+  input: {
+    facilityId: string;
+    recordingId: string;
+    storageKey: string;
+    error: string;
+    requestId: string;
+    correlationId: string;
+    now: string;
+  },
+): D1PreparedStatement {
+  return database.prepare(`INSERT OR IGNORE INTO security_events
+    (id, facility_id, event_type, severity, request_id, metadata, created_at)
+    VALUES (?, ?, 'RECORDING_OBJECT_INTEGRITY_FAILED', 'CRITICAL', ?, ?, ?)`).bind(
+    `recording-integrity-failed:${input.recordingId}`,
+    input.facilityId,
+    input.requestId,
+    JSON.stringify({
+      entityType: "recording",
+      entityId: input.recordingId,
+      operation: "RECORDING_OBJECT_RECONCILIATION",
+      storageKey: input.storageKey,
+      error: input.error,
+      correlationId: input.correlationId,
+      requiresStaffReview: true,
+      retryable: true,
+    }),
+    input.now,
+  );
+}
+
 export function evidenceUploadCleanupFailureStatement(
   database: ReconciliationDatabase,
   input: {

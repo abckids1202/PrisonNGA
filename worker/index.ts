@@ -14,7 +14,8 @@ import { processPaymentProviderEvent } from "../lib/server/payments/process-even
 import { isSameOriginMutation } from "../lib/server/csrf";
 import { claimExpiredEvidenceRetentionStatement, expiredEvidenceRetentionStatements, restoreClaimedEvidenceRetentionStatement, claimExpiredRecordingRetentionStatement, expiredRecordingRetentionStatements, restoreClaimedRecordingRetentionStatement } from "../lib/server/retention-workflow";
 import { operationalLog, safeOperationalErrorMessage } from "../lib/server/observability";
-import { evidenceRetentionFailureStatement, recordingRetentionFailureStatement, liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
+import { evidenceRetentionFailureStatement, recordingRetentionFailureStatement, recordingIntegrityFailureStatement, liveSessionFinalizationBlockedStatement, liveSessionProviderFailureStatement, notificationDeadLetterStatement, paymentDeadLetterStatement } from "../lib/server/reconciliation";
+import { MAX_FALLBACK_INTEGRITY_BYTES } from "../lib/server/evidence-storage";
 import { purgeStaleRateLimitBuckets } from "../lib/server/rate-limit-cleanup";
 import { auditAndOutboxStatements } from "../lib/server/events";
 import { assertRequestBodyWithinLimit } from "../lib/server/request-body";
@@ -757,19 +758,29 @@ async function reconcileRecordingObjects(env: Env): Promise<void> {
   for (const row of rows.results) {
     const object = await env.RECORDINGS_BUCKET.get(row.storage_key);
     if (!object) continue;
-    const bytes = new Uint8Array(await object.arrayBuffer());
-    if (!bytes.byteLength) continue;
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const providerChecksum = object.checksums?.sha256
+      ? Array.from(new Uint8Array(object.checksums.sha256), (byte) => byte.toString(16).padStart(2, '0')).join('')
+      : null;
+    if (!providerChecksum && object.size > MAX_FALLBACK_INTEGRITY_BYTES) throw new Error('RECORDING_INTEGRITY_METADATA_MISSING');
+    let byteSize = object.size;
+    let sha256 = providerChecksum;
+    if (!sha256) {
+      const bytes = new Uint8Array(await object.arrayBuffer());
+      if (!bytes.byteLength) continue;
+      byteSize = bytes.byteLength;
+      const digest = await crypto.subtle.digest('SHA-256', bytes);
+      sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    }
+    if (!byteSize || !sha256) continue;
     const now = new Date().toISOString();
     const eventId = `recording-object-reconcile:${row.id}:${sha256}`;
     const correlationId = crypto.randomUUID();
     try {
       const results = await env.DB.batch([
         env.DB.prepare(`INSERT OR IGNORE INTO visit_session_events (id, session_id, event_type, source, metadata, correlation_id, created_at)
-          VALUES (?, ?, 'RECORDING_OBJECT_RECONCILED', 'SYSTEM_RECORDING_RECONCILIATION', ?, ?, ?)`).bind(eventId, row.session_id, JSON.stringify({ recordingId: row.id, storageKey: row.storage_key, sha256, byteSize: bytes.byteLength, previousStatus: row.status }), correlationId, now),
+          VALUES (?, ?, 'RECORDING_OBJECT_RECONCILED', 'SYSTEM_RECORDING_RECONCILIATION', ?, ?, ?)`).bind(eventId, row.session_id, JSON.stringify({ recordingId: row.id, storageKey: row.storage_key, sha256, byteSize, previousStatus: row.status }), correlationId, now),
         env.DB.prepare(`UPDATE recordings SET status = 'AVAILABLE', content_type = COALESCE(content_type, 'video/mp4'), byte_size = ?, sha256 = ?, failure_reason = NULL, version = version + 1, updated_at = ?
-          WHERE id = ? AND facility_id = ? AND status IN ('PROCESSING', 'FAILED') AND legal_hold = 0`).bind(bytes.byteLength, sha256, now, row.id, row.facility_id),
+          WHERE id = ? AND facility_id = ? AND status IN ('PROCESSING', 'FAILED') AND legal_hold = 0`).bind(byteSize, sha256, now, row.id, row.facility_id),
         env.DB.prepare(`UPDATE visit_sessions SET recording_status = 'AVAILABLE', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ?`).bind(now, row.session_id, row.facility_id),
         ...auditAndOutboxStatements(env.DB, {
           actorUserId: 'system:recording-reconciliation',
@@ -780,17 +791,30 @@ async function reconcileRecordingObjects(env: Env): Promise<void> {
           entityId: row.id,
           reason: 'The private recording object became available after the provider callback and passed integrity verification.',
           oldValues: { status: row.status, storageKey: row.storage_key },
-          newValues: { status: 'AVAILABLE', byteSize: bytes.byteLength, sha256 },
+          newValues: { status: 'AVAILABLE', byteSize, sha256 },
           requestId: eventId,
           correlationId,
           eventType: 'RECORDING_OBJECT_RECONCILED',
-          payload: { recordingId: row.id, sessionId: row.session_id, providerReference: row.provider_reference, byteSize: bytes.byteLength, sha256 },
+          payload: { recordingId: row.id, sessionId: row.session_id, providerReference: row.provider_reference, byteSize, sha256 },
         }, { sql: 'EXISTS (SELECT 1 FROM recordings WHERE id = ? AND facility_id = ? AND status = \'AVAILABLE\')', values: [row.id, row.facility_id] }),
       ]);
       if (!results[1]?.meta.changes || !results[2]?.meta.changes || !results[3]?.meta.changes || !results[4]?.meta.changes) {
         throw new Error('RECORDING_RECONCILIATION_NOT_COMMITTED');
       }
     } catch (error) {
+      try {
+        await env.DB.batch([recordingIntegrityFailureStatement(env.DB, {
+          facilityId: row.facility_id,
+          recordingId: row.id,
+          storageKey: row.storage_key,
+          error: safeOperationalErrorMessage(error, 'RECORDING_OBJECT_RECONCILIATION_FAILED', 500),
+          requestId: eventId,
+          correlationId,
+          now: new Date().toISOString(),
+        })]);
+      } catch (alarmError) {
+        operationalLog('error', { event: 'RECORDING_OBJECT_INTEGRITY_ALARM_FAILED', recordingId: row.id, facilityId: row.facility_id, requestId: eventId, correlationId, error: alarmError });
+      }
       operationalLog('error', { event: 'RECORDING_OBJECT_RECONCILIATION_FAILED', recordingId: row.id, facilityId: row.facility_id, requestId: eventId, correlationId, error });
     }
   }

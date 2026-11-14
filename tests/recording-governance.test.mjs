@@ -153,3 +153,13 @@ test("LiveKit egress ingestion does not buffer large recordings when R2 has no c
   assert.match(webhook, /lacked bounded integrity metadata/);
   assert.doesNotMatch(webhook, /byteSize = bytes\.byteLength/);
 });
+
+test("scheduled recording reconciliation prefers R2 checksums and alarms on oversized fallback hashing", async () => {
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const reconciliation = await readFile(new URL("../lib/server/reconciliation.ts", import.meta.url), "utf8");
+  assert.match(worker, /object\.checksums\?\.sha256/);
+  assert.match(worker, /MAX_FALLBACK_INTEGRITY_BYTES/);
+  assert.match(worker, /RECORDING_INTEGRITY_METADATA_MISSING/);
+  assert.match(worker, /recordingIntegrityFailureStatement/);
+  assert.match(reconciliation, /RECORDING_OBJECT_INTEGRITY_FAILED/);
+});
