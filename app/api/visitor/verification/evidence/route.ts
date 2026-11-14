@@ -61,7 +61,7 @@ export async function POST(request: Request) {
       .bind(verificationCaseId, visitor.userId, sha256).first<{ id: string; retention_until: string | null; status: string; scan_status: string }>();
     if (existingEvidence) {
       const responseBody = { evidenceId: existingEvidence.id, status: existingEvidence.status, scanStatus: existingEvidence.scan_status, retentionUntil: existingEvidence.retention_until, idempotent: true };
-      const completed = await d1.batch([completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED'))", values: [existingEvidence.id, verificationCaseId, visitor.userId] } })]);
+      const completed = await d1.batch([completeIdempotencyStatement(d1, { ...idempotency, status: 200, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED')) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)", values: [existingEvidence.id, verificationCaseId, visitor.userId, ownedCase.facility_id] } })]);
       if (!completed[0]?.meta.changes) throw new SecurityError("EVIDENCE_IDEMPOTENCY_CONFLICT", 409);
       idempotency = null;
       return securityResponse(responseBody, 200, context.requestId);
@@ -99,8 +99,9 @@ export async function POST(request: Request) {
           WHERE NOT EXISTS (
             SELECT 1 FROM evidence_documents
             WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status IN ('AVAILABLE', 'QUARANTINED')
-          )`)
-          .bind(id, ownedCase.organization_id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, evidenceStatus, scanStatus, (await getRuntimeValue("EVIDENCE_SCAN_PROVIDER")) || "unknown", scanResult.providerReference || null, now.toISOString(), available ? now.toISOString() : null, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256),
+          )
+          AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
+          .bind(id, ownedCase.organization_id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, evidenceStatus, scanStatus, (await getRuntimeValue("EVIDENCE_SCAN_PROVIDER")) || "unknown", scanResult.providerReference || null, now.toISOString(), available ? now.toISOString() : null, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256, ownedCase.facility_id),
         ...auditAndOutboxStatements(d1, {
           actorUserId: visitor.userId,
           actorRole: "VISITOR",
@@ -114,8 +115,8 @@ export async function POST(request: Request) {
           correlationId,
           eventType: "EVIDENCE_UPLOADED",
           payload: { evidenceId: id, verificationCaseId, visitorUserId: visitor.userId },
-        }, { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED'))", values: [id, verificationCaseId, visitor.userId] }),
-        completeIdempotencyStatement(d1, { ...idempotency, status: responseStatus, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED'))", values: [id, verificationCaseId, visitor.userId] } }),
+        }, { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED')) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)", values: [id, verificationCaseId, visitor.userId, ownedCase.facility_id] }),
+        completeIdempotencyStatement(d1, { ...idempotency, status: responseStatus, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED')) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)", values: [id, verificationCaseId, visitor.userId, ownedCase.facility_id] } }),
       ]);
       if (!inserted[0]?.meta.changes) {
         await bucket.delete(storageKey);

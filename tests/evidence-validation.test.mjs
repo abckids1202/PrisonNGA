@@ -25,6 +25,8 @@ test("visitor evidence persistence claims duplicate content atomically", async (
   assert.match(source, /claimIdempotency\(d1/);
   assert.match(source, /completeIdempotencyStatement\(d1/);
   assert.match(source, /visitor-evidence:\$\{visitor\.userId\}:\$\{verificationCaseId\}/);
+  assert.match(source, /INSERT INTO evidence_documents[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(source, /completeIdempotencyStatement[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
 
 test("visitor evidence upload rejects oversized requests before parsing the multipart body", async () => {
