@@ -27,12 +27,14 @@ class SQLiteD1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
+      CREATE TABLE organizations (id TEXT PRIMARY KEY, status TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, visitation_status TEXT NOT NULL, organization_id TEXT);
       CREATE TABLE visitor_relationships (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, prisoner_id TEXT NOT NULL, relationship_type TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, organization_id TEXT, UNIQUE(visitor_user_id, prisoner_id));
       CREATE TABLE verification_cases (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, facility_id TEXT NOT NULL, relationship_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL, evidence_required INTEGER NOT NULL, submitted_at TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT NOT NULL, request_id TEXT, created_at TEXT NOT NULL);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, facility_id TEXT, payload TEXT NOT NULL, correlation_id TEXT NOT NULL, created_at TEXT NOT NULL);
+      INSERT INTO organizations VALUES ('org-1', 'ACTIVE');
       INSERT INTO facilities VALUES ('facility-1', 'org-1');
       INSERT INTO prisoners VALUES ('prisoner-1', 'facility-1', 'ACTIVE', 'APPROVED', NULL);
     `);
@@ -100,6 +102,17 @@ test("eligibility changing before the write produces no partial records", async 
     for (const table of ["visitor_relationships", "verification_cases", "audit_events", "outbox_events"]) {
       assert.equal(d1.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0);
     }
+  } finally { d1.close(); }
+});
+
+test("disabled organizations block relationship and verification creation", async () => {
+  const d1 = new SQLiteD1();
+  try {
+    d1.sqlite.exec("UPDATE organizations SET status = 'DISABLED' WHERE id = 'org-1';");
+    const results = await d1.batch(createVisitorRelationshipStatements(d1, input));
+    assert.deepEqual(results.map((result) => result.meta.changes), [0, 0, 0, 0]);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM visitor_relationships").get().count, 0);
+    assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM verification_cases").get().count, 0);
   } finally { d1.close(); }
 });
 
