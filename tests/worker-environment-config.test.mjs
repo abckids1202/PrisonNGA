@@ -14,6 +14,8 @@ test("Cloudflare local Worker vars include env-file values without overriding ex
   assert.match(source, /"LIVEKIT_URL"/);
   assert.match(source, /"LIVEKIT_API_KEY"/);
   assert.match(source, /"LIVEKIT_API_SECRET"/);
+  assert.match(source, /"XENDIT_SECRET_KEY"/);
+  assert.match(source, /"XENDIT_WEBHOOK_TOKEN"/);
   assert.match(source, /PAYMENT_PROVIDER: "local_test"/);
   assert.match(source, /PAYMENT_WEBHOOK_SECRET: "local-development-payment-webhook-secret-0123456789"/);
   assert.match(source, /EVIDENCE_STORAGE_PROVIDER: "local_test"/);

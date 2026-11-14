@@ -60,11 +60,15 @@ test("deployment manifest sanitizer removes forbidden credentials", () => {
   const result = sanitizeDeploymentManifest({ vars: {
     LIVEKIT_API_SECRET: "secret",
     PAYMENT_WEBHOOK_SECRET: "secret",
+    XENDIT_SECRET_KEY: "secret",
+    XENDIT_WEBHOOK_TOKEN: "secret",
     RESEND_API_KEY: "secret",
     SECUREVISIT_ENVIRONMENT: "production",
   } }, { SECUREVISIT_ENVIRONMENT: "production" });
 
   assert.equal(Object.hasOwn(result.vars, "LIVEKIT_API_SECRET"), false);
   assert.equal(Object.hasOwn(result.vars, "PAYMENT_WEBHOOK_SECRET"), false);
+  assert.equal(Object.hasOwn(result.vars, "XENDIT_SECRET_KEY"), false);
+  assert.equal(Object.hasOwn(result.vars, "XENDIT_WEBHOOK_TOKEN"), false);
   assert.equal(Object.hasOwn(result.vars, "RESEND_API_KEY"), false);
 });

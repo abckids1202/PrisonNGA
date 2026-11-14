@@ -38,6 +38,11 @@ const localOnlyProviderSecrets = new Set([
   "LIVEKIT_API_SECRET",
   "PAYMENT_PROVIDER_SECRET",
   "PAYMENT_WEBHOOK_SECRET",
+  // Xendit credentials are only forwarded to the local server-side Worker
+  // isolate. They must never be emitted into a staging/production manifest;
+  // those environments receive them from Cloudflare secret bindings.
+  "XENDIT_SECRET_KEY",
+  "XENDIT_WEBHOOK_TOKEN",
 ]);
 
 // These values are required by the Worker at runtime but are not credentials.
@@ -139,6 +144,8 @@ for (const key of [
   "PAYMENT_REFUND_URL",
   "PAYMENT_PROVIDER_SECRET",
   "PAYMENT_WEBHOOK_SECRET",
+  "XENDIT_SECRET_KEY",
+  "XENDIT_WEBHOOK_TOKEN",
   "VISIT_CREDIT_PRICE_MINOR",
   "EVIDENCE_STORAGE_PROVIDER",
   "SECUREVISIT_E2E_ISOLATED",
