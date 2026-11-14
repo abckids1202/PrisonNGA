@@ -6,8 +6,8 @@ This contract describes the implementation boundary for governed recordings. It 
 
 - LiveKit Egress writes directly to a dedicated private R2 recordings bucket through the S3-compatible endpoint.
 - The bucket must be separate from identity-evidence storage and must not be public.
-- Production startup fails unless `RECORDING_STORAGE_PROVIDER=livekit_r2`, the recordings bucket, the R2 endpoint and credentials, and `RECORDINGS_ENCRYPTION_KEY_REFERENCE` are present.
-- R2-managed encryption at rest is the required storage control. The non-secret encryption control reference is persisted with the recording and attached as object metadata; key material is never stored in D1, logs, or browser responses.
+- Production startup fails unless `RECORDING_STORAGE_PROVIDER=livekit_r2`, `RECORDINGS_ENCRYPTION_MODE=r2_managed`, the recordings bucket, the R2 endpoint and credentials, and `RECORDINGS_ENCRYPTION_KEY_REFERENCE` are present.
+- R2-managed encryption at rest is the required storage control. LiveKit's current `S3Upload` contract does not expose customer-managed SSE/KMS fields, so this is explicitly an R2-managed control rather than a claim of application-managed encryption. The non-secret encryption control reference is persisted with the recording and attached as object metadata; key material is never stored in D1, logs, or browser responses.
 - The LiveKit upload identity must be write-scoped to the recordings bucket and must not be reused for visitor playback.
 
 ## Access

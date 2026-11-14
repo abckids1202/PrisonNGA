@@ -72,6 +72,7 @@ test("pilot audit reports real integration readiness without exposing provider s
     LIVEKIT_API_KEY: "lk-key",
     LIVEKIT_API_SECRET: "lk-secret-must-not-appear",
     RECORDING_STORAGE_PROVIDER: "livekit_r2",
+    RECORDINGS_ENCRYPTION_MODE: "r2_managed",
     RECORDINGS_BUCKET_NAME: "securevisit-staging-recordings",
     RECORDINGS_ENCRYPTION_KEY_REFERENCE: "r2-managed:securevisit-staging-recordings:v1",
     EVIDENCE_SCAN_PROVIDER: "webhook",
@@ -154,6 +155,7 @@ test("pilot audit does not overstate recording storage without the R2 upload bou
   const result = await runAudit([], {
     SECUREVISIT_ENVIRONMENT: "staging",
     RECORDING_STORAGE_PROVIDER: "livekit_r2",
+    RECORDINGS_ENCRYPTION_MODE: "r2_managed",
     RECORDINGS_BUCKET_NAME: "securevisit-staging-recordings",
     RECORDINGS_ENCRYPTION_KEY_REFERENCE: "r2-managed:securevisit-staging-recordings:v1",
     R2_S3_ENDPOINT: "",

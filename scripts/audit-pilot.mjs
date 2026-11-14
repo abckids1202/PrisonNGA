@@ -35,6 +35,7 @@ const protectedEvidenceStorage = environment === "development"
 const protectedRecordingStorage = environment === "development"
   ? true
   : String(values.RECORDING_STORAGE_PROVIDER || "").trim().toLowerCase() === "livekit_r2"
+    && String(values.RECORDINGS_ENCRYPTION_MODE || "").trim().toLowerCase() === "r2_managed"
     && present("RECORDINGS_BUCKET_NAME")
     && present("RECORDINGS_ENCRYPTION_KEY_REFERENCE")
     && httpsUrl("R2_S3_ENDPOINT")
@@ -169,7 +170,7 @@ const operationalActions = {
   "public-domain": "Set PUBLIC_APP_URL to the deployed HTTPS application URL",
   "remote-database": "Set D1_DATABASE_ID and D1_DATABASE_NAME to the real remote database identity",
   "evidence-storage": "Configure EVIDENCE_STORAGE_PROVIDER=r2 and EVIDENCE_BUCKET_NAME for the protected evidence bucket",
-  "recording-storage": "Configure livekit_r2, RECORDINGS_BUCKET_NAME, RECORDINGS_ENCRYPTION_KEY_REFERENCE, R2_S3_ENDPOINT, and scoped R2 upload credentials for the separate protected recordings bucket",
+  "recording-storage": "Configure livekit_r2, RECORDINGS_ENCRYPTION_MODE=r2_managed, RECORDINGS_BUCKET_NAME, RECORDINGS_ENCRYPTION_KEY_REFERENCE, R2_S3_ENDPOINT, and scoped R2 upload credentials for the separate protected recordings bucket",
   queue: "Configure NOTIFICATION_QUEUE_NAME for the deployed environment",
   "release-artifacts": "Restore the required release documentation artifacts before accepting pilot evidence",
 };
