@@ -26,6 +26,9 @@ test("organization administration uses a dedicated organization-role boundary", 
   assert.match(organizationRoles, /ORGANIZATION_ROLE_REVOKED/);
   assert.match(organizationRoles, /requireStepUp/);
   assert.match(organizations, /export async function PATCH/);
+  assert.match(organizations, /export async function POST/);
+  assert.match(organizations, /requirePlatformProvisioning/);
+  assert.match(organizations, /ORGANIZATION_PROVISIONED/);
   assert.match(organizations, /ORGANIZATION_UPDATED/);
   assert.match(organizations, /STALE_ORGANIZATION/);
   assert.match(migration, /CREATE TABLE `organization_role_assignments`/);
@@ -40,10 +43,18 @@ test("organization administration uses a dedicated organization-role boundary", 
   assert.match(roleSeparationMigration, /status = 'REVOKED'/);
 });
 
+test("organization bootstrap is not available through the ordinary organization-admin session", async () => {
+  const source = await readFile(new URL("../app/api/control/organizations/route.ts", import.meta.url), "utf8");
+  const postHandler = source.slice(source.indexOf("export async function POST"), source.indexOf("export async function GET"));
+  assert.match(postHandler, /requirePlatformProvisioning\(request\)/);
+  assert.doesNotMatch(postHandler, /requireOrganizationPermission\("organization\.manage"\)/);
+});
+
 test("organization administration does not enumerate facilities through visitor memberships", async () => {
   const source = await readFile(new URL("../app/api/control/organizations/route.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /organization_memberships/);
-  assert.match(source, /WHERE f\.organization_id = \?/);
+  const readHandler = source.slice(source.indexOf("export async function GET"), source.indexOf("export async function PATCH"));
+  assert.doesNotMatch(readHandler, /organization_memberships/);
+  assert.match(readHandler, /WHERE f\.organization_id = \?/);
 });
 
 test("last staff membership revocation invalidates the target's active sessions", async () => {

@@ -8,6 +8,7 @@ const base = {
   PUBLIC_APP_URL: "https://securevisit.example.test",
   STAFF_AUTH_PROVIDER: "both",
   STAFF_STEP_UP_SECRET: "x".repeat(32),
+  PLATFORM_PROVISIONING_SECRET: "p".repeat(32),
   SECUREVISIT_HASH_SALT: "y".repeat(32),
   VISITOR_AUTH_DELIVERY: "webhook",
   VISITOR_AUTH_WEBHOOK_URL: "https://auth.example.test",

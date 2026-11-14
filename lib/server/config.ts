@@ -46,6 +46,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (configuredEnvironment !== environment) missing.push("SECUREVISIT_ENVIRONMENT");
   if (value(env, "SECUREVISIT_HASH_SALT").length < 32) missing.push("SECUREVISIT_HASH_SALT");
   if (value(env, "STAFF_STEP_UP_SECRET").length < 32) missing.push("STAFF_STEP_UP_SECRET");
+  requireSecret(env, "PLATFORM_PROVISIONING_SECRET", missing);
   if (!isSecureHttpsEndpoint(value(env, "PUBLIC_APP_URL"))) missing.push("PUBLIC_APP_URL (must be an https:// URL without credentials or fragments)");
   if (!value(env, "NOTIFICATION_QUEUE_NAME")) missing.push("NOTIFICATION_QUEUE_NAME (required for staging/production)");
   const legacyVisitorDelivery = value(env, "VISITOR_AUTH_DELIVERY");

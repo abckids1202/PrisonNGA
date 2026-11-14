@@ -306,6 +306,42 @@ export async function getRuntimeValue(key: string): Promise<string | null> {
   return null;
 }
 
+/**
+ * Organization creation is a platform bootstrap operation, not an
+ * organization-admin action. It must be invoked by an operator-controlled
+ * provisioning client with an explicit change record.
+ */
+export async function requirePlatformProvisioning(request: Request): Promise<{ operatorReference: string; changeTicket: string }> {
+  const environment = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT"))?.trim().toLowerCase();
+  if (environment !== "staging" && environment !== "production") throw new SecurityError("PLATFORM_PROVISIONING_UNAVAILABLE", 403);
+  const configuredSecret = (await getRuntimeValue("PLATFORM_PROVISIONING_SECRET"))?.trim() || "";
+  const authorization = request.headers.get("Authorization")?.trim() || "";
+  const providedSecret = /^Bearer\s+(.+)$/i.exec(authorization)?.[1]?.trim() || "";
+  if (configuredSecret.length < 32 || !providedSecret || !(await constantTimeSecretEqual(configuredSecret, providedSecret))) {
+    throw new SecurityError("PLATFORM_PROVISIONING_UNAUTHORIZED", 401);
+  }
+  if (request.headers.get("X-Confirm-Organization-Provisioning")?.trim().toLowerCase() !== "yes") {
+    throw new SecurityError("ORGANIZATION_PROVISIONING_CONFIRMATION_REQUIRED", 400);
+  }
+  const operatorReference = request.headers.get("X-Operator-Reference")?.trim() || "";
+  const changeTicket = request.headers.get("X-Change-Ticket")?.trim() || "";
+  if (!/^[A-Za-z0-9._:-]{2,80}$/.test(operatorReference)) throw new SecurityError("OPERATOR_REFERENCE_REQUIRED", 400);
+  if (!/^[A-Za-z0-9._:-]{2,80}$/.test(changeTicket)) throw new SecurityError("CHANGE_TICKET_REQUIRED", 400);
+  return { operatorReference, changeTicket };
+}
+
+async function constantTimeSecretEqual(left: string, right: string): Promise<boolean> {
+  const [leftDigest, rightDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(left)),
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(right)),
+  ]);
+  const leftBytes = new Uint8Array(leftDigest);
+  const rightBytes = new Uint8Array(rightDigest);
+  let difference = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) difference |= leftBytes[index] ^ rightBytes[index];
+  return difference === 0;
+}
+
 export async function requireStepUp(binding: StepUpBinding): Promise<void> {
   const assertion = (await headers()).get("x-securevisit-step-up")?.trim() || "";
   const secret = await getRuntimeValue("STAFF_STEP_UP_SECRET");
