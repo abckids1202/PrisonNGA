@@ -26,6 +26,13 @@ test("deployment build reads explicit remote D1 and R2 binding configuration", a
   assert.match(source, /signing material remain Cloudflare secret bindings/);
 });
 
+test("the environment template documents the Vercel Worker origin", async () => {
+  const template = await readFile(".env.example", "utf8");
+  assert.match(template, /PUBLIC_APP_URL=http:\/\/localhost:5174/);
+  assert.match(template, /WORKER_API_ORIGIN=/);
+  assert.match(template, /Vercel-only public origin/);
+});
+
 test("package scripts expose environment-specific dry-run gates", async () => {
   const packageJson = JSON.parse(await readFile("package.json", "utf8"));
   assert.match(packageJson.scripts["deploy:staging:dry-run"], /validate:deployment -- --environment=staging/);
