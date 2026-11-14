@@ -1,4 +1,4 @@
-import { EncodedFileOutput, EncodedFileType, EgressClient, S3Upload } from "livekit-server-sdk";
+import { EncodedFileOutput, EncodedFileType, EgressClient, S3Upload, ServerError } from "livekit-server-sdk";
 import { getRuntimeValue, SecurityError } from "../security";
 
 type RecordingStorageConfig = { endpoint: string; accessKey: string; secret: string; bucket: string; region: string; encryptionKeyReference: string };
@@ -50,5 +50,13 @@ export async function stopLiveKitRecording(input: { liveKitUrl: string; apiKey: 
   const host = input.liveKitUrl.startsWith("wss://") ? `https://${input.liveKitUrl.slice("wss://".length)}` : input.liveKitUrl.replace(/^ws:\/\//, "http://");
   if (!/^https:\/\//.test(host)) throw new SecurityError("VIDEO_PROVIDER_URL_INVALID", 503);
   const client = new EgressClient(host, input.apiKey, input.apiSecret, { requestTimeout: 15_000 });
-  await client.stopEgress(input.egressId);
+  try {
+    await client.stopEgress(input.egressId);
+  } catch (error) {
+    // A retry can race the provider callback or a previous successful stop.
+    // Treat only an authoritative missing-egress response as success; all
+    // other provider failures must keep the session in reconciliation.
+    if (error instanceof ServerError && ["not_found", "egress_not_found"].includes(error.code || "")) return;
+    throw error;
+  }
 }

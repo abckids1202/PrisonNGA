@@ -46,6 +46,13 @@ test("recording start claims are reset when provider startup fails", async () =>
   assert.match(route, /RECORDING_START_IN_PROGRESS/);
 });
 
+test("recording stop treats only a provider missing-egress response as an idempotent success", async () => {
+  const storage = await readFile(new URL("../lib/server/video/recording.ts", import.meta.url), "utf8");
+  assert.match(storage, /instanceof ServerError/);
+  assert.match(storage, /egress_not_found/);
+  assert.match(storage, /throw error/);
+});
+
 test("recording startup requires and persists a non-secret encryption control reference", async () => {
   const config = await readFile(new URL("../lib/server/config.ts", import.meta.url), "utf8");
   const storage = await readFile(new URL("../lib/server/video/recording.ts", import.meta.url), "utf8");
