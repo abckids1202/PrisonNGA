@@ -67,6 +67,7 @@ const requiredColumns: Record<string, string[]> = {
   visit_session_participants: ["organization_id"],
   recording_consents: ["organization_id"],
   facilities: ["organization_id"],
+  facility_closures: ["organization_id"],
   payment_provider_events: ["attempt_count", "available_at", "last_error", "processing_started_at"],
   idempotency_records: ["processing_started_at"],
   auth_sessions: ["revoked_at"],
