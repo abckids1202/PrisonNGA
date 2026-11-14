@@ -756,26 +756,27 @@ async function reconcileRecordingObjects(env: Env): Promise<void> {
       AND julianday(updated_at) <= julianday('now', '-30 seconds')
     ORDER BY updated_at ASC LIMIT 25`).all<{ id: string; facility_id: string; session_id: string; storage_key: string; status: string; provider_reference: string | null }>();
   for (const row of rows.results) {
-    const object = await env.RECORDINGS_BUCKET.get(row.storage_key);
-    if (!object) continue;
-    const providerChecksum = object.checksums?.sha256
-      ? Array.from(new Uint8Array(object.checksums.sha256), (byte) => byte.toString(16).padStart(2, '0')).join('')
-      : null;
-    if (!providerChecksum && object.size > MAX_FALLBACK_INTEGRITY_BYTES) throw new Error('RECORDING_INTEGRITY_METADATA_MISSING');
-    let byteSize = object.size;
-    let sha256 = providerChecksum;
-    if (!sha256) {
-      const bytes = new Uint8Array(await object.arrayBuffer());
-      if (!bytes.byteLength) continue;
-      byteSize = bytes.byteLength;
-      const digest = await crypto.subtle.digest('SHA-256', bytes);
-      sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-    }
-    if (!byteSize || !sha256) continue;
-    const now = new Date().toISOString();
-    const eventId = `recording-object-reconcile:${row.id}:${sha256}`;
+    let eventId = `recording-object-reconcile:${row.id}`;
     const correlationId = crypto.randomUUID();
     try {
+      const object = await env.RECORDINGS_BUCKET.get(row.storage_key);
+      if (!object) continue;
+      const providerChecksum = object.checksums?.sha256
+        ? Array.from(new Uint8Array(object.checksums.sha256), (byte) => byte.toString(16).padStart(2, '0')).join('')
+        : null;
+      if (!providerChecksum && object.size > MAX_FALLBACK_INTEGRITY_BYTES) throw new Error('RECORDING_INTEGRITY_METADATA_MISSING');
+      let byteSize = object.size;
+      let sha256 = providerChecksum;
+      if (!sha256) {
+        const bytes = new Uint8Array(await object.arrayBuffer());
+        if (!bytes.byteLength) continue;
+        byteSize = bytes.byteLength;
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+      }
+      if (!byteSize || !sha256) continue;
+      const now = new Date().toISOString();
+      eventId = `recording-object-reconcile:${row.id}:${sha256}`;
       const results = await env.DB.batch([
         env.DB.prepare(`INSERT OR IGNORE INTO visit_session_events (id, session_id, event_type, source, metadata, correlation_id, created_at)
           VALUES (?, ?, 'RECORDING_OBJECT_RECONCILED', 'SYSTEM_RECORDING_RECONCILIATION', ?, ?, ?)`).bind(eventId, row.session_id, JSON.stringify({ recordingId: row.id, storageKey: row.storage_key, sha256, byteSize, previousStatus: row.status }), correlationId, now),

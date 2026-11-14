@@ -162,4 +162,8 @@ test("scheduled recording reconciliation prefers R2 checksums and alarms on over
   assert.match(worker, /RECORDING_INTEGRITY_METADATA_MISSING/);
   assert.match(worker, /recordingIntegrityFailureStatement/);
   assert.match(reconciliation, /RECORDING_OBJECT_INTEGRITY_FAILED/);
+  const normalizedWorker = worker.replaceAll("\r\n", "\n");
+  const reconciliationTry = normalizedWorker.indexOf("try {\n      const object = await env.RECORDINGS_BUCKET.get(row.storage_key);");
+  const integrityGuard = normalizedWorker.indexOf("RECORDING_INTEGRITY_METADATA_MISSING");
+  assert.ok(reconciliationTry >= 0 && reconciliationTry < integrityGuard, "R2 read and size guard must be inside the alarm boundary");
 });
