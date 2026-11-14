@@ -144,6 +144,9 @@ pilot deployment.
 - Staff facility assignments, user roles, organization memberships, and
   organization role assignments now reject explicit cross-tenant bindings while
   preserving legacy organization-scope fill paths for older writers.
+- Protected readiness now performs a bounded tenant-integrity scan and fails
+  closed when persisted facility records have missing or mismatched organization
+  scope; the scheduled reconciliation alarm remains the recovery path.
 - Release verifier, deployment validator, route security matrix, local restore
   drill, browser smoke tests, and redacted operational logging.
 
