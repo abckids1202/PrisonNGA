@@ -71,6 +71,13 @@ test("recording startup requires and persists a non-secret encryption control re
   assert.match(route, /encryption_key_reference/);
 });
 
+test("recording startup writes remain tenant-safe if the organization is disabled mid-request", async () => {
+  const route = await readFile(new URL("../app/api/control/live-sessions/[sessionId]/recording/route.ts", import.meta.url), "utf8");
+  assert.match(route, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(route, /UPDATE recordings SET provider_reference[\s\S]*AND EXISTS \(SELECT 1 FROM facilities f/);
+  assert.match(route, /UPDATE visit_sessions SET recording_status = 'RECORDING'[\s\S]*AND EXISTS \(SELECT 1 FROM facilities f/);
+});
+
 test("recording encryption control references are bounded non-secret identifiers", async () => {
   const config = await readFile(new URL("../lib/server/config.ts", import.meta.url), "utf8");
   const readiness = await readFile(new URL("../app/api/health/readiness/route.ts", import.meta.url), "utf8");

@@ -31,6 +31,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
       vp.recording_policy AS facility_recording_policy, vp.version AS policy_version,
       rc.decision AS visitor_consent
       FROM visit_sessions vs INNER JOIN visit_policies vp ON vp.facility_id = vs.facility_id
+      INNER JOIN facilities f ON f.id = vs.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       LEFT JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
       LEFT JOIN recording_consents rc ON rc.session_id = vs.id AND rc.participant_user_id = a.visitor_user_id
       WHERE vs.id = ? AND vs.facility_id = ?`).bind(sessionId, authorization.facilityId).first<{ id: string; facility_id: string; appointment_id: string; provider: string; provider_room_name: string; status: string; recording_policy: string; recording_status: string; version: number; facility_recording_policy: string; policy_version: number; visitor_consent: string | null }>();
@@ -64,8 +66,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     }
     const startClaim = `pending:${crypto.randomUUID()}`;
     if (existing?.status === "FAILED") {
-      const reopened = await d1.prepare("UPDATE recordings SET provider_reference = ?, status = 'PENDING', failure_reason = NULL, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'FAILED'")
-        .bind(startClaim, new Date().toISOString(), existing.id, session.facility_id).run();
+      const reopened = await d1.prepare("UPDATE recordings SET provider_reference = ?, status = 'PENDING', failure_reason = NULL, version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'FAILED' AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)")
+        .bind(startClaim, new Date().toISOString(), existing.id, session.facility_id, session.facility_id).run();
       if (!reopened.meta.changes) throw new SecurityError("RECORDING_RETRY_STATE_CHANGED", 409);
     }
     const recordingId = existing?.id || crypto.randomUUID();
@@ -77,11 +79,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     if (!existing) {
       const created = await d1.prepare(`INSERT INTO recordings (id, organization_id, facility_id, session_id, provider, provider_reference, storage_key, encryption_key_reference, status, retention_until, version, created_at, updated_at)
         SELECT ?, f.organization_id, ?, ?, 'livekit', ?, ?, ?, 'PENDING', datetime(?, '+' || COALESCE(vp.recording_retention_days, 30) || ' days'), 1, ?, ?
-        FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?`)
+        FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' INNER JOIN visit_policies vp ON vp.facility_id = f.id WHERE f.id = ?`)
         .bind(recordingId, session.facility_id, session.id, startClaim, storageKey, encryptionKeyReference, new Date().toISOString(), new Date().toISOString(), new Date().toISOString(), session.facility_id).run();
       if (!created.meta.changes) throw new SecurityError("RECORDING_START_NOT_PERSISTED", 503);
     } else if (existing.status === "PENDING" && !existing.provider_reference) {
-      const claimed = await d1.prepare("UPDATE recordings SET provider_reference = ?, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND provider_reference IS NULL").bind(startClaim, new Date().toISOString(), recordingId, session.facility_id).run();
+      const claimed = await d1.prepare("UPDATE recordings SET provider_reference = ?, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND provider_reference IS NULL AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)").bind(startClaim, new Date().toISOString(), recordingId, session.facility_id, session.facility_id).run();
       if (!claimed.meta.changes) throw new SecurityError("RECORDING_START_IN_PROGRESS", 409);
     }
     const config = await getVideoConfig();
@@ -103,12 +105,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
       return securityResponse(responseBody, 200, context.requestId);
     }
     const responseBody = { recordingId, sessionId: session.id, providerReference: started.egressId, storageKey, status: "PROCESSING", correlationId };
-    const guard = { sql: "EXISTS (SELECT 1 FROM recordings WHERE id = ? AND provider_reference = ? AND status = 'PROCESSING')", values: [recordingId, started.egressId] };
+    const guard = { sql: "EXISTS (SELECT 1 FROM recordings WHERE id = ? AND provider_reference = ? AND status = 'PROCESSING') AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)", values: [recordingId, started.egressId, session.facility_id] };
     if (latest.status !== "PENDING" || (latest.provider_reference && latest.provider_reference !== startClaim && !latest.provider_reference.startsWith("pending:"))) {
       throw new SecurityError("RECORDING_START_STATE_CHANGED", 409);
     }
-    const statements = [d1.prepare("UPDATE recordings SET provider_reference = ?, storage_key = ?, status = 'PROCESSING', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND (provider_reference = ? OR provider_reference IS NULL)").bind(started.egressId, storageKey, now, recordingId, session.facility_id, latest.provider_reference || startClaim)];
-    const results = await d1.batch([...statements, d1.prepare("UPDATE visit_sessions SET recording_status = 'RECORDING', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ?").bind(now, session.id, session.facility_id, session.version), ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: session.facility_id, actionType: "RECORDING_STARTED", entityType: "recording", entityId: recordingId, reason, newValues: responseBody, requestId: context.requestId, correlationId, eventType: "RECORDING_STARTED", payload: { recordingId, sessionId: session.id, providerReference: started.egressId } }, guard), completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard })]);
+    const statements = [d1.prepare("UPDATE recordings SET provider_reference = ?, storage_key = ?, status = 'PROCESSING', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND status = 'PENDING' AND (provider_reference = ? OR provider_reference IS NULL) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)").bind(started.egressId, storageKey, now, recordingId, session.facility_id, latest.provider_reference || startClaim, session.facility_id)];
+    const results = await d1.batch([...statements, d1.prepare("UPDATE visit_sessions SET recording_status = 'RECORDING', version = version + 1, updated_at = ? WHERE id = ? AND facility_id = ? AND version = ? AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)").bind(now, session.id, session.facility_id, session.version, session.facility_id), ...auditAndOutboxStatements(d1, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: session.facility_id, actionType: "RECORDING_STARTED", entityType: "recording", entityId: recordingId, reason, newValues: responseBody, requestId: context.requestId, correlationId, eventType: "RECORDING_STARTED", payload: { recordingId, sessionId: session.id, providerReference: started.egressId } }, guard), completeIdempotencyStatement(d1, { ...idempotency, status: 201, body: responseBody, guard })]);
     if (!results.every((result) => Boolean(result?.meta.changes))) throw new SecurityError("RECORDING_START_NOT_PERSISTED", 503);
     idempotency = null;
     return securityResponse(responseBody, 201, context.requestId);
