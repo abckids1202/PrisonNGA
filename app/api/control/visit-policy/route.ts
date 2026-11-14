@@ -105,7 +105,7 @@ export async function PUT(request: Request) {
     const nextVersion = current.version + 1;
     const nextSnapshot = { ...policy, version: nextVersion };
     const correlationId = crypto.randomUUID();
-    const writeGuard = { sql: "changes() > 0", values: [] };
+    const writeGuard = { sql: "EXISTS (SELECT 1 FROM visit_policies WHERE facility_id = ? AND version = ?)", values: [authorization.facilityId, nextVersion] };
     const { weeklyHoursJson, ...publicSnapshot } = nextSnapshot;
     const responseBody = { policy: { ...publicSnapshot, weeklyHours: publicWeeklyHours(weeklyHoursJson), facilityId: authorization.facilityId, id: current.id, updatedAt: now }, correlationId };
     const statements = await database.batch([
@@ -115,9 +115,10 @@ export async function PUT(request: Request) {
         .bind(policy.minDurationMinutes, policy.maxDurationMinutes, policy.minAdvanceMinutes, policy.maxAdvanceDays,
           policy.dailyStartTime, policy.dailyEndTime, policy.weeklyHoursJson, policy.creditPriceMinor, policy.creditCurrency, policy.recordingPolicy, policy.recordingRetentionDays, now, authorization.facilityId, current.version),
       database.prepare(`INSERT INTO visit_policy_history (id, organization_id, facility_id, version, actor_user_id, reason, snapshot, created_at)
-        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
+        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM visit_policies WHERE facility_id = ? AND version = ?)`)
         .bind(crypto.randomUUID(), authorization.facilityId, authorization.facilityId, nextVersion, authorization.userId, reason,
-          JSON.stringify(nextSnapshot), now),
+          JSON.stringify(nextSnapshot), now, authorization.facilityId, nextVersion),
       ...auditAndOutboxStatements(database, {
         actorUserId: authorization.userId,
         actorRole: authorization.roles[0] || null,

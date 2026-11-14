@@ -102,7 +102,7 @@ export async function PUT(request: Request) {
       database.prepare(`UPDATE appointment_types SET display_name = ?, description = ?, duration_minutes = ?, credit_cost = ?, status = ?, version = version + 1, updated_at = ?
         WHERE id = ? AND facility_id = ? AND version = ?`).bind(displayName, description, durationMinutes, creditCost, status, now, id, authorization.facilityId, expectedVersion),
       database.prepare(`INSERT INTO appointment_type_history (id, appointment_type_id, facility_id, version, actor_user_id, reason, snapshot, created_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`).bind(crypto.randomUUID(), id, authorization.facilityId, expectedVersion + 1, authorization.userId, reason, JSON.stringify(snapshot), now),
+        SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM appointment_types WHERE id = ? AND facility_id = ? AND version = ?)`).bind(crypto.randomUUID(), id, authorization.facilityId, expectedVersion + 1, authorization.userId, reason, JSON.stringify(snapshot), now, id, authorization.facilityId, expectedVersion + 1),
       ...auditAndOutboxStatements(database, { actorUserId: authorization.userId, actorRole: authorization.roles[0] || "Supervisor", facilityId: authorization.facilityId, actionType: "APPOINTMENT_TYPE_UPDATED", entityType: "appointment_type", entityId: id, reason, oldValues: current, newValues: snapshot, requestId: context.requestId, correlationId, eventType: "APPOINTMENT_TYPE_UPDATED", payload: { appointmentTypeId: id, code: current.code, status } }, guard),
       completeIdempotencyStatement(database, { ...idempotency, status: 200, body: responseBody, guard }),
     ]);

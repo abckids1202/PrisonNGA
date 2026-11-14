@@ -170,6 +170,7 @@ export async function POST(request: Request) {
       return securityResponse(responseBody, status, context.requestId);
     };
     const currentVersion = Number(current.version || 1);
+    const currentAppointmentVersion = Number(current.appointment_version || 1);
     if (body.expectedVersion !== undefined && body.expectedVersion !== currentVersion) throw new SecurityError("STALE_WAITING_ROOM_STATE", 409);
     if (!eligibleStatuses.includes(current.appointment_status as typeof eligibleStatuses[number])) throw new SecurityError("APPOINTMENT_NOT_ELIGIBLE", 409);
     const currentState = String(current.state || "NOT_ARRIVED") as string;
@@ -198,6 +199,7 @@ export async function POST(request: Request) {
 
     const now = new Date().toISOString();
     const nextVersion = currentVersion + 1;
+    const nextAppointmentVersion = currentAppointmentVersion + 1;
     const currentVisitorPresent = current.visitor_presence === "present" && isRecentPresence(current.visitor_presence_at === null ? null : String(current.visitor_presence_at), Date.parse(now));
     const currentPrisonerPresent = current.prisoner_presence === "present" && isRecentPresence(current.prisoner_presence_at === null ? null : String(current.prisoner_presence_at), Date.parse(now));
     const terminalWithoutLiveSession = command === "cancel_visit";
@@ -300,23 +302,28 @@ export async function POST(request: Request) {
         WHERE id = ? AND facility_id = ? AND version = ? ${eligibilityGuard}`)
         .bind(nextAppointmentStatus, now, correlationId, body.appointmentId, authorization.facilityId, Number(current.appointment_version || 1)),
       d1.prepare(`INSERT INTO waiting_room_sessions (appointment_id, organization_id, facility_id, state, visitor_presence, visitor_presence_at, prisoner_presence, prisoner_presence_at, identity_state, camera_state, microphone_state, network_state, room_state, kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id, staff_notes, version, last_checked_at, created_at, updated_at)
-        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0
+        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND version = ? AND last_transition_id = ?)
         ON CONFLICT(appointment_id) DO UPDATE SET state = excluded.state, visitor_presence = excluded.visitor_presence, visitor_presence_at = excluded.visitor_presence_at, prisoner_presence = excluded.prisoner_presence, prisoner_presence_at = excluded.prisoner_presence_at, identity_state = excluded.identity_state, camera_state = excluded.camera_state, microphone_state = excluded.microphone_state, network_state = excluded.network_state, room_state = excluded.room_state, kiosk_state = excluded.kiosk_state, restriction_state = excluded.restriction_state, assigned_room_id = COALESCE(excluded.assigned_room_id, waiting_room_sessions.assigned_room_id), assigned_kiosk_id = COALESCE(excluded.assigned_kiosk_id, waiting_room_sessions.assigned_kiosk_id), staff_notes = COALESCE(excluded.staff_notes, waiting_room_sessions.staff_notes), version = excluded.version, last_checked_at = excluded.last_checked_at, updated_at = excluded.updated_at`)
-        .bind(body.appointmentId, authorization.facilityId, authorization.facilityId, nextState, visitorPresence, nextVisitorPresenceAt, prisonerPresence, nextPrisonerPresenceAt, identityState, cameraState, microphoneState, networkState, roomState, kioskState, restrictionState, String(current.assigned_room_id || "") || null, String(current.assigned_kiosk_id || "") || null, body.staffNotes?.trim().slice(0, 500) || null, nextVersion, now, now, now),
+        .bind(body.appointmentId, authorization.facilityId, authorization.facilityId, nextState, visitorPresence, nextVisitorPresenceAt, prisonerPresence, nextPrisonerPresenceAt, identityState, cameraState, microphoneState, networkState, roomState, kioskState, restrictionState, String(current.assigned_room_id || "") || null, String(current.assigned_kiosk_id || "") || null, body.staffNotes?.trim().slice(0, 500) || null, nextVersion, now, now, now, body.appointmentId, authorization.facilityId, nextAppointmentVersion, correlationId),
       d1.prepare(`INSERT INTO audit_events (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, old_values, new_values, correlation_id, request_id, created_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, `WAITING_ROOM_${command.toUpperCase()}`, "waiting_room", body.appointmentId, reason, JSON.stringify({ state: current.state || "NOT_ARRIVED", version: currentVersion }), JSON.stringify({ state: nextState, version: nextVersion, checks: readiness?.checks || undefined }), correlationId, context.requestId, now),
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND version = ? AND last_transition_id = ?)`)
+        .bind(crypto.randomUUID(), authorization.userId, authorization.roles[0] || null, authorization.facilityId, `WAITING_ROOM_${command.toUpperCase()}`, "waiting_room", body.appointmentId, reason, JSON.stringify({ state: current.state || "NOT_ARRIVED", version: currentVersion }), JSON.stringify({ state: nextState, version: nextVersion, checks: readiness?.checks || undefined }), correlationId, context.requestId, now, body.appointmentId, authorization.facilityId, nextAppointmentVersion, correlationId),
       d1.prepare(`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, created_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), `WAITING_ROOM_${command.toUpperCase()}`, "appointment", body.appointmentId, authorization.facilityId, JSON.stringify({ appointmentId: body.appointmentId, command, state: nextState, sessionId: newSession?.id || current.session_id || null }), correlationId, now),
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND version = ? AND last_transition_id = ?)`)
+        .bind(crypto.randomUUID(), `WAITING_ROOM_${command.toUpperCase()}`, "appointment", body.appointmentId, authorization.facilityId, JSON.stringify({ appointmentId: body.appointmentId, command, state: nextState, sessionId: newSession?.id || current.session_id || null }), correlationId, now, body.appointmentId, authorization.facilityId, nextAppointmentVersion, correlationId),
     ];
     if (newSession) {
       statements.push(d1.prepare(`INSERT INTO visit_sessions (id, organization_id, appointment_id, facility_id, provider, provider_room_name, provider_room_sid, status, authorized_start_at, authorized_end_at, actual_started_at, created_by, recording_policy, recording_status, version, created_at, updated_at)
-        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(newSession.id, authorization.facilityId, body.appointmentId, authorization.facilityId, newSession.provider, newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), null, authorization.userId, newSession.recordingPolicy, "NOT_RECORDED", 1, now, now));
+        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND version = ? AND last_transition_id = ?)`)
+        .bind(newSession.id, authorization.facilityId, body.appointmentId, authorization.facilityId, newSession.provider, newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), null, authorization.userId, newSession.recordingPolicy, "NOT_RECORDED", 1, now, now, body.appointmentId, authorization.facilityId, nextAppointmentVersion, correlationId));
       statements.push(d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`)
-        .bind(crypto.randomUUID(), newSession.id, "SESSION_CREATED", "SECUREVISIT", "FACILITY", JSON.stringify({ appointmentId: body.appointmentId }), correlationId, now));
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM visit_sessions WHERE id = ? AND appointment_id = ? AND facility_id = ?)`)
+        .bind(crypto.randomUUID(), newSession.id, "SESSION_CREATED", "SECUREVISIT", "FACILITY", JSON.stringify({ appointmentId: body.appointmentId }), correlationId, now, newSession.id, body.appointmentId, authorization.facilityId));
     }
     if (command === "cancel_visit") {
       if (Number(current.active_credit_reservation) === 1 && current.credit_account_id) {
@@ -346,6 +353,16 @@ export async function POST(request: Request) {
       requiredResultIndexes.push(optionalWriteOffset, optionalWriteOffset + 1);
     }
     if (requiredResultIndexes.some((index) => !results[index]?.meta.changes)) {
+      operationalLog("error", {
+        event: "WAITING_ROOM_COMMAND_BATCH_INCOMPLETE",
+        requestId: context.requestId,
+        correlationId,
+        facilityId: authorization.facilityId,
+        appointmentId: body.appointmentId,
+        command,
+        resultChanges: results.map((result) => Number(result?.meta?.changes || 0)),
+        requiredResultIndexes,
+      });
       await recordWaitingRoomReconciliationRequired(d1, {
         facilityId: authorization.facilityId,
         appointmentId: body.appointmentId,

@@ -8,7 +8,7 @@ class D1 {
   constructor() {
     this.sqlite.exec(`
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
-      CREATE TABLE incidents (id TEXT PRIMARY KEY, organization_id TEXT, facility_id TEXT, incident_type TEXT, severity TEXT, status TEXT, title TEXT, description TEXT, appointment_id TEXT, session_id TEXT, resource_id TEXT, source_security_event_id TEXT, reporter_user_id TEXT, assigned_user_id TEXT, resolution TEXT, version INTEGER, idempotency_key TEXT, request_hash TEXT, created_at TEXT, updated_at TEXT);
+      CREATE TABLE incidents (id TEXT PRIMARY KEY, organization_id TEXT, facility_id TEXT, incident_type TEXT, severity TEXT, status TEXT, title TEXT, description TEXT, appointment_id TEXT, session_id TEXT, resource_id TEXT, source_security_event_id TEXT, reporter_user_id TEXT, assigned_user_id TEXT, resolution TEXT, version INTEGER, last_transition_id TEXT, idempotency_key TEXT, request_hash TEXT, created_at TEXT, updated_at TEXT);
       CREATE UNIQUE INDEX incidents_create_idempotency_idx ON incidents (organization_id, facility_id, reporter_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
       CREATE TABLE incident_events (id TEXT PRIMARY KEY, organization_id TEXT, incident_id TEXT, event_type TEXT, actor_user_id TEXT, details TEXT, correlation_id TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
