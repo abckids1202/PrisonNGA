@@ -82,6 +82,14 @@ test("legacy staff profiles cannot bypass modern assignment revocation", async (
   assert.match(context, /NOT EXISTS \(SELECT 1 FROM staff_facility_assignments sfa2 WHERE sfa2\.user_id = \?\)/);
 });
 
+test("staff facility authorization fails closed when the organization is disabled", async () => {
+  const security = await readFile(new URL("../lib/server/security.ts", import.meta.url), "utf8");
+  const context = await readFile(new URL("../app/api/auth/facility-context/route.ts", import.meta.url), "utf8");
+  assert.match(security, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(security, /f\.organization_id = sfa\.organization_id/);
+  assert.match(context, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+});
+
 test("incident assignment rejects revoked modern staff assignments", async () => {
   const incidents = await readFile(new URL("../app/api/control/incidents/route.ts", import.meta.url), "utf8");
   assert.match(incidents, /staff_facility_assignments sfa WHERE sfa\.user_id = u\.id/);

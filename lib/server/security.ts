@@ -93,19 +93,29 @@ function shouldTouchSession(lastSeenAt: string | null): boolean {
 async function resolveFacilityScope(d1: D1Database, userId: string, explicitFacilityId: string | undefined, selectedFacilityId: string, profileFacilityId: string | undefined): Promise<string> {
   if (explicitFacilityId) return explicitFacilityId;
   if (selectedFacilityId) {
-    const selectedAssignment = await d1.prepare(`SELECT 1 AS active FROM staff_facility_assignments WHERE user_id = ? AND facility_id = ? AND status = 'ACTIVE'
-      UNION ALL SELECT 1 AS active FROM staff_profiles
-        WHERE user_id = ? AND facility_id = ?
+    const selectedAssignment = await d1.prepare(`SELECT 1 AS active FROM staff_facility_assignments sfa
+      INNER JOIN facilities f ON f.id = sfa.facility_id AND f.organization_id = sfa.organization_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE sfa.user_id = ? AND sfa.facility_id = ? AND sfa.status = 'ACTIVE'
+      UNION ALL SELECT 1 AS active FROM staff_profiles sp
+        INNER JOIN facilities f ON f.id = sp.facility_id
+        INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+        WHERE sp.user_id = ? AND sp.facility_id = ?
           AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments WHERE user_id = ?) LIMIT 1`).bind(userId, selectedFacilityId, userId, selectedFacilityId, userId).first<{ active: number }>();
     if (selectedAssignment) return selectedFacilityId;
   }
   if (profileFacilityId) {
-    const legacyProfile = await d1.prepare(`SELECT 1 AS active FROM staff_profiles
-      WHERE user_id = ? AND facility_id = ?
+    const legacyProfile = await d1.prepare(`SELECT 1 AS active FROM staff_profiles sp
+      INNER JOIN facilities f ON f.id = sp.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE sp.user_id = ? AND sp.facility_id = ?
         AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments WHERE user_id = ?)`).bind(userId, profileFacilityId, userId).first<{ active: number }>();
     if (legacyProfile) return profileFacilityId;
   }
-  const fallback = await d1.prepare("SELECT facility_id FROM staff_facility_assignments WHERE user_id = ? AND status = 'ACTIVE' ORDER BY facility_id LIMIT 1").bind(userId).first<{ facility_id: string }>();
+  const fallback = await d1.prepare(`SELECT sfa.facility_id FROM staff_facility_assignments sfa
+    INNER JOIN facilities f ON f.id = sfa.facility_id AND f.organization_id = sfa.organization_id
+    INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+    WHERE sfa.user_id = ? AND sfa.status = 'ACTIVE' ORDER BY sfa.facility_id LIMIT 1`).bind(userId).first<{ facility_id: string }>();
   return fallback?.facility_id || "";
 }
 
@@ -137,9 +147,14 @@ export async function requirePermission(permissionKey: string, facilityId?: stri
   const selectedFacilityId = (await cookies()).get("securevisit_facility_context")?.value?.trim() || "";
   const requestedFacilityId = await resolveFacilityScope(d1, user.id, facilityId, selectedFacilityId, profile?.facilityId);
   if (!requestedFacilityId) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
-  const assignment = await d1.prepare(`SELECT 1 AS active FROM staff_facility_assignments WHERE user_id = ? AND facility_id = ? AND status = 'ACTIVE'
-    UNION ALL SELECT 1 AS active FROM staff_profiles
-      WHERE user_id = ? AND facility_id = ?
+  const assignment = await d1.prepare(`SELECT 1 AS active FROM staff_facility_assignments sfa
+    INNER JOIN facilities f ON f.id = sfa.facility_id AND f.organization_id = sfa.organization_id
+    INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+    WHERE sfa.user_id = ? AND sfa.facility_id = ? AND sfa.status = 'ACTIVE'
+    UNION ALL SELECT 1 AS active FROM staff_profiles sp
+      INNER JOIN facilities f ON f.id = sp.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE sp.user_id = ? AND sp.facility_id = ?
         AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments WHERE user_id = ?) LIMIT 1`).bind(user.id, requestedFacilityId, user.id, requestedFacilityId, user.id).first<{ active: number }>().catch(() => null);
   if (!assignment) throw new SecurityError("FACILITY_SCOPE_DENIED", 403);
   const scopedFacilityId = requestedFacilityId;
