@@ -861,6 +861,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
   const [legalName, setLegalName] = useState(initialName);
   const [preferredName, setPreferredName] = useState("");
   const [phone, setPhone] = useState("");
+  const [smsEnabled, setSmsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -891,6 +892,13 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
       })
       .catch((reason: unknown) => active && setError(reason instanceof Error ? reason.message : "Could not load your profile."))
       .finally(() => active && setLoading(false));
+    fetch("/api/auth/visitor/request", { credentials: "include", cache: "no-store", headers: { accept: "application/json" } })
+      .then(async (response) => {
+        const body = await response.json() as { channels?: unknown };
+        if (!active || !response.ok || !Array.isArray(body.channels)) return;
+        setSmsEnabled(body.channels.includes("SMS"));
+      })
+      .catch(() => { if (active) setSmsEnabled(false); });
     return () => { active = false; };
   }, [initialName]);
 
@@ -1008,7 +1016,7 @@ function VisitorAccount({ initialName, onNameChange, onAction, onSignOut }: { in
         {error && <p className="sv4-request-error" role="alert">{error}</p>}
         <button className="sv4-button sv4-button-primary" disabled={loading || saving}>{saving ? "Saving…" : loading ? "Loading profile…" : "Save changes"}</button>
       </form>
-      {phone && !profile?.phoneVerifiedAt ? <div className="sv4-contact-verification"><div><strong>Verify this phone number</strong><p>Use a one-time SMS code before SecureVisit uses it for visit updates or recovery.</p></div>{!phoneChallengeId ? <button type="button" className="sv4-button" disabled={phoneVerificationBusy || saving} onClick={() => void requestPhoneVerification()}>{phoneVerificationBusy ? "Sending…" : "Send verification code"}</button> : <form onSubmit={(event) => { event.preventDefault(); void verifyPhone(); }}><input aria-label="Phone verification code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" required /><button type="submit" className="sv4-button sv4-button-primary" disabled={phoneVerificationBusy || phoneCode.length !== 6}>{phoneVerificationBusy ? "Checking…" : "Verify phone"}</button></form>}{phoneVerificationError && <p className="sv4-request-error" role="alert">{phoneVerificationError}</p>}</div> : null}
+      {phone && !profile?.phoneVerifiedAt && smsEnabled ? <div className="sv4-contact-verification"><div><strong>Verify this phone number</strong><p>Use a one-time SMS code before SecureVisit uses it for visit updates or recovery.</p></div>{!phoneChallengeId ? <button type="button" className="sv4-button" disabled={phoneVerificationBusy || saving} onClick={() => void requestPhoneVerification()}>{phoneVerificationBusy ? "Sending…" : "Send verification code"}</button> : <form onSubmit={(event) => { event.preventDefault(); void verifyPhone(); }}><input aria-label="Phone verification code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" required /><button type="submit" className="sv4-button sv4-button-primary" disabled={phoneVerificationBusy || phoneCode.length !== 6}>{phoneVerificationBusy ? "Checking…" : "Verify phone"}</button></form>}{phoneVerificationError && <p className="sv4-request-error" role="alert">{phoneVerificationError}</p>}</div> : phone && !profile?.phoneVerifiedAt ? <p className="sv4-request-hint">Phone verification is not enabled for this pilot. Email remains the supported sign-in and recovery channel.</p> : null}
     </section>
     <section className="sv4-account-security"><div><p className="sv4-kicker">Security</p><h2>Active sessions</h2><p>Review browsers signed in to your visitor account and revoke anything you do not recognize.</p></div><button className="sv4-signout" onClick={() => void signOut()} disabled={signingOut || sessionsBusy}>{signingOut ? "Signing out…" : "Sign out"}</button>{sessionsError && <p className="sv4-request-error" role="alert">{sessionsError}</p>}<div className="sv4-session-list">{sessionsLoading ? <p className="sv4-session-muted">Loading active sessions…</p> : sessions.length ? sessions.map((session) => <div className="sv4-session-row" key={session.id}><span><strong>{session.deviceLabel}{session.current ? " · This device" : ""}</strong><small>Last active {formatDateValue(session.lastSeenAt, { dateStyle: "medium", timeStyle: "short" }, undefined, "Date unavailable")} · Expires {formatDateValue(session.expiresAt, { dateStyle: "medium" }, undefined, "Date unavailable")}</small></span>{session.current ? <VisitorStatus tone="green">CURRENT</VisitorStatus> : <button type="button" disabled={sessionsBusy} onClick={() => void revokeSession(session.id)}>Revoke</button>}</div>) : <p className="sv4-session-muted">No active sessions were found.</p>}</div><button type="button" className="sv4-session-revoke-all" disabled={sessionsBusy || sessionsLoading || !sessions.length} onClick={() => void revokeSession(undefined, true)}>Sign out all sessions</button>{signOutError && <p className="sv4-request-error" role="alert">{signOutError}</p>}</section>
   </div>;

@@ -4,6 +4,7 @@ import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, re
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
 import { deliverVisitorChallenge, getVisitorAuthDelivery } from "../../../../../lib/server/visitor-auth/delivery";
 import { reconcileStoredNotificationProviderEvent } from "../../../../../lib/server/notifications/provider-status";
+import { isVisitorAuthChannelEnabled, parseVisitorAuthChannels } from "../../../../../lib/server/visitor-auth/channels";
 
 function normalizePhone(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/[\s().-]/g, "") : "";
@@ -24,6 +25,8 @@ export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
     const visitor = await requireVisitorIdentity();
+    const channelPolicy = parseVisitorAuthChannels(await getRuntimeValue("VISITOR_AUTH_CHANNELS"));
+    if (!channelPolicy.valid || !isVisitorAuthChannelEnabled(channelPolicy, "SMS")) throw new SecurityError("SMS_CHANNEL_DISABLED", 403);
     const body = await request.json() as { phone?: unknown };
     const phone = normalizePhone(body.phone);
     if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new SecurityError("PHONE_FORMAT_INVALID", 400);
@@ -110,6 +113,8 @@ export async function PUT(request: Request) {
   let d1: D1Database | null = null;
   try {
     const visitor = await requireVisitorIdentity();
+    const channelPolicy = parseVisitorAuthChannels(await getRuntimeValue("VISITOR_AUTH_CHANNELS"));
+    if (!channelPolicy.valid || !isVisitorAuthChannelEnabled(channelPolicy, "SMS")) throw new SecurityError("SMS_CHANNEL_DISABLED", 403);
     const body = await request.json() as { challengeId?: unknown; code?: unknown };
     const challengeId = typeof body.challengeId === "string" ? body.challengeId.trim() : "";
     const code = typeof body.code === "string" ? body.code.trim() : "";

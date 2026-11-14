@@ -33,3 +33,12 @@ test("visitor auth request exposes the enabled channels and rejects disabled cha
   assert.match(source, /AUTH_CHANNEL_DISABLED/);
   assert.match(source, /parseVisitorAuthChannels/);
 });
+
+test("phone contact verification follows the email-only channel policy", async () => {
+  const route = await readFile(new URL("../app/api/visitor/profile/phone-verification/route.ts", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/visitor/page.tsx", import.meta.url), "utf8");
+  assert.match(route, /isVisitorAuthChannelEnabled\(channelPolicy, "SMS"\)/);
+  assert.match(route, /SMS_CHANNEL_DISABLED/);
+  assert.match(page, /setSmsEnabled\(body\.channels\.includes\("SMS"\)\)/);
+  assert.match(page, /Phone verification is not enabled for this pilot/);
+});
