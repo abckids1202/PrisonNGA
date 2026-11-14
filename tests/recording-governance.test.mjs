@@ -52,6 +52,8 @@ test("recording startup requires and persists a non-secret encryption control re
   const route = await readFile(new URL("../app/api/control/live-sessions/[sessionId]/recording/route.ts", import.meta.url), "utf8");
   assert.match(config, /RECORDINGS_ENCRYPTION_KEY_REFERENCE/);
   assert.match(storage, /RECORDINGS_ENCRYPTION_KEY_REFERENCE/);
+  assert.match(storage, /securevisit-encryption-control/);
+  assert.match(storage, /securevisit-privacy/);
   assert.match(route, /RECORDING_ENCRYPTION_REFERENCE_NOT_CONFIGURED/);
   assert.match(route, /encryption_key_reference/);
 });

@@ -24,7 +24,23 @@ export async function startLiveKitRecording(input: { liveKitUrl: string; apiKey:
     fileType: EncodedFileType.MP4,
     filepath: input.storageKey,
     disableManifest: true,
-    output: { case: "s3", value: new S3Upload({ accessKey: storage.accessKey, secret: storage.secret, region: storage.region, endpoint: storage.endpoint, bucket: storage.bucket, forcePathStyle: true, contentDisposition: "private" }) },
+    output: { case: "s3", value: new S3Upload({
+      accessKey: storage.accessKey,
+      secret: storage.secret,
+      region: storage.region,
+      endpoint: storage.endpoint,
+      bucket: storage.bucket,
+      forcePathStyle: true,
+      contentDisposition: "private",
+      // R2 provides encryption at rest; retain the non-secret control
+      // reference on the object so storage/recovery operators can prove that
+      // the egress output used the governed encryption policy without
+      // exposing key material to D1, logs, or playback clients.
+      metadata: {
+        "securevisit-encryption-control": storage.encryptionKeyReference,
+        "securevisit-privacy": "private",
+      },
+    }) },
   }), { layout: "grid" });
   if (!egress.egressId) throw new SecurityError("RECORDING_PROVIDER_REFERENCE_MISSING", 503);
   return { egressId: egress.egressId, storageKey: input.storageKey };

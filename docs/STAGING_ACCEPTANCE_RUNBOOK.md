@@ -121,7 +121,7 @@ Record timestamps, actor IDs, request/correlation IDs, resulting database record
 
 1. Staff runs the preflight checks and starts the visit.
 2. Visitor, kiosk, and authorized staff observer join the same LiveKit room with scoped, expiring tokens.
-3. For the governed recording test, confirm consent is required, playback is facility-scoped and audited, retention deletion honors legal holds, and no raw R2 URL is exposed. Otherwise confirm the facility policy remains OFF.
+3. For the governed recording test, follow the [recording security contract](RECORDING_SECURITY_CONTRACT.md): confirm consent is required, the private R2 object carries the encryption-control metadata, playback is facility-scoped and audited, retention deletion honors legal holds, and no raw R2 URL is exposed. Otherwise confirm the facility policy remains OFF.
 4. Test a visitor disconnect/reconnect, kiosk disconnect, observer removal, expired token, and provider webhook retry.
 5. End the session from staff control and repeat the end request to verify idempotency.
 6. Confirm the appointment reaches the correct completion outcome, the credit is consumed or released exactly once according to policy, and the visitor receives a receipt/status update.
