@@ -54,6 +54,18 @@ npm run test:e2e
 npm audit --omit=dev --audit-level=high
 ```
 
+For a redacted deployment-contract artifact, run the smoke check with an
+approved evidence path. The output contains check results and release metadata,
+but never the readiness cookie or provider secrets:
+
+```bash
+STAGING_SMOKE_EVIDENCE_PATH=./evidence/staging-smoke-YYYYMMDD.json npm run staging:smoke
+```
+
+Attach that artifact to the evidence register with its release ID. A passing
+smoke artifact proves reachability and configured headers/readiness only; it is
+not the multi-party visitor/kiosk/staff acceptance evidence.
+
 Then verify the deployed readiness endpoint:
 
 ```text

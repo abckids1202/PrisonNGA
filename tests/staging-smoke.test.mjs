@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile as readTextFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
 const script = "scripts/staging-smoke.mjs";
@@ -64,6 +67,25 @@ test("staging smoke passes the public deployment contract", async () => {
     assert.match(result.stderr, /SKIP  authenticated readiness/);
   } finally {
     server.close();
+  }
+});
+
+test("staging smoke can write a redacted evidence artifact", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "securevisit-smoke-"));
+  const evidencePath = join(directory, "smoke.json");
+  const { server, baseUrl } = await startServer();
+  try {
+    const result = await runSmoke(baseUrl, { STAGING_SMOKE_EVIDENCE_PATH: evidencePath, SECUREVISIT_RELEASE_EVIDENCE_ID: "release-test-001" });
+    assert.equal(result.code, 0, `${result.stdout}\n${result.stderr}`);
+    const evidence = JSON.parse(await readTextFile(evidencePath, "utf8"));
+    assert.equal(evidence.environment, "staging");
+    assert.equal(evidence.releaseId, "release-test-001");
+    assert.equal(evidence.readinessChecked, false);
+    assert.ok(evidence.checks.some((check) => check.name === "liveness status" && check.status === "PASS"));
+    assert.doesNotMatch(JSON.stringify(evidence), /securevisit_staff_session|readiness-cookie|secret/i);
+  } finally {
+    server.close();
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+
 const baseUrl = String(process.env.STAGING_DOMAIN || "").trim().replace(/\/$/, "");
 const readinessCookie = String(process.env.STAGING_READINESS_COOKIE || "").trim();
 const requireReadiness = String(process.env.STAGING_SMOKE_REQUIRE_READINESS || "true").toLowerCase() !== "false";
@@ -25,8 +27,10 @@ if (!Number.isFinite(timeoutMs) || timeoutMs < 1000 || timeoutMs > 60000) {
 
 const failures = [];
 const skipped = [];
+const checks = [];
 
 function check(name, condition, detail) {
+  checks.push({ name, status: condition ? "PASS" : "FAIL", ...(detail ? { detail } : {}) });
   if (condition) {
     console.log(`PASS  ${name}${detail ? ` — ${detail}` : ""}`);
     return;
@@ -36,6 +40,7 @@ function check(name, condition, detail) {
 }
 
 function skip(name, detail) {
+  checks.push({ name, status: "SKIP", ...(detail ? { detail } : {}) });
   skipped.push(`${name}${detail ? ` — ${detail}` : ""}`);
   console.warn(`SKIP  ${name}${detail ? ` — ${detail}` : ""}`);
 }
@@ -122,6 +127,26 @@ if (readinessCookie) {
 }
 
 if (skipped.length) console.log(`\n${skipped.length} check(s) skipped intentionally.`);
+const evidencePath = String(process.env.STAGING_SMOKE_EVIDENCE_PATH || "").trim();
+if (evidencePath) {
+  const evidence = {
+    generatedAt: new Date().toISOString(),
+    environment: "staging",
+    deploymentOrigin: parsedBaseUrl.origin,
+    releaseId: String(process.env.SECUREVISIT_RELEASE_EVIDENCE_ID || process.env.VERCEL_GIT_COMMIT_SHA || "").trim() || null,
+    checks,
+    failures,
+    skipped,
+    readinessChecked: Boolean(readinessCookie),
+  };
+  try {
+    await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+    console.log(`Evidence artifact written: ${evidencePath}`);
+  } catch (error) {
+    failures.push(`evidence artifact — ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`FAIL  evidence artifact — ${failures.at(-1)}`);
+  }
+}
 if (failures.length) {
   console.error(`\nStaging smoke failed with ${failures.length} failure(s).`);
   process.exit(1);
