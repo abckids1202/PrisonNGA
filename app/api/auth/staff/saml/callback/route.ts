@@ -58,12 +58,19 @@ export async function POST(request: Request) {
       user = await d1.prepare("SELECT id, email, display_name, external_id, status FROM users WHERE lower(email) = lower(?) AND user_type = 'STAFF'").bind(email).first<{ id: string; email: string; display_name: string; external_id: string | null; status: string }>();
     }
     if (!user || user.status !== "ACTIVE") throw new SecurityError("STAFF_ACCOUNT_NOT_PROVISIONED", 403);
-    const profileScope = await d1.prepare(`SELECT facility_id FROM staff_facility_assignments
-      WHERE user_id = ? AND status = 'ACTIVE'
-      UNION ALL SELECT facility_id FROM staff_profiles
-        WHERE user_id = ? AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments WHERE user_id = ?)
-      ORDER BY facility_id LIMIT 1`).bind(user.id, user.id, user.id).first<{ facility_id: string }>();
-    if (!profileScope) throw new SecurityError("STAFF_FACILITY_SCOPE_MISSING", 403);
+    const profileScope = await d1.prepare(`SELECT sfa.facility_id, COALESCE(sfa.organization_id, f.organization_id) AS organization_id
+      FROM staff_facility_assignments sfa INNER JOIN facilities f ON f.id = sfa.facility_id
+      WHERE sfa.user_id = ? AND sfa.status = 'ACTIVE'
+      UNION ALL SELECT sp.facility_id, COALESCE(sp.organization_id, f.organization_id) AS organization_id
+        FROM staff_profiles sp INNER JOIN facilities f ON f.id = sp.facility_id
+        WHERE sp.user_id = ? AND NOT EXISTS (SELECT 1 FROM staff_facility_assignments WHERE user_id = ?)
+      UNION ALL SELECT NULL AS facility_id, ora.organization_id
+        FROM organization_role_assignments ora
+        INNER JOIN role_permissions rp ON rp.role_id = ora.role_id
+        INNER JOIN permissions p ON p.id = rp.permission_id AND p.permission_key = 'organization.manage'
+        WHERE ora.user_id = ? AND ora.status = 'ACTIVE'
+      ORDER BY facility_id IS NULL, facility_id LIMIT 1`).bind(user.id, user.id, user.id, user.id).first<{ facility_id: string | null; organization_id: string | null }>();
+    if (!profileScope?.organization_id) throw new SecurityError("STAFF_SCOPE_MISSING", 403);
     const token = crypto.randomUUID() + crypto.randomUUID();
     const now = new Date().toISOString();
     const salt = await getSecuritySalt();
@@ -74,7 +81,7 @@ export async function POST(request: Request) {
       // provisioned staff record after it was read above.
       d1.prepare("UPDATE users SET external_id = ?, display_name = ?, last_login_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND (external_id IS NULL OR external_id = ?)").bind(externalId, displayName, now, now, user.id, user.external_id),
       d1.prepare("INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, last_seen_at, device_label, user_agent_hash, ip_hash) SELECT ?, id, ?, ?, ?, ?, ?, ? FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND external_id = ?").bind(crypto.randomUUID(), await hashIdentifier(token, salt), new Date(Date.now() + 8 * 60 * 60_000).toISOString(), now, describeDevice(context.userAgent), context.userAgent ? await hashIdentifier(context.userAgent, salt) : null, context.ipAddress ? await hashIdentifier(context.ipAddress, salt) : null, user.id, externalId),
-      d1.prepare("INSERT INTO security_events (id, user_id, facility_id, event_type, severity, request_id, metadata, created_at) SELECT ?, id, ?, 'STAFF_SAML_LOGIN', 'INFO', ?, ?, ? FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND external_id = ?").bind(crypto.randomUUID(), profileScope.facility_id, context.requestId, JSON.stringify({ issuer: profile.issuer }), now, user.id, externalId),
+      d1.prepare("INSERT INTO security_events (id, user_id, organization_id, facility_id, event_type, severity, request_id, metadata, created_at) SELECT ?, id, ?, ?, 'STAFF_SAML_LOGIN', 'INFO', ?, ?, ? FROM users WHERE id = ? AND user_type = 'STAFF' AND status = 'ACTIVE' AND external_id = ?").bind(crypto.randomUUID(), profileScope.organization_id, profileScope.facility_id, context.requestId, JSON.stringify({ issuer: profile.issuer, scope: profileScope.facility_id ? 'FACILITY' : 'ORGANIZATION' }), now, user.id, externalId),
     ]);
     if (!sessionResults[0]?.meta.changes) throw new SecurityError("STAFF_IDENTITY_BINDING_CONFLICT", 409);
     if (!sessionResults[1]?.meta.changes || !sessionResults[2]?.meta.changes) throw new SecurityError("STAFF_FEDERATION_AUDIT_FAILED", 503);

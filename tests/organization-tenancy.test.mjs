@@ -91,6 +91,19 @@ test("federated staff login and status changes require an active modern assignme
   }
 });
 
+test("federated staff login accepts organization-only administrators without inventing a facility scope", async () => {
+  const oidc = await readFile(new URL("../app/api/auth/staff/oidc/callback/route.ts", import.meta.url), "utf8");
+  const saml = await readFile(new URL("../app/api/auth/staff/saml/callback/route.ts", import.meta.url), "utf8");
+  for (const source of [oidc, saml]) {
+    assert.match(source, /organization_role_assignments/);
+    assert.match(source, /p\.permission_key = 'organization\.manage'/);
+    assert.match(source, /STAFF_SCOPE_MISSING/);
+    assert.match(source, /organization_id, facility_id, event_type/);
+    assert.match(source, /profile(?:Scope)?\.facility_id \? 'FACILITY' : 'ORGANIZATION'/);
+    assert.match(source, /ORDER BY facility_id IS NULL, facility_id LIMIT 1/);
+  }
+});
+
 test("staff directory and access review hide revoked modern assignments", async () => {
   const staff = await readFile(new URL("../app/api/control/staff/route.ts", import.meta.url), "utf8");
   const review = await readFile(new URL("../app/api/control/access-review/route.ts", import.meta.url), "utf8");
