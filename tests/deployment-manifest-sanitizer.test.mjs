@@ -63,6 +63,9 @@ test("deployment manifest sanitizer removes forbidden credentials", () => {
     XENDIT_SECRET_KEY: "secret",
     XENDIT_WEBHOOK_TOKEN: "secret",
     RESEND_API_KEY: "secret",
+    VISITOR_AUTH_WEBHOOK_SECRET: "secret",
+    VISITOR_SMS_TWILIO_AUTH_TOKEN: "secret",
+    EVIDENCE_SCAN_WEBHOOK_SECRET: "secret",
     SECUREVISIT_ENVIRONMENT: "production",
   } }, { SECUREVISIT_ENVIRONMENT: "production" });
 
@@ -71,4 +74,7 @@ test("deployment manifest sanitizer removes forbidden credentials", () => {
   assert.equal(Object.hasOwn(result.vars, "XENDIT_SECRET_KEY"), false);
   assert.equal(Object.hasOwn(result.vars, "XENDIT_WEBHOOK_TOKEN"), false);
   assert.equal(Object.hasOwn(result.vars, "RESEND_API_KEY"), false);
+  assert.equal(Object.hasOwn(result.vars, "VISITOR_AUTH_WEBHOOK_SECRET"), false);
+  assert.equal(Object.hasOwn(result.vars, "VISITOR_SMS_TWILIO_AUTH_TOKEN"), false);
+  assert.equal(Object.hasOwn(result.vars, "EVIDENCE_SCAN_WEBHOOK_SECRET"), false);
 });
