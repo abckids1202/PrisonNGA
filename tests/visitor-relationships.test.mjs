@@ -12,6 +12,7 @@ test("visitor relationship and evidence writes have explicit abuse-rate boundari
   assert.match(relationshipRoute, /enforceRateLimit/);
   assert.match(evidenceRoute, /enforceRateLimit/);
   assert.match(relationshipRoute, /FROM audit_events ae INNER JOIN facilities f ON f\.id = ae\.facility_id INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(relationshipRoute, /SELECT ae\.entity_type, ae\.action_type, ae\.reason, ae\.created_at AS created_at/);
   assert.match(relationshipRoute, /FROM visitor_relationships vr INNER JOIN facilities f ON f\.id = vr\.facility_id INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
 

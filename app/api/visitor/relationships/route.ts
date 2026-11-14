@@ -13,7 +13,7 @@ export async function GET() {
       FROM visitor_relationships vr INNER JOIN prisoners p ON p.id = vr.prisoner_id AND p.facility_id = vr.facility_id INNER JOIN facilities f ON f.id = vr.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id AND vc.facility_id = vr.facility_id AND vc.organization_id = f.organization_id
       WHERE vr.visitor_user_id = ? ORDER BY vr.created_at DESC`).bind(visitor.userId).all();
     const relationships = await Promise.all(result.results.map(async (relationship) => {
-      const history = await d1.prepare(`SELECT entity_type, action_type, reason, created_at
+      const history = await d1.prepare(`SELECT ae.entity_type, ae.action_type, ae.reason, ae.created_at AS created_at
         FROM audit_events ae INNER JOIN facilities f ON f.id = ae.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
         WHERE ae.facility_id = ?
           AND ((ae.entity_type = 'visitor_relationship' AND ae.entity_id = ?)
