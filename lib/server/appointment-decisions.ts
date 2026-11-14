@@ -106,8 +106,10 @@ export async function compensateIncompleteApproval(
       WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION' AND idempotency_key = ?`)
       .bind(input.appointmentId, input.creditAccountId, `${input.appointmentId}:reservation`),
     d1.prepare(`UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ?
-      WHERE id = ? AND reserved_credits >= 1 AND changes() = 1`)
-      .bind(input.now, input.creditAccountId),
+      WHERE id = ? AND reserved_credits >= 1
+        AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND status = ? AND version = ? AND last_transition_id = ?)
+        AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')`)
+      .bind(input.now, input.creditAccountId, input.appointmentId, input.facilityId, input.fromStatus, input.expectedVersion + 2, compensationId, input.appointmentId, input.creditAccountId),
     d1.prepare(`INSERT INTO appointment_status_events
       (id, appointment_id, from_status, to_status, actor_user_id, reason_code, reason_text, correlation_id, created_at)
       SELECT ?, ?, 'APPROVED', ?, ?, 'APPROVAL_COMPENSATED', 'Approval was rolled back because its required credit or resource state was incomplete.', ?, ?
@@ -204,19 +206,21 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
 
   if (input.approval) {
     const { creditAccountId, startsAt, endsAt } = input.approval;
+    const reservationEntryId = crypto.randomUUID();
     statements.push(
       d1.prepare(`INSERT INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
         SELECT ?, ?, ?, 'RESERVATION', -1, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND last_transition_id = ?)
           AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION')
           AND EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND facility_id = ? AND user_id = ? AND available_credits >= 1)`)
-        .bind(crypto.randomUUID(), creditAccountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, input.now, input.appointmentId, input.facilityId, input.correlationId, input.appointmentId, creditAccountId, input.facilityId, input.visitorUserId),
-      d1.prepare(`UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1`)
-        .bind(input.now, creditAccountId),
+        .bind(reservationEntryId, creditAccountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, input.now, input.appointmentId, input.facilityId, input.correlationId, input.appointmentId, creditAccountId, input.facilityId, input.visitorUserId),
+      d1.prepare(`UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE id = ? AND idempotency_key = ?)`)
+        .bind(input.now, creditAccountId, reservationEntryId, `${input.appointmentId}:reservation`),
       reservationInsertStatement(d1, { facilityId: input.facilityId, appointmentId: input.appointmentId, resourceType: "ROOM", availableStatus: "AVAILABLE", startsAt, endsAt, now: input.now, correlationId: input.correlationId }),
       reservationInsertStatement(d1, { facilityId: input.facilityId, appointmentId: input.appointmentId, resourceType: "DEVICE", availableStatus: "ONLINE", startsAt, endsAt, now: input.now, correlationId: input.correlationId }),
     );
   } else if ((input.command === "reject" || input.command === "cancel" || input.command === "no_show") && input.creditAccountId) {
+    const releaseEntryId = crypto.randomUUID();
     statements.push(
       d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
         SELECT ?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?
@@ -224,11 +228,11 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
           AND EXISTS (SELECT 1 FROM credit_accounts WHERE id = ? AND facility_id = ? AND user_id = ? AND reserved_credits >= 1)
           AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
           AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))`)
-        .bind(crypto.randomUUID(), input.creditAccountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, input.now,
+        .bind(releaseEntryId, input.creditAccountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, input.now,
           input.appointmentId, input.facilityId, input.correlationId, input.creditAccountId, input.facilityId, input.visitorUserId, input.appointmentId, input.creditAccountId, input.appointmentId),
       d1.prepare(`UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ?
-        WHERE id = ? AND changes() = 1`)
-        .bind(input.now, input.creditAccountId),
+        WHERE id = ? AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE id = ? AND idempotency_key = ?)`)
+        .bind(input.now, input.creditAccountId, releaseEntryId, `${input.appointmentId}:reservation-release`),
     );
   }
 

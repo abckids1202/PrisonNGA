@@ -108,6 +108,7 @@ export type VisitorDeviceCheckInput = {
 };
 
 export function createVisitorDeviceCheckStatements(d1: D1Database, input: VisitorDeviceCheckInput): D1PreparedStatement[] {
+  const attemptId = input.id;
   return [
     d1.prepare(`INSERT OR IGNORE INTO visitor_device_check_attempts
       (id, facility_id, appointment_id, visitor_user_id, idempotency_key, camera_result, microphone_result, network_result, latency_ms, correlation_id, created_at)
@@ -126,7 +127,7 @@ export function createVisitorDeviceCheckStatements(d1: D1Database, input: Visito
     d1.prepare(`INSERT INTO audit_events
       (id, actor_user_id, actor_role, facility_id, action_type, entity_type, entity_id, reason, new_values, correlation_id, request_id, created_at)
       SELECT ?, ?, 'VISITOR', ?, 'VISITOR_DEVICE_CHECK_RECORDED', 'appointment', ?, 'Visitor device check submitted.', ?, ?, ?, ?
-      WHERE changes() = 1`)
-      .bind(crypto.randomUUID(), input.visitorUserId, input.facilityId, input.appointmentId, JSON.stringify({ camera: input.cameraResult, microphone: input.microphoneResult, network: input.networkResult, latencyMs: input.latencyMs }), input.correlationId, input.requestId, input.now),
+      WHERE EXISTS (SELECT 1 FROM visitor_device_check_attempts WHERE id = ? AND appointment_id = ? AND visitor_user_id = ?)`)
+      .bind(crypto.randomUUID(), input.visitorUserId, input.facilityId, input.appointmentId, JSON.stringify({ camera: input.cameraResult, microphone: input.microphoneResult, network: input.networkResult, latencyMs: input.latencyMs }), input.correlationId, input.requestId, input.now, attemptId, input.appointmentId, input.visitorUserId),
   ];
 }

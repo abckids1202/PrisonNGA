@@ -213,8 +213,9 @@ export function finalizeLiveSessionStatements(d1: D1Database, input: FinalizeLiv
     }, {
       sql: `${finalState}
         AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = '${input.creditOutcome === "CONSUME" ? "CONSUMPTION" : "RESERVATION_RELEASE"}')
-        AND changes() = 1`,
-      values: [...finalStateValues, input.appointmentId, input.creditAccountId],
+        AND ${eventExists}
+        AND NOT EXISTS (SELECT 1 FROM outbox_events WHERE aggregate_type = 'visit_session' AND aggregate_id = ? AND correlation_id = ?)`,
+      values: [...finalStateValues, input.appointmentId, input.creditAccountId, ...eventValues, input.sessionId, input.correlationId],
     }),
     d1.prepare(`UPDATE waiting_room_sessions SET state = ?, visitor_presence = 'absent', visitor_presence_at = ?, prisoner_presence = 'absent', prisoner_presence_at = ?, version = version + 1, updated_at = ?
       WHERE appointment_id = ? AND facility_id = ? AND state NOT IN ('COMPLETED', 'CANCELLED') AND ${finalState}`)

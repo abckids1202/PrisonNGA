@@ -17,14 +17,15 @@ export function settlePaymentPurchaseStatements(
   input: { paymentIntentId: string; facilityId: string; userId: string; accountId: string; amount: number; reason: string; now: string; requireSucceeded?: boolean },
 ): D1PreparedStatement[] {
   const purchaseKey = `payment:${input.paymentIntentId}:purchase`;
+  const ledgerEntryId = crypto.randomUUID();
   const intentStatusGuard = input.requireSucceeded ? "pi.status = 'SUCCEEDED'" : "pi.status NOT IN ('REFUNDED', 'DISPUTED')";
   return [
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
       SELECT ?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ?
       WHERE EXISTS (SELECT 1 FROM payment_intents pi WHERE pi.id = ? AND pi.facility_id = ? AND pi.user_id = ? AND ${intentStatusGuard})`)
-      .bind(crypto.randomUUID(), input.accountId, input.amount, purchaseKey, input.reason, input.now, input.paymentIntentId, input.facilityId, input.userId),
-    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(input.amount, input.now, input.accountId),
+      .bind(ledgerEntryId, input.accountId, input.amount, purchaseKey, input.reason, input.now, input.paymentIntentId, input.facilityId, input.userId),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE id = ? AND idempotency_key = ?)")
+      .bind(input.amount, input.now, input.accountId, ledgerEntryId, purchaseKey),
   ];
 }
 
@@ -35,13 +36,14 @@ export async function settlePaymentPurchase(
   const now = new Date().toISOString();
   const accountId = await ensureCreditAccount(d1, { facilityId: input.facilityId, userId: input.userId });
   const purchaseKey = `payment:${input.paymentIntentId}:purchase`;
+  const ledgerEntryId = crypto.randomUUID();
   const results = await d1.batch(input.requirePayableIntent
     ? settlePaymentPurchaseStatements(d1, { paymentIntentId: input.paymentIntentId, facilityId: input.facilityId, userId: input.userId, accountId, amount: input.amount, reason: input.reason, now })
     : [
       d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at) VALUES (?, ?, NULL, 'PURCHASE', ?, ?, ?, 'system:payment-webhook', ?)`)
-        .bind(crypto.randomUUID(), accountId, input.amount, purchaseKey, input.reason, now),
-      d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-        .bind(input.amount, now, accountId),
+        .bind(ledgerEntryId, accountId, input.amount, purchaseKey, input.reason, now),
+      d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + ?, version = version + 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE id = ? AND idempotency_key = ?)")
+        .bind(input.amount, now, accountId, ledgerEntryId, purchaseKey),
     ]);
   if (!results[0]?.meta.changes) {
     const existingPurchase = await d1.prepare("SELECT id FROM credit_ledger_entries WHERE idempotency_key = ? AND entry_type = 'PURCHASE'")
@@ -68,15 +70,16 @@ export async function reserveVisitCredit(
   input: { accountId: string; appointmentId: string; actorUserId: string; reason: string },
 ): Promise<CreditReservation> {
   const now = new Date().toISOString();
+  const ledgerEntryId = crypto.randomUUID();
   const results = await d1.batch([
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
       SELECT ?, ?, ?, 'RESERVATION', -1, ?, ?, ?, ?
       WHERE EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.id = ? AND ca.available_credits >= 1
         AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = ? AND a.facility_id = ca.facility_id AND a.visitor_user_id = ca.user_id))
         AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type = 'RESERVATION')`)
-      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId, input.appointmentId),
-    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(now, input.accountId),
+      .bind(ledgerEntryId, input.accountId, input.appointmentId, `${input.appointmentId}:reservation`, input.reason, input.actorUserId, now, input.accountId, input.appointmentId, input.appointmentId),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - 1, reserved_credits = reserved_credits + 1, version = version + 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE id = ? AND idempotency_key = ?)")
+      .bind(now, input.accountId, ledgerEntryId, `${input.appointmentId}:reservation`),
   ]);
   if (results[0]?.meta.changes) {
     if (!results[1]?.meta.changes) {
@@ -142,6 +145,7 @@ export function releaseVisitCreditStatements(
   d1: D1Database,
   input: { accountId: string; appointmentId: string; actorUserId: string; reason: string; now: string; guard?: CreditSettlementGuard },
 ): D1PreparedStatement[] {
+  const ledgerEntryId = crypto.randomUUID();
   return [
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
       SELECT ?, ?, ?, 'RESERVATION_RELEASE', 1, ?, ?, ?, ?
@@ -150,10 +154,10 @@ export function releaseVisitCreditStatements(
         AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
         AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))
         AND (${input.guard?.sql || "1 = 1"})`)
-      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, input.now,
+      .bind(ledgerEntryId, input.accountId, input.appointmentId, `${input.appointmentId}:reservation-release`, input.reason, input.actorUserId, input.now,
         input.accountId, input.appointmentId, input.appointmentId, input.accountId, input.appointmentId, ...(input.guard?.values || [])),
-    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(input.now, input.accountId),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits + 1, reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE id = ? AND idempotency_key = ?)")
+      .bind(input.now, input.accountId, ledgerEntryId, `${input.appointmentId}:reservation-release`),
   ];
 }
 
@@ -161,6 +165,7 @@ export function consumeVisitCreditStatements(
   d1: D1Database,
   input: { accountId: string; appointmentId: string; actorUserId: string; reason: string; now: string; guard?: CreditSettlementGuard },
 ): D1PreparedStatement[] {
+  const ledgerEntryId = crypto.randomUUID();
   return [
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
       SELECT ?, ?, ?, 'CONSUMPTION', 0, ?, ?, ?, ?
@@ -169,10 +174,10 @@ export function consumeVisitCreditStatements(
         AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND credit_account_id = ? AND entry_type = 'RESERVATION')
         AND NOT EXISTS (SELECT 1 FROM credit_ledger_entries WHERE appointment_id = ? AND entry_type IN ('RESERVATION_RELEASE', 'CONSUMPTION'))
         AND (${input.guard?.sql || "1 = 1"})`)
-      .bind(crypto.randomUUID(), input.accountId, input.appointmentId, `${input.appointmentId}:consumption`, input.reason, input.actorUserId, input.now,
+      .bind(ledgerEntryId, input.accountId, input.appointmentId, `${input.appointmentId}:consumption`, input.reason, input.actorUserId, input.now,
         input.accountId, input.appointmentId, input.appointmentId, input.accountId, input.appointmentId, ...(input.guard?.values || [])),
-    d1.prepare("UPDATE credit_accounts SET reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(input.now, input.accountId),
+    d1.prepare("UPDATE credit_accounts SET reserved_credits = reserved_credits - 1, version = version + 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE id = ? AND idempotency_key = ?)")
+      .bind(input.now, input.accountId, ledgerEntryId, `${input.appointmentId}:consumption`),
   ];
 }
 
@@ -211,13 +216,14 @@ export function refundPurchasedCreditsStatements(
   input: { paymentIntentId: string; accountId: string; amount: number; actorUserId: string; reason: string; now: string },
 ): D1PreparedStatement[] {
   const refundKey = `payment:${input.paymentIntentId}:refund`;
+  const ledgerEntryId = crypto.randomUUID();
   return [
     d1.prepare(`INSERT OR IGNORE INTO credit_ledger_entries (id, credit_account_id, appointment_id, entry_type, amount, idempotency_key, reason, created_by, created_at)
       SELECT ?, ?, NULL, 'REFUND', ?, ?, ?, ?, ? WHERE EXISTS (
         SELECT 1 FROM credit_accounts WHERE id = ? AND available_credits >= ?
-      )`).bind(crypto.randomUUID(), input.accountId, -input.amount, refundKey, input.reason, input.actorUserId, input.now, input.accountId, input.amount),
-    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - ?, version = version + 1, updated_at = ? WHERE id = ? AND changes() = 1")
-      .bind(input.amount, input.now, input.accountId),
+      )`).bind(ledgerEntryId, input.accountId, -input.amount, refundKey, input.reason, input.actorUserId, input.now, input.accountId, input.amount),
+    d1.prepare("UPDATE credit_accounts SET available_credits = available_credits - ?, version = version + 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM credit_ledger_entries WHERE id = ? AND idempotency_key = ?)")
+      .bind(input.amount, input.now, input.accountId, ledgerEntryId, refundKey),
   ];
 }
 

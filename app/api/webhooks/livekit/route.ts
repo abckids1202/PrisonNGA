@@ -272,8 +272,7 @@ export async function POST(request: Request) {
     if (nextStatus !== session.status || (nextStatus === "ACTIVE" && !session.actual_started_at)) {
       statements.push(d1.prepare(`UPDATE visit_sessions SET status = ?, actual_started_at = CASE WHEN ? = 'ACTIVE' AND actual_started_at IS NULL THEN ? ELSE actual_started_at END,
         version = version + 1, updated_at = ? WHERE id = ? AND version = ? AND status = ?
-        AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND status = 'IN_PROGRESS')
-        AND changes() = 1`)
+        AND EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND status = 'IN_PROGRESS')`)
         .bind(nextStatus, nextStatus, now, now, session.id, session.version, session.status, session.appointment_id, session.facility_id));
     }
     const results = await d1.batch(statements);
