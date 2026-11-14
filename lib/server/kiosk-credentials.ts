@@ -30,6 +30,8 @@ export async function authenticateKiosk(
   const credential = await database.prepare(`SELECT kc.resource_id, kc.facility_id, kc.id
     FROM kiosk_credentials kc
     INNER JOIN resources r ON r.id = kc.resource_id AND r.facility_id = kc.facility_id
+    INNER JOIN facilities f ON f.id = kc.facility_id
+    INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
     WHERE kc.resource_id = ? AND kc.credential_hash = ? AND kc.status = 'ACTIVE'
       AND r.resource_type = 'DEVICE' AND r.status = 'ONLINE'${healthPredicate}`)
     .bind(resourceId, credentialHash)

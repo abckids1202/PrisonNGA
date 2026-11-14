@@ -37,6 +37,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ vis
       FROM appointments a
       INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       INNER JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
       LEFT JOIN resource_reservations rr ON rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.resource_id = ? AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')
       WHERE a.id = ? AND a.facility_id = ? AND (rr.appointment_id IS NOT NULL OR w.assigned_kiosk_id = ?)`)

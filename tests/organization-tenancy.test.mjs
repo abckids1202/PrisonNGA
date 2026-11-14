@@ -113,6 +113,19 @@ test("visitor facility-backed reads fail closed when the organization is disable
   }
 });
 
+test("kiosk authentication and visit operations fail closed when the organization is disabled", async () => {
+  const kioskCredentials = await readFile(new URL("../lib/server/kiosk-credentials.ts", import.meta.url), "utf8");
+  assert.match(kioskCredentials, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  for (const route of [
+    "../app/api/kiosk/visits/[visitId]/presence/route.ts",
+    "../app/api/kiosk/visits/[visitId]/device-check/route.ts",
+    "../app/api/kiosk/visits/[visitId]/live-session/route.ts",
+  ]) {
+    const source = await readFile(new URL(route, import.meta.url), "utf8");
+    assert.match(source, /organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/, route);
+  }
+});
+
 test("incident assignment rejects revoked modern staff assignments", async () => {
   const incidents = await readFile(new URL("../app/api/control/incidents/route.ts", import.meta.url), "utf8");
   assert.match(incidents, /staff_facility_assignments sfa WHERE sfa\.user_id = u\.id/);

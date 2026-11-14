@@ -24,6 +24,7 @@ export async function GET(request: Request, context: RouteContext) {
       FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       INNER JOIN resource_reservations rr ON rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.resource_id = ?
         AND (rr.status IN ('RESERVED', 'ACTIVE') OR vs.status IN ('ENDED', 'TERMINATED', 'FAILED', 'CANCELLED'))
       WHERE vs.appointment_id = ? AND vs.facility_id = ?`).bind(kiosk.resourceId, visitId, kiosk.facilityId).first<Record<string, string | number | null>>();
@@ -53,6 +54,7 @@ export async function POST(request: Request, context: RouteContext) {
       FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       INNER JOIN resource_reservations rr ON rr.appointment_id = a.id AND rr.facility_id = a.facility_id AND rr.resource_type = 'DEVICE' AND rr.resource_id = ? AND rr.status IN ('RESERVED', 'ACTIVE')
       WHERE vs.appointment_id = ? AND vs.facility_id = ?`).bind(kiosk.resourceId, visitId, kiosk.facilityId).first<Record<string, string | number | null>>();
     if (!session) throw new SecurityError("KIOSK_NOT_ASSIGNED_TO_VISIT", 403);
