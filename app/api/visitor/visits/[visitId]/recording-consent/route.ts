@@ -27,6 +27,8 @@ export async function GET(_request: Request, context: RouteContext) {
         rc.decision, rc.notice_version, rc.decided_at
       FROM visit_sessions vs
       INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
+      INNER JOIN facilities f ON f.id = vs.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       LEFT JOIN visit_policies vp ON vp.facility_id = vs.facility_id
       LEFT JOIN recording_consents rc ON rc.session_id = vs.id AND rc.participant_user_id = a.visitor_user_id
       WHERE vs.appointment_id = ? AND a.visitor_user_id = ?`).bind(visitId, visitor.userId).first<Record<string, string | number | null>>();
@@ -62,6 +64,8 @@ export async function POST(request: Request, context: RouteContext) {
         a.visitor_user_id
       FROM visit_sessions vs
       INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id
+      INNER JOIN facilities f ON f.id = vs.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       LEFT JOIN visit_policies vp ON vp.facility_id = vs.facility_id
       WHERE vs.appointment_id = ? AND a.visitor_user_id = ?`).bind(visitId, visitor.userId).first<{ session_id: string; facility_id: string; session_status: string; recording_policy: string; recording_status: string; policy_version: number | null; facility_recording_policy: string | null; visitor_user_id: string }>();
     if (!current) throw new SecurityError("VISIT_NOT_FOUND", 404);

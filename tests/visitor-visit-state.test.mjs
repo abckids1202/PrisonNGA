@@ -99,3 +99,10 @@ test("visitor visit details does not offer a live join before recording consent"
   assert.match(details, /scrollIntoView/);
 });
 
+test("visitor recording consent is unavailable for disabled organizations", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const route = await readFile(new URL("../app/api/visitor/visits/[visitId]/recording-consent/route.ts", import.meta.url), "utf8");
+  assert.match(route, /INNER JOIN facilities f ON f\.id = vs\.facility_id/);
+  assert.match(route, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+});
+
