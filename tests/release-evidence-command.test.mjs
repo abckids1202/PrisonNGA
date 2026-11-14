@@ -43,3 +43,12 @@ test("release evidence command rejects a missing gate", async () => {
   assert.equal(result.ready, false);
   assert.ok(result.missing.includes("SECUREVISIT_REFUND_POLICY_APPROVAL=approved"));
 });
+
+test("staging evidence requires a matching future-dated pilot manifest", async () => {
+  const releaseId = "staging-release-001";
+  const expiresAt = "2099-01-01T00:00:00.000Z";
+  const manifest = { releaseId, expiresAt, gates: Object.fromEntries(Object.entries(gates).filter(([key]) => key.endsWith("_STAGING") || key === "SECUREVISIT_TARIFF_APPROVAL" || key === "SECUREVISIT_REFUND_POLICY_APPROVAL" || key === "SECUREVISIT_WAF" || key === "SECUREVISIT_MONITORING" || key === "SECUREVISIT_BACKUP_RESTORE_DRILL" || key === "SECUREVISIT_OUTAGE_RUNBOOK").map(([key, status]) => [key, { status, evidenceId: `evidence-${key.toLowerCase()}`, expiresAt }])) };
+  const result = await validateReleaseEvidence({ environment: "staging", env: { ...gates, SECUREVISIT_STAGING_EVIDENCE_ID: releaseId, SECUREVISIT_STAGING_EVIDENCE_EXPIRES_AT: expiresAt, SECUREVISIT_STAGING_EVIDENCE_MANIFEST: JSON.stringify(manifest) } });
+  assert.equal(result.ready, true, JSON.stringify(result));
+  assert.equal(result.evidence?.manifestValid, true);
+});

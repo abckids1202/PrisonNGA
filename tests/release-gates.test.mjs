@@ -109,3 +109,28 @@ test("production readiness rejects a manifest with missing gate evidence", () =>
   assert.equal(result.evidence?.manifestValid, false);
   assert.ok(result.missing.includes("SECUREVISIT_RELEASE_EVIDENCE_MANIFEST.gates.SECUREVISIT_SECURITY_REVIEW=valid"));
 });
+
+test("staging readiness rejects status-only attestations without evidence", () => {
+  const statusOnly = Object.fromEntries(pilotStatusEntries());
+  const result = evaluateReleaseGates("staging", statusOnly);
+  assert.equal(result.ready, false);
+  assert.ok(result.missing.includes("SECUREVISIT_STAGING_EVIDENCE_ID=present"));
+  assert.ok(result.missing.includes("SECUREVISIT_STAGING_EVIDENCE_MANIFEST=matching-valid-json"));
+});
+
+function pilotStatusEntries() {
+  return [
+    ["SECUREVISIT_TARIFF_APPROVAL", "approved"],
+    ["SECUREVISIT_REFUND_POLICY_APPROVAL", "approved"],
+    ["SECUREVISIT_BACKUP_RESTORE_DRILL", "verified"],
+    ["SECUREVISIT_WAF", "enabled"],
+    ["SECUREVISIT_MONITORING", "configured"],
+    ["SECUREVISIT_OUTAGE_RUNBOOK", "approved"],
+    ["SECUREVISIT_IDENTITY_STAGING", "verified"],
+    ["SECUREVISIT_PAYMENT_STAGING", "verified"],
+    ["SECUREVISIT_NOTIFICATION_STAGING", "verified"],
+    ["SECUREVISIT_EVIDENCE_STAGING", "verified"],
+    ["SECUREVISIT_KIOSK_STAGING", "verified"],
+    ["SECUREVISIT_LIVEKIT_STAGING", "verified"],
+  ];
+}

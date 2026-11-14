@@ -12,7 +12,7 @@ function option(name) {
 export async function validateReleaseEvidence({ environment, manifestPath, env = process.env } = {}) {
   const targetEnvironment = String(environment || env.SECUREVISIT_ENVIRONMENT || "").trim().toLowerCase();
   const values = { ...env };
-  if (manifestPath) values.SECUREVISIT_RELEASE_EVIDENCE_MANIFEST = await readFile(resolve(manifestPath), "utf8");
+  if (manifestPath) values[targetEnvironment === "staging" ? "SECUREVISIT_STAGING_EVIDENCE_MANIFEST" : "SECUREVISIT_RELEASE_EVIDENCE_MANIFEST"] = await readFile(resolve(manifestPath), "utf8");
   const result = evaluateReleaseGates(targetEnvironment, values);
   return { environment: targetEnvironment, manifestPath: manifestPath ? resolve(manifestPath) : null, ...result };
 }

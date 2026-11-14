@@ -56,12 +56,14 @@ reproducible.
 | `SECUREVISIT_KIOSK_STAGING` | `verified` | Staging | Facility device owner | Hardware enrollment, device identity, credential rotation/revocation, replacement, offline/reconnect recovery, camera/mic/network checks, and audit trail | Before pilot and after kiosk image/firmware changes | `NOT STARTED` | — | — | — | — |
 | `SECUREVISIT_LIVEKIT_STAGING` | `verified` | Staging | Video / operations owner | Visitor, kiosk, and staff observer join; token scope/expiry; presence; reconnect; provider disconnect; expiry; staff termination; completion settlement; audit and notifications; governed recording consent, private storage, playback authorization, retention, and legal-hold behavior | Before each video release and after LiveKit or recording-policy changes | `NOT STARTED` | — | — | — | — |
 
-## Production manifest mapping
+## Staging and production manifest mapping
 
-Production readiness also requires the release-evidence manifest referenced by
-`SECUREVISIT_RELEASE_EVIDENCE_MANIFEST`. The manifest must use the exact gate
-keys above, the same release ID as `SECUREVISIT_RELEASE_EVIDENCE_ID`, and a
-future expiry matching `SECUREVISIT_RELEASE_EVIDENCE_EXPIRES_AT`.
+Staging readiness requires a pilot evidence manifest referenced by
+`SECUREVISIT_STAGING_EVIDENCE_MANIFEST`. Production readiness requires the
+release-evidence manifest referenced by `SECUREVISIT_RELEASE_EVIDENCE_MANIFEST`.
+Each manifest must use the exact gate keys for its environment, the same release
+ID as its corresponding evidence ID variable, and a future expiry matching its
+corresponding evidence expiry variable.
 
 Use this shape as a redacted example; replace placeholders only in the secret
 deployment configuration and approved evidence system:
@@ -91,6 +93,7 @@ the shortened example above is not a usable production manifest.
 Validate a redacted manifest before loading it into a deployment secret store:
 
 ```bash
+npm run validate:evidence -- --environment=staging --manifest=./evidence/staging-manifest.json
 npm run validate:evidence -- --environment=production --manifest=./evidence/release-manifest.json
 ```
 
