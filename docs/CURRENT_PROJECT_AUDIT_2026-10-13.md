@@ -133,6 +133,10 @@ pilot deployment.
   records, export manifests, retention, legal holds, break-glass boundaries,
   incidents, lockdown state, and durable reconciliation alarms.
 - CSP and camera/microphone policy support for a configured LiveKit host.
+- Database-level tenant consistency guards for core appointments, sessions,
+  Waiting Room records, resources, kiosk credentials, identity records, and
+  payment/refund records. These guards reject organization/facility mismatches
+  even if a trusted writer bypasses an application query predicate.
 - Release verifier, deployment validator, route security matrix, local restore
   drill, browser smoke tests, and redacted operational logging.
 
@@ -191,6 +195,9 @@ pilot deployment.
   pilot facility until the recording policy, explicit consent, private R2
   storage, retention, legal-hold, playback, access-audit, and restore evidence
   are approved and demonstrated in staging.
+- The database guard migration is locally verified and included in fresh
+  migration tests; remote D1 application and cross-facility staging evidence
+  still remain release evidence, not assumptions.
 
 ## End-to-end workflow that must be proven
 
