@@ -72,6 +72,7 @@ test("staff recording controls only start after persisted consent or a retryable
 
 test("recording inventory exposes facility-scoped access history", async () => {
   const route = await readFile(new URL("../app/api/control/recordings/route.ts", import.meta.url), "utf8");
+  const detail = await readFile(new URL("../app/api/control/recordings/[recordingId]/route.ts", import.meta.url), "utf8");
   const playback = await readFile(new URL("../app/api/control/recordings/[recordingId]/playback/route.ts", import.meta.url), "utf8");
   const compliance = await readFile(new URL("../app/features/management/CompliancePageInteractive.tsx", import.meta.url), "utf8");
   assert.match(route, /requirePermission\("recording\.manage"\)/);
@@ -81,6 +82,10 @@ test("recording inventory exposes facility-scoped access history", async () => {
   assert.match(route, /recording_access_events rae WHERE rae\.recording_id = r\.id AND rae\.facility_id = r\.facility_id/);
   assert.match(route, /access_count/);
   assert.match(route, /last_accessed_at/);
+  assert.match(detail, /requirePermission\("recording\.manage"\)/);
+  assert.match(detail, /r\.organization_id = \?/);
+  assert.match(detail, /rae\.organization_id = \?/);
+  assert.match(detail, /accessEvents/);
   assert.match(compliance, /Open audited playback/);
   assert.match(compliance, /audited access/);
   assert.match(compliance, /\/api\/control\/legal-holds/);

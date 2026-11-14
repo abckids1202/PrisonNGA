@@ -22,3 +22,10 @@ test("recording policy has a dedicated facility-scoped API boundary", async () =
   const matrix = await readFile(new URL("../docs/ROUTE_SECURITY_MATRIX.md", import.meta.url), "utf8");
   assert.match(matrix, /`\/api\/control\/recording-policy`/);
 });
+
+test("recording detail has a dedicated security-matrix entry", async () => {
+  const source = await readFile(new URL("../app/api/control/recordings/[recordingId]/route.ts", import.meta.url), "utf8");
+  assert.match(source, /requirePermission\("recording\.manage"\)/);
+  const matrix = await readFile(new URL("../docs/ROUTE_SECURITY_MATRIX.md", import.meta.url), "utf8");
+  assert.match(matrix, /`\/api\/control\/recordings\/:recordingId`/);
+});
