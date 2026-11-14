@@ -12,6 +12,7 @@ test("visitor payment status is owner-scoped and return handling remains webhook
   assert.match(route, /payment-status:\$\{visitor\.userId\}/);
   assert.match(route, /cle\.idempotency_key = 'payment:' \|\| pi\.id \|\| ':purchase'/);
   assert.match(route, /ca\.facility_id = pi\.facility_id AND ca\.user_id = pi\.user_id/);
+  assert.match(route, /FROM payment_intents pi INNER JOIN facilities f ON f\.id = pi\.facility_id AND f\.organization_id = pi\.organization_id INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
   assert.match(provider, /successUrl\?: string; cancelUrl\?: string/);
   assert.match(client, /credit balance changes only after SecureVisit receives and verifies the provider confirmation/);
 });
