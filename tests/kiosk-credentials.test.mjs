@@ -23,6 +23,12 @@ class SQLiteD1 {
 
 async function seedCredential(database, { resourceId = "kiosk-02", status = "ONLINE", credentialStatus = "ACTIVE" } = {}) {
   database.sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id TEXT PRIMARY KEY, status TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS facilities (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS resources (
       id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY'
     );
@@ -32,6 +38,8 @@ async function seedCredential(database, { resourceId = "kiosk-02", status = "ONL
     );
   `);
   const secret = createKioskCredentialSecret();
+  database.sqlite.prepare("INSERT OR IGNORE INTO organizations (id, status) VALUES ('org-1', 'ACTIVE')").run();
+  database.sqlite.prepare("INSERT OR IGNORE INTO facilities (id, organization_id) VALUES ('facility-1', 'org-1')").run();
   database.sqlite.prepare("INSERT OR REPLACE INTO resources (id, facility_id, resource_type, status) VALUES (?, 'facility-1', 'DEVICE', ?)").run(resourceId, status);
   database.sqlite.prepare("INSERT INTO kiosk_credentials (id, facility_id, resource_id, credential_hash, status) VALUES ('credential-1', 'facility-1', ?, ?, ?)")
     .run(resourceId, await hashKioskCredential(secret), credentialStatus);

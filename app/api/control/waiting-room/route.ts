@@ -46,6 +46,7 @@ export async function GET() {
       INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
       WHERE a.facility_id = ? AND a.status IN (${placeholders})
       ORDER BY a.requested_start ASC`).bind(authorization.facilityId, ...eligibleStatuses).all();
@@ -148,7 +149,7 @@ export async function POST(request: Request) {
         (SELECT dc.latency_ms FROM visitor_device_check_attempts dc WHERE dc.appointment_id = a.id AND dc.facility_id = a.facility_id AND dc.visitor_user_id = a.visitor_user_id ORDER BY dc.created_at DESC, dc.id DESC LIMIT 1) AS visitor_latency_ms,
         (SELECT dc.created_at FROM visitor_device_check_attempts dc WHERE dc.appointment_id = a.id AND dc.facility_id = a.facility_id AND dc.visitor_user_id = a.visitor_user_id ORDER BY dc.created_at DESC, dc.id DESC LIMIT 1) AS visitor_device_checked_at,
         w.version
-      FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id
+      FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       LEFT JOIN waiting_room_sessions w ON w.appointment_id = a.id AND w.facility_id = a.facility_id
       LEFT JOIN credit_accounts ca ON ca.user_id = a.visitor_user_id AND ca.facility_id = a.facility_id
@@ -293,7 +294,7 @@ export async function POST(request: Request) {
       }
     }
     const eligibilityGuard = command === "start_visit" ? `AND EXISTS (
-      SELECT 1 FROM prisoners p INNER JOIN facilities f ON f.id = appointments.facility_id
+      SELECT 1 FROM prisoners p INNER JOIN facilities f ON f.id = appointments.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       WHERE p.id = appointments.prisoner_id AND p.facility_id = appointments.facility_id
         AND p.status = 'ACTIVE' AND p.visitation_status = 'APPROVED' AND f.current_state = 'NORMAL_OPERATIONS'
     )` : "";

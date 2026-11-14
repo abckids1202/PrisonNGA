@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     const facility = await d1.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(authorization.facilityId).first<{ organization_id: string | null }>();
     if (!facility?.organization_id) throw new SecurityError("FACILITY_ORGANIZATION_NOT_CONFIGURED", 503);
     const target = targetType === "evidence_document"
-      ? await d1.prepare("SELECT ed.id FROM evidence_documents ed INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id WHERE ed.id = ? AND ed.facility_id = ? AND ed.status = 'AVAILABLE'").bind(targetId, authorization.facilityId).first()
+      ? await d1.prepare("SELECT ed.id FROM evidence_documents ed INNER JOIN facilities f ON f.id = ed.facility_id AND f.organization_id = ed.organization_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE ed.id = ? AND ed.facility_id = ? AND ed.status = 'AVAILABLE'").bind(targetId, authorization.facilityId).first()
       : targetType === "recording"
         ? await d1.prepare("SELECT id FROM recordings WHERE id = ? AND facility_id = ? AND organization_id = (SELECT organization_id FROM facilities WHERE id = ?) AND status = 'AVAILABLE'").bind(targetId, authorization.facilityId, authorization.facilityId).first()
       : targetType === "visit_session"

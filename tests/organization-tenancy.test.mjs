@@ -126,6 +126,22 @@ test("kiosk authentication and visit operations fail closed when the organizatio
   }
 });
 
+test("control operational reads fail closed when the organization is disabled", async () => {
+  for (const route of [
+    "../app/api/control/appointments/route.ts",
+    "../app/api/control/waiting-room/route.ts",
+    "../app/api/control/verification/route.ts",
+    "../app/api/control/verification/evidence/route.ts",
+    "../app/api/control/verification/evidence/[documentId]/route.ts",
+    "../app/api/control/recordings/route.ts",
+    "../app/api/control/recordings/[recordingId]/route.ts",
+    "../app/api/control/access/break-glass/route.ts",
+  ]) {
+    const source = await readFile(new URL(route, import.meta.url), "utf8");
+    assert.match(source, /organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/, route);
+  }
+});
+
 test("incident assignment rejects revoked modern staff assignments", async () => {
   const incidents = await readFile(new URL("../app/api/control/incidents/route.ts", import.meta.url), "utf8");
   assert.match(incidents, /staff_facility_assignments sfa WHERE sfa\.user_id = u\.id/);

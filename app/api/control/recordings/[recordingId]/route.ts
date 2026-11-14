@@ -21,6 +21,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ rec
         u.display_name AS visitor_name, p.display_name AS prisoner_name
       FROM recordings r
       INNER JOIN facilities f ON f.id = r.facility_id AND f.organization_id = r.organization_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       INNER JOIN visit_sessions vs ON vs.id = r.session_id AND vs.facility_id = r.facility_id
       INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = r.facility_id
       INNER JOIN users u ON u.id = a.visitor_user_id
