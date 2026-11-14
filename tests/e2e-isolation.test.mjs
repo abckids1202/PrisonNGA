@@ -12,6 +12,8 @@ test("release browser checks use disposable isolated D1 state", async () => {
   assert.match(runner, /mkdtemp/);
   assert.match(runner, /SECUREVISIT_LOCAL_D1_STATE_DIR/);
   assert.match(runner, /\[playwrightCli, "test"/);
+  assert.match(runner, /stdio: \["ignore", "ignore", "inherit"\]/);
+  assert.match(runner, /ENOBUFS/);
   assert.match(verifier, /SECUREVISIT_E2E_ISOLATED: "true"/);
   assert.match(verifier, /PLAYWRIGHT_PORT: process\.env\.PLAYWRIGHT_PORT \|\| "4174"/);
   assert.match(verifier, /\["run", "build"\]/);

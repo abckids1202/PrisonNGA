@@ -28,14 +28,27 @@ const childEnvironment = isolatedStatePath
 // Apply migrations first so a developer cannot mistake a stale local schema for
 // a workflow or API regression.
 const migrationScript = path.join(projectRoot, "scripts", "d1-migrations.mjs");
+function runSetupCommand(args, label) {
+  const result = spawnSync(process.execPath, args, {
+    cwd: projectRoot,
+    env: childEnvironment,
+    // Wrangler prints a very large migration table to stdout. Piping that
+    // stream into spawnSync can exceed Node's fixed buffer and fail with
+    // ENOBUFS before Playwright starts. Keep stdout quiet; stderr remains
+    // visible for actionable setup failures.
+    stdio: ["ignore", "ignore", "inherit"],
+    windowsHide: true,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`${label} failed with exit code ${result.status ?? "unknown"}.`);
+  }
+}
+
 try {
-  const migration = spawnSync(process.execPath, ["--env-file-if-exists=.env.local", migrationScript, "apply", "--local"], { cwd: projectRoot, stdio: "inherit", env: childEnvironment });
-  if (migration.error) throw migration.error;
-  if (migration.status !== 0) process.exit(migration.status ?? 1);
+  runSetupCommand(["--env-file-if-exists=.env.local", migrationScript, "apply", "--local"], "E2E local migrations");
   if (isolatedStatePath) {
-    const seed = spawnSync(process.execPath, ["--env-file-if-exists=.env.local", migrationScript, "seed", "--local"], { cwd: projectRoot, stdio: "inherit", env: childEnvironment });
-    if (seed.error) throw seed.error;
-    if (seed.status !== 0) process.exit(seed.status ?? 1);
+    runSetupCommand(["--env-file-if-exists=.env.local", migrationScript, "seed", "--local"], "E2E local seed");
   }
   const playwrightCli = path.join(projectRoot, "node_modules", "@playwright", "test", "cli.js");
   const result = spawnSync(process.execPath, [playwrightCli, "test", ...process.argv.slice(2)], { cwd: projectRoot, stdio: "inherit", env: childEnvironment });
