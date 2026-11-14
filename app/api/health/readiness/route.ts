@@ -195,11 +195,20 @@ export async function GET() {
     const notifications = (notificationEmailConfigured || notificationSmsConfigured)
       && (!configuredNotificationEmailDelivery || notificationEmailConfigured)
       && (!configuredNotificationSmsDelivery || notificationSmsConfigured);
+    const recordingStorageProvider = configuredString("RECORDING_STORAGE_PROVIDER").toLowerCase();
+    const recordingStorage = environment === "development"
+      || (Boolean(recordingsBucket)
+        && recordingStorageProvider === "livekit_r2"
+        && Boolean(configuredString("RECORDINGS_ENCRYPTION_KEY_REFERENCE"))
+        && Boolean(configuredString("R2_S3_ENDPOINT"))
+        && Boolean(configuredString("R2_S3_ACCESS_KEY_ID"))
+        && Boolean(configuredString("R2_S3_SECRET_ACCESS_KEY")));
     const providerConfiguration = {
       payment: Boolean(paymentProvider),
       tariff: tariffConfigured,
       paymentWebhook,
       livekit: videoConfig.configured,
+      recordingStorage,
       evidenceStorage: Boolean(evidenceBucket) && (environment === "development" ? evidenceStorageProvider === "local_test" || evidenceStorageProvider === "r2" : evidenceStorageProvider === "r2"),
       evidenceScanning,
       visitorAuth,
@@ -213,6 +222,7 @@ export async function GET() {
     const providerAdapters = {
       payment: paymentProvider?.name || null,
       video: videoConfig.provider,
+      recordingStorage: recordingStorageProvider || null,
       visitorEmail: configuredVisitorEmailDelivery || null,
       visitorSms: configuredVisitorSmsDelivery || null,
       visitorAuthChannels: visitorAuthChannels.valid ? visitorAuthChannels.channels : null,
@@ -227,6 +237,6 @@ export async function GET() {
     return securityResponse({ status: ready ? "ready" : "not_ready", environment, release, checks: { database: true, schema: schemaReady, schemaMissing: { tables: missingTables, columns: missingColumns }, providerConfiguration, providerAdapters, releaseGates, tariff: { configured: tariffConfigured, configuredFacilities: Number(tariffRow?.configured_count || 0) }, environment: { ok: environmentConfig.ok, missing: environmentConfig.missing, warnings: environmentConfig.warnings } } }, ready ? 200 : 503, context.requestId);
   } catch (error) {
     if (error instanceof Error && error.name === "SecurityError") return securityErrorResponse(error, context.requestId);
-    return securityResponse({ status: "not_ready", environment, release: { releaseId: "unknown", buildId: null, migrationVersion: null, migrationName: null }, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, visitorAuthChannels: false, staffIdentity: false, notifications: false, notificationQueue: false }, providerAdapters: { payment: null, video: null, visitorEmail: null, visitorSms: null, visitorAuthChannels: null, notificationsEmail: null, notificationsSms: null, evidenceScanner: null, staffFederation: null }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
+    return securityResponse({ status: "not_ready", environment, release: { releaseId: "unknown", buildId: null, migrationVersion: null, migrationName: null }, checks: { database: false, schema: false, providerConfiguration: { payment: false, tariff: false, paymentWebhook: false, livekit: false, recordingStorage: false, evidenceStorage: false, evidenceScanning: false, visitorAuth: false, visitorAuthChannels: false, staffIdentity: false, notifications: false, notificationQueue: false }, providerAdapters: { payment: null, video: null, recordingStorage: null, visitorEmail: null, visitorSms: null, visitorAuthChannels: null, notificationsEmail: null, notificationsSms: null, evidenceScanner: null, staffFederation: null }, releaseGates: { ready: false, required: [], missing: ["READINESS_CHECK_FAILED"] }, tariff: { configured: false, configuredFacilities: 0 }, environment: { ok: false, missing: ["READINESS_CHECK_FAILED"], warnings: [] } } }, 503, context.requestId);
   }
 }

@@ -37,9 +37,14 @@ test("readiness fails closed on critical columns, not only table names", async (
   assert.match(source, /String\(staffAuthProvider \|\| ""\)\.toLowerCase\(\) === "both" && oidcReady && samlReady/);
   assert.match(source, /"NOTIFICATION_QUEUE_NAME"/);
   assert.match(source, /notificationQueue: environment === "development" \|\| Boolean\(configuredString\("NOTIFICATION_QUEUE_NAME"\)\) && Boolean\(notificationQueue\)/);
+  assert.match(source, /const recordingStorageProvider = configuredString\("RECORDING_STORAGE_PROVIDER"\)\.toLowerCase\(\)/);
+  assert.match(source, /recordingStorageProvider === "livekit_r2"/);
+  assert.match(source, /RECORDINGS_ENCRYPTION_KEY_REFERENCE/);
+  assert.match(source, /recordingStorage,/);
   assert.match(source, /const providerAdapters =/);
   assert.match(source, /payment: paymentProvider\?\.name \|\| null/);
   assert.match(source, /video: videoConfig\.provider/);
+  assert.match(source, /recordingStorage: recordingStorageProvider \|\| null/);
   assert.match(source, /evidenceScanner: evidenceScanProvider \|\| null/);
   assert.match(source, /async function readConfiguredNotificationDelivery/);
   assert.match(source, /readConfiguredNotificationDelivery\("EMAIL"\)/);
