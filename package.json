@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "validate:environment": "node --import tsx --env-file-if-exists=.env.local scripts/validate-environment.mjs",
     "audit:pilot": "node --import tsx --env-file-if-exists=.env.local scripts/audit-pilot.mjs",
+    "validate:evidence": "node --import tsx scripts/validate-release-evidence.mjs",
     "audit:routes": "node scripts/audit-route-matrix.mjs",
     "staging:smoke": "node --env-file-if-exists=.env.local scripts/staging-smoke.mjs",
     "db:migrate:local": "node --env-file-if-exists=.env.local scripts/d1-migrations.mjs apply --local",

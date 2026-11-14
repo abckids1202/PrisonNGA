@@ -88,6 +88,16 @@ deployment configuration and approved evidence system:
 The evaluator still requires every production gate to be present and valid;
 the shortened example above is not a usable production manifest.
 
+Validate a redacted manifest before loading it into a deployment secret store:
+
+```bash
+npm run validate:evidence -- --environment=production --manifest=./evidence/release-manifest.json
+```
+
+The command uses the same gate evaluator as readiness. Gate status variables and
+release ID/expiry must be supplied through the intended environment; the
+manifest file is read locally and is never printed back with secret values.
+
 ## Current interpretation
 
 Until this register has real owners, artifacts, dates, and approvals, the
