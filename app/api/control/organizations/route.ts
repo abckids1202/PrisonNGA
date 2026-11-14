@@ -1,6 +1,7 @@
 import { getD1 } from "../../../../db/runtime";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
+import { enforceRateLimit } from "../../../../lib/server/rate-limit";
 import { assertReason, getRequestContext, requireOrganizationPermission, requirePlatformProvisioning, requireStepUp, securityErrorResponse, securityResponse, SecurityError } from "../../../../lib/server/security";
 
 const timezonePattern = /^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)+$/;
@@ -10,6 +11,8 @@ export async function POST(request: Request) {
   let d1: D1Database | null = null;
   let idempotency: { claimId: string; scope: string; key: string } | null = null;
   try {
+    d1 = await getD1();
+    await enforceRateLimit(d1, { key: `platform-provisioning:${context.ipAddress || "unknown"}`, limit: 10, windowSeconds: 15 * 60 });
     const operator = await requirePlatformProvisioning(request);
     const body = await request.json() as { organizationName?: unknown; organizationSlug?: unknown; facilityName?: unknown; timezone?: unknown; ownerEmail?: unknown; ownerName?: unknown; ownerReference?: unknown };
     const organizationName = typeof body.organizationName === "string" ? body.organizationName.trim().slice(0, 160) : "";
@@ -24,7 +27,6 @@ export async function POST(request: Request) {
     }
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
     if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new SecurityError("IDEMPOTENCY_KEY_REQUIRED", 400);
-    d1 = await getD1();
     const scope = "platform-organization-provisioning";
     const requestHash = await hashIdempotencyPayload({ ...body, operatorReference: operator.operatorReference, changeTicket: operator.changeTicket });
     const claimed: IdempotencyClaim = await claimIdempotency(d1, { scope, key: idempotencyKey, requestHash });

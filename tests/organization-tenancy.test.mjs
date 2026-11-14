@@ -28,6 +28,8 @@ test("organization administration uses a dedicated organization-role boundary", 
   assert.match(organizations, /export async function PATCH/);
   assert.match(organizations, /export async function POST/);
   assert.match(organizations, /requirePlatformProvisioning/);
+  assert.match(organizations, /platform-provisioning:/);
+  assert.match(organizations, /enforceRateLimit/);
   assert.match(organizations, /ORGANIZATION_PROVISIONED/);
   assert.match(organizations, /ORGANIZATION_UPDATED/);
   assert.match(organizations, /STALE_ORGANIZATION/);
