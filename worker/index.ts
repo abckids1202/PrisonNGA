@@ -434,7 +434,14 @@ async function processOutbox(env: Env): Promise<void> {
           AND outbox_events.status = 'FAILED'
           AND outbox_events.last_error = 'Recovered stale processing claim.'
       )`).run();
-  const result = await env.DB.prepare("SELECT id, event_type, aggregate_type, aggregate_id, facility_id, payload, correlation_id, attempt_count FROM outbox_events WHERE status IN ('PENDING', 'FAILED') AND julianday(available_at) <= julianday('now') ORDER BY created_at ASC LIMIT 25").all<OutboxRow>();
+    const result = await env.DB.prepare(`SELECT oe.id, oe.event_type, oe.aggregate_type, oe.aggregate_id, oe.facility_id, oe.payload, oe.correlation_id, oe.attempt_count
+      FROM outbox_events oe
+      LEFT JOIN facilities f ON f.id = oe.facility_id
+      LEFT JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE oe.status IN ('PENDING', 'FAILED')
+        AND julianday(oe.available_at) <= julianday('now')
+        AND (oe.facility_id IS NULL OR o.id IS NOT NULL)
+      ORDER BY oe.created_at ASC LIMIT 25`).all<OutboxRow>();
   for (const row of result.results) {
     const now = new Date().toISOString();
     try {
@@ -454,6 +461,8 @@ async function processOutbox(env: Env): Promise<void> {
             SELECT 'lockdown:' || a.facility_id || ':' || ? || ':' || a.id,
               'FACILITY_LOCKDOWN_APPOINTMENT', 'appointment', a.id, a.facility_id, '{}', ?, ?
             FROM appointments a
+            INNER JOIN facilities f ON f.id = a.facility_id
+            INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
             WHERE a.facility_id = ?
               AND a.status IN ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'WAITING', 'IN_PROGRESS')`)
             .bind(row.correlation_id, row.correlation_id, now, row.facility_id),
@@ -483,7 +492,7 @@ async function processOutbox(env: Env): Promise<void> {
         throw new Error("OUTBOX_RECIPIENT_MISMATCH");
       }
       if (visitorUserId) {
-        const facility = row.facility_id ? await env.DB.prepare("SELECT organization_id FROM facilities WHERE id = ?").bind(row.facility_id).first<{ organization_id: string | null }>() : null;
+        const facility = row.facility_id ? await env.DB.prepare("SELECT f.organization_id FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?").bind(row.facility_id).first<{ organization_id: string | null }>() : null;
         if (!facility?.organization_id) throw new Error("OUTBOX_FACILITY_ORGANIZATION_NOT_CONFIGURED");
         const copy = notificationCopy(row.event_type, payload);
         const notificationPayload = { aggregateId: row.aggregate_id, correlationId: row.correlation_id, ...payload };

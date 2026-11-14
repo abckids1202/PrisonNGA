@@ -21,3 +21,11 @@ test("outbox claims before parsing so malformed payloads enter retry/dead-letter
   assert.ok(claim >= 0, "outbox claim is present");
   assert.ok(parse > claim, "payload parsing must happen after the processing claim");
 });
+
+test("outbox delivery only processes active organization tenants", async () => {
+  const source = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const worker = source.slice(source.indexOf("async function processOutbox"));
+  assert.match(worker, /LEFT JOIN facilities f ON f\.id = oe\.facility_id/);
+  assert.match(worker, /LEFT JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(worker, /oe\.facility_id IS NULL OR o\.id IS NOT NULL/);
+});
