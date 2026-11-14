@@ -141,6 +141,9 @@ pilot deployment.
   incidents, policies, credit accounts, recordings, legal holds, and retention
   policies, with recording-consent compatibility preserved for session-derived
   organization scope.
+- Staff facility assignments, user roles, organization memberships, and
+  organization role assignments now reject explicit cross-tenant bindings while
+  preserving legacy organization-scope fill paths for older writers.
 - Release verifier, deployment validator, route security matrix, local restore
   drill, browser smoke tests, and redacted operational logging.
 
