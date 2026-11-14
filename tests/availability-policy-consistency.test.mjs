@@ -7,4 +7,8 @@ test("visitor availability reuses the authoritative visit-window validator", asy
   assert.match(source, /import \{[^}]*validateVisitWindow[^}]*\} from .*visit-policy/);
   assert.match(source, /const window = validateVisitWindow\(/);
   assert.match(source, /if \(!window\.ok\) continue/);
+  assert.match(source, /FROM visit_policies vp[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(source, /FROM appointments a[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(source, /FROM resources r[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(source, /FROM resource_reservations rr[\s\S]*?INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
