@@ -14,11 +14,11 @@ export async function GET() {
       WHERE vr.visitor_user_id = ? ORDER BY vr.created_at DESC`).bind(visitor.userId).all();
     const relationships = await Promise.all(result.results.map(async (relationship) => {
       const history = await d1.prepare(`SELECT entity_type, action_type, reason, created_at
-        FROM audit_events
-        WHERE facility_id = ?
-          AND ((entity_type = 'visitor_relationship' AND entity_id = ?)
-            OR (entity_type = 'verification_case' AND entity_id = ?))
-        ORDER BY created_at ASC`).bind(relationship.facility_id, relationship.id, relationship.verification_case_id || "").all<{ entity_type: string; action_type: string; reason: string | null; created_at: string }>();
+        FROM audit_events ae INNER JOIN facilities f ON f.id = ae.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+        WHERE ae.facility_id = ?
+          AND ((ae.entity_type = 'visitor_relationship' AND ae.entity_id = ?)
+            OR (ae.entity_type = 'verification_case' AND ae.entity_id = ?))
+        ORDER BY ae.created_at ASC`).bind(relationship.facility_id, relationship.id, relationship.verification_case_id || "").all<{ entity_type: string; action_type: string; reason: string | null; created_at: string }>();
       return { ...relationship, decision_history: history.results };
     }));
     return securityResponse({ relationships }, 200, context.requestId);
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     await enforceRateLimit(d1, { key: `visitor-relationship-submit:${visitor.userId}`, limit: 10, windowSeconds: 24 * 60 * 60 });
     const prisoner = await d1.prepare("SELECT p.id, p.facility_id, f.organization_id, p.status, p.visitation_status FROM prisoners p INNER JOIN facilities f ON f.id = p.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE p.id = ? AND p.facility_id = ? AND f.organization_id IS NOT NULL").bind(prisonerId, facilityId).first<{ id: string; facility_id: string; organization_id: string; status: string; visitation_status: string }>();
     if (!prisoner || prisoner.status !== "ACTIVE" || prisoner.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 404);
-    const existing = await d1.prepare(`SELECT vr.id, vr.status, vc.id AS verification_id FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id AND vc.facility_id = vr.facility_id WHERE vr.visitor_user_id = ? AND vr.facility_id = ? AND vr.prisoner_id = ?`).bind(visitor.userId, facilityId, prisonerId).first<{ id: string; status: string; verification_id: string | null }>();
+    const existing = await d1.prepare(`SELECT vr.id, vr.status, vc.id AS verification_id FROM visitor_relationships vr INNER JOIN facilities f ON f.id = vr.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id AND vc.facility_id = vr.facility_id WHERE vr.visitor_user_id = ? AND vr.facility_id = ? AND vr.prisoner_id = ?`).bind(visitor.userId, facilityId, prisonerId).first<{ id: string; status: string; verification_id: string | null }>();
     if (existing) return securityResponse({ relationshipId: existing.id, verificationId: existing.verification_id, status: existing.status, idempotent: true }, 200, context.requestId);
     const relationshipId = crypto.randomUUID();
     const verificationId = crypto.randomUUID();
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     }));
     if (!created[0]?.meta.changes) {
       const racedRequest = await d1.prepare(`SELECT vr.id, vr.facility_id, vr.status, vc.id AS verification_id
-        FROM visitor_relationships vr LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id AND vc.facility_id = vr.facility_id
+        FROM visitor_relationships vr INNER JOIN facilities f ON f.id = vr.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' LEFT JOIN verification_cases vc ON vc.relationship_id = vr.id AND vc.facility_id = vr.facility_id
         WHERE vr.visitor_user_id = ? AND vr.facility_id = ? AND vr.prisoner_id = ?`)
         .bind(visitor.userId, facilityId, prisonerId).first<{ id: string; facility_id: string; status: string; verification_id: string | null }>();
       if (racedRequest) {

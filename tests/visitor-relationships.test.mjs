@@ -11,6 +11,8 @@ test("visitor relationship and evidence writes have explicit abuse-rate boundari
   assert.match(evidenceRoute, /visitor-evidence-upload:\$\{visitor\.userId\}/);
   assert.match(relationshipRoute, /enforceRateLimit/);
   assert.match(evidenceRoute, /enforceRateLimit/);
+  assert.match(relationshipRoute, /FROM audit_events ae INNER JOIN facilities f ON f\.id = ae\.facility_id INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
+  assert.match(relationshipRoute, /FROM visitor_relationships vr INNER JOIN facilities f ON f\.id = vr\.facility_id INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
 
 class SQLiteD1Statement {
