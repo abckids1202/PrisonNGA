@@ -29,6 +29,9 @@ For the Xendit-specific payment sequence and evidence requirements, use the
 For the visitor email provider setup, callback relay, and OTP-specific evidence
 requirements, use the [email delivery staging acceptance checklist](EMAIL_DELIVERY_STAGING_ACCEPTANCE.md).
 
+For private R2 evidence storage, malware scanning, retention, legal hold, and
+restore evidence, use the [evidence storage staging acceptance checklist](EVIDENCE_STORAGE_STAGING_ACCEPTANCE.md).
+
 ## 2. Environment separation
 
 Maintain separate credentials, D1 databases, R2 buckets, LiveKit projects, webhook endpoints, payment accounts, and identity-provider applications for local, staging, and production. Local adapters and fictional seed data prove developer behavior only; they do not prove provider readiness.
