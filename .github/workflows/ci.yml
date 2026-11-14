@@ -29,6 +29,13 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
+      - name: Validate Vercel to Worker boundary
+        env:
+          SECUREVISIT_VERCEL_DEPLOYMENT: "true"
+          PUBLIC_APP_URL: https://securevisit-staging.example.invalid
+          WORKER_API_ORIGIN: https://securevisit-api-staging.example.invalid
+        run: npm run vercel-build
+
       # Keep hosted CI on the same authoritative release verifier used before
       # every local push. This includes whitespace, migrations, backup/restore,
       # typecheck, lint, build/server tests, browser tests, and dependency
