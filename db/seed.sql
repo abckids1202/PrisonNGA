@@ -4,21 +4,21 @@ ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO facilities (id, organization_id, name, timezone, current_state)
 VALUES ('facility-central-001', 'org-local-001', 'Central Correctional Facility', 'Asia/Jakarta', 'NORMAL_OPERATIONS')
-ON CONFLICT(id) DO NOTHING;
+ON CONFLICT(id) DO UPDATE SET organization_id = excluded.organization_id, name = excluded.name, timezone = excluded.timezone;
 
 INSERT INTO visit_policies (id, organization_id, facility_id, min_duration_minutes, max_duration_minutes, min_advance_minutes, max_advance_days, daily_start_time, daily_end_time, credit_price_minor, credit_currency, version)
 VALUES ('policy-central-default', 'org-local-001', 'facility-central-001', 15, 30, 60, 30, '08:00', '17:00', 50000, 'IDR', 1)
-ON CONFLICT(facility_id) DO NOTHING;
+ON CONFLICT(facility_id) DO UPDATE SET organization_id = excluded.organization_id, credit_price_minor = excluded.credit_price_minor, credit_currency = excluded.credit_currency;
 
 INSERT INTO appointment_types (id, organization_id, facility_id, code, display_name, description, duration_minutes, credit_cost, status, version)
 VALUES
   ('appointment-type-family-central', 'org-local-001', 'facility-central-001', 'FAMILY', 'Family visit', 'Standard approved visitor relationship visit.', 30, 1, 'ACTIVE', 1),
   ('appointment-type-legal-central', 'org-local-001', 'facility-central-001', 'LEGAL', 'Legal visit', 'Professional or legal representative visit subject to facility review.', 30, 1, 'ACTIVE', 1)
-ON CONFLICT(facility_id, code) DO NOTHING;
+ON CONFLICT(facility_id, code) DO UPDATE SET organization_id = excluded.organization_id, display_name = excluded.display_name, description = excluded.description;
 
 INSERT INTO prisoners (id, organization_id, facility_id, prisoner_number, display_name, housing_unit, status, visitation_status)
 VALUES ('prisoner-ar-001', 'org-local-001', 'facility-central-001', 'AR-2041', 'A. Rahman', 'Unit 4', 'ACTIVE', 'APPROVED')
-ON CONFLICT(id) DO NOTHING;
+ON CONFLICT(id) DO UPDATE SET organization_id = excluded.organization_id, facility_id = excluded.facility_id, display_name = excluded.display_name, status = excluded.status, visitation_status = excluded.visitation_status;
 
 -- Local-only staff identity used by browser acceptance tests. This seed is never
 -- applied by the remote migration command and does not bypass production SSO.
@@ -28,7 +28,7 @@ ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO staff_profiles (user_id, facility_id, employee_reference, job_title, department)
 VALUES ('staff-local-supervisor', 'facility-central-001', 'LOCAL-001', 'Pilot Supervisor', 'Operations')
-ON CONFLICT(user_id) DO NOTHING;
+ON CONFLICT(user_id) DO UPDATE SET organization_id = (SELECT organization_id FROM facilities WHERE id = excluded.facility_id), facility_id = excluded.facility_id, employee_reference = excluded.employee_reference, job_title = excluded.job_title, department = excluded.department;
 
 INSERT INTO resources (id, organization_id, facility_id, resource_type, display_name, status, room_id, health_state, last_heartbeat_at)
 VALUES
@@ -40,13 +40,13 @@ VALUES
   ('kiosk-04', 'org-local-001', 'facility-central-001', 'DEVICE', 'Kiosk 04', 'OFFLINE', 'room-03', 'FAILED', datetime('now', '-14 minutes')),
   ('kiosk-06', 'org-local-001', 'facility-central-001', 'DEVICE', 'Kiosk 06', 'ONLINE', NULL, 'HEALTHY', CURRENT_TIMESTAMP),
   ('kiosk-08', 'org-local-001', 'facility-central-001', 'DEVICE', 'Kiosk 08', 'MAINTENANCE', NULL, 'WARNING', CURRENT_TIMESTAMP)
-ON CONFLICT(id) DO NOTHING;
+ON CONFLICT(id) DO UPDATE SET organization_id = excluded.organization_id, facility_id = excluded.facility_id, resource_type = excluded.resource_type, display_name = excluded.display_name, status = excluded.status, room_id = excluded.room_id, health_state = excluded.health_state, last_heartbeat_at = excluded.last_heartbeat_at;
 
 -- Local-only kiosk acceptance credential. The raw secret is intentionally not stored;
 -- browser acceptance tests provide it through the controlled-device header boundary.
 INSERT INTO kiosk_credentials (id, organization_id, facility_id, resource_id, credential_hash, status, created_by, created_at)
 VALUES ('credential-local-e2e-kiosk-02', 'org-local-001', 'facility-central-001', 'kiosk-02', '5537616105e030399d09f6aef4f4ecaae220fd45192dea09015533cad1ac554e', 'ACTIVE', 'staff-local-supervisor', CURRENT_TIMESTAMP)
-ON CONFLICT(id) DO NOTHING;
+ON CONFLICT(id) DO UPDATE SET organization_id = excluded.organization_id, facility_id = excluded.facility_id, resource_id = excluded.resource_id, credential_hash = excluded.credential_hash, status = excluded.status;
 
 INSERT INTO roles (id, name, description) VALUES
   ('role-scheduling-officer', 'Scheduling Officer', 'Reviews and coordinates visitation appointments.'),
@@ -58,15 +58,15 @@ ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by)
 VALUES ('staff-local-supervisor', 'role-supervisor', 'facility-central-001', 'local-seed')
-ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
+ON CONFLICT(user_id, role_id, facility_id) DO UPDATE SET organization_id = (SELECT organization_id FROM facilities WHERE id = excluded.facility_id), assigned_by = excluded.assigned_by;
 
 INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by)
 VALUES ('staff-local-supervisor', 'role-verification-officer', 'facility-central-001', 'local-seed')
-ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
+ON CONFLICT(user_id, role_id, facility_id) DO UPDATE SET organization_id = (SELECT organization_id FROM facilities WHERE id = excluded.facility_id), assigned_by = excluded.assigned_by;
 
 INSERT INTO user_roles (user_id, role_id, facility_id, assigned_by)
 VALUES ('staff-local-supervisor', 'role-scheduling-officer', 'facility-central-001', 'local-seed')
-ON CONFLICT(user_id, role_id, facility_id) DO NOTHING;
+ON CONFLICT(user_id, role_id, facility_id) DO UPDATE SET organization_id = (SELECT organization_id FROM facilities WHERE id = excluded.facility_id), assigned_by = excluded.assigned_by;
 
 INSERT INTO permissions (id, permission_key, description) VALUES
   ('perm-facility-read', 'facility.read', 'Read facility state and operational context.'),

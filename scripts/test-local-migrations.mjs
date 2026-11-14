@@ -14,6 +14,7 @@ try {
     ["Apply all migrations to an empty local D1 database", "apply"],
     ["Confirm the fresh database has no pending migrations", "list"],
     ["Seed fictional baseline facility data", "seed"],
+    ["Repeat the fictional baseline seed without tenant conflicts", "seed"],
   ]) {
     console.log(`\n${label}`);
     // Wrangler can emit a migration table larger than Windows' synchronous
