@@ -13,6 +13,7 @@ const requiredRepositoryArtifacts = [
   "docs/PRODUCTION_OPERATIONS_RUNBOOK.md",
   "docs/PILOT_EVIDENCE_REGISTER.md",
   "docs/ROUTE_SECURITY_MATRIX.md",
+  "docs/VERCEL_WORKER_BOUNDARY.md",
 ];
 const missingRepositoryArtifacts = requiredRepositoryArtifacts.filter((path) => !existsSync(path));
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { evaluateDeploymentConfig } from "../scripts/validate-deployment.mjs";
 
@@ -58,4 +59,12 @@ test("deployment preflight rejects credentials embedded in Worker vars", () => {
   }), "staging", { NOTIFICATION_QUEUE_NAME: "securevisit-staging-notifications" });
   assert.equal(result.ok, false);
   assert.match(result.failures.join("\n"), /must not contain secret LIVEKIT_API_SECRET/);
+});
+
+test("Vercel build validates the frontend and Worker origins", async () => {
+  const source = await readFile(new URL("../scripts/validate-vercel-boundary.mjs", import.meta.url), "utf8");
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.match(source, /PUBLIC_APP_URL/);
+  assert.match(source, /WORKER_API_ORIGIN/);
+  assert.equal(packageJson.scripts["vercel-build"], "node scripts/validate-vercel-boundary.mjs && npm run build");
 });

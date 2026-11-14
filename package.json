@@ -9,6 +9,7 @@
     "dev": "vinext dev",
     "dev:local": "node scripts/dev-local.mjs",
     "build": "vinext build && node scripts/sanitize-deployment-manifest.mjs",
+    "vercel-build": "node scripts/validate-vercel-boundary.mjs && npm run build",
     "deploy:dry-run": "npm run build && wrangler deploy --dry-run",
     "deploy:staging:dry-run": "npm run build && npm run validate:deployment -- --environment=staging && wrangler deploy --dry-run",
     "deploy:production:dry-run": "npm run build && npm run validate:deployment -- --environment=production && wrangler deploy --dry-run",
