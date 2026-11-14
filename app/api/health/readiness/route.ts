@@ -63,6 +63,7 @@ const requiredColumns: Record<string, string[]> = {
   retention_policies: ["organization_id"],
   visitor_waiting_room_checkins: ["organization_id"],
   visitor_device_check_attempts: ["organization_id"],
+  kiosk_device_check_attempts: ["organization_id"],
   visit_session_events: ["organization_id"],
   visit_session_participants: ["organization_id"],
   recording_consents: ["organization_id"],

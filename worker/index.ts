@@ -116,7 +116,7 @@ const tenantScopedFacilityTables = [
   "visit_policies", "visit_policy_history", "appointment_types", "appointments", "prisoners",
   "visitor_relationships", "verification_cases", "evidence_documents", "retention_policies",
   "legal_holds", "facility_closures", "appointment_status_events", "resource_reservations", "resources", "kiosk_credentials",
-  "waiting_room_sessions", "visitor_waiting_room_checkins", "visit_sessions", "visitor_device_check_attempts",
+  "waiting_room_sessions", "visitor_waiting_room_checkins", "visit_sessions", "visitor_device_check_attempts", "kiosk_device_check_attempts",
   "visit_session_events", "visit_session_participants", "recording_consents", "recordings", "recording_access_events",
   "credit_accounts", "payment_intents", "payment_refund_requests", "notifications",
   "incidents", "audit_export_manifests", "staff_profiles", "staff_facility_assignments", "user_roles",

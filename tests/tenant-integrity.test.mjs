@@ -26,3 +26,15 @@ test("facility closures carry organization scope and database guards", async () 
   assert.match(readiness, /facility_closures: \["organization_id"\]/);
   assert.match(source, /"legal_holds", "facility_closures", "appointment_status_events"/);
 });
+
+test("kiosk device-check evidence carries organization scope and database guards", async () => {
+  const migration = await readFile(new URL("../drizzle/0093_kiosk_device_check_organization_scope.sql", import.meta.url), "utf8");
+  const readiness = await readFile(new URL("../app/api/health/readiness/route.ts", import.meta.url), "utf8");
+  const source = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  assert.match(migration, /ALTER TABLE `kiosk_device_check_attempts` ADD COLUMN `organization_id`/);
+  assert.match(migration, /kiosk_device_check_organization_guard/);
+  assert.match(migration, /kiosk_device_check_organization_fill/);
+  assert.match(migration, /kiosk_device_check_organization_update_guard/);
+  assert.match(readiness, /kiosk_device_check_attempts: \["organization_id"\]/);
+  assert.match(source, /visitor_device_check_attempts", "kiosk_device_check_attempts/);
+});
