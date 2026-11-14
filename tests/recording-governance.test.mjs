@@ -86,6 +86,8 @@ test("recording inventory exposes facility-scoped access history", async () => {
   assert.match(detail, /r\.organization_id = \?/);
   assert.match(detail, /rae\.organization_id = \?/);
   assert.match(detail, /accessEvents/);
+  assert.match(compliance, /\/api\/control\/recordings\/\$\{encodeURIComponent\(recordingId\)\}/);
+  assert.match(compliance, /Inspect record/);
   assert.match(compliance, /Open audited playback/);
   assert.match(compliance, /audited access/);
   assert.match(compliance, /\/api\/control\/legal-holds/);
