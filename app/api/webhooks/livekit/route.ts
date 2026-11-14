@@ -50,8 +50,25 @@ async function handleEgressEvent(d1: D1Database, event: { id?: string; event?: s
     recording.provider_reference = egress.egressId;
     recording.status = "PROCESSING";
   }
-  const prior = await d1.prepare("SELECT id, metadata FROM visit_session_events WHERE id = ? AND session_id = ?").bind(eventId, session.id).first<{ id: string; metadata: string }>();
-  if (prior) return { handled: true, response: securityResponse({ accepted: true, idempotent: true, sessionId: session.id, recordingId: recording.id }, 200, requestId) };
+  const eventType = `PROVIDER_${event.event.toUpperCase()}`;
+  // LiveKit may encode file sizes as bigint values. Normalize provider
+  // metadata before persistence so a valid callback cannot fail during
+  // JSON serialization, and compare the complete normalized payload on
+  // replay instead of accepting a conflicting event under the same ID.
+  const metadata = JSON.stringify({
+    roomName,
+    egressId: egress.egressId,
+    fileResults: (egress.fileResults || []).map((file) => ({
+      filename: file.filename || null,
+      size: typeof file.size === "bigint" ? file.size.toString() : file.size ?? null,
+      location: file.location || null,
+    })),
+  });
+  const prior = await d1.prepare("SELECT id, event_type, metadata FROM visit_session_events WHERE id = ? AND session_id = ?").bind(eventId, session.id).first<{ id: string; event_type: string; metadata: string }>();
+  if (prior) {
+    if (prior.event_type !== eventType || prior.metadata !== metadata) throw new SecurityError("LIVEKIT_EVENT_REPLAY_CONFLICT", 409);
+    return { handled: true, response: securityResponse({ accepted: true, idempotent: true, sessionId: session.id, recordingId: recording.id }, 200, requestId) };
+  }
   // Egress delivery is at-least-once and callbacks can arrive out of order.
   // Recording lifecycle is monotonic: a terminal record must never be
   // reopened by a late start/progress callback, and an available object must
@@ -60,8 +77,6 @@ async function handleEgressEvent(d1: D1Database, event: { id?: string; event?: s
     return { handled: true, response: securityResponse({ accepted: true, ignored: true, reason: "RECORDING_TERMINAL", sessionId: session.id, recordingId: recording.id }, 200, requestId) };
   }
   const now = new Date().toISOString();
-  const metadata = JSON.stringify({ roomName, egressId: egress.egressId, fileResults: egress.fileResults || [] });
-  const eventType = `PROVIDER_${event.event.toUpperCase()}`;
   let nextStatus = event.event === "egress_ended" ? "FAILED" : "PROCESSING";
   let nextSessionRecordingStatus = event.event === "egress_ended" ? "FAILED" : "RECORDING";
   let contentType: string | null = null;
