@@ -71,6 +71,7 @@ export function evaluateDeploymentConfig(config, environment, runtime = {}) {
   if (!recordings) failures.push("generated RECORDINGS_BUCKET R2 binding is missing");
   else if (!String(recordings.bucket_name || "").trim() || String(recordings.bucket_name).trim() === PLACEHOLDER_R2_NAME) failures.push("generated RECORDINGS_BUCKET R2 binding must use a real bucket name");
   if (String(vars.RECORDINGS_ENCRYPTION_MODE || "").trim().toLowerCase() !== "r2_managed") failures.push("generated RECORDINGS_ENCRYPTION_MODE must be r2_managed");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:\/-]{2,159}$/.test(String(vars.RECORDINGS_ENCRYPTION_KEY_REFERENCE || "").trim())) failures.push("generated RECORDINGS_ENCRYPTION_KEY_REFERENCE must be a bounded non-secret identifier");
   for (const key of forbiddenManifestSecrets) {
     if (Object.prototype.hasOwnProperty.call(vars, key)) failures.push(`generated manifest must not contain secret ${key}`);
   }

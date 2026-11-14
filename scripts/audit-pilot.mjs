@@ -18,6 +18,7 @@ const requiredRepositoryArtifacts = [
 const missingRepositoryArtifacts = requiredRepositoryArtifacts.filter((path) => !existsSync(path));
 
 const present = (key) => typeof values[key] === "string" && values[key].trim().length > 0;
+const safeRecordingEncryptionReference = /^[A-Za-z0-9][A-Za-z0-9._:\/-]{2,159}$/.test(String(values.RECORDINGS_ENCRYPTION_KEY_REFERENCE || "").trim());
 const realD1Id = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(values.D1_DATABASE_ID || "").trim());
 const httpsUrl = (key) => {
   if (!present(key)) return false;
@@ -37,7 +38,7 @@ const protectedRecordingStorage = environment === "development"
   : String(values.RECORDING_STORAGE_PROVIDER || "").trim().toLowerCase() === "livekit_r2"
     && String(values.RECORDINGS_ENCRYPTION_MODE || "").trim().toLowerCase() === "r2_managed"
     && present("RECORDINGS_BUCKET_NAME")
-    && present("RECORDINGS_ENCRYPTION_KEY_REFERENCE")
+    && safeRecordingEncryptionReference
     && httpsUrl("R2_S3_ENDPOINT")
     && present("R2_S3_ACCESS_KEY_ID")
     && present("R2_S3_SECRET_ACCESS_KEY");

@@ -11,6 +11,7 @@ import { evaluateReleaseGates } from "../../../../lib/server/release-gates";
 import { parseVisitorAuthChannels } from "../../../../lib/server/visitor-auth/channels";
 import { getReleaseInfo } from "../../../../lib/server/release-info";
 import { checkTenantIntegrity } from "../../../../lib/server/tenant-integrity";
+import { isSafeRecordingEncryptionReference } from "../../../../lib/server/recording-config";
 
 const requiredTables = [
   "d1_migrations", "organization_role_assignments",
@@ -204,7 +205,7 @@ export async function GET() {
       || (Boolean(recordingsBucket)
         && recordingStorageProvider === "livekit_r2"
         && configuredString("RECORDINGS_ENCRYPTION_MODE").toLowerCase() === "r2_managed"
-        && Boolean(configuredString("RECORDINGS_ENCRYPTION_KEY_REFERENCE"))
+        && isSafeRecordingEncryptionReference(configuredString("RECORDINGS_ENCRYPTION_KEY_REFERENCE"))
         && Boolean(configuredString("R2_S3_ENDPOINT"))
         && Boolean(configuredString("R2_S3_ACCESS_KEY_ID"))
         && Boolean(configuredString("R2_S3_SECRET_ACCESS_KEY")));

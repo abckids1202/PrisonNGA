@@ -5,6 +5,7 @@ import { assertReason, getRequestContext, getRuntimeValue, requirePermission, re
 import { recordingProviderCleanupFailureStatement } from "../../../../../../lib/server/reconciliation";
 import { getVideoConfig } from "../../../../../../lib/server/video/provider";
 import { startLiveKitRecording, stopLiveKitRecording } from "../../../../../../lib/server/video/recording";
+import { isSafeRecordingEncryptionReference } from "../../../../../../lib/server/recording-config";
 
 export async function POST(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   const context = await getRequestContext();
@@ -49,7 +50,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     const encryptionMode = (await getRuntimeValue("RECORDINGS_ENCRYPTION_MODE"))?.trim().toLowerCase() || null;
     const encryptionKeyReference = (await getRuntimeValue("RECORDINGS_ENCRYPTION_KEY_REFERENCE"))?.trim() || null;
     if (environment !== "development" && encryptionMode !== "r2_managed") throw new SecurityError("RECORDING_ENCRYPTION_MODE_NOT_CONFIGURED", 503);
-    if (environment !== "development" && !encryptionKeyReference) throw new SecurityError("RECORDING_ENCRYPTION_REFERENCE_NOT_CONFIGURED", 503);
+    if (environment !== "development" && !isSafeRecordingEncryptionReference(encryptionKeyReference)) throw new SecurityError("RECORDING_ENCRYPTION_REFERENCE_NOT_CONFIGURED", 503);
     if (existing && environment !== "development" && !existing.encryption_key_reference) throw new SecurityError("RECORDING_ENCRYPTION_REFERENCE_MISSING", 503);
     if (existing?.provider_reference && ["PROCESSING", "AVAILABLE"].includes(existing.status)) {
       const responseBody = { recordingId: existing.id, providerReference: existing.provider_reference, storageKey: existing.storage_key, status: existing.status, idempotent: true };

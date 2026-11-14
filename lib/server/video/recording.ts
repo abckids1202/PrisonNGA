@@ -1,5 +1,6 @@
 import { EncodedFileOutput, EncodedFileType, EgressClient, S3Upload, ServerError } from "livekit-server-sdk";
 import { getRuntimeValue, SecurityError } from "../security";
+import { isSafeRecordingEncryptionReference } from "../recording-config";
 
 type RecordingStorageConfig = { endpoint: string; accessKey: string; secret: string; bucket: string; region: string; encryptionKeyReference: string };
 
@@ -12,7 +13,7 @@ async function recordingStorageConfig(): Promise<RecordingStorageConfig> {
   const region = (await getRuntimeValue("R2_S3_REGION") || "auto").trim();
   const encryptionMode = (await getRuntimeValue("RECORDINGS_ENCRYPTION_MODE") || "").trim().toLowerCase();
   const encryptionKeyReference = (await getRuntimeValue("RECORDINGS_ENCRYPTION_KEY_REFERENCE") || "").trim();
-  if (provider !== "livekit_r2" || encryptionMode !== "r2_managed" || !/^https:\/\//.test(endpoint) || !accessKey || !secret || !bucket || !encryptionKeyReference) throw new SecurityError("RECORDING_STORAGE_NOT_CONFIGURED", 503);
+  if (provider !== "livekit_r2" || encryptionMode !== "r2_managed" || !/^https:\/\//.test(endpoint) || !accessKey || !secret || !bucket || !isSafeRecordingEncryptionReference(encryptionKeyReference)) throw new SecurityError("RECORDING_STORAGE_NOT_CONFIGURED", 503);
   return { endpoint, accessKey, secret, bucket, region, encryptionKeyReference };
 }
 

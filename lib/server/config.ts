@@ -1,6 +1,7 @@
 export type RuntimeConfig = Record<string, unknown>;
 import { isSecureHttpsEndpoint } from "./endpoint";
 import { parseVisitorAuthChannels } from "./visitor-auth/channels";
+import { isSafeRecordingEncryptionReference } from "./recording-config";
 
 export type EnvironmentCheck = {
   environment: "development" | "staging" | "production" | "invalid";
@@ -84,7 +85,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   requireSecret(env, "LIVEKIT_API_SECRET", missing);
   if (value(env, "RECORDING_STORAGE_PROVIDER") !== "livekit_r2") missing.push("RECORDING_STORAGE_PROVIDER=livekit_r2");
   if (value(env, "RECORDINGS_ENCRYPTION_MODE") !== "r2_managed") missing.push("RECORDINGS_ENCRYPTION_MODE=r2_managed");
-  if (!value(env, "RECORDINGS_ENCRYPTION_KEY_REFERENCE")) missing.push("RECORDINGS_ENCRYPTION_KEY_REFERENCE");
+  if (!isSafeRecordingEncryptionReference(value(env, "RECORDINGS_ENCRYPTION_KEY_REFERENCE"))) missing.push("RECORDINGS_ENCRYPTION_KEY_REFERENCE (bounded non-secret identifier)");
   if (!isSecureHttpsEndpoint(value(env, "R2_S3_ENDPOINT"))) missing.push("R2_S3_ENDPOINT (must be an https:// URL without credentials or fragments)");
   if (!value(env, "RECORDINGS_BUCKET_NAME") && !value(env, "R2_BUCKET_NAME")) missing.push("RECORDINGS_BUCKET_NAME");
   if (!value(env, "R2_S3_ACCESS_KEY_ID")) missing.push("R2_S3_ACCESS_KEY_ID");
