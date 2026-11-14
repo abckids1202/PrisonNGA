@@ -13,6 +13,7 @@ test("visitor support is persisted through the facility incident workflow", asyn
   assert.match(source, /WHERE i\.reporter_user_id = \? AND i\.incident_type = 'VISITOR_SUPPORT'/);
   assert.match(source, /facility\.current_state !== "NORMAL_OPERATIONS"/);
   assert.match(source, /if \(!appointment && facility\.current_state/);
+  assert.match(source, /SELECT a\.id, a\.facility_id FROM appointments a[\s\S]*?INNER JOIN facilities f ON f\.id = a\.facility_id INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
 });
 
 test("staff incident queries include visitor-reported cases", async () => {

@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `visitor-support:${visitor.userId}`, limit: 5, windowSeconds: 60 * 60 });
     const appointment = appointmentId
-      ? await d1.prepare("SELECT id, facility_id FROM appointments WHERE id = ? AND visitor_user_id = ?").bind(appointmentId, visitor.userId).first<{ id: string; facility_id: string }>()
+      ? await d1.prepare("SELECT a.id, a.facility_id FROM appointments a INNER JOIN facilities f ON f.id = a.facility_id INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE a.id = ? AND a.visitor_user_id = ?").bind(appointmentId, visitor.userId).first<{ id: string; facility_id: string }>()
       : null;
     if (appointmentId && !appointment) throw new SecurityError("SUPPORT_APPOINTMENT_NOT_FOUND", 404);
     const facilityId = appointment?.facility_id || requestedFacilityId;
