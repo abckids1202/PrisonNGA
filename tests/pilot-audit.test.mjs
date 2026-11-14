@@ -150,6 +150,22 @@ test("pilot audit accepts R2 storage only when the staging bucket is named", asy
   assert.equal(report.checks.find((check) => check.id === "evidence-storage")?.ok, true);
 });
 
+test("pilot audit does not overstate recording storage without the R2 upload boundary", async () => {
+  const result = await runAudit([], {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    RECORDING_STORAGE_PROVIDER: "livekit_r2",
+    RECORDINGS_BUCKET_NAME: "securevisit-staging-recordings",
+    RECORDINGS_ENCRYPTION_KEY_REFERENCE: "r2-managed:securevisit-staging-recordings:v1",
+    R2_S3_ENDPOINT: "",
+    R2_S3_ACCESS_KEY_ID: "",
+    R2_S3_SECRET_ACCESS_KEY: "",
+  });
+  assert.equal(result.code, 0);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.checks.find((check) => check.id === "recording-storage")?.ok, false);
+  assert.ok(report.nextActions.some((action) => action.includes("R2_S3_ENDPOINT")));
+});
+
 test("pilot audit requires the remote D1 database name as well as its UUID", async () => {
   const result = await runAudit([], {
     SECUREVISIT_ENVIRONMENT: "staging",
