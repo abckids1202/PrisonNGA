@@ -27,6 +27,20 @@ test("deployment manifest sanitizer replaces local adapters with deployment valu
   assert.equal(result.vars.PAYMENT_PROVIDER, "xendit");
 });
 
+test("deployment manifest sanitizer preserves release identity metadata", () => {
+  const result = sanitizeDeploymentManifest({ vars: {
+    SECUREVISIT_RELEASE_ID: "local-release",
+    SECUREVISIT_BUILD_ID: "local-build",
+  } }, {
+    SECUREVISIT_ENVIRONMENT: "staging",
+    SECUREVISIT_RELEASE_ID: "release-2026-11-15",
+    SECUREVISIT_BUILD_ID: "build-abc123",
+  });
+
+  assert.equal(result.vars.SECUREVISIT_RELEASE_ID, "release-2026-11-15");
+  assert.equal(result.vars.SECUREVISIT_BUILD_ID, "build-abc123");
+});
+
 test("deployment manifest sanitizer preserves recording storage runtime configuration", () => {
   const result = sanitizeDeploymentManifest({ vars: {
     PLATFORM_PROVISIONING_SECRET: "secret",

@@ -61,6 +61,8 @@ const localOnlyProviderSecrets = new Set([
 // signing material remain Cloudflare secret bindings and are deliberately not
 // copied into the manifest.
 const runtimeConfigKeys = [
+  "SECUREVISIT_RELEASE_ID",
+  "SECUREVISIT_BUILD_ID",
   "PUBLIC_APP_URL",
   "NOTIFICATION_QUEUE_NAME",
   "VISITOR_EMAIL_DELIVERY",

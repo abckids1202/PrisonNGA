@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url";
 
 export const nonSecretDeploymentKeys = [
   "SECUREVISIT_ENVIRONMENT",
+  "SECUREVISIT_RELEASE_ID",
+  "SECUREVISIT_BUILD_ID",
   "VIDEO_PROVIDER",
   "LIVEKIT_URL",
   "VISITOR_AUTH_CHANNELS",
