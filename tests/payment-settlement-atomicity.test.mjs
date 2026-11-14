@@ -9,6 +9,7 @@ class D1 {
 
   constructor() {
     this.sqlite.exec(`
+      CREATE TABLE organizations (id TEXT PRIMARY KEY, status TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
       CREATE TABLE payment_intents (id TEXT PRIMARY KEY, organization_id TEXT, facility_id TEXT, user_id TEXT, provider TEXT, credit_quantity INTEGER, amount_minor INTEGER, currency TEXT, status TEXT, version INTEGER, provider_reference TEXT, updated_at TEXT);
       CREATE TABLE users (id TEXT PRIMARY KEY, user_type TEXT NOT NULL);
@@ -18,6 +19,7 @@ class D1 {
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER, idempotency_key TEXT UNIQUE, reason TEXT, created_by TEXT, created_at TEXT, organization_id TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
+      INSERT INTO organizations VALUES ('org-1', 'ACTIVE');
       INSERT INTO facilities VALUES ('facility-1', 'org-1');
       INSERT INTO users VALUES ('visitor-1', 'VISITOR');
       INSERT INTO payment_intents VALUES ('payment-1', 'org-1', 'facility-1', 'visitor-1', 'webhook', 2, 100000, 'IDR', 'CHECKOUT_CREATED', 1, 'provider-1', 'before');
@@ -62,6 +64,16 @@ test("payment settlement ignores an intent owned by a staff account", async () =
   assert.equal(result.status, "IGNORED");
   assert.equal(result.ignored, "PAYMENT_INTENT_NOT_FOUND");
   assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+});
+
+test("payment settlement ignores an intent belonging to a disabled organization", async () => {
+  const d1 = new D1();
+  d1.sqlite.exec("UPDATE organizations SET status = 'DISABLED' WHERE id = 'org-1';");
+  const result = await processPaymentProviderEvent(d1, { provider: "webhook", eventKey: "event-1", payload: event });
+  assert.equal(result.status, "IGNORED");
+  assert.equal(result.ignored, "PAYMENT_INTENT_NOT_FOUND");
+  assert.equal(d1.sqlite.prepare("SELECT COUNT(*) AS count FROM credit_ledger_entries").get().count, 0);
+  assert.equal(d1.sqlite.prepare("SELECT status FROM payment_provider_events WHERE event_key = 'event-1'").get().status, "IGNORED");
 });
 
 test("payment settlement rejects an amount or currency mismatch before writing credits", async () => {
