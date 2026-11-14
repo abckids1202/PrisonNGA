@@ -63,6 +63,8 @@ test("recording startup requires and persists a non-secret encryption control re
   assert.match(storage, /RECORDINGS_ENCRYPTION_MODE/);
   assert.match(storage, /securevisit-encryption-control/);
   assert.match(storage, /securevisit-privacy/);
+  assert.match(route, /RECORDINGS_ENCRYPTION_MODE/);
+  assert.match(route, /RECORDING_ENCRYPTION_MODE_NOT_CONFIGURED/);
   assert.match(route, /RECORDING_ENCRYPTION_REFERENCE_NOT_CONFIGURED/);
   assert.match(route, /encryption_key_reference/);
 });

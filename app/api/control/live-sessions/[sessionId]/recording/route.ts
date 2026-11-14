@@ -46,7 +46,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     await requireStepUp({ purpose: "recording_start", userId: authorization.userId, targetId: session.id, payload: { expectedVersion: body.expectedVersion, reason } });
     const existing = await d1.prepare("SELECT id, provider_reference, storage_key, encryption_key_reference, status FROM recordings WHERE session_id = ? AND facility_id = ?").bind(session.id, session.facility_id).first<{ id: string; provider_reference: string | null; storage_key: string | null; encryption_key_reference: string | null; status: string }>();
     const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
+    const encryptionMode = (await getRuntimeValue("RECORDINGS_ENCRYPTION_MODE"))?.trim().toLowerCase() || null;
     const encryptionKeyReference = (await getRuntimeValue("RECORDINGS_ENCRYPTION_KEY_REFERENCE"))?.trim() || null;
+    if (environment !== "development" && encryptionMode !== "r2_managed") throw new SecurityError("RECORDING_ENCRYPTION_MODE_NOT_CONFIGURED", 503);
     if (environment !== "development" && !encryptionKeyReference) throw new SecurityError("RECORDING_ENCRYPTION_REFERENCE_NOT_CONFIGURED", 503);
     if (existing && environment !== "development" && !existing.encryption_key_reference) throw new SecurityError("RECORDING_ENCRYPTION_REFERENCE_MISSING", 503);
     if (existing?.provider_reference && ["PROCESSING", "AVAILABLE"].includes(existing.status)) {
