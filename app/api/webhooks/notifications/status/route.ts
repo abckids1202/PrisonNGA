@@ -65,6 +65,8 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const notification = await d1.prepare(`SELECT nda.id, nda.notification_id, nda.status, oe.facility_id, oe.event_type
       FROM notification_delivery_attempts nda INNER JOIN outbox_events oe ON oe.id = nda.outbox_event_id
+      INNER JOIN facilities f ON f.id = oe.facility_id AND f.organization_id = oe.organization_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
       WHERE nda.provider_reference = ? AND nda.provider = ? ORDER BY nda.started_at DESC LIMIT 1`).bind(payload.providerReference, payload.provider).first<{ id: string; notification_id: string; status: string; facility_id: string | null; event_type: string }>();
     const challenge = await d1.prepare(`SELECT id, challenge_id, status FROM auth_challenge_delivery_attempts WHERE provider_reference = ? AND provider = ? ORDER BY created_at DESC LIMIT 1`).bind(payload.providerReference, payload.provider).first<{ id: string; challenge_id: string; status: string }>();
     if (!notification && !challenge) return securityResponse({ accepted: true, matched: false, eventId: payload.eventId }, 202, context.requestId);

@@ -13,6 +13,7 @@ test("delivery status webhook is signed, replay-safe, and updates both notificat
   assert.match(route, /existing\.payload !== snapshot/);
   assert.match(route, /provider_reference/);
   assert.match(route, /nda\.provider = \?/);
+  assert.match(route, /INNER JOIN organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/);
   assert.match(route, /UPDATE notifications SET status = CASE/);
   assert.match(route, /status IN \('DELIVERED', 'FAILED'\) THEN status/);
   assert.match(route, /status NOT IN \('DELIVERED', 'FAILED'\)/);
