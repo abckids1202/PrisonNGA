@@ -20,6 +20,7 @@ class TestD1 {
 function createDatabase() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(`
+    CREATE TABLE organizations (id TEXT PRIMARY KEY, status TEXT NOT NULL);
     CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT);
     CREATE TABLE waiting_room_sessions (
       appointment_id TEXT PRIMARY KEY, organization_id TEXT, facility_id TEXT NOT NULL, state TEXT NOT NULL,
@@ -42,6 +43,7 @@ function createDatabase() {
       id TEXT, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT,
       payload TEXT, correlation_id TEXT, created_at TEXT
     );
+    INSERT INTO organizations (id, status) VALUES ('org-1', 'ACTIVE');
     INSERT INTO facilities (id, organization_id) VALUES ('facility-1', 'org-1');
   `);
   return sqlite;
@@ -83,5 +85,25 @@ test("scheduled Waiting Room opening materializes one assigned, audited record",
   assert.equal(replay[2].meta.changes, 0);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 1);
+  sqlite.close();
+});
+
+test("scheduled Waiting Room opening fails closed for a disabled organization", async () => {
+  const sqlite = createDatabase();
+  sqlite.prepare("UPDATE organizations SET status = 'DISABLED' WHERE id = 'org-1'").run();
+  sqlite.prepare("INSERT INTO resource_reservations VALUES (?, ?, ?, ?, ?, ?)").run("room-1", "visit-1", "facility-1", "ROOM", "RESERVED", "2026-10-11T10:00:00.000Z");
+  sqlite.prepare("INSERT INTO resource_reservations VALUES (?, ?, ?, ?, ?, ?)").run("kiosk-1", "visit-1", "facility-1", "DEVICE", "RESERVED", "2026-10-11T10:00:00.000Z");
+  const d1 = new TestD1(sqlite);
+  const input = {
+    appointmentId: "visit-1", facilityId: "facility-1",
+    requestedStart: "2026-10-11T10:10:00.000Z", requestedEnd: "2026-10-11T10:40:00.000Z",
+    now: "2026-10-11T10:00:00.000Z", requestId: "req-disabled", correlationId: "cor-disabled",
+  };
+
+  const results = await executeBatch(sqlite, openScheduledWaitingRoomStatements(d1, input));
+  assert.equal(results.every((result) => result.meta.changes === 0), true);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM waiting_room_sessions").get().count, 0);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 0);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM outbox_events").get().count, 0);
   sqlite.close();
 });

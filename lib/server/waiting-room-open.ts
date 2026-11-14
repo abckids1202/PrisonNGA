@@ -18,7 +18,7 @@ export function openScheduledWaitingRoomStatements(d1: D1Database, input: Schedu
        identity_state, camera_state, microphone_state, network_state, room_state,
        kiosk_state, restriction_state, assigned_room_id, assigned_kiosk_id,
        version, last_checked_at, created_at, updated_at)
-      SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, 'NOT_ARRIVED', 'absent', 'waiting', 'pending', 'pending',
+      SELECT ?, f.organization_id, ?, 'NOT_ARRIVED', 'absent', 'waiting', 'pending', 'pending',
         'pending', 'pending', 'pass', 'pending', 'pass',
         (SELECT rr.resource_id FROM resource_reservations rr
           WHERE rr.appointment_id = ? AND rr.facility_id = ?
@@ -29,11 +29,13 @@ export function openScheduledWaitingRoomStatements(d1: D1Database, input: Schedu
             AND rr.resource_type = 'DEVICE' AND rr.status IN ('HELD', 'RESERVED', 'ACTIVE')
           ORDER BY rr.created_at DESC LIMIT 1),
         1, ?, ?, ?
-      WHERE NOT EXISTS (
+      FROM facilities f
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
+      WHERE f.id = ? AND NOT EXISTS (
         SELECT 1 FROM waiting_room_sessions
         WHERE appointment_id = ? AND facility_id = ?
       )`)
-      .bind(input.appointmentId, input.facilityId, input.facilityId, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.now, input.now, input.now, input.appointmentId, input.facilityId),
+      .bind(input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.appointmentId, input.facilityId, input.now, input.now, input.now, input.facilityId, input.appointmentId, input.facilityId),
     ...auditAndOutboxStatements(d1, {
       actorUserId: "system:scheduler",
       actorRole: "SYSTEM",
