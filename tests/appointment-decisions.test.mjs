@@ -27,6 +27,7 @@ class SQLiteD1 {
       CREATE TABLE resources (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, resource_type TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, health_state TEXT NOT NULL DEFAULT 'HEALTHY', last_heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP, organization_id TEXT);
       CREATE TABLE resource_reservations (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, appointment_id TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, status TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, created_at TEXT NOT NULL, organization_id TEXT);
       CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, state TEXT NOT NULL, visitor_presence TEXT NOT NULL DEFAULT 'absent', visitor_presence_at TEXT, prisoner_presence TEXT NOT NULL DEFAULT 'absent', prisoner_presence_at TEXT, version INTEGER NOT NULL, last_checked_at TEXT, updated_at TEXT NOT NULL);
+      CREATE TABLE organizations (id TEXT PRIMARY KEY, status TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT, current_state TEXT NOT NULL, timezone TEXT NOT NULL);
       CREATE TABLE visit_policies (facility_id TEXT PRIMARY KEY, version INTEGER NOT NULL, min_duration_minutes INTEGER NOT NULL, max_duration_minutes INTEGER NOT NULL, min_advance_minutes INTEGER NOT NULL, max_advance_days INTEGER NOT NULL, daily_start_time TEXT NOT NULL, daily_end_time TEXT NOT NULL);
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT NOT NULL, status TEXT NOT NULL, visitation_status TEXT NOT NULL);
@@ -35,6 +36,7 @@ class SQLiteD1 {
       INSERT INTO credit_accounts VALUES ('credit-1', 'facility-1', 'visitor-1', 2, 0, 1, 'before');
       INSERT INTO resources (id, facility_id, resource_type, display_name, status) VALUES ('room-1', 'facility-1', 'ROOM', 'Room 01', 'AVAILABLE');
       INSERT INTO resources (id, facility_id, resource_type, display_name, status) VALUES ('device-1', 'facility-1', 'DEVICE', 'Kiosk 01', 'ONLINE');
+      INSERT INTO organizations VALUES ('org-1', 'ACTIVE');
       INSERT INTO facilities VALUES ('facility-1', 'org-1', 'NORMAL_OPERATIONS', 'Asia/Jakarta');
       INSERT INTO visit_policies VALUES ('facility-1', 1, 15, 30, 60, 30, '08:00', '17:00');
       INSERT INTO prisoners VALUES ('prisoner-1', 'facility-1', 'ACTIVE', 'APPROVED');

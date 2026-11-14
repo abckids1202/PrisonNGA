@@ -37,7 +37,7 @@ export function createVisitorAppointmentStatements(d1: D1Database, input: Create
   return [
     d1.prepare(`INSERT INTO appointments
       (id, organization_id, facility_id, visitor_user_id, prisoner_id, status, requested_start, requested_end, timezone, policy_version, duration_minutes, appointment_type, version, created_at, updated_at, last_transition_id)
-      SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?
+      SELECT ?, (SELECT f.organization_id FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?), ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?
       WHERE EXISTS (SELECT 1 FROM idempotency_records WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING')
         AND EXISTS (
           SELECT 1 FROM visitor_relationships vr
@@ -46,7 +46,7 @@ export function createVisitorAppointmentStatements(d1: D1Database, input: Create
             AND vr.status = 'APPROVED' AND p.status = 'ACTIVE' AND p.visitation_status = 'APPROVED'
         )
         AND EXISTS (
-          SELECT 1 FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id
+          SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' INNER JOIN visit_policies vp ON vp.facility_id = f.id
           WHERE f.id = ? AND f.current_state = 'NORMAL_OPERATIONS' AND f.timezone = ? AND vp.version = ?
         )
         AND EXISTS (SELECT 1 FROM credit_accounts ca WHERE ca.user_id = ? AND ca.facility_id = ? AND ca.available_credits >= 1)
@@ -137,7 +137,7 @@ export function rescheduleVisitorAppointmentStatements(d1: D1Database, input: Re
         AND status IN ('SUBMITTED', 'UNDER_REVIEW') AND version = ?
         AND EXISTS (SELECT 1 FROM idempotency_records WHERE id = ? AND scope = ? AND idempotency_key = ? AND status = 'PROCESSING')
         AND EXISTS (
-          SELECT 1 FROM facilities f INNER JOIN visit_policies vp ON vp.facility_id = f.id
+          SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' INNER JOIN visit_policies vp ON vp.facility_id = f.id
           WHERE f.id = ? AND f.current_state = 'NORMAL_OPERATIONS' AND f.timezone = ? AND vp.version = ?
         )
         AND EXISTS (

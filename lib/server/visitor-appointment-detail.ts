@@ -67,6 +67,7 @@ export function visitorAppointmentDetailStatement(
         ORDER BY cle.created_at DESC, cle.id DESC LIMIT 1) AS settlement_created_at
     FROM appointments a
     INNER JOIN facilities f ON f.id = a.facility_id
+    INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
     INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
     LEFT JOIN visitor_relationships vr ON vr.visitor_user_id = a.visitor_user_id AND vr.prisoner_id = a.prisoner_id AND vr.facility_id = a.facility_id
     LEFT JOIN waiting_room_sessions wr ON wr.appointment_id = a.id AND wr.facility_id = a.facility_id
@@ -116,6 +117,7 @@ export function createVisitorDeviceCheckStatements(d1: D1Database, input: Visito
       WHERE EXISTS (
         SELECT 1 FROM appointments a
         INNER JOIN facilities f ON f.id = a.facility_id
+        INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
         INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
         WHERE a.id = ? AND a.facility_id = ? AND a.visitor_user_id = ?
           AND a.status IN ('APPROVED', 'WAITING')

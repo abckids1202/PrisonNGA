@@ -15,6 +15,7 @@ class D1 {
   sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec(`
+      CREATE TABLE organizations (id TEXT PRIMARY KEY, status TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT, name TEXT, current_state TEXT);
       CREATE TABLE users (id TEXT PRIMARY KEY);
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT, prisoner_number TEXT, display_name TEXT, status TEXT, visitation_status TEXT);
@@ -27,6 +28,7 @@ class D1 {
       CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, credit_account_id TEXT, appointment_id TEXT, entry_type TEXT, amount INTEGER DEFAULT 0, reason TEXT DEFAULT '', created_at TEXT);
       CREATE TABLE appointment_status_events (id TEXT PRIMARY KEY, appointment_id TEXT, from_status TEXT, to_status TEXT, reason_text TEXT, created_at TEXT);
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
+      INSERT INTO organizations VALUES ('org-1', 'ACTIVE');
       INSERT INTO facilities VALUES ('f1', 'org-1', 'Central Facility', 'NORMAL_OPERATIONS');
       INSERT INTO users VALUES ('visitor-1'), ('visitor-2');
       INSERT INTO prisoners VALUES ('p1', 'f1', 'P-001', 'Person One', 'ACTIVE', 'APPROVED');

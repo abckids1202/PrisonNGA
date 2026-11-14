@@ -28,6 +28,7 @@ class D1 {
       CREATE TABLE idempotency_records (id TEXT PRIMARY KEY, scope TEXT, idempotency_key TEXT, request_hash TEXT, status TEXT, response_status INTEGER, response_body TEXT, created_at TEXT, completed_at TEXT);
       CREATE TABLE visitor_relationships (id TEXT PRIMARY KEY, facility_id TEXT, visitor_user_id TEXT, prisoner_id TEXT, status TEXT);
       CREATE TABLE prisoners (id TEXT PRIMARY KEY, facility_id TEXT, status TEXT, visitation_status TEXT);
+      CREATE TABLE organizations (id TEXT PRIMARY KEY, status TEXT NOT NULL);
       CREATE TABLE facilities (id TEXT PRIMARY KEY, organization_id TEXT, current_state TEXT, timezone TEXT);
       CREATE TABLE visit_policies (facility_id TEXT PRIMARY KEY, version INTEGER);
       CREATE TABLE facility_closures (id TEXT PRIMARY KEY, facility_id TEXT, starts_at TEXT, ends_at TEXT, reason TEXT, status TEXT, version INTEGER, created_by TEXT, created_at TEXT, updated_at TEXT);
@@ -38,6 +39,7 @@ class D1 {
       CREATE TABLE audit_events (id TEXT PRIMARY KEY, organization_id TEXT, actor_user_id TEXT, actor_role TEXT, facility_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, reason TEXT, old_values TEXT, new_values TEXT, correlation_id TEXT, request_id TEXT, created_at TEXT);
       CREATE TABLE outbox_events (id TEXT PRIMARY KEY, organization_id TEXT, event_type TEXT, aggregate_type TEXT, aggregate_id TEXT, facility_id TEXT, payload TEXT, correlation_id TEXT, created_at TEXT);
       CREATE TABLE waiting_room_sessions (appointment_id TEXT PRIMARY KEY, facility_id TEXT, state TEXT, visitor_presence TEXT, visitor_presence_at TEXT, prisoner_presence TEXT, prisoner_presence_at TEXT, version INTEGER, last_checked_at TEXT, updated_at TEXT);
+      INSERT INTO organizations VALUES ('org-1', 'ACTIVE');
       INSERT INTO facilities VALUES ('f1', 'org-1', 'NORMAL_OPERATIONS', 'Asia/Jakarta');
       INSERT INTO visit_policies VALUES ('f1', 4);
       INSERT INTO prisoners VALUES ('p1', 'f1', 'ACTIVE', 'APPROVED');

@@ -36,6 +36,7 @@ export async function getVisitorSession(visitId: string, allowTerminal = false):
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
       INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
     WHERE vs.appointment_id = ? AND a.visitor_user_id = ?`).bind(visitId, visitor.userId).first<SessionRecord>();
   if (!record) throw new SecurityError("VISIT_NOT_FOUND", 404);
   if (!allowTerminal) assertVisitorJoinAllowed(record);
@@ -48,6 +49,8 @@ export async function getStaffSession(sessionId: string, facilityId: string): Pr
       vs.status, vs.provider, vs.provider_room_name, vs.authorized_start_at, vs.authorized_end_at, vs.actual_started_at, vs.actual_ended_at, vs.termination_reason, vs.recording_policy, vs.recording_status, vs.version
     FROM visit_sessions vs INNER JOIN appointments a ON a.id = vs.appointment_id AND a.facility_id = vs.facility_id INNER JOIN users u ON u.id = a.visitor_user_id AND u.user_type = 'VISITOR'
       INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
+      INNER JOIN facilities f ON f.id = a.facility_id
+      INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
     WHERE vs.id = ? AND vs.facility_id = ?`).bind(sessionId, facilityId).first<SessionRecord>();
   if (!record) throw new SecurityError("SESSION_NOT_FOUND", 404);
   return record;

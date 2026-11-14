@@ -169,6 +169,7 @@ export function appointmentDecisionStatements(d1: D1Database, input: Appointment
       AND EXISTS (SELECT 1 FROM appointments a
         INNER JOIN prisoners p ON p.id = a.prisoner_id AND p.facility_id = a.facility_id
         INNER JOIN facilities f ON f.id = a.facility_id
+        INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
         INNER JOIN visit_policies vp ON vp.facility_id = f.id
         WHERE a.id = appointments.id AND a.facility_id = appointments.facility_id
           AND p.status = 'ACTIVE' AND p.visitation_status = 'APPROVED' AND f.current_state = 'NORMAL_OPERATIONS'

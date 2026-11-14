@@ -142,6 +142,19 @@ test("control operational reads fail closed when the organization is disabled", 
   }
 });
 
+test("shared appointment and session statements retain the active organization boundary", async () => {
+  for (const file of [
+    "../lib/server/control-appointments.ts",
+    "../lib/server/video/session.ts",
+    "../lib/server/visitor-appointment-detail.ts",
+    "../lib/server/visitor-appointments.ts",
+    "../lib/server/appointment-decisions.ts",
+  ]) {
+    const source = await readFile(new URL(file, import.meta.url), "utf8");
+    assert.match(source, /organizations o ON o\.id = f\.organization_id AND o\.status = 'ACTIVE'/, file);
+  }
+});
+
 test("incident assignment rejects revoked modern staff assignments", async () => {
   const incidents = await readFile(new URL("../app/api/control/incidents/route.ts", import.meta.url), "utf8");
   assert.match(incidents, /staff_facility_assignments sfa WHERE sfa\.user_id = u\.id/);
