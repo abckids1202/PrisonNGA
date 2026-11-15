@@ -14,7 +14,11 @@ const isVercelBuild = value("VERCEL") === "1" || value("SECUREVISIT_VERCEL_DEPLO
 if (!isVercelBuild) {
   console.log("Vercel boundary validation skipped outside a Vercel deployment.");
 } else {
+  const environment = value("SECUREVISIT_ENVIRONMENT").toLowerCase();
+  if (!['staging', 'production'].includes(environment)) {
+    throw new Error("SECUREVISIT_ENVIRONMENT must be staging or production for a Vercel deployment");
+  }
   const frontendOrigin = assertOrigin("PUBLIC_APP_URL", value("PUBLIC_APP_URL"));
   const workerOrigin = assertOrigin("WORKER_API_ORIGIN", value("WORKER_API_ORIGIN"));
-  console.log(JSON.stringify({ valid: true, frontendOrigin, workerOrigin, rewriteRequired: frontendOrigin !== workerOrigin }, null, 2));
+  console.log(JSON.stringify({ valid: true, environment, frontendOrigin, workerOrigin, rewriteRequired: frontendOrigin !== workerOrigin }, null, 2));
 }

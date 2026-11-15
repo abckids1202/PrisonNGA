@@ -10,6 +10,7 @@ Set these separately for Preview/Staging and Production:
 PUBLIC_APP_URL=https://staging.example.org
 WORKER_API_ORIGIN=https://staging-api.example.org
 SECUREVISIT_VERCEL_DEPLOYMENT=true
+SECUREVISIT_ENVIRONMENT=staging
 ```
 
 Both values must be HTTPS origins without paths, credentials, query strings, or
@@ -34,8 +35,11 @@ returns `Cache-Control: no-store` for authenticated and mutation responses.
 The checked-in `vercel.json` pins the install and build commands so Preview,
 Staging, and Production deployments all run the same fail-closed
 `vercel-build` contract. It does not contain environment values; configure
-`PUBLIC_APP_URL`, `WORKER_API_ORIGIN`, and `SECUREVISIT_VERCEL_DEPLOYMENT` in
-the corresponding Vercel environment settings.
+`PUBLIC_APP_URL`, `WORKER_API_ORIGIN`, `SECUREVISIT_VERCEL_DEPLOYMENT`, and
+`SECUREVISIT_ENVIRONMENT` in the corresponding Vercel environment settings.
+Vercel Preview deployments should use the isolated staging environment; a
+Vercel build will fail closed if the environment is missing or set to
+`development`.
 
 Staging acceptance must prove that `/api/health/live` reaches the Worker, an
 authenticated cookie survives the rewrite, same-origin mutations pass the CSRF

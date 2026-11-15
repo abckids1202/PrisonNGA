@@ -32,6 +32,7 @@ jobs:
       - name: Validate Vercel to Worker boundary
         env:
           SECUREVISIT_VERCEL_DEPLOYMENT: "true"
+          SECUREVISIT_ENVIRONMENT: staging
           PUBLIC_APP_URL: https://securevisit-staging.example.invalid
           WORKER_API_ORIGIN: https://securevisit-api-staging.example.invalid
         run: npm run vercel-build

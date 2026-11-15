@@ -80,6 +80,7 @@ test("Vercel build validates the frontend and Worker origins", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.match(source, /PUBLIC_APP_URL/);
   assert.match(source, /WORKER_API_ORIGIN/);
+  assert.match(source, /SECUREVISIT_ENVIRONMENT must be staging or production/);
   assert.match(nextConfig, /source: "\/api\/:path\*"/);
   assert.match(nextConfig, /destination: `\$\{workerOrigin\}\/api\/:path\*`/);
   assert.match(nextConfig, /url\.protocol !== "https:"/);
@@ -93,6 +94,7 @@ test("CI exercises the Vercel-to-Worker deployment boundary with synthetic HTTPS
   const workflow = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   assert.match(workflow, /Validate Vercel to Worker boundary/);
   assert.match(workflow, /SECUREVISIT_VERCEL_DEPLOYMENT: "true"/);
+  assert.match(workflow, /SECUREVISIT_ENVIRONMENT: staging/);
   assert.match(workflow, /PUBLIC_APP_URL: https:\/\/securevisit-staging\.example\.invalid/);
   assert.match(workflow, /WORKER_API_ORIGIN: https:\/\/securevisit-api-staging\.example\.invalid/);
   assert.match(workflow, /run: npm run vercel-build/);
