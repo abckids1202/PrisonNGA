@@ -12,6 +12,13 @@ test("visitor authentication defaults to email-only and parses explicit scopes",
   assert.equal(parseVisitorAuthChannels("carrier").valid, false);
 });
 
+test("visitor channel readiness uses the canonical provider variable names", async () => {
+  const source = await readFile(new URL("../lib/server/visitor-auth/delivery.ts", import.meta.url), "utf8");
+  assert.match(source, /getRuntimeValue\("RESEND_API_KEY"\)/);
+  assert.match(source, /getRuntimeValue\("VISITOR_EMAIL_FROM"\)/);
+  assert.doesNotMatch(source, /VISITOR_EMAIL_RESEND_/);
+});
+
 test("email-only staging scope requires an explicit approval and does not require SMS credentials", () => {
   const base = {
     DB: {},

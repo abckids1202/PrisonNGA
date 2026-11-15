@@ -23,7 +23,7 @@ export async function isVisitorAuthDeliveryConfigured(channel: "EMAIL" | "SMS"):
     return Boolean(url && isSecureHttpsEndpoint(url) && await getRuntimeValue("VISITOR_AUTH_WEBHOOK_SECRET"));
   }
   if (delivery === "resend" && channel === "EMAIL") {
-    return Boolean(await getRuntimeValue("VISITOR_EMAIL_RESEND_API_KEY") && await getRuntimeValue("VISITOR_EMAIL_RESEND_FROM"));
+    return Boolean(await getRuntimeValue("RESEND_API_KEY") && await getRuntimeValue("VISITOR_EMAIL_FROM"));
   }
   if (delivery === "twilio" && channel === "SMS") {
     const accountSid = await getRuntimeValue("VISITOR_SMS_TWILIO_ACCOUNT_SID");
