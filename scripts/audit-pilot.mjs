@@ -55,6 +55,7 @@ const realEmailDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => del
   webhookUrl,
   webhookSecret,
   resendApiKey: values.RESEND_API_KEY,
+  resendWebhookSecret: values.RESEND_WEBHOOK_SECRET,
   emailFrom: values.VISITOR_EMAIL_FROM,
 });
 const realSmsDeliveryConfigured = (delivery, webhookUrl, webhookSecret) => delivery !== "in_app" && isDeliveryConfigured({

@@ -73,6 +73,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (visitorAuthChannels.channels.includes("EMAIL") && visitorEmailDelivery === "resend") {
     if (!value(env, "RESEND_API_KEY")) missing.push("RESEND_API_KEY");
     if (!value(env, "VISITOR_EMAIL_FROM")) missing.push("VISITOR_EMAIL_FROM");
+    requireSecret(env, "RESEND_WEBHOOK_SECRET", missing);
   }
   if (visitorAuthChannels.channels.includes("SMS") && visitorSmsDelivery === "twilio") {
     if (!value(env, "VISITOR_SMS_TWILIO_ACCOUNT_SID")) missing.push("VISITOR_SMS_TWILIO_ACCOUNT_SID");
@@ -131,6 +132,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (notificationEmailDelivery === "resend") {
     if (!value(env, "RESEND_API_KEY")) missing.push("RESEND_API_KEY");
     if (!value(env, "VISITOR_EMAIL_FROM")) missing.push("VISITOR_EMAIL_FROM");
+    requireSecret(env, "RESEND_WEBHOOK_SECRET", missing);
   }
   if (notificationSmsDelivery === "twilio") {
     if (!value(env, "VISITOR_SMS_TWILIO_ACCOUNT_SID")) missing.push("VISITOR_SMS_TWILIO_ACCOUNT_SID");

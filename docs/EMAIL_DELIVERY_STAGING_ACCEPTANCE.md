@@ -22,16 +22,10 @@ Do not enable `VISITOR_SMS_DELIVERY=twilio` until the institution has approved S
 1. Create a dedicated Resend project/API key for staging. Do not reuse production credentials.
 2. Verify a sending domain owned by the institution. Configure the DNS records Resend provides and wait for domain verification.
 3. Use a sender address on the verified domain. Do not use `example.com`, a personal mailbox, or a display-only address that cannot receive provider complaints.
-4. Configure the provider’s delivery-event webhook to a staging relay. The relay must:
-   - verify the provider’s native signature and timestamp;
-   - reject stale or replayed provider events;
-   - map the provider event to `provider`, `providerReference`, `eventId`, and an allowed status;
-   - sign the raw SecureVisit payload with `NOTIFICATION_STATUS_WEBHOOK_SECRET`;
-   - send the signed request to `/api/webhooks/notifications/status`;
-   - retry only with the same event ID and payload.
-5. Keep the relay outside the browser and never include the Resend API key in it or in Vercel variables exposed to the client.
+4. Configure the provider’s delivery-event webhook directly to `/api/webhooks/resend`. SecureVisit verifies the native Svix signature and timestamp, rejects stale or replayed requests, maps the provider event to the canonical delivery-status contract, and forwards it internally to the replay-safe status processor.
+5. Store the Resend webhook signing secret as `RESEND_WEBHOOK_SECRET` in the server-side secret store. Keep the Resend API key and webhook secret out of Vercel variables exposed to the client.
 
-The SecureVisit status callback accepts `SENT`, `DELIVERED`, `FAILED`, `BOUNCED`, `REJECTED`, `UNDELIVERED`, `INVALID_NUMBER`, `QUEUED`, and `PROCESSING`. `SENT`, `QUEUED`, and `PROCESSING` remain in-progress; only `DELIVERED` is success, and terminal failure statuses expire the linked OTP challenge.
+The native Resend callback accepts `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.failed`, `email.bounced`, `email.suppressed`, and `email.complained`. These are normalized to SecureVisit’s `SENT`, `DELIVERED`, `PROCESSING`, `FAILED`, `BOUNCED`, or `REJECTED` states. Only `DELIVERED` is success, and terminal failure statuses expire the linked OTP challenge. The canonical status callback also accepts `UNDELIVERED` and `INVALID_NUMBER` for other providers.
 
 ## Acceptance evidence
 

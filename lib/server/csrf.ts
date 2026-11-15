@@ -4,6 +4,7 @@ const FEDERATION_CALLBACKS = new Set([
   "/api/webhooks/livekit",
   "/api/webhooks/payments",
   "/api/webhooks/xendit",
+  "/api/webhooks/resend",
   "/api/webhooks/notifications/status",
   "/api/webhooks/evidence-scan",
 ]);

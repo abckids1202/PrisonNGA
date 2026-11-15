@@ -48,6 +48,7 @@ test("pilot audit reports real integration readiness without exposing provider s
     VISITOR_SMS_DELIVERY: "twilio",
     VISITOR_AUTH_WEBHOOK_URL: "",
     RESEND_API_KEY: "resend-test-key",
+    RESEND_WEBHOOK_SECRET: "resend-webhook-secret-must-not-appear",
     VISITOR_EMAIL_FROM: "SecureVisit <no-reply@example.test>",
     VISITOR_SMS_TWILIO_ACCOUNT_SID: "AC1234567890",
     VISITOR_SMS_TWILIO_AUTH_TOKEN: "twilio-test-token",
@@ -86,7 +87,7 @@ test("pilot audit reports real integration readiness without exposing provider s
   assert.equal(report.externalIntegrationChecks.every((check) => check.configured), true);
   assert.equal(report.externalIntegrationChecks.every((check) => check.ok), true);
   assert.equal(report.externalIntegrationChecks.every((check) => check.evaluation === "configured"), true);
-  assert.doesNotMatch(result.stdout, /provider-secret-must-not-appear|lk-secret-must-not-appear|scanner-secret-must-not-appear/);
+  assert.doesNotMatch(result.stdout, /provider-secret-must-not-appear|lk-secret-must-not-appear|scanner-secret-must-not-appear|resend-webhook-secret-must-not-appear/);
 });
 
 test("pilot audit accepts an email-only notification channel", async () => {
@@ -96,6 +97,7 @@ test("pilot audit accepts an email-only notification channel", async () => {
     SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL: "approved",
     VISITOR_EMAIL_DELIVERY: "resend",
     RESEND_API_KEY: "resend-test-key",
+    RESEND_WEBHOOK_SECRET: "resend-webhook-secret-must-not-appear",
     VISITOR_EMAIL_FROM: "SecureVisit <no-reply@example.test>",
     NOTIFICATION_EMAIL_DELIVERY: "resend",
     NOTIFICATION_SMS_DELIVERY: "",
