@@ -37,5 +37,7 @@ test("staff observer renders persisted recording policy and status", async () =>
   assert.match(source, /recordingLabel/);
   assert.match(source, /Recording · Live/);
   assert.match(source, /Recording · Consent pending/);
+  assert.match(source, /api\/control\/live-sessions/);
+  assert.match(source, /setInterval\(\(\) => void refreshRecordingState\(\), 5000\)/);
   assert.doesNotMatch(source, /<span>Recording · Off<\/span>/);
 });

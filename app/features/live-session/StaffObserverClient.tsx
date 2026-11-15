@@ -35,8 +35,29 @@ export default function StaffObserverClient({ sessionId, visitorName, prisonerNa
   const [status, setStatus] = useState<"connecting" | "connected" | "reconnecting" | "error">("connecting");
   const [error, setError] = useState("");
   const [participants, setParticipants] = useState<string[]>([]);
+  const [currentRecordingPolicy, setCurrentRecordingPolicy] = useState(recordingPolicy);
+  const [currentRecordingStatus, setCurrentRecordingStatus] = useState(recordingStatus);
   const mediaRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<Room | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const refreshRecordingState = async () => {
+      try {
+        const response = await fetch(`/api/control/live-sessions/${encodeURIComponent(sessionId)}`, { credentials: "include", headers: { accept: "application/json" }, cache: "no-store" });
+        if (!response.ok) return;
+        const body = await response.json() as { session?: { recordingPolicy?: unknown; recordingStatus?: unknown } };
+        if (!active || !body.session) return;
+        if (typeof body.session.recordingPolicy === "string") setCurrentRecordingPolicy(body.session.recordingPolicy);
+        if (typeof body.session.recordingStatus === "string") setCurrentRecordingStatus(body.session.recordingStatus);
+      } catch {
+        // The media connection remains observable if the control API briefly fails.
+      }
+    };
+    void refreshRecordingState();
+    const timer = window.setInterval(() => void refreshRecordingState(), 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [sessionId]);
 
   useEffect(() => {
     const room = new Room({ adaptiveStream: true, dynacast: true });
@@ -89,7 +110,7 @@ export default function StaffObserverClient({ sessionId, visitorName, prisonerNa
   return <div className="sv10-observer-backdrop" role="dialog" aria-modal="true" aria-labelledby="observer-title">
     <section className="sv10-observer-panel">
       <header><div><span className="sv9-kicker">STAFF OBSERVER · READ ONLY</span><h2 id="observer-title">{visitorName} ↔ {prisonerName}</h2><p className="sv-mono">{sessionId}</p></div><button aria-label="Close observer" onClick={onClose}>×</button></header>
-      <div className="sv10-observer-status"><span className={status === "connected" ? "good" : status === "error" ? "bad" : "pending"}><i />{status === "connected" ? "Connected" : status === "reconnecting" ? "Reconnecting" : status === "error" ? "Unavailable" : "Connecting"}</span><span>{recordingLabel(recordingPolicy, recordingStatus)}</span></div>
+      <div className="sv10-observer-status"><span className={status === "connected" ? "good" : status === "error" ? "bad" : "pending"}><i />{status === "connected" ? "Connected" : status === "reconnecting" ? "Reconnecting" : status === "error" ? "Unavailable" : "Connecting"}</span><span>{recordingLabel(currentRecordingPolicy, currentRecordingStatus)}</span></div>
       <div className="sv10-observer-media" ref={mediaRef}>{status === "error" ? <p role="alert">{error}</p> : !participants.length ? <p>Waiting for visitor and facility media…</p> : null}</div>
       <footer><span>Observer audio and video publishing are disabled.</span><button className="sv4-button" onClick={onClose}>Close observer</button></footer>
     </section>
