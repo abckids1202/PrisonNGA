@@ -31,6 +31,12 @@ Replace the placeholder with the environment's Worker origin in the Vercel
 project configuration. Do not use a redirect or cache `/api/*`; the Worker
 returns `Cache-Control: no-store` for authenticated and mutation responses.
 
+The checked-in `vercel.json` pins the install and build commands so Preview,
+Staging, and Production deployments all run the same fail-closed
+`vercel-build` contract. It does not contain environment values; configure
+`PUBLIC_APP_URL`, `WORKER_API_ORIGIN`, and `SECUREVISIT_VERCEL_DEPLOYMENT` in
+the corresponding Vercel environment settings.
+
 Staging acceptance must prove that `/api/health/live` reaches the Worker, an
 authenticated cookie survives the rewrite, same-origin mutations pass the CSRF
 boundary, cross-origin mutations are rejected, and OIDC/SAML callback URLs use
