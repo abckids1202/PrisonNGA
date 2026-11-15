@@ -45,6 +45,8 @@ Use `npm run deploy:staging:dry-run` or `npm run deploy:production:dry-run` for 
 
 For a redacted readiness summary, run `npm run audit:pilot`. It reports environment configuration, remote D1 identity, protected evidence storage, provider readiness, and release evidence without printing secret values. Add `npm run audit:pilot -- --strict` in a staging or production check when the command should exit non-zero until the pilot gates are satisfied.
 
+For Vercel, create separate Preview/Staging and Production environment values. Set `SECUREVISIT_VERCEL_DEPLOYMENT=true`, `SECUREVISIT_ENVIRONMENT=staging` (or `production`), `PUBLIC_APP_URL` to the public Vercel origin, and `WORKER_API_ORIGIN` to the HTTPS Cloudflare Worker origin. The checked-in `vercel.json` runs `npm ci` and `npm run vercel-build`; that build fails closed when either origin or the non-development environment is missing. Keep provider credentials and Cloudflare bindings in their server-side secret/config stores; they are not Vercel browser variables.
+
 To verify the Cloudflare Worker packaging without deploying or changing a remote service, run:
 
 ```bash
