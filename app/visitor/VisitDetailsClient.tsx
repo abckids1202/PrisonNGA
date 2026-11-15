@@ -62,7 +62,7 @@ type AppointmentDetail = {
 };
 
 type StatusEvent = { from_status: string | null; to_status: string; reason_text: string | null; created_at: string };
-type VisitApiResponse = { appointment?: AppointmentDetail; statusHistory?: StatusEvent[]; error?: string };
+type VisitApiResponse = { visit?: AppointmentDetail; statusHistory?: StatusEvent[]; error?: string };
 type RecordingConsent = { decision: "GRANTED" | "DECLINED"; noticeVersion: string; decidedAt: string };
 type RecordingConsentResponse = {
   sessionId?: string;
@@ -135,11 +135,11 @@ export default function VisitorVisitDetailsClient({ visitId }: { visitId: string
       const nextController = new AbortController();
       controller = nextController;
       try {
-        const response = await fetch(`/api/visitor/appointments/${encodeURIComponent(visitId)}`, { credentials: "include", headers: { accept: "application/json" }, cache: "no-store", signal: nextController.signal });
+        const response = await fetch(`/api/visitor/visits/${encodeURIComponent(visitId)}`, { credentials: "include", headers: { accept: "application/json" }, cache: "no-store", signal: nextController.signal });
         const body = await response.json() as VisitApiResponse;
-        if (!response.ok || !body.appointment) throw new Error(response.status === 404 ? "We couldn’t find that visit in your account." : body.error || "We couldn’t refresh this visit.");
+        if (!response.ok || !body.visit) throw new Error(response.status === 404 ? "We couldn’t find that visit in your account." : body.error || "We couldn’t refresh this visit.");
         if (!active) return;
-        setAppointment(body.appointment);
+        setAppointment(body.visit);
         setHistory(body.statusHistory || []);
         setLastUpdated(new Date().toISOString());
         setError("");
