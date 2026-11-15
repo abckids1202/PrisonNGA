@@ -1,21 +1,22 @@
 # SecureVisit Institutional Pilot Audit and Completion Plan
 
-Date: 2026-11-14
+Date: 2026-11-15
 Scope: current repository, organization-to-facility tenant model with an initial Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `6d6525e` (`Fail closed for disabled kiosk organizations`).
+Latest verified code commit: `82cdc5c` (`Add scoped organization and visitor visit APIs`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The release verifier baseline now has 703 passing server tests and 19 browser tests,
+The release verifier baseline now has 728 passing server tests and 19 browser tests,
 fresh migration verification, a disposable backup/restore drill, typecheck,
 lint, production build, and a zero-vulnerability production dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The release verifier reports 703 passing server tests plus 19 browser tests
-on `6d6525e`, including the governed recording-encryption checks, deployment
-preflight enforcement, and current browser/server validation; this is the
-current repository evidence record.
+The release verifier reports 728 passing server tests plus 19 browser tests
+on `82cdc5e`, with 91 API routes covered by the route-security matrix,
+including the governed recording-encryption checks, deployment preflight
+enforcement, and current browser/server validation; this is the current
+repository evidence record.
 
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the
 development environment. The report identifies the expected missing deployment
