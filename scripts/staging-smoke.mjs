@@ -85,6 +85,8 @@ try {
   const liveBody = await readJson(liveResponse);
   check("liveness status", liveResponse.status === 200 && liveBody?.status === "ok", `HTTP ${liveResponse.status}`);
   check("content type hardening", header(liveResponse, "x-content-type-options") === "nosniff", header(liveResponse, "x-content-type-options") || "missing");
+  check("request correlation", Boolean(header(liveResponse, "x-request-id")), header(liveResponse, "x-request-id") || "missing");
+  check("liveness is not cached", header(liveResponse, "cache-control").includes("no-store"), header(liveResponse, "cache-control") || "missing");
   check("referrer policy", Boolean(header(liveResponse, "referrer-policy")), header(liveResponse, "referrer-policy") || "missing");
   check("cross-origin opener policy", header(liveResponse, "cross-origin-opener-policy") === "same-origin", header(liveResponse, "cross-origin-opener-policy") || "missing");
   check("cross-origin resource policy", header(liveResponse, "cross-origin-resource-policy") === "same-origin", header(liveResponse, "cross-origin-resource-policy") || "missing");

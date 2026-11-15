@@ -44,6 +44,8 @@ function startServer({ secureHeaders = true, livekit = true } = {}) {
   const server = createServer((request, response) => {
     if (secureHeaders) {
       response.setHeader("X-Content-Type-Options", "nosniff");
+      response.setHeader("X-Request-Id", "smoke-request-001");
+      response.setHeader("Cache-Control", "no-store");
       response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
       response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
       response.setHeader("Cross-Origin-Resource-Policy", "same-origin");
