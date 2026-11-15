@@ -16,6 +16,7 @@ test("visitor channel readiness uses the canonical provider variable names", asy
   const source = await readFile(new URL("../lib/server/visitor-auth/delivery.ts", import.meta.url), "utf8");
   assert.match(source, /getRuntimeValue\("RESEND_API_KEY"\)/);
   assert.match(source, /getRuntimeValue\("VISITOR_EMAIL_FROM"\)/);
+  assert.match(source, /getRuntimeValue\("RESEND_WEBHOOK_SECRET"\)/);
   assert.doesNotMatch(source, /VISITOR_EMAIL_RESEND_/);
 });
 
