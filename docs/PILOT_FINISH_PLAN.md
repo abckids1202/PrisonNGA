@@ -15,7 +15,7 @@ The product remains a staging candidate rather than a production institutional s
 
 The targeted verification commit and test counts must be recorded from the candidate under review; do not reuse an older SHA as current evidence. Evidence uploads now delete their storage object unless the domain row, audit/outbox events, and idempotency completion all commit successfully, and failed cleanup creates a critical privacy alarm for staff recovery.
 
-The latest release verifier passed on `93d04d7`: 91 route-security entries, clean migrations, staging-fixture compatibility, isolated disposable backup/restore integrity, typecheck, lint, production build, 731 server tests, 19 browser tests, and the production dependency audit. This remains repository evidence only; real providers, infrastructure, hardware, and institutional approvals are still release gates.
+The latest release verifier passed on `fd708a0`: 91 route-security entries, clean migrations, staging-fixture compatibility, isolated disposable backup/restore integrity, typecheck, lint, production build, 732 server tests, 19 browser tests, and the production dependency audit. This remains repository evidence only; real providers, infrastructure, hardware, and institutional approvals are still release gates.
 
 ## Release gates
 
