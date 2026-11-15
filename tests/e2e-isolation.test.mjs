@@ -15,6 +15,9 @@ test("release browser checks use disposable isolated D1 state", async () => {
   assert.match(runner, /stdio: \["ignore", "ignore", "inherit"\]/);
   assert.match(runner, /ENOBUFS/);
   assert.match(verifier, /SECUREVISIT_E2E_ISOLATED: "true"/);
+  assert.match(verifier, /SECUREVISIT_ENVIRONMENT: "development"/);
+  assert.match(verifier, /delete localVerificationEnvironment\.WORKER_API_ORIGIN/);
+  assert.match(verifier, /delete localVerificationEnvironment\.PUBLIC_APP_URL/);
   assert.match(verifier, /PLAYWRIGHT_PORT: process\.env\.PLAYWRIGHT_PORT \|\| "4174"/);
   assert.match(verifier, /\["run", "build"\]/);
   assert.match(verifier, /\["run", "test:quick"\]/);

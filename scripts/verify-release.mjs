@@ -1,6 +1,17 @@
 import { spawnSync } from "node:child_process";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+// Release verification is a local repository gate. Do not let a developer's
+// Vercel/preview shell variables turn the generated test build into an
+// external rewrite that depends on staging DNS or provider infrastructure.
+const localVerificationEnvironment = {
+  ...process.env,
+  SECUREVISIT_ENVIRONMENT: "development",
+  SECUREVISIT_VERCEL_DEPLOYMENT: "false",
+  VERCEL: "0",
+};
+delete localVerificationEnvironment.WORKER_API_ORIGIN;
+delete localVerificationEnvironment.PUBLIC_APP_URL;
 const checks = [
   ["working-tree patch validation", ["diff", "--check"], "git"],
   ["API route security matrix", ["run", "audit:routes"]],
@@ -27,8 +38,8 @@ for (const [label, args] of checks) {
   const command = commandKind === "git" ? "git" : commandKind === "node" ? process.execPath : npmCommand;
   const commandArgs = commandKind === "node" ? args : args;
   const environment = label === "browser tests"
-    ? { ...process.env, SECUREVISIT_E2E_ISOLATED: "true", PLAYWRIGHT_PORT: process.env.PLAYWRIGHT_PORT || "4174" }
-    : process.env;
+    ? { ...localVerificationEnvironment, SECUREVISIT_E2E_ISOLATED: "true", PLAYWRIGHT_PORT: process.env.PLAYWRIGHT_PORT || "4174" }
+    : localVerificationEnvironment;
   const result = spawnSync(command, commandArgs, { stdio: "inherit", shell: process.platform === "win32" && commandKind !== "node", env: environment });
   if (result.error) {
     console.error(`✖ ${label}: ${result.error.message}`);

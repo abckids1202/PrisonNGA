@@ -29,7 +29,7 @@ npm run validate:environment
 npm test
 ```
 
-For a faster test pass that skips the production build, run `npm run test:quick`. It uses the repository's `tsx` loader so tests that import TypeScript modules resolve consistently.
+For a faster test pass that skips the production build, run `npm run test:quick` after a local `npm run build`. It uses the repository's `tsx` loader so tests that import TypeScript modules resolve consistently. `npm run verify:release` is safer when switching between Vercel and local work because it forces an isolated development build and removes external Vercel rewrite variables before running its checks.
 
 For one repeatable local release gate, run `npm run verify:release`. It runs the disposable migration check, typecheck, lint, build/server tests, browser tests, and a production-only dependency audit. It does not deploy or mutate a remote database; staging still requires the acceptance runbook and external-provider evidence.
 
