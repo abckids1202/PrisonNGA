@@ -19,6 +19,7 @@ const childEnvironment = isolatedStatePath
       // that test opt-in isolated from the product's email-first default.
       VISITOR_AUTH_CHANNELS: "EMAIL,SMS",
       VISITOR_AUTH_DELIVERY: "console",
+      VIDEO_PROVIDER: "local_test",
       PAYMENT_PROVIDER: "local_test",
       PAYMENT_WEBHOOK_SECRET: "local-development-payment-webhook-secret-0123456789",
       VISIT_CREDIT_PRICE_MINOR: "50000",

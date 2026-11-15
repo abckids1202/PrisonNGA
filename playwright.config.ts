@@ -32,6 +32,7 @@ export default defineConfig({
       SECUREVISIT_ENVIRONMENT: "development",
       SECUREVISIT_E2E_ISOLATED: "true",
       VISITOR_AUTH_DELIVERY: "console",
+      VIDEO_PROVIDER: "local_test",
       PAYMENT_PROVIDER: "local_test",
       PAYMENT_WEBHOOK_SECRET: "local-development-payment-webhook-secret-0123456789",
       VISIT_CREDIT_PRICE_MINOR: "50000",

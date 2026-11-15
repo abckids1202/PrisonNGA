@@ -589,21 +589,45 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
 
     const providerStart = await staff.request.post("/api/control/waiting-room", {
-      headers: { origin: testOrigin, "Idempotency-Key": `waiting-start-provider-outage-${Date.now()}-e2e` },
-      data: { appointmentId: approvedAppointmentId, command: "start_visit", expectedVersion: preflightBody.version, reason: "Pilot acceptance provider-outage check." },
+      headers: { origin: testOrigin, "Idempotency-Key": `waiting-start-local-video-${Date.now()}-e2e` },
+      data: { appointmentId: approvedAppointmentId, command: "start_visit", expectedVersion: preflightBody.version, reason: "Pilot acceptance local video-session check." },
     });
-    expect(providerStart.status(), await providerStart.text()).toBe(409);
-    await expect(providerStart.json()).resolves.toMatchObject({ error: "VISIT_NOT_STARTED" });
+    expect(providerStart.status(), await providerStart.text()).toBe(200);
+    const providerStartBody = await providerStart.json() as { sessionId?: string; state?: string };
+    expect(providerStartBody).toMatchObject({ state: "LIVE" });
+    expect(providerStartBody.sessionId).toBeTruthy();
+    if (!providerStartBody.sessionId) throw new Error("Expected a persisted local video session");
 
-    // A failed provider start must not leak a join action to the visitor after
-    // the failed request or a later refresh. The appointment remains waiting
-    // until a real session is persisted.
+    // The three application participants must receive scoped credentials from
+    // the same persisted session. Local transport intentionally renders a
+    // visible no-media test state; real LiveKit media is proved separately in
+    // the staging acceptance gate.
+    const visitorToken = await page.request.post(`/api/visitor/visits/${encodeURIComponent(approvedAppointmentId)}/live-session`);
+    expect(visitorToken.status(), await visitorToken.text()).toBe(200);
+    await expect(visitorToken.json()).resolves.toMatchObject({ provider: "local_test", participantRole: "VISITOR", session: { id: providerStartBody.sessionId } });
+    const kioskToken = await page.request.post(`/api/kiosk/visits/${encodeURIComponent(approvedAppointmentId)}/live-session`, { headers: kioskHeaders });
+    expect(kioskToken.status(), await kioskToken.text()).toBe(200);
+    await expect(kioskToken.json()).resolves.toMatchObject({ provider: "local_test", participantRole: "FACILITY", session: { id: providerStartBody.sessionId } });
+    const observerToken = await staff.request.post(`/api/control/live-sessions/${encodeURIComponent(providerStartBody.sessionId)}/observer-token`, {
+      headers: { origin: testOrigin, "Idempotency-Key": `observer-token-local-video-${Date.now()}-e2e` },
+      data: { reason: "Pilot acceptance observer token check." },
+    });
+    expect(observerToken.status(), await observerToken.text()).toBe(200);
+    await expect(observerToken.json()).resolves.toMatchObject({ participantRole: "STAFF_OBSERVER", session: { id: providerStartBody.sessionId } });
+
+    // The visitor surface must now reflect the persisted live session after a
+    // full navigation and refresh rather than relying on the start response.
     await page.goto(`/visitor/visits/${encodeURIComponent(approvedAppointmentId)}`);
-    await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Join your visit/ })).toHaveCount(0);
+    await expect(page.getByText("Visit in progress", { exact: true })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Waiting for staff", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Join your visit/ })).toHaveCount(0);
+    await expect(page.getByText("Visit in progress", { exact: true })).toBeVisible();
+
+    const terminate = await staff.request.post(`/api/control/live-sessions/${encodeURIComponent(providerStartBody.sessionId)}/end`, {
+      headers: { origin: testOrigin, "Idempotency-Key": `end-local-video-${Date.now()}-e2e` },
+      data: { mode: "terminate", reason: "Pilot acceptance local transport cleanup." },
+    });
+    expect(terminate.status(), await terminate.text()).toBe(200);
+    await expect(terminate.json()).resolves.toMatchObject({ sessionId: providerStartBody.sessionId, status: "TERMINATED" });
   } finally {
     await staff.close();
   }
@@ -611,7 +635,7 @@ test("persisted visitor verification, payment, appointment request, and staff ap
   const appointments = await page.request.get("/api/visitor/appointments");
   expect(appointments.status()).toBe(200);
   const appointmentList = await appointments.json() as { appointments?: Array<{ id: string; status: string }> };
-  expect(appointmentList.appointments?.find((item) => item.id === approvedAppointmentId)?.status).toBe("WAITING");
+  expect(appointmentList.appointments?.find((item) => item.id === approvedAppointmentId)?.status).toBe("TECHNICAL_FAILURE");
 });
 
 test("browser requests to protected APIs are rejected without a session", async ({ request }) => {
