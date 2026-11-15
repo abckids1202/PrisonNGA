@@ -29,7 +29,7 @@ test("missing environment cannot enable the development evidence scanner", async
 test("malformed scanner responses fail with a stable scan error", async () => {
   const previous = { ...process.env };
   const previousFetch = globalThis.fetch;
-  Object.assign(process.env, { SECUREVISIT_ENVIRONMENT: "staging", EVIDENCE_SCAN_PROVIDER: "webhook", EVIDENCE_SCAN_WEBHOOK_URL: "https://scanner.example.test/scan", EVIDENCE_SCAN_WEBHOOK_SECRET: "scanner-secret" });
+  Object.assign(process.env, { SECUREVISIT_ENVIRONMENT: "staging", EVIDENCE_SCAN_PROVIDER: "webhook", EVIDENCE_SCAN_WEBHOOK_URL: "https://scanner.example.test/scan", EVIDENCE_SCAN_CALLBACK_URL: "https://securevisit.example.test/api/webhooks/evidence-scan", EVIDENCE_SCAN_WEBHOOK_SECRET: "scanner-secret" });
   globalThis.fetch = async () => new Response("not-json", { status: 200 });
   try {
     await assert.rejects(() => scanEvidence({ bytes: new Uint8Array([1, 2, 3]), contentType: "application/pdf", sha256: "b".repeat(64), byteSize: 3 }), /EVIDENCE_SCAN_INVALID_RESPONSE/);
@@ -44,7 +44,14 @@ test("staging and production require the configured evidence scanner adapter", a
   const source = await readFile(new URL("../lib/server/config.ts", import.meta.url), "utf8");
   assert.match(source, /EVIDENCE_SCAN_PROVIDER=webhook/);
   assert.match(source, /EVIDENCE_SCAN_WEBHOOK_URL/);
+  assert.match(source, /EVIDENCE_SCAN_CALLBACK_URL/);
   assert.match(source, /EVIDENCE_SCAN_WEBHOOK_SECRET/);
+});
+
+test("non-development evidence scans fail closed without a secure callback URL", async () => {
+  const source = await readFile(new URL("../lib/server/evidence-scanner.ts", import.meta.url), "utf8");
+  assert.match(source, /environment !== "development" && !isSecureHttpsEndpoint\(callbackUrl \|\| ""\)/);
+  assert.match(source, /EVIDENCE_SCAN_CALLBACK_NOT_CONFIGURED/);
 });
 
 test("visitor evidence cannot become available before a clean scan", async () => {

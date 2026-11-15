@@ -100,6 +100,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (evidenceScanProvider !== "webhook") missing.push("EVIDENCE_SCAN_PROVIDER=webhook");
   if (evidenceScanProvider === "webhook") {
     if (!isSecureHttpsEndpoint(value(env, "EVIDENCE_SCAN_WEBHOOK_URL"))) missing.push("EVIDENCE_SCAN_WEBHOOK_URL (must be an https:// URL without credentials or fragments)");
+    if (!isSecureHttpsEndpoint(value(env, "EVIDENCE_SCAN_CALLBACK_URL"))) missing.push("EVIDENCE_SCAN_CALLBACK_URL (must be an https:// URL without credentials or fragments)");
     requireSecret(env, "EVIDENCE_SCAN_WEBHOOK_SECRET", missing);
   }
   const paymentProvider = value(env, "PAYMENT_PROVIDER").toLowerCase();

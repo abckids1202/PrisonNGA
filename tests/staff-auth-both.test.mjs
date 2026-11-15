@@ -34,6 +34,7 @@ const base = {
   EVIDENCE_STORAGE_PROVIDER: "r2",
   EVIDENCE_SCAN_PROVIDER: "webhook",
   EVIDENCE_SCAN_WEBHOOK_URL: "https://scan.example.test",
+  EVIDENCE_SCAN_CALLBACK_URL: "https://securevisit.example.test/api/webhooks/evidence-scan",
   EVIDENCE_SCAN_WEBHOOK_SECRET: "s".repeat(32),
   PAYMENT_PROVIDER: "webhook",
   VISIT_CREDIT_PRICE_MINOR: "100000",

@@ -40,7 +40,7 @@ export async function requestEvidenceScan(input: EvidenceScanInput): Promise<Evi
   if (!isSecureHttpsEndpoint(url) || !secret) throw new Error("EVIDENCE_SCAN_NOT_CONFIGURED");
 
   const callbackUrl = await getRuntimeValue("EVIDENCE_SCAN_CALLBACK_URL");
-  if (callbackUrl && !isSecureHttpsEndpoint(callbackUrl)) throw new Error("EVIDENCE_SCAN_CALLBACK_NOT_CONFIGURED");
+  if (environment !== "development" && !isSecureHttpsEndpoint(callbackUrl || "")) throw new Error("EVIDENCE_SCAN_CALLBACK_NOT_CONFIGURED");
   const payload = JSON.stringify({
     type: "SECUREVISIT_EVIDENCE_SCAN",
     sha256: input.sha256,
