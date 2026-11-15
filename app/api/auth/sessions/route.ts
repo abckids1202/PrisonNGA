@@ -9,17 +9,17 @@ import { getRequestContext, getRuntimeValue, getSecuritySalt, getVisitorSessionI
 
 async function currentUser() {
   const visitor = await getVisitorSessionIdentity();
-  if (visitor) return { id: visitor.userId, tokenHash: await currentTokenHash() };
+  if (visitor) return { id: visitor.userId, tokenHash: await currentTokenHash("securevisit_session"), cookieName: "securevisit_session" as const };
   const identity = await getWorkspaceIdentity();
   if (!identity) throw new SecurityError("AUTHENTICATION_REQUIRED", 401);
   const db = await getDb();
   const [user] = await db.select({ id: users.id }).from(users).where(and(eq(users.externalId, identity.externalId), eq(users.userType, "STAFF"), eq(users.status, "ACTIVE"))).limit(1);
   if (!user) throw new SecurityError("ACCOUNT_NOT_PROVISIONED", 403);
-  return { id: user.id, tokenHash: null };
+  return { id: user.id, tokenHash: await currentTokenHash("securevisit_staff_session"), cookieName: "securevisit_staff_session" as const };
 }
 
-async function currentTokenHash() {
-  const token = (await cookies()).get("securevisit_session")?.value;
+async function currentTokenHash(cookieName: "securevisit_session" | "securevisit_staff_session") {
+  const token = (await cookies()).get(cookieName)?.value;
   return token ? hashIdentifier(token, await getSecuritySalt()) : null;
 }
 
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       const response = securityResponse(claimed.replay.body, claimed.replay.status, context.requestId);
       if (clearsCurrentVisitorCookie) {
         const secureCookie = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development";
-        response.headers.set("Set-Cookie", clearSessionCookie("securevisit_session", secureCookie));
+        response.headers.set("Set-Cookie", clearSessionCookie(account.cookieName, secureCookie));
       }
       return response;
     }
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     const response = securityResponse(responseBody, 200, context.requestId);
     if (clearsCurrentVisitorCookie) {
       const secureCookie = (await getRuntimeValue("SECUREVISIT_ENVIRONMENT")) !== "development";
-      response.headers.set("Set-Cookie", clearSessionCookie("securevisit_session", secureCookie));
+      response.headers.set("Set-Cookie", clearSessionCookie(account.cookieName, secureCookie));
     }
     return response;
   } catch (error) {
