@@ -3,6 +3,7 @@ import { assertSessionProvider, getVisitorSession, sessionTokenTtlSeconds, toSes
 import { createLiveKitProvider, getVideoConfig } from "@/lib/server/video/provider";
 import { getD1 } from "@/db/runtime";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
+import { getRequestNow } from "@/lib/server/e2e-clock";
 
 type RouteContext = { params: Promise<{ visitId: string }> };
 
@@ -22,14 +23,15 @@ export async function POST(request: Request, context: RouteContext) {
   const requestContext = await getRequestContext();
   try {
     const { visitId } = await context.params;
-    const session = await getVisitorSession(visitId);
+    const requestNow = await getRequestNow(request);
+    const session = await getVisitorSession(visitId, false, requestNow);
     const d1 = await getD1();
     await enforceRateLimit(d1, { key: `visitor-live-token:${session.visitor_user_id}:${visitId}`, limit: 12, windowSeconds: 60 * 10 });
     const config = await getVideoConfig();
     if (!config.configured) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
     assertSessionProvider(session, config.provider);
     const provider = await createLiveKitProvider();
-    const expiresInSeconds = sessionTokenTtlSeconds(session);
+    const expiresInSeconds = sessionTokenTtlSeconds(session, requestNow);
     const token = await provider.createParticipantToken({ roomName: session.provider_room_name, identity: `visitor:${session.visitor_user_id}`, name: session.visitor_name, role: "VISITOR", ttlSeconds: expiresInSeconds });
     return securityResponse({ token, serverUrl: config.url, provider: config.provider, session: toSessionPayload(session), participantRole: "VISITOR", expiresInSeconds }, 200, requestContext.requestId);
   } catch (error) {

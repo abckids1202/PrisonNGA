@@ -3,6 +3,7 @@ import { assertReason, getRequestContext, requirePermission, securityErrorRespon
 import { createLiveKitProvider, getVideoConfig } from "@/lib/server/video/provider";
 import { assertSessionProvider, assertStaffObserverJoinAllowed, getStaffSession, sessionTokenTtlSeconds, toSessionPayload } from "@/lib/server/video/session";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
+import { getRequestNow } from "../../../../../../lib/server/e2e-clock";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "@/lib/server/idempotency";
 
 type RouteContext = { params: Promise<{ sessionId: string }> };
@@ -17,7 +18,8 @@ export async function POST(request: Request, context: RouteContext) {
     const body = await request.json() as { reason?: string };
     const reason = assertReason(body.reason);
     const session = await getStaffSession(sessionId, authorization.facilityId);
-    assertStaffObserverJoinAllowed(session);
+    const requestNow = await getRequestNow(request);
+    assertStaffObserverJoinAllowed(session, requestNow);
     d1 = await getD1();
     await enforceRateLimit(d1, { key: `staff-observer-token:${authorization.facilityId}:${authorization.userId}:${sessionId}`, limit: 12, windowSeconds: 60 * 10 });
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || "";
@@ -31,7 +33,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (!config.configured) throw new SecurityError("VIDEO_PROVIDER_NOT_CONFIGURED", 503);
     assertSessionProvider(session, config.provider);
     const provider = await createLiveKitProvider();
-    const expiresInSeconds = sessionTokenTtlSeconds(session);
+    const expiresInSeconds = sessionTokenTtlSeconds(session, requestNow);
     const token = await provider.createParticipantToken({ roomName: session.provider_room_name, identity: `observer:${authorization.userId}`, name: authorization.displayName, role: "STAFF_OBSERVER", ttlSeconds: expiresInSeconds });
     const now = new Date().toISOString();
     const correlationId = crypto.randomUUID();

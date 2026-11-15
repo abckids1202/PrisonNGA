@@ -100,6 +100,7 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ('role-monitoring-officer', 'perm-session-monitor'),
   ('role-supervisor', 'perm-facility-read'),
   ('role-supervisor', 'perm-facility-state-change'),
+  ('role-supervisor', 'perm-session-monitor'),
   ('role-supervisor', 'perm-audit-read'),
   ('role-auditor', 'perm-facility-read'),
   ('role-auditor', 'perm-audit-read'),

@@ -200,6 +200,7 @@ if (configuredEnvironment !== "development") {
 // or production.
 if (isolatedDevelopmentE2E && configuredEnvironment === "development") {
   Object.assign(environmentVars, {
+    VIDEO_PROVIDER: "local_test",
     VISITOR_AUTH_DELIVERY: "console",
     PAYMENT_PROVIDER: "local_test",
     PAYMENT_WEBHOOK_SECRET: "local-development-payment-webhook-secret-0123456789",

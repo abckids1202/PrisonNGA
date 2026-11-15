@@ -8,6 +8,7 @@ import { releaseVisitCreditStatements } from "../../../../lib/server/credits";
 import { claimIdempotency, completeIdempotencyStatement, hashIdempotencyPayload, releaseIdempotencyClaim, type IdempotencyClaim } from "../../../../lib/server/idempotency";
 import { auditAndOutboxStatements } from "../../../../lib/server/events";
 import { recordWaitingRoomReconciliationRequired } from "../../../../lib/server/reconciliation";
+import { getRequestNow } from "../../../../lib/server/e2e-clock";
 
 const eligibleStatuses = ["APPROVED", "WAITING", "IN_PROGRESS"] as const;
 const commands = ["admit_visitor", "confirm_prisoner_presence", "run_preflight", "retry_device", "contact_visitor", "mark_late", "cancel_visit", "start_visit"] as const;
@@ -192,7 +193,7 @@ export async function POST(request: Request) {
     if (command === "start_visit") {
       const start = Date.parse(String(current.requested_start || ""));
       const end = Date.parse(String(current.requested_end || ""));
-      const nowMs = Date.now();
+      const nowMs = await getRequestNow(request);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new SecurityError("SESSION_INVALID_WINDOW", 409);
       if (nowMs < start - 60_000) throw new SecurityError("VISIT_NOT_STARTED", 409);
       if (nowMs > end + 60_000) throw new SecurityError("VISIT_EXPIRED", 409);
@@ -318,7 +319,7 @@ export async function POST(request: Request) {
     ];
     if (newSession) {
       statements.push(d1.prepare(`INSERT INTO visit_sessions (id, organization_id, appointment_id, facility_id, provider, provider_room_name, provider_room_sid, status, authorized_start_at, authorized_end_at, actual_started_at, created_by, recording_policy, recording_status, version, created_at, updated_at)
-        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        SELECT ?, (SELECT organization_id FROM facilities WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM appointments WHERE id = ? AND facility_id = ? AND version = ? AND last_transition_id = ?)`)
         .bind(newSession.id, authorization.facilityId, body.appointmentId, authorization.facilityId, newSession.provider, newSession.roomName, newSession.roomSid, "CONNECTING", String(current.requested_start || now), String(current.requested_end || new Date(Date.now() + 20 * 60_000).toISOString()), null, authorization.userId, newSession.recordingPolicy, "NOT_RECORDED", 1, now, now, body.appointmentId, authorization.facilityId, nextAppointmentVersion, correlationId));
       statements.push(d1.prepare(`INSERT INTO visit_session_events (id, session_id, event_type, source, participant_role, metadata, correlation_id, created_at)

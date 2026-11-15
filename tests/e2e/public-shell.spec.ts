@@ -469,6 +469,18 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     expect(appointmentBody.appointmentId).toBeTruthy();
     expect(appointmentBody.status).toBe("SUBMITTED");
     if (!appointmentBody.appointmentId) throw new Error("Expected appointment id");
+    // The booked slot is intentionally future-dated to exercise availability.
+    // Move only this isolated development worker into that slot for the rest
+    // of the browser journey; production ignores this header entirely.
+    const testNow = new Date(start.getTime() + 2 * 60_000).toISOString();
+    await page.context().setExtraHTTPHeaders({ "x-securevisit-test-now": testNow });
+    await staff.setExtraHTTPHeaders({
+      "oai-authenticated-user-id": "staff-local-supervisor",
+      "oai-authenticated-user-email": "staff.local@example.test",
+      "oai-authenticated-user-full-name": "Local%20Supervisor",
+      "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+      "x-securevisit-test-now": testNow,
+    });
     approvedAppointmentId = appointmentBody.appointmentId;
 
     // Visit Details must hand off to the same persisted reschedule picker as
@@ -602,14 +614,22 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     // the same persisted session. Local transport intentionally renders a
     // visible no-media test state; real LiveKit media is proved separately in
     // the staging acceptance gate.
-    const visitorToken = await page.request.post(`/api/visitor/visits/${encodeURIComponent(approvedAppointmentId)}/live-session`);
+    const visitorToken = await page.request.post(`/api/visitor/visits/${encodeURIComponent(approvedAppointmentId)}/live-session`, { headers: { origin: testOrigin } });
     expect(visitorToken.status(), await visitorToken.text()).toBe(200);
     await expect(visitorToken.json()).resolves.toMatchObject({ provider: "local_test", participantRole: "VISITOR", session: { id: providerStartBody.sessionId } });
     const kioskToken = await page.request.post(`/api/kiosk/visits/${encodeURIComponent(approvedAppointmentId)}/live-session`, { headers: kioskHeaders });
     expect(kioskToken.status(), await kioskToken.text()).toBe(200);
     await expect(kioskToken.json()).resolves.toMatchObject({ provider: "local_test", participantRole: "FACILITY", session: { id: providerStartBody.sessionId } });
     const observerToken = await staff.request.post(`/api/control/live-sessions/${encodeURIComponent(providerStartBody.sessionId)}/observer-token`, {
-      headers: { origin: testOrigin, "Idempotency-Key": `observer-token-local-video-${Date.now()}-e2e` },
+      headers: {
+        origin: testOrigin,
+        "Idempotency-Key": `observer-token-local-video-${Date.now()}-e2e`,
+        "oai-authenticated-user-id": "staff-local-supervisor",
+        "oai-authenticated-user-email": "staff.local@example.test",
+        "oai-authenticated-user-full-name": "Local%20Supervisor",
+        "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+        "x-securevisit-test-now": testNow,
+      },
       data: { reason: "Pilot acceptance observer token check." },
     });
     expect(observerToken.status(), await observerToken.text()).toBe(200);
@@ -618,9 +638,12 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     // The visitor surface must now reflect the persisted live session after a
     // full navigation and refresh rather than relying on the start response.
     await page.goto(`/visitor/visits/${encodeURIComponent(approvedAppointmentId)}`);
-    await expect(page.getByText("Visit in progress", { exact: true })).toBeVisible();
+    await expect(page.getByText("YOUR VISIT IS READY", { exact: true })).toBeVisible();
     await page.reload();
-    await expect(page.getByText("Visit in progress", { exact: true })).toBeVisible();
+    await expect(page.getByText("YOUR VISIT IS READY", { exact: true })).toBeVisible();
+    await page.goto(`/visitor/visits/${encodeURIComponent(approvedAppointmentId)}/live`);
+    await expect(page.getByText("Development transport · no media channel", { exact: true })).toBeVisible();
+    await expect(page.getByText("Local preview placeholder", { exact: true })).toBeVisible();
 
     const terminate = await staff.request.post(`/api/control/live-sessions/${encodeURIComponent(providerStartBody.sessionId)}/end`, {
       headers: { origin: testOrigin, "Idempotency-Key": `end-local-video-${Date.now()}-e2e` },

@@ -36,7 +36,7 @@ export async function getVideoConfig(): Promise<VideoConfig> {
   // The local provider exists only to exercise persisted session and credit
   // transitions in disposable development acceptance tests. It never passes
   // staging/production configuration validation and does not attempt media.
-  if (provider === "local_test" && environment === "development") {
+  if (environment === "development" && (provider === "local_test" || values.SECUREVISIT_E2E_ISOLATED === "true")) {
     return { provider: "local_test", configured: true, url: url || "wss://local-test.invalid", apiKey: "local-test-key", apiSecret: "local-test-secret" };
   }
   return { provider: "livekit", configured: provider === "livekit" && isValidLiveKitUrl(url) && Boolean(apiKey && apiSecret), url, apiKey, apiSecret };

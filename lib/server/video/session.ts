@@ -27,7 +27,7 @@ export type SessionRecord = {
   version: number;
 };
 
-export async function getVisitorSession(visitId: string, allowTerminal = false): Promise<SessionRecord> {
+export async function getVisitorSession(visitId: string, allowTerminal = false, now = Date.now()): Promise<SessionRecord> {
   const visitor = await requireVisitorIdentity();
   const d1 = await getD1();
   const record = await d1.prepare(`SELECT vs.id, vs.appointment_id, vs.facility_id, a.visitor_user_id, u.display_name AS visitor_name, p.display_name AS prisoner_name, a.prisoner_id, a.status AS appointment_status, a.version AS appointment_version,
@@ -39,7 +39,7 @@ export async function getVisitorSession(visitId: string, allowTerminal = false):
       INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE'
     WHERE vs.appointment_id = ? AND a.visitor_user_id = ?`).bind(visitId, visitor.userId).first<SessionRecord>();
   if (!record) throw new SecurityError("VISIT_NOT_FOUND", 404);
-  if (!allowTerminal) assertVisitorJoinAllowed(record);
+  if (!allowTerminal) assertVisitorJoinAllowed(record, now);
   return record;
 }
 
@@ -56,7 +56,7 @@ export async function getStaffSession(sessionId: string, facilityId: string): Pr
   return record;
 }
 
-export function assertJoinable(record: SessionRecord): void {
+export function assertJoinable(record: SessionRecord, now = Date.now()): void {
   assertRecordingDisabled(record);
   if (!["CONNECTING", "ACTIVE", "RECONNECTING"].includes(record.status)) {
     if (["ENDED", "TERMINATED", "CANCELLED"].includes(record.status)) throw new SecurityError("SESSION_ENDED", 409);
@@ -65,8 +65,8 @@ export function assertJoinable(record: SessionRecord): void {
   const start = Date.parse(record.authorized_start_at);
   const end = Date.parse(record.authorized_end_at);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new SecurityError("SESSION_INVALID_WINDOW", 409);
-  if (Date.now() < start - 60_000) throw new SecurityError("SESSION_NOT_STARTED", 409);
-  if (Date.now() > end + 60_000) throw new SecurityError("SESSION_EXPIRED", 409);
+  if (now < start - 60_000) throw new SecurityError("SESSION_NOT_STARTED", 409);
+  if (now > end + 60_000) throw new SecurityError("SESSION_EXPIRED", 409);
 }
 
 export function assertRecordingDisabled(record: Pick<SessionRecord, "recording_policy" | "recording_status">): void {
@@ -95,21 +95,21 @@ export function assertSessionProvider(record: Pick<SessionRecord, "provider">, c
  * The extra minute covers clock skew and the existing join grace period;
  * the room is still terminated by the server-side session finalizer.
  */
-export function sessionTokenTtlSeconds(record: Pick<SessionRecord, "authorized_end_at">): number {
+export function sessionTokenTtlSeconds(record: Pick<SessionRecord, "authorized_end_at">, now = Date.now()): number {
   const end = Date.parse(record.authorized_end_at);
   if (!Number.isFinite(end)) throw new SecurityError("SESSION_INVALID_WINDOW", 409);
-  return Math.max(60, Math.min(30 * 60, Math.ceil((end - Date.now()) / 1000) + 60));
+  return Math.max(60, Math.min(30 * 60, Math.ceil((end - now) / 1000) + 60));
 }
 
-export function assertVisitorJoinAllowed(record: SessionRecord): void {
-  assertJoinable(record);
+export function assertVisitorJoinAllowed(record: SessionRecord, now = Date.now()): void {
+  assertJoinable(record, now);
   if (record.appointment_status !== "IN_PROGRESS") throw new SecurityError("APPOINTMENT_NOT_IN_PROGRESS", 409);
   if (record.facility_state !== "NORMAL_OPERATIONS") throw new SecurityError("FACILITY_NOT_ACCEPTING_REQUESTS", 409);
   if (record.prisoner_status !== "ACTIVE" || record.visitation_status !== "APPROVED") throw new SecurityError("PRISONER_NOT_AVAILABLE", 409);
 }
 
-export function assertStaffObserverJoinAllowed(record: SessionRecord): void {
-  assertJoinable(record);
+export function assertStaffObserverJoinAllowed(record: SessionRecord, now = Date.now()): void {
+  assertJoinable(record, now);
   if (record.appointment_status !== "IN_PROGRESS") throw new SecurityError("SESSION_NOT_AVAILABLE", 409);
 }
 
