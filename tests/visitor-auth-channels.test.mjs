@@ -30,7 +30,8 @@ test("email-only staging scope requires an explicit approval and does not requir
 test("visitor auth request exposes the enabled channels and rejects disabled channels", async () => {
   const source = await readFile(new URL("../app/api/auth/visitor/request/route.ts", import.meta.url), "utf8");
   assert.match(source, /export async function GET/);
-  assert.match(source, /channels: policy\.channels/);
+  assert.match(source, /configuredChannels/);
+  assert.match(source, /AUTH_DELIVERY_NOT_CONFIGURED/);
   assert.match(source, /AUTH_CHANNEL_DISABLED/);
   assert.match(source, /parseVisitorAuthChannels/);
 });
