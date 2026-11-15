@@ -10,16 +10,18 @@ const supportedDisputeEvents = new Set(["dispute.action_required", "dispute.unde
 const supportedDisputeStatuses = new Set(["ACTION_REQUIRED", "UNDER_REVIEW", "WON", "LOST"]);
 
 /**
- * Xendit supplies a unique webhook-id for every delivery. Use that provider
- * identifier as the durable idempotency key instead of deriving identity from
- * mutable payment payload fields. The callback token authenticates the sender;
- * webhook-id protects duplicate and conflicting-delivery handling.
+ * The callback token authenticates the sender. Some Xendit webhook products or
+ * delivery paths may also provide a webhook-id header, but the payment-session
+ * contract is identified by the event's provider resource ID. Use the header
+ * when present and otherwise fall back to that canonical identity so a valid
+ * provider callback is not rejected merely because an optional header is absent.
  */
 export function normalizeXenditWebhookId(value: unknown): string {
   const id = typeof value === "string" ? value.trim() : "";
   // Leave room for the `xendit:webhook:` namespace in the bounded internal
-  // event key stored by the canonical payment processor.
-  if (!id || id.length > 220 || /[\u0000-\u001f\u007f]/.test(id)) throw new SecurityError("XENDIT_WEBHOOK_ID_REQUIRED", 400);
+  // event key stored by the canonical payment processor. Empty is valid here:
+  // the caller falls back to the canonical event identity below.
+  if (id.length > 220 || /[\u0000-\u001f\u007f]/.test(id)) throw new SecurityError("XENDIT_WEBHOOK_ID_INVALID", 400);
   return id;
 }
 
@@ -100,8 +102,11 @@ export async function POST(request: Request) {
     const canonical = canonicalizeXenditWebhook(parsed as XenditWebhook);
     const webhookId = normalizeXenditWebhookId(request.headers.get("webhook-id"));
     // Keep the canonical payload identity for business validation, but use the
-    // provider's delivery identifier for the durable replay boundary.
-    const delivery = { ...canonical, eventId: `xendit:webhook:${webhookId}` };
+    // provider's delivery identifier for the durable replay boundary when it
+    // exists. Xendit's payment-session webhook contract identifies events by
+    // payment_session_id/refund_id/dispute_id, so that identity is the safe
+    // fallback for deployments where webhook-id is not emitted.
+    const delivery = { ...canonical, eventId: webhookId ? `xendit:webhook:${webhookId}` : canonical.eventId };
     if (delivery.eventId.length > 256 || /[\u0000-\u001f\u007f]/.test(delivery.eventId)) throw new SecurityError("XENDIT_WEBHOOK_INVALID", 400);
 
     // Reuse the canonical signed handler so Xendit events receive the same
