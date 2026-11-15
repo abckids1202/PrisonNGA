@@ -12,10 +12,11 @@ SecureVisit uses Xendit Payment Sessions in hosted `PAYMENT_LINK` mode:
   intent as `reference_id`.
 - The adapter persists `payment_session_id` and returns Xendit's
   `payment_link_url` to the visitor.
-- `GET /sessions/{payment_session_id}` resolves the related
-  `payment_request_id` before a refund request.
-- `POST /refunds` sends the payment request ID, the approved amount/currency,
-  and a stable refund idempotency key.
+- `GET /sessions/{payment_session_id}` resolves the completed `payment_id`
+  before a refund request.
+- `POST /v3/refunds` sends the payment ID, approved amount, a supported refund
+  reason, the `api-version: 2024-11-11` header, and a stable refund
+  idempotency key.
 
 The browser return page is informational only. Credits are granted only after
 the signed Xendit webhook reaches `/api/webhooks/xendit` and the canonical
@@ -49,9 +50,11 @@ Point the callbacks to:
 https://<staging-origin>/api/webhooks/xendit
 ```
 
-The callback must include Xendit’s callback token and unique webhook delivery
-ID. SecureVisit rejects missing, malformed, replayed, or conflicting delivery
-identifiers.
+The callback must include Xendit’s callback token. If Xendit supplies a
+delivery identifier, SecureVisit uses it for the replay boundary; otherwise it
+uses the canonical provider event identity (`payment_session_id`, refund ID,
+or dispute ID). SecureVisit rejects malformed, replayed, or conflicting event
+payloads.
 
 ## Acceptance sequence
 
@@ -65,8 +68,9 @@ record payment secrets or full customer payment details.
 4. Complete the Xendit Test Mode checkout.
 5. Deliver the completion webhook and verify exactly one purchase ledger entry.
 6. Deliver the same webhook again and verify no second credit or balance write.
-7. Deliver a valid event with a reused webhook ID but changed payload and verify
-   that it is rejected as a replay conflict.
+7. Deliver a valid event with a reused delivery ID, or the same canonical
+   provider event ID when no delivery ID is supplied, but changed payload and
+   verify that it is rejected as a replay conflict.
 8. Delay the completion webhook and confirm the browser cannot grant credit.
 9. Expire a checkout session and verify the intent becomes expired without a
    credit entry.
