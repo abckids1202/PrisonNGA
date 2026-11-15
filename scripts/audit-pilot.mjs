@@ -193,7 +193,7 @@ const report = {
     label: check.label,
     configured: check.configured,
     detail: check.detail,
-    requiredOutsideDevelopment: true,
+    requiredOutsideDevelopment: check.id === "visitor-sms-provider" ? visitorSmsRequired : true,
     developmentWaived: environment === "development",
     evaluation: environment === "development" && !check.configured ? "waived" : check.configured ? "configured" : "missing",
     ok: check.configured,

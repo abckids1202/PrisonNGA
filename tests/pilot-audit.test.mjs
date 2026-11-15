@@ -104,6 +104,10 @@ test("pilot audit accepts an email-only notification channel", async () => {
   });
   const report = JSON.parse(result.stdout);
   assert.equal(report.externalIntegrationChecks.find((check) => check.id === "notification-delivery")?.configured, true);
+  const visitorSms = report.externalIntegrationChecks.find((check) => check.id === "visitor-sms-provider");
+  assert.equal(visitorSms?.configured, true);
+  assert.equal(visitorSms?.requiredOutsideDevelopment, false);
+  assert.equal(visitorSms?.evaluation, "configured");
 });
 
 test("pilot audit does not mistake development in-app notifications for a real provider", async () => {
