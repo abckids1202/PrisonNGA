@@ -23,7 +23,7 @@ Use the [pilot evidence register](./PILOT_EVIDENCE_REGISTER.md) to assign owners
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run verify:release`: 737 server tests and 19 browser tests passed. The release verifier additionally runs migration verification, the isolated local backup/restore drill, deployment-manifest preflight, route-security coverage, and the production dependency audit as separate release gates. These checks prove repository behavior only; external provider and institutional evidence remains required.
+- `npm run verify:release`: 738 server tests and 19 browser tests passed. The release verifier additionally runs migration verification, the isolated local backup/restore drill, deployment-manifest preflight, route-security coverage, and the production dependency audit as separate release gates. These checks prove repository behavior only; external provider and institutional evidence remains required.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
