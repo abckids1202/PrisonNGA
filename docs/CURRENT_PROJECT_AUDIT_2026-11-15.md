@@ -5,13 +5,13 @@
 SecureVisit is a strong, production-structured repository and a controlled
 synthetic-staging candidate. It is not yet an approved institutional pilot or
 production service. The latest complete local release verification was run
-against code commit `e7e676a` and passed 741 server tests, 19 browser tests,
+against code commit `56c1a28` and passed 742 server tests, 19 browser tests,
 typecheck, lint, production build, fresh D1 migration checks, a disposable
 backup/restore drill, route-security coverage, and the production dependency
 audit.
 
 The documentation-only evidence refresh is pushed in the later commit. The
-verification result remains attributable to `e7e676a`, not to a claim that
+verification result remains attributable to `56c1a28`, not to a claim that
 external services have been tested.
 
 ## What is implemented locally
