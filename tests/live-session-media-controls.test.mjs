@@ -10,3 +10,9 @@ test("Live Session media controls surface recoverable device failures", async ()
   assert.match(source, /We couldn’t switch to that/);
   assert.match(source, /const statusCopy = mediaError/);
 });
+
+test("Live Session refreshes persisted policy while the call is active", async () => {
+  const source = await readFile(new URL("../app/features/live-session/LiveSessionClient.tsx", import.meta.url), "utf8");
+  assert.match(source, /\["active", "confirming", "reconnecting"\]\.includes\(stage\)/);
+  assert.match(source, /setSession\(body\.session\);\s*const outcome = liveSessionOutcome/);
+});

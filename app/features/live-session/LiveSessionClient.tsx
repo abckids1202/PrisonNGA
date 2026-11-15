@@ -253,7 +253,7 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
   }, [session, stage]);
 
   useEffect(() => {
-    if (stage !== "confirming" && stage !== "reconnecting") return;
+    if (!["active", "confirming", "reconnecting"].includes(stage)) return;
     let active = true;
     const statusUrl = isVisitor
       ? `/api/visitor/visits/${encodeURIComponent(visitId)}/live-session`
@@ -265,9 +265,12 @@ export default function LiveSessionClient({ visitId, role, kioskId, initialKiosk
         if (!response.ok) return;
         const body = await response.json() as { session?: SessionPayload };
         if (!active || !body.session) return;
+        // Keep participant-facing policy/status current while the call is
+        // active. Recording can transition after the room was joined, so the
+        // initial token response must not become the only UI state shown.
+        setSession(body.session);
         const outcome = liveSessionOutcome(body.session.status, body.session.appointmentStatus);
         if (!outcome) return;
-        setSession(body.session);
         setTerminalOutcome(outcome);
         setStage((current) => nextLiveSessionViewStage(current, { persistedOutcome: outcome }));
       } catch {
