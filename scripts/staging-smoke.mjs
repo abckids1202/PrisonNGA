@@ -18,6 +18,10 @@ try {
   throw new Error(`STAGING_DOMAIN is not a valid URL: ${baseUrl}`);
 }
 
+if (parsedBaseUrl.username || parsedBaseUrl.password || parsedBaseUrl.pathname !== "/" || parsedBaseUrl.search || parsedBaseUrl.hash) {
+  throw new Error("STAGING_DOMAIN must be an origin without credentials, path, query, or fragment");
+}
+
 if (!allowInsecure && parsedBaseUrl.protocol !== "https:") {
   throw new Error("STAGING_DOMAIN must use HTTPS; set STAGING_SMOKE_ALLOW_INSECURE=true only for an intentional local check");
 }

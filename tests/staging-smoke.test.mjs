@@ -114,3 +114,9 @@ test("staging smoke fails when LiveKit connections are blocked by CSP", async ()
     server.close();
   }
 });
+
+test("staging smoke rejects a non-origin monitoring target", async () => {
+  const result = await runSmoke("http://127.0.0.1:8787/tenant?probe=1");
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /STAGING_DOMAIN must be an origin/);
+});
