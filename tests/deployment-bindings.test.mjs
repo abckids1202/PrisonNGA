@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { pilotEvidenceGates } from "../lib/server/release-gates.ts";
 
 test("deployment build reads explicit remote D1 and R2 binding configuration", async () => {
   const source = await readFile("vite.config.ts", "utf8");
@@ -25,6 +26,7 @@ test("deployment build reads explicit remote D1 and R2 binding configuration", a
   assert.match(source, /const nonSecretDeploymentKeys = \[/);
   assert.match(source, /local adapters cannot be[\s\S]*?merged into staging[\s\S]*?production/);
   assert.match(source, /signing material remain Cloudflare secret bindings/);
+  for (const [key] of pilotEvidenceGates) assert.match(source, new RegExp(`"${key}"`), `${key} must be propagated into the Worker runtime vars`);
 });
 
 test("the environment template documents the Vercel Worker origin", async () => {
