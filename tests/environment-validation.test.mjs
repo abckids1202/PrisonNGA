@@ -28,6 +28,18 @@ test("invalid environment is rejected before provider validation", () => {
   assert.equal(result.missing.length, 1);
 });
 
+test("non-development Xendit configuration rejects an unapproved API host", () => {
+  const result = validateEnvironment({
+    DB: {},
+    SECUREVISIT_ENVIRONMENT: "staging",
+    PAYMENT_PROVIDER: "xendit",
+    XENDIT_SECRET_KEY: "x".repeat(40),
+    XENDIT_WEBHOOK_TOKEN: "x".repeat(40),
+    XENDIT_API_BASE_URL: "https://payment-proxy.example.test",
+  });
+  assert.ok(result.missing.includes("XENDIT_API_BASE_URL (must use an approved Xendit API host)"));
+});
+
 test("production release gates fail closed until institutional evidence is attested", () => {
   const result = evaluateReleaseGates("production", {});
   assert.equal(result.ready, false);

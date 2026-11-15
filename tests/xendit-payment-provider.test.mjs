@@ -20,6 +20,14 @@ function restoreEnvironment() {
 
 test.afterEach(restoreEnvironment);
 
+test("Xendit provider refuses an unapproved API host outside development", async () => {
+  process.env.PAYMENT_PROVIDER = "xendit";
+  process.env.SECUREVISIT_ENVIRONMENT = "staging";
+  process.env.XENDIT_SECRET_KEY = "xnd_staging_secret";
+  process.env.XENDIT_API_BASE_URL = "https://payment-proxy.example.test";
+  assert.equal(await getPaymentProvider(), null);
+});
+
 test("Xendit adapter creates a hosted payment session with a stable SecureVisit reference", async () => {
   process.env.PAYMENT_PROVIDER = "xendit";
   process.env.SECUREVISIT_ENVIRONMENT = "development";

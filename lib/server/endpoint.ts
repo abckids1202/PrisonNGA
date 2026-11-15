@@ -17,3 +17,20 @@ export function isSecureEndpoint(value: string, options: { allowLocalHttp?: bool
     return false;
   }
 }
+
+/**
+ * Payment credentials may only be sent to Xendit's documented API hosts in
+ * staging/production. Development keeps the HTTPS test-host escape hatch so
+ * adapter tests never need real provider credentials.
+ */
+export function isAllowedXenditApiEndpoint(value: string, environment: string): boolean {
+  if (!isSecureEndpoint(value, { allowLocalHttp: environment === "development" })) return false;
+  if (environment === "development") return true;
+  try {
+    const url = new URL(value);
+    return ["api.xendit.co", "api-staging.xendit.co"].includes(url.hostname.toLowerCase())
+      && !url.port && url.pathname === "/" && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}

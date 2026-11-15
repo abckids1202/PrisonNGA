@@ -1,5 +1,5 @@
 export type RuntimeConfig = Record<string, unknown>;
-import { isSecureHttpsEndpoint } from "./endpoint";
+import { isAllowedXenditApiEndpoint, isSecureHttpsEndpoint } from "./endpoint";
 import { parseVisitorAuthChannels } from "./visitor-auth/channels";
 import { isSafeRecordingEncryptionReference } from "./recording-config";
 
@@ -113,7 +113,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
     requireSecret(env, "XENDIT_SECRET_KEY", missing);
     requireSecret(env, "XENDIT_WEBHOOK_TOKEN", missing);
     const xenditBaseUrl = value(env, "XENDIT_API_BASE_URL") || "https://api.xendit.co";
-    if (!isSecureHttpsEndpoint(xenditBaseUrl)) missing.push("XENDIT_API_BASE_URL (must be an https:// URL without credentials or fragments)");
+    if (!isAllowedXenditApiEndpoint(xenditBaseUrl, environment)) missing.push("XENDIT_API_BASE_URL (must use an approved Xendit API host)");
   }
   requireSecret(env, "PAYMENT_WEBHOOK_SECRET", missing);
   const legacyNotificationDelivery = value(env, "NOTIFICATION_DELIVERY");

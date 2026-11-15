@@ -1,6 +1,6 @@
 export type PaymentCheckout = { provider: string; providerReference: string; checkoutUrl: string | null };
 export type PaymentRefundRequest = { provider: string; providerReference: string };
-import { isSecureEndpoint } from "../endpoint";
+import { isAllowedXenditApiEndpoint, isSecureEndpoint } from "../endpoint";
 import { readBoundedResponseText } from "../bounded-response";
 
 export type PaymentWebhook = { eventId: string; eventType: string; paymentIntentId?: string; providerReference?: string; status?: string; amountMinor?: number; currency?: string };
@@ -47,7 +47,7 @@ export async function getPaymentProvider(): Promise<PaymentProvider | null> {
     const secretKey = await runtimeValue("XENDIT_SECRET_KEY");
     const apiBaseUrl = (await runtimeValue("XENDIT_API_BASE_URL")) || "https://api.xendit.co";
     const isLocalDevelopment = environment === "development";
-    if (!secretKey || !isSecureEndpoint(apiBaseUrl, { allowLocalHttp: isLocalDevelopment })) return null;
+    if (!secretKey || !isAllowedXenditApiEndpoint(apiBaseUrl, isLocalDevelopment ? "development" : "staging")) return null;
     return new XenditPaymentProvider(apiBaseUrl, secretKey);
   }
   return null;
