@@ -3,7 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import StaffObserverClient from "./StaffObserverClient";
 
-type ObserverPayload = { token: string; serverUrl: string; session: { id: string; visitorName: string; prisonerName: string } };
+type ObserverPayload = {
+  token: string;
+  serverUrl: string;
+  session: {
+    id: string;
+    visitorName: string;
+    prisonerName: string;
+    recordingPolicy: string;
+    recordingStatus: string;
+  };
+};
 
 export default function StaffObserverRouteClient({ sessionId }: { sessionId: string }) {
   const [reason, setReason] = useState("Routine live-session observation.");
@@ -32,6 +42,6 @@ export default function StaffObserverRouteClient({ sessionId }: { sessionId: str
     return () => { active = false; };
   }, [sessionId, authorizedReason]);
 
-  if (payload) return <StaffObserverClient sessionId={payload.session.id} visitorName={payload.session.visitorName} prisonerName={payload.session.prisonerName} token={payload.token} serverUrl={payload.serverUrl} onClose={() => window.history.back()} />;
+  if (payload) return <StaffObserverClient sessionId={payload.session.id} visitorName={payload.session.visitorName} prisonerName={payload.session.prisonerName} recordingPolicy={payload.session.recordingPolicy} recordingStatus={payload.session.recordingStatus} token={payload.token} serverUrl={payload.serverUrl} onClose={() => window.history.back()} />;
   return <main className="sv10-observer-loading"><section><span className="sv9-kicker">STAFF OBSERVER · READ ONLY</span><h1>{status === "loading" ? "Authorizing observer access…" : "Open a monitored session"}</h1>{status === "error" ? <p role="alert">{error}</p> : <p>The server will check your monitoring permission and record the access reason.</p>}<label>Observation reason<input value={reason} onChange={(event) => setReason(event.target.value)} minLength={8} /></label>{status === "error" ? <button className="sv4-button" onClick={() => { setError(""); setAuthorizedReason(reason); }}>Try again</button> : <button className="sv4-button" disabled={reason.trim().length < 8} onClick={() => setAuthorizedReason(reason.trim())}>Start read-only observation</button>}</section></main>;
 }

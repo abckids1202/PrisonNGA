@@ -7,6 +7,8 @@ type ObserverProps = {
   sessionId: string;
   visitorName: string;
   prisonerName: string;
+  recordingPolicy: string;
+  recordingStatus: string;
   token: string;
   serverUrl: string;
   onClose: () => void;
@@ -16,7 +18,20 @@ function isCallParticipant(participant: Participant) {
   return participant.identity.startsWith("visitor:") || participant.identity.startsWith("facility:");
 }
 
-export default function StaffObserverClient({ sessionId, visitorName, prisonerName, token, serverUrl, onClose }: ObserverProps) {
+function recordingLabel(policy: string, status: string) {
+  if (policy === "OFF") return "Recording · Off";
+  const labels: Record<string, string> = {
+    CONSENT_REQUIRED: "Recording · Consent pending",
+    CONSENTED: "Recording · Ready",
+    RECORDING: "Recording · Live",
+    PROCESSING: "Recording · Processing",
+    AVAILABLE: "Recording · Available",
+    FAILED: "Recording · Failed",
+  };
+  return labels[status] || `Recording · ${status.replaceAll("_", " ")}`;
+}
+
+export default function StaffObserverClient({ sessionId, visitorName, prisonerName, recordingPolicy, recordingStatus, token, serverUrl, onClose }: ObserverProps) {
   const [status, setStatus] = useState<"connecting" | "connected" | "reconnecting" | "error">("connecting");
   const [error, setError] = useState("");
   const [participants, setParticipants] = useState<string[]>([]);
@@ -74,7 +89,7 @@ export default function StaffObserverClient({ sessionId, visitorName, prisonerNa
   return <div className="sv10-observer-backdrop" role="dialog" aria-modal="true" aria-labelledby="observer-title">
     <section className="sv10-observer-panel">
       <header><div><span className="sv9-kicker">STAFF OBSERVER · READ ONLY</span><h2 id="observer-title">{visitorName} ↔ {prisonerName}</h2><p className="sv-mono">{sessionId}</p></div><button aria-label="Close observer" onClick={onClose}>×</button></header>
-      <div className="sv10-observer-status"><span className={status === "connected" ? "good" : status === "error" ? "bad" : "pending"}><i />{status === "connected" ? "Connected" : status === "reconnecting" ? "Reconnecting" : status === "error" ? "Unavailable" : "Connecting"}</span><span>Recording · Off</span></div>
+      <div className="sv10-observer-status"><span className={status === "connected" ? "good" : status === "error" ? "bad" : "pending"}><i />{status === "connected" ? "Connected" : status === "reconnecting" ? "Reconnecting" : status === "error" ? "Unavailable" : "Connecting"}</span><span>{recordingLabel(recordingPolicy, recordingStatus)}</span></div>
       <div className="sv10-observer-media" ref={mediaRef}>{status === "error" ? <p role="alert">{error}</p> : !participants.length ? <p>Waiting for visitor and facility media…</p> : null}</div>
       <footer><span>Observer audio and video publishing are disabled.</span><button className="sv4-button" onClick={onClose}>Close observer</button></footer>
     </section>

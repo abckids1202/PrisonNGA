@@ -7,6 +7,8 @@ test("staff observer route requests a restricted server token and mounts the rea
   assert.match(source, /observer-token/);
   assert.match(source, /Routine live-session observation/);
   assert.match(source, /StaffObserverClient/);
+  assert.match(source, /recordingPolicy/);
+  assert.match(source, /recordingStatus/);
   assert.match(source, /credentials: "include"/);
   assert.match(source, /Idempotency-Key/);
 });
@@ -28,4 +30,12 @@ test("staff observer token refreshes are audited as token issuance, not repeated
   assert.doesNotMatch(source, /SESSION_MONITORING_STARTED/);
   assert.match(source, /claimIdempotency/);
   assert.match(source, /completeIdempotencyStatement/);
+});
+
+test("staff observer renders persisted recording policy and status", async () => {
+  const source = await readFile(new URL("../app/features/live-session/StaffObserverClient.tsx", import.meta.url), "utf8");
+  assert.match(source, /recordingLabel/);
+  assert.match(source, /Recording · Live/);
+  assert.match(source, /Recording · Consent pending/);
+  assert.doesNotMatch(source, /<span>Recording · Off<\/span>/);
 });
