@@ -19,7 +19,7 @@ Use the [pilot evidence register](./PILOT_EVIDENCE_REGISTER.md) to assign owners
 - Production release gates require a named release-evidence manifest ID, matching future expiry metadata, and one named, unexpired evidence record for every gate; readiness rejects missing, malformed, stale, or incomplete manifests. Staging and production also require a separate recording-policy approval attestation before governed recording can be treated as release-ready.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, deployment-header smoke tests (including LiveKit connectivity), and dependency audit must pass before every pushed phase.
 
-### Baseline verification — 2026-11-15 (`506cfd9`)
+### Baseline verification — 2026-11-15 (`7f21bbb`)
 
 The current repository baseline was rechecked against the pilot contract:
 

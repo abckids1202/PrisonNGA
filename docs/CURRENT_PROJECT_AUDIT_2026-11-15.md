@@ -5,13 +5,13 @@
 SecureVisit is a strong, production-structured repository and a controlled
 synthetic-staging candidate. It is not yet an approved institutional pilot or
 production service. The latest complete local release verification was run
-against code commit `506cfd9` and passed 744 server tests, 19 browser tests,
+against code commit `7f21bbb` and passed 744 server tests, 19 browser tests,
 typecheck, lint, production build, fresh D1 migration checks, a disposable
 backup/restore drill, route-security coverage, and the production dependency
 audit.
 
 The documentation-only evidence refresh is pushed in the later commit. The
-verification result remains attributable to `506cfd9`, not to a claim that
+verification result remains attributable to `7f21bbb`, not to a claim that
 external services have been tested.
 
 ## What is implemented locally
@@ -26,7 +26,7 @@ external services have been tested.
 | Appointments | Availability, policy snapshots, approval checks, collision prevention, resource and credit reservation, cancellation/reschedule branches | Persisted workflow implemented and browser-tested locally |
 | Waiting Room/kiosk | Persisted readiness facts, presence TTLs, device checks, kiosk credentials, heartbeat, admission commands, retries and alarms | Repository workflow implemented; real enrolled hardware remains unproven |
 | Live video | Local transport plus LiveKit token/session/webhook/egress boundaries, visitor/kiosk/observer clients, termination and settlement logic | Local simulation is testable; a real three-party LiveKit call is not yet proven |
-| Recordings | Consent, policy enforcement, dedicated R2 bucket requirement, encrypted-storage control reference, integrity checks, playback audit, retention and legal hold | Governed implementation exists; real LiveKit Egress/R2 playback evidence remains open |
+| Recordings | Consent, policy enforcement, dedicated R2 bucket requirement, encrypted-storage control reference, integrity checks, audited range playback, retention and legal hold | Governed implementation exists; real LiveKit Egress/R2 playback evidence remains open |
 | Operations | Outbox, retries/dead letters, scheduled reconciliation, durable alarms, incidents, audit exports, readiness endpoint, release gates | Repository operations are implemented; deployed monitoring/WAF/recovery evidence remains open |
 
 ## Release blockers
