@@ -64,12 +64,12 @@ export default function DeviceCheckPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/visitor/appointments/${encodeURIComponent(visitId)}`, { credentials: "include", headers: { accept: "application/json" }, signal: controller.signal })
+    fetch(`/api/visitor/visits/${encodeURIComponent(visitId)}`, { credentials: "include", headers: { accept: "application/json" }, signal: controller.signal })
       .then(async (response) => {
-        const body = await response.json() as { appointment?: AppointmentContext; error?: string };
-        if (!response.ok || !body.appointment) throw new Error(response.status === 404 ? "This visit is not available in your account." : body.error || "We couldn’t verify this visit.");
-        if (!["APPROVED", "WAITING"].includes(body.appointment.status)) throw new Error("Device preparation is available after your visit is approved.");
-        setAppointment(body.appointment);
+      const body = await response.json() as { visit?: AppointmentContext; error?: string };
+        if (!response.ok || !body.visit) throw new Error(response.status === 404 ? "This visit is not available in your account." : body.error || "We couldn’t verify this visit.");
+        if (!["APPROVED", "WAITING"].includes(body.visit.status)) throw new Error("Device preparation is available after your visit is approved.");
+        setAppointment(body.visit);
       })
       .catch((error: unknown) => !controller.signal.aborted && setAppointmentError(error instanceof Error ? error.message.replaceAll("_", " ") : "We couldn’t verify this visit."))
       .finally(() => !controller.signal.aborted && setAppointmentLoading(false));
