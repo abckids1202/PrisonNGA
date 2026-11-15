@@ -128,7 +128,9 @@ class WebhookCheckoutProvider implements PaymentProvider {
 
 type XenditSessionResponse = {
   payment_session_id?: unknown;
+  payment_id?: unknown;
   payment_request_id?: unknown;
+  latest_payment_request_id?: unknown;
   payment_link_url?: unknown;
 };
 
@@ -217,33 +219,33 @@ class XenditPaymentProvider implements PaymentProvider {
   }
 
   async requestRefund(input: { paymentIntentId: string; providerReference: string; amountMinor: number; currency: string; reason: string }): Promise<PaymentRefundRequest> {
-    // SecureVisit stores the session ID at checkout time. Xendit requires the
-    // payment_request_id for refunds, so resolve the completed session first.
+    // SecureVisit stores the session ID at checkout time. The current Xendit
+    // Refund API requires the completed payment_id, so resolve the completed
+    // session first instead of sending the legacy payment_request_id.
     const sessionResult = await this.request(`/sessions/${encodeURIComponent(input.providerReference)}`, { method: "GET" });
     const { response: sessionResponse, text: sessionText } = sessionResult;
     if (!sessionResponse.ok) throw new Error(`PAYMENT_SESSION_LOOKUP_FAILED_${sessionResponse.status}`);
     let session: XenditSessionResponse;
     try { session = JSON.parse(sessionText) as XenditSessionResponse; } catch { throw new Error("PAYMENT_SESSION_INVALID_RESPONSE"); }
-    const paymentRequestId = typeof session.payment_request_id === "string" ? session.payment_request_id.trim() : "";
-    if (!paymentRequestId) throw new Error("PAYMENT_REQUEST_NOT_AVAILABLE");
-    const refundResult = await this.request("/refunds", {
+    const paymentId = typeof session.payment_id === "string" ? session.payment_id.trim() : "";
+    if (!paymentId) throw new Error("PAYMENT_NOT_AVAILABLE");
+    const refundResult = await this.request("/v3/refunds", {
       method: "POST",
       // Xendit must receive a stable key so a network timeout cannot create
       // two provider refunds when the operator retries the same intent.
-      headers: { "content-type": "application/json", "X-IDEMPOTENCY-KEY": `refund:${input.paymentIntentId}` },
+      headers: { "content-type": "application/json", "api-version": "2024-11-11", "X-IDEMPOTENCY-KEY": `refund:${input.paymentIntentId}` },
       body: JSON.stringify({
         reference_id: input.paymentIntentId,
-        payment_request_id: paymentRequestId,
-        currency: input.currency,
+        payment_id: paymentId,
         amount: input.amountMinor,
         reason: input.reason.toUpperCase().includes("CANCEL") ? "CANCELLATION" : "REQUESTED_BY_CUSTOMER",
       }),
     });
     const { response: refundResponse, text: refundText } = refundResult;
     if (!refundResponse.ok) throw new Error(`PAYMENT_REFUND_REQUEST_FAILED_${refundResponse.status}`);
-    let refund: { id?: unknown };
-    try { refund = JSON.parse(refundText) as { id?: unknown }; } catch { throw new Error("PAYMENT_REFUND_INVALID_RESPONSE"); }
-    const refundId = typeof refund.id === "string" ? refund.id.trim() : "";
+    let refund: { refund_id?: unknown; status?: unknown };
+    try { refund = JSON.parse(refundText) as { refund_id?: unknown; status?: unknown }; } catch { throw new Error("PAYMENT_REFUND_INVALID_RESPONSE"); }
+    const refundId = typeof refund.refund_id === "string" ? refund.refund_id.trim() : "";
     if (!refundId) throw new Error("PAYMENT_REFUND_INVALID_RESPONSE");
     return { provider: this.name, providerReference: refundId };
   }

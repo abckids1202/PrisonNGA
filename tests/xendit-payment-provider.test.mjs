@@ -65,7 +65,7 @@ test("Xendit adapter creates a hosted payment session with a stable SecureVisit 
   assert.equal(body.amount, 100000);
 });
 
-test("Xendit refund resolves the payment request ID before requesting a refund", async () => {
+test("Xendit refund resolves the payment ID and uses the current v3 refund contract", async () => {
   process.env.PAYMENT_PROVIDER = "xendit";
   process.env.SECUREVISIT_ENVIRONMENT = "development";
   process.env.XENDIT_SECRET_KEY = "xnd_development_secret";
@@ -73,17 +73,19 @@ test("Xendit refund resolves the payment request ID before requesting a refund",
   const requests = [];
   globalThis.fetch = async (url, init) => {
     requests.push({ url, init });
-    if (url.endsWith("/sessions/ps-session-123")) return new Response(JSON.stringify({ payment_request_id: "pr-request-123" }), { status: 200 });
-    return new Response(JSON.stringify({ id: "rfd-refund-123" }), { status: 200 });
+    if (url.endsWith("/sessions/ps-session-123")) return new Response(JSON.stringify({ payment_id: "py-payment-123" }), { status: 200 });
+    return new Response(JSON.stringify({ refund_id: "rfd-refund-123", status: "PENDING" }), { status: 200 });
   };
   const provider = await getPaymentProvider();
   const result = await provider.requestRefund({ paymentIntentId: "payment-intent-123", providerReference: "ps-session-123", amountMinor: 50000, currency: "IDR", reason: "visitor cancellation" });
   assert.deepEqual(result, { provider: "xendit", providerReference: "rfd-refund-123" });
   assert.equal(requests.length, 2);
   assert.equal(requests[0].init.method, "GET");
+  assert.equal(requests[1].url, "https://api.xendit.example.test/v3/refunds");
   assert.equal(new Headers(requests[1].init.headers).get("x-idempotency-key"), "refund:payment-intent-123");
+  assert.equal(new Headers(requests[1].init.headers).get("api-version"), "2024-11-11");
   const refundBody = JSON.parse(requests[1].init.body);
-  assert.equal(refundBody.payment_request_id, "pr-request-123");
+  assert.equal(refundBody.payment_id, "py-payment-123");
   assert.equal(refundBody.reference_id, "payment-intent-123");
   assert.equal(refundBody.reason, "CANCELLATION");
 });
