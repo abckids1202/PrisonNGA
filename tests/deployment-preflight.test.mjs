@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { evaluateDeploymentConfig } from "../scripts/validate-deployment.mjs";
 
@@ -98,4 +100,20 @@ test("CI exercises the Vercel-to-Worker deployment boundary with synthetic HTTPS
   assert.match(workflow, /PUBLIC_APP_URL: https:\/\/securevisit-staging\.example\.invalid/);
   assert.match(workflow, /WORKER_API_ORIGIN: https:\/\/securevisit-api-staging\.example\.invalid/);
   assert.match(workflow, /run: npm run vercel-build/);
+});
+
+test("Vercel boundary rejects development mode at runtime", () => {
+  const validator = fileURLToPath(new URL("../scripts/validate-vercel-boundary.mjs", import.meta.url));
+  const result = spawnSync(process.execPath, [validator], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      SECUREVISIT_VERCEL_DEPLOYMENT: "true",
+      SECUREVISIT_ENVIRONMENT: "development",
+      PUBLIC_APP_URL: "https://securevisit-staging.example.invalid",
+      WORKER_API_ORIGIN: "https://securevisit-api-staging.example.invalid",
+    },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}\n${result.stderr}`, /SECUREVISIT_ENVIRONMENT must be staging or production/);
 });
