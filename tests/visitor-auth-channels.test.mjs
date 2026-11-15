@@ -31,6 +31,7 @@ test("visitor auth request exposes the enabled channels and rejects disabled cha
   const source = await readFile(new URL("../app/api/auth/visitor/request/route.ts", import.meta.url), "utf8");
   assert.match(source, /export async function GET/);
   assert.match(source, /configuredChannels/);
+  assert.match(source, /isVisitorAuthDeliveryConfigured/);
   assert.match(source, /AUTH_DELIVERY_NOT_CONFIGURED/);
   assert.match(source, /AUTH_CHANNEL_DISABLED/);
   assert.match(source, /parseVisitorAuthChannels/);

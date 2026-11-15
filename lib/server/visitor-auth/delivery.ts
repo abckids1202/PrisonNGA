@@ -13,6 +13,27 @@ export async function getVisitorAuthDelivery(channel: "EMAIL" | "SMS"): Promise<
   return value === "console" || value === "webhook" || value === "resend" || value === "twilio" ? value : "";
 }
 
+/** Return only whether the selected adapter has usable runtime configuration. */
+export async function isVisitorAuthDeliveryConfigured(channel: "EMAIL" | "SMS"): Promise<boolean> {
+  const delivery = await getVisitorAuthDelivery(channel);
+  const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
+  if (delivery === "console") return environment === "development";
+  if (delivery === "webhook") {
+    const url = await getRuntimeValue("VISITOR_AUTH_WEBHOOK_URL");
+    return Boolean(url && isSecureHttpsEndpoint(url) && await getRuntimeValue("VISITOR_AUTH_WEBHOOK_SECRET"));
+  }
+  if (delivery === "resend" && channel === "EMAIL") {
+    return Boolean(await getRuntimeValue("VISITOR_EMAIL_RESEND_API_KEY") && await getRuntimeValue("VISITOR_EMAIL_RESEND_FROM"));
+  }
+  if (delivery === "twilio" && channel === "SMS") {
+    const accountSid = await getRuntimeValue("VISITOR_SMS_TWILIO_ACCOUNT_SID");
+    const authToken = await getRuntimeValue("VISITOR_SMS_TWILIO_AUTH_TOKEN");
+    const sender = await getRuntimeValue("VISITOR_SMS_TWILIO_FROM") || await getRuntimeValue("VISITOR_SMS_TWILIO_MESSAGING_SERVICE_SID");
+    return Boolean(accountSid && authToken && sender);
+  }
+  return false;
+}
+
 export async function deliverVisitorChallenge(input: { channel: "EMAIL" | "SMS"; challengeId: string; destination: string; code: string; expiresAt: string }): Promise<DeliveryReceipt> {
   const delivery = await getVisitorAuthDelivery(input.channel);
   if (delivery === "resend" && input.channel === "EMAIL") return sendEmailWithResend({ destination: input.destination, subject: "Your SecureVisit sign-in code", text: `Your SecureVisit code is ${input.code}. It expires in 10 minutes. If you did not request this code, you can ignore this message.`, idempotencyKey: `securevisit-auth:${input.challengeId}` });

@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../../db/runtime";
 import { getRequestContext, getRuntimeValue, getSecuritySalt, hashIdentifier, securityErrorResponse, securityResponse, SecurityError } from "../../../../../lib/server/security";
 import { enforceRateLimit } from "../../../../../lib/server/rate-limit";
-import { deliverVisitorChallenge, getVisitorAuthDelivery } from "../../../../../lib/server/visitor-auth/delivery";
+import { deliverVisitorChallenge, getVisitorAuthDelivery, isVisitorAuthDeliveryConfigured } from "../../../../../lib/server/visitor-auth/delivery";
 import { reconcileStoredNotificationProviderEvent } from "../../../../../lib/server/notifications/provider-status";
 import { isVisitorAuthChannelEnabled, parseVisitorAuthChannels } from "../../../../../lib/server/visitor-auth/channels";
 
@@ -39,13 +39,8 @@ export async function GET() {
   try {
     const policy = parseVisitorAuthChannels(await getRuntimeValue("VISITOR_AUTH_CHANNELS"));
     if (!policy.valid || !policy.channels.length) throw new SecurityError("AUTH_CHANNEL_POLICY_INVALID", 503);
-    const environment = await getRuntimeValue("SECUREVISIT_ENVIRONMENT");
     const configuredChannels = (await Promise.all(policy.channels.map(async (channel) => {
-      const delivery = await getVisitorAuthDelivery(channel);
-      const configured = environment === "development"
-        ? delivery === "console" || (channel === "EMAIL" ? delivery === "webhook" || delivery === "resend" : delivery === "webhook" || delivery === "twilio")
-        : channel === "EMAIL" ? delivery === "webhook" || delivery === "resend" : delivery === "webhook" || delivery === "twilio";
-      return configured ? channel : null;
+      return await isVisitorAuthDeliveryConfigured(channel) ? channel : null;
     }))).filter((channel): channel is "EMAIL" | "SMS" => channel !== null);
     if (!configuredChannels.length) throw new SecurityError("AUTH_DELIVERY_NOT_CONFIGURED", 503);
     return securityResponse({ channels: configuredChannels }, 200, context.requestId);
