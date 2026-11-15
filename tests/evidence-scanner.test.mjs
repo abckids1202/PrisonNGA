@@ -62,6 +62,16 @@ test("visitor evidence cannot become available before a clean scan", async () =>
   assert.ok(source.indexOf("await requestEvidenceScan(") < source.indexOf("await bucket.put(storageKey"));
   assert.match(source, /"QUARANTINED"/);
   assert.match(source, /scan_status/);
+  assert.match(source, /earlyScanEvent/);
+  assert.match(source, /EVIDENCE_SCAN_COMPLETED/);
+});
+
+test("evidence upload reconciles a scanner callback that arrived before the quarantine row", async () => {
+  const source = await readFile(new URL("../app/api/visitor/verification/evidence/route.ts", import.meta.url), "utf8");
+  assert.match(source, /SELECT event_id, verdict, payload FROM evidence_scan_events/);
+  assert.match(source, /earlyFinalVerdict/);
+  assert.match(source, /scanStatus === "PENDING" \? null : now\.toISOString\(\)/);
+  assert.match(source, /earlyScanEvent \? auditAndOutboxStatements/);
 });
 
 test("scanner callbacks support an accepted reference without treating it as clean", async () => {

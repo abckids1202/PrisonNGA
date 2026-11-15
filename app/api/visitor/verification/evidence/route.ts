@@ -87,21 +87,37 @@ export async function POST(request: Request) {
     await bucket.put(storageKey, bytes, { httpMetadata: { contentType: file.type } });
     evidenceUploaded = true;
     const correlationId = crypto.randomUUID();
-    const available = scanResult.verdict === "CLEAN";
+    const scanProvider = (await getRuntimeValue("EVIDENCE_SCAN_PROVIDER")) || "unknown";
+    const earlyScanEvent = scanResult.verdict === "PENDING" && scanResult.providerReference
+      ? await d1.prepare("SELECT event_id, verdict, payload FROM evidence_scan_events WHERE provider = ? AND scan_reference = ? ORDER BY created_at DESC LIMIT 1")
+        .bind(scanProvider, scanResult.providerReference)
+        .first<{ event_id: string; verdict: "clean" | "infected" | "failed"; payload: string }>()
+      : null;
+    let earlyScanError: string | null = null;
+    if (earlyScanEvent?.verdict === "failed") {
+      try {
+        const parsed = JSON.parse(earlyScanEvent.payload) as { error?: unknown };
+        earlyScanError = typeof parsed.error === "string" ? parsed.error.trim().slice(0, 500) || null : null;
+      } catch {
+        earlyScanError = "EVIDENCE_SCAN_FAILED";
+      }
+    }
+    const earlyFinalVerdict = earlyScanEvent?.verdict || null;
+    const available = scanResult.verdict === "CLEAN" || earlyFinalVerdict === "clean";
     const evidenceStatus = available ? "AVAILABLE" : "QUARANTINED";
-    const scanStatus = available ? "CLEAN" : "PENDING";
-    const responseStatus = available ? 201 : 202;
+    const scanStatus = available ? "CLEAN" : earlyFinalVerdict === "infected" ? "INFECTED" : earlyFinalVerdict === "failed" ? "FAILED" : "PENDING";
+    const responseStatus = scanStatus === "PENDING" ? 202 : 201;
     const responseBody = { evidenceId: id, status: evidenceStatus, scanStatus, retentionUntil, correlationId };
     try {
       const inserted = await d1.batch([
-        d1.prepare(`INSERT INTO evidence_documents (id, organization_id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, scan_status, scan_provider, scan_reference, scan_requested_at, scan_completed_at, retention_until, legal_hold, created_by, created_at, updated_at)
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?
+        d1.prepare(`INSERT INTO evidence_documents (id, organization_id, facility_id, verification_case_id, visitor_user_id, storage_key, original_filename, content_type, byte_size, sha256, status, scan_status, scan_provider, scan_reference, scan_requested_at, scan_completed_at, scan_error, retention_until, legal_hold, created_by, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?
           WHERE NOT EXISTS (
             SELECT 1 FROM evidence_documents
             WHERE verification_case_id = ? AND visitor_user_id = ? AND sha256 = ? AND status IN ('AVAILABLE', 'QUARANTINED')
           )
           AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)`)
-          .bind(id, ownedCase.organization_id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, evidenceStatus, scanStatus, (await getRuntimeValue("EVIDENCE_SCAN_PROVIDER")) || "unknown", scanResult.providerReference || null, now.toISOString(), available ? now.toISOString() : null, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256, ownedCase.facility_id),
+          .bind(id, ownedCase.organization_id, ownedCase.facility_id, verificationCaseId, visitor.userId, storageKey, safeFilename(file.name), file.type, bytes.length, sha256, evidenceStatus, scanStatus, scanProvider, scanResult.providerReference || null, now.toISOString(), scanStatus === "PENDING" ? null : now.toISOString(), earlyScanError, retentionUntil, visitor.userId, now.toISOString(), now.toISOString(), verificationCaseId, visitor.userId, sha256, ownedCase.facility_id),
         ...auditAndOutboxStatements(d1, {
           actorUserId: visitor.userId,
           actorRole: "VISITOR",
@@ -116,6 +132,21 @@ export async function POST(request: Request) {
           eventType: "EVIDENCE_UPLOADED",
           payload: { evidenceId: id, verificationCaseId, visitorUserId: visitor.userId },
         }, { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED')) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)", values: [id, verificationCaseId, visitor.userId, ownedCase.facility_id] }),
+        ...(earlyScanEvent ? auditAndOutboxStatements(d1, {
+          actorUserId: "system:evidence-scanner",
+          actorRole: "SYSTEM",
+          facilityId: ownedCase.facility_id,
+          actionType: "EVIDENCE_SCAN_COMPLETED",
+          entityType: "evidence_document",
+          entityId: id,
+          reason: earlyFinalVerdict === "clean" ? "Evidence scanner callback arrived before the upload row and was reconciled during persistence." : "Evidence scanner callback arrived before the upload row; the evidence remains non-available.",
+          oldValues: { status: "QUARANTINED", scanStatus: "PENDING" },
+          newValues: { status: evidenceStatus, scanStatus, provider: scanProvider, scanReference: scanResult.providerReference, eventId: earlyScanEvent.event_id },
+          requestId: context.requestId,
+          correlationId: earlyScanEvent.event_id,
+          eventType: "EVIDENCE_SCAN_COMPLETED",
+          payload: { evidenceId: id, verdict: earlyFinalVerdict, provider: scanProvider, scanReference: scanResult.providerReference, eventId: earlyScanEvent.event_id },
+        }, { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND facility_id = ? AND status = ? AND scan_status = ?)", values: [id, ownedCase.facility_id, evidenceStatus, scanStatus] }) : []),
         completeIdempotencyStatement(d1, { ...idempotency, status: responseStatus, body: responseBody, guard: { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND verification_case_id = ? AND visitor_user_id = ? AND status IN ('AVAILABLE', 'QUARANTINED')) AND EXISTS (SELECT 1 FROM facilities f INNER JOIN organizations o ON o.id = f.organization_id AND o.status = 'ACTIVE' WHERE f.id = ?)", values: [id, verificationCaseId, visitor.userId, ownedCase.facility_id] } }),
       ]);
       if (!inserted[0]?.meta.changes) {
