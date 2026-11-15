@@ -5,7 +5,8 @@
 SecureVisit is a strong, production-structured repository and a controlled
 synthetic-staging candidate. It is not yet an approved institutional pilot or
 production service. The latest complete local release verification was run
-against code commit `c75c83d` and passed 744 release tests, 19 browser tests,
+against application commit `c75c83d`, with the current deployment-contract
+change on top at `bb8b030`, and passed 744 release tests, 19 browser tests,
 typecheck, lint, production build, fresh D1 migration checks, a disposable
 backup/restore drill, route-security coverage, and the production dependency
 audit.
@@ -14,6 +15,12 @@ The verification result remains repository evidence only, not a claim that
 external services have been tested.
 
 ## What is implemented locally
+
+The current pushed baseline also includes a checked-in `vercel.json` that pins
+the Vercel install/build commands and fails closed unless the Vercel-to-Worker
+origin contract is supplied during build. This makes the frontend deployment
+shape reproducible; it does not prove that a real Vercel project, DNS, cookies,
+or Worker deployment has been accepted in staging.
 
 | Area | Current evidence | Assessment |
 | --- | --- | --- |
