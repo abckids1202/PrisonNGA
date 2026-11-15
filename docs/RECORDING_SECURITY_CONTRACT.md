@@ -2,6 +2,9 @@
 
 This contract describes the implementation boundary for governed recordings. It is a technical control description, not proof that a deployment has been configured or approved.
 
+Recording enablement also requires the separate `SECUREVISIT_RECORDING_POLICY_APPROVAL=approved`
+release attestation. A successful LiveKit/R2 test does not authorize recording by itself.
+
 ## Storage
 
 - LiveKit Egress writes directly to a dedicated private R2 recordings bucket through the S3-compatible endpoint.

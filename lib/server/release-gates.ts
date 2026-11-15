@@ -14,6 +14,7 @@ type ReleaseEvidenceManifest = {
 export const pilotEvidenceGates: Array<[string, string]> = [
   ["SECUREVISIT_TARIFF_APPROVAL", "approved"],
   ["SECUREVISIT_REFUND_POLICY_APPROVAL", "approved"],
+  ["SECUREVISIT_RECORDING_POLICY_APPROVAL", "approved"],
   ["SECUREVISIT_BACKUP_RESTORE_DRILL", "verified"],
   ["SECUREVISIT_WAF", "enabled"],
   ["SECUREVISIT_MONITORING", "configured"],

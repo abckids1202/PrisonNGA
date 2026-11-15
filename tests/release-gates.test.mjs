@@ -28,6 +28,7 @@ test("production readiness requires approved tariff and refund policy attestatio
         ["SECUREVISIT_PRIVACY_REVIEW", "approved"],
         ["SECUREVISIT_TARIFF_APPROVAL", "approved"],
         ["SECUREVISIT_REFUND_POLICY_APPROVAL", "approved"],
+        ["SECUREVISIT_RECORDING_POLICY_APPROVAL", "approved"],
         ["SECUREVISIT_BACKUP_RESTORE_DRILL", "verified"],
         ["SECUREVISIT_WAF", "enabled"],
         ["SECUREVISIT_MONITORING", "configured"],
@@ -53,6 +54,7 @@ test("production readiness requires approved tariff and refund policy attestatio
     ...baseline,
     SECUREVISIT_TARIFF_APPROVAL: "approved",
     SECUREVISIT_REFUND_POLICY_APPROVAL: "approved",
+    SECUREVISIT_RECORDING_POLICY_APPROVAL: "approved",
   });
   assert.equal(approved.ready, true);
   assert.deepEqual(approved.missing, []);
@@ -65,6 +67,7 @@ test("production readiness rejects missing or expired release evidence", () => {
     SECUREVISIT_PRIVACY_REVIEW: "approved",
     SECUREVISIT_TARIFF_APPROVAL: "approved",
     SECUREVISIT_REFUND_POLICY_APPROVAL: "approved",
+    SECUREVISIT_RECORDING_POLICY_APPROVAL: "approved",
     SECUREVISIT_BACKUP_RESTORE_DRILL: "verified",
     SECUREVISIT_WAF: "enabled",
     SECUREVISIT_MONITORING: "configured",
@@ -122,6 +125,7 @@ function pilotStatusEntries() {
   return [
     ["SECUREVISIT_TARIFF_APPROVAL", "approved"],
     ["SECUREVISIT_REFUND_POLICY_APPROVAL", "approved"],
+    ["SECUREVISIT_RECORDING_POLICY_APPROVAL", "approved"],
     ["SECUREVISIT_BACKUP_RESTORE_DRILL", "verified"],
     ["SECUREVISIT_WAF", "enabled"],
     ["SECUREVISIT_MONITORING", "configured"],
