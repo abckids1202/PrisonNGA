@@ -157,7 +157,7 @@ test("recording playback streams verified objects and bounds fallback hashing", 
   const storage = await readFile(new URL("../lib/server/evidence-storage.ts", import.meta.url), "utf8");
   assert.match(storage, /checksumSha256\?: string/);
   assert.match(storage, /checksums\?\.sha256/);
-  assert.match(route, /new Response\(object\.body/);
+  assert.match(route, /new Response\(servedObject\.body/);
   assert.match(route, /MAX_FALLBACK_INTEGRITY_BYTES/);
   assert.match(route, /RECORDING_INTEGRITY_METADATA_MISSING/);
   assert.match(route, /RECORDING_RETENTION_EXPIRED/);
@@ -166,6 +166,10 @@ test("recording playback streams verified objects and bounds fallback hashing", 
   assert.match(route, /recording\.organization_id/);
   assert.match(route, /recording_id, organization_id, facility_id/);
   assert.match(route, /RECORDING_ORGANIZATION_SCOPE_MISSING/);
+  assert.match(route, /requestedByteRange/);
+  assert.match(route, /status: range \? 206 : 200/);
+  assert.match(route, /Content-Range/);
+  assert.match(route, /Accept-Ranges/);
 });
 
 test("playback integrity failures create a durable security alarm", async () => {

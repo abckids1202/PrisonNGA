@@ -13,7 +13,7 @@ export const MAX_FALLBACK_INTEGRITY_BYTES = 64 * 1024 * 1024;
 
 export type EvidenceStore = {
   put(key: string, value: Uint8Array, options?: { httpMetadata?: { contentType?: string } }): Promise<void>;
-  get(key: string): Promise<EvidenceObject | null>;
+  get(key: string, options?: { range?: { offset?: number; length: number } }): Promise<EvidenceObject | null>;
   delete(key: string): Promise<void>;
 };
 
@@ -23,10 +23,12 @@ const localDevelopmentStore: EvidenceStore = {
   async put(key, value) {
     localObjects.set(key, new Uint8Array(value));
   },
-  async get(key) {
+  async get(key, options) {
     const bytes = localObjects.get(key);
     if (!bytes) return null;
-    const copy = new Uint8Array(bytes);
+    const offset = Math.max(0, options?.range?.offset || 0);
+    const end = options?.range?.length === undefined ? bytes.byteLength : Math.min(bytes.byteLength, offset + Math.max(0, options.range.length));
+    const copy = new Uint8Array(bytes.slice(offset, end));
     const digest = await crypto.subtle.digest("SHA-256", copy);
     return {
       body: new Response(copy).body!,
@@ -52,8 +54,8 @@ export async function getEvidenceStore(): Promise<EvidenceStore | null> {
   if (!bucket) return null;
   return {
     put: async (key, value, options) => { await bucket.put(key, value, options); },
-    get: async (key) => {
-      const object = await bucket.get(key);
+    get: async (key, options) => {
+      const object = await bucket.get(key, options?.range ? { range: options.range } : undefined);
       const checksum = (object as unknown as { checksums?: { sha256?: ArrayBuffer } } | null)?.checksums?.sha256;
       return object ? {
         body: object.body,
@@ -75,8 +77,8 @@ export async function getRecordingStore(): Promise<EvidenceStore | null> {
   if (!bucket) return null;
   return {
     put: async (key, value, options) => { await bucket.put(key, value, options); },
-    get: async (key) => {
-      const object = await bucket.get(key);
+    get: async (key, options) => {
+      const object = await bucket.get(key, options?.range ? { range: options.range } : undefined);
       const checksum = (object as unknown as { checksums?: { sha256?: ArrayBuffer } } | null)?.checksums?.sha256;
       return object ? {
         body: object.body,

@@ -35,7 +35,27 @@ async function recordIntegrityFailure(input: {
   }
 }
 
-export async function GET(_request: Request, { params }: { params: Promise<{ recordingId: string }> }) {
+function requestedByteRange(value: string | null, size: number): { start: number; end: number } | null {
+  if (!value) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
+  if (!match || (!match[1] && !match[2])) throw new SecurityError("RECORDING_RANGE_INVALID", 416);
+  let start: number;
+  let end: number;
+  if (!match[1]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) throw new SecurityError("RECORDING_RANGE_INVALID", 416);
+    start = Math.max(0, size - suffixLength);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] ? Number(match[2]) : size - 1;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) throw new SecurityError("RECORDING_RANGE_INVALID", 416);
+    end = Math.min(end, size - 1);
+  }
+  return { start, end };
+}
+
+export async function GET(request: Request, { params }: { params: Promise<{ recordingId: string }> }) {
   const context = await getRequestContext();
   try {
     let authorization;
@@ -91,24 +111,31 @@ export async function GET(_request: Request, { params }: { params: Promise<{ rec
         throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
       }
     }
+    const range = requestedByteRange(request.headers.get("range"), object.size);
+    const servedObject = range ? await store.get(recording.storage_key, { range: { offset: range.start, length: range.end - range.start + 1 } }) : object;
+    if (!servedObject || (range && servedObject.size !== range.end - range.start + 1)) throw new SecurityError("RECORDING_RANGE_UNAVAILABLE", 503);
     const correlationId = crypto.randomUUID();
     const audited = await d1.prepare(`INSERT INTO recording_access_events
       (id, recording_id, organization_id, facility_id, actor_user_id, access_type, break_glass_request_id, reason, correlation_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(crypto.randomUUID(), recording.id, recording.organization_id, authorization.facilityId, authorization.userId, breakGlassRequestId ? "BREAK_GLASS_PLAYBACK" : "PLAYBACK", breakGlassRequestId ? "Approved break-glass recording playback." : "Authorized staff recording playback.", breakGlassRequestId, correlationId, new Date().toISOString()).run();
     if (!audited.meta.changes) throw new SecurityError("RECORDING_ACCESS_AUDIT_FAILED", 503);
-    const response = new Response(object.body, { status: 200, headers: {
+    const response = new Response(servedObject.body, { status: range ? 206 : 200, headers: {
       "Content-Type": recording.content_type,
-      "Content-Length": String(object.size),
+      "Content-Length": String(servedObject.size),
       "Content-Disposition": `inline; filename="securevisit-recording-${recording.id}.bin"`,
       "Cache-Control": "private, no-store, max-age=0",
       "Cross-Origin-Resource-Policy": "same-origin",
+      "Accept-Ranges": "bytes",
+      ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${object.size}` } : {}),
     } });
     applySecurityHeaders(response, context.requestId);
     response.headers.set("Content-Type", recording.content_type);
-    response.headers.set("Content-Length", String(object.size));
+    response.headers.set("Content-Length", String(servedObject.size));
     response.headers.set("Content-Disposition", `inline; filename="securevisit-recording-${recording.id}.bin"`);
     response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    response.headers.set("Accept-Ranges", "bytes");
+    if (range) response.headers.set("Content-Range", `bytes ${range.start}-${range.end}/${object.size}`);
     return response;
   } catch (error) {
     return securityErrorResponse(error, context.requestId);
