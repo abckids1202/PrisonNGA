@@ -19,11 +19,11 @@ Use the [pilot evidence register](./PILOT_EVIDENCE_REGISTER.md) to assign owners
 - Production release gates require a named release-evidence manifest ID, matching future expiry metadata, and one named, unexpired evidence record for every gate; readiness rejects missing, malformed, stale, or incomplete manifests.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, deployment-header smoke tests (including LiveKit connectivity), and dependency audit must pass before every pushed phase.
 
-### Baseline verification — 2026-11-15 (`82cdc5e`)
+### Baseline verification — 2026-11-15 (`3e85c70`)
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run verify:release`: 728 server tests and 19 browser tests passed. The release verifier additionally runs migration verification, the local backup/restore drill, deployment-manifest preflight, route-security coverage, and the production dependency audit as separate release gates. These checks prove repository behavior only; external provider and institutional evidence remains required.
+- `npm run verify:release`: 729 server tests and 19 browser tests passed. The release verifier additionally runs migration verification, the local backup/restore drill, deployment-manifest preflight, route-security coverage, and the production dependency audit as separate release gates. These checks prove repository behavior only; external provider and institutional evidence remains required.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
