@@ -52,6 +52,8 @@ The direct adapters call Resend and Twilio from the Worker using server-only cre
 
 The adapter must validate the timestamp within a five-minute replay window, verify the signature over the raw body, deduplicate the idempotency key, and return a 2xx response only after accepting the message for delivery. It must never log the OTP.
 
+For evidence scanning, staging and production also require `EVIDENCE_SCAN_CALLBACK_URL` to be a secure HTTPS endpoint in the deployed Worker. A scanner may return `pending` only when SecureVisit has a signed callback route to finalize the quarantine decision; the runtime rejects an asynchronous scan with no callback path.
+
 ### Payment checkout and webhooks
 
 Configure a real provider adapter only after the institution approves the credit tariff and refund policy. The tariff is stored on the facility's versioned Visit Policy and must be explicitly configured before a non-development facility can accept checkout; `VISIT_CREDIT_PRICE_MINOR` is only a local development fallback. Checkout requests use the payment intent ID as the idempotency key. Payment events must be signed, timestamp-bound, provider-bound, persisted before processing, and safe to replay.
