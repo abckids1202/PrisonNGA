@@ -520,6 +520,14 @@ test("persisted visitor verification, payment, appointment request, and staff ap
     });
     expect(openWaitingRoom.status(), await openWaitingRoom.text()).toBe(200);
 
+    // Device Check must render from the same persisted visitor visit resource
+    // used by Visit Details. Keep the browser assertion before the API result
+    // is posted so this catches a broken page boundary, not just a successful
+    // device-check mutation.
+    await page.goto(`/visitor/visits/${encodeURIComponent(approvedAppointmentId)}/device-check`);
+    await expect(page.getByRole("heading", { name: "Let’s make sure you’re ready", exact: true })).toBeVisible();
+    await expect(page.getByText("Usually takes less than a minute", { exact: true })).toBeVisible();
+
     const deviceCheck = await page.request.post(`/api/visitor/appointments/${approvedAppointmentId}/device-check`, {
       headers: { origin: testOrigin, "Idempotency-Key": `visitor-device-check-${Date.now()}-e2e` },
       data: { cameraResult: "ready", microphoneResult: "ready", networkResult: "stable", latencyMs: 84 },
