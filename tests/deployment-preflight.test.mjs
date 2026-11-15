@@ -76,6 +76,7 @@ test("deployment preflight rejects credentials embedded in Worker vars", () => {
 test("Vercel build validates the frontend and Worker origins", async () => {
   const source = await readFile(new URL("../scripts/validate-vercel-boundary.mjs", import.meta.url), "utf8");
   const nextConfig = await readFile(new URL("../next.config.ts", import.meta.url), "utf8");
+  const vercelConfig = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.match(source, /PUBLIC_APP_URL/);
   assert.match(source, /WORKER_API_ORIGIN/);
@@ -83,6 +84,9 @@ test("Vercel build validates the frontend and Worker origins", async () => {
   assert.match(nextConfig, /destination: `\$\{workerOrigin\}\/api\/:path\*`/);
   assert.match(nextConfig, /url\.protocol !== "https:"/);
   assert.equal(packageJson.scripts["vercel-build"], "node scripts/validate-vercel-boundary.mjs && npm run build");
+  assert.equal(vercelConfig.framework, "nextjs");
+  assert.equal(vercelConfig.installCommand, "npm ci");
+  assert.equal(vercelConfig.buildCommand, "npm run vercel-build");
 });
 
 test("CI exercises the Vercel-to-Worker deployment boundary with synthetic HTTPS origins", async () => {
