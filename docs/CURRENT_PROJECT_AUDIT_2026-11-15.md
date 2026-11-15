@@ -5,13 +5,13 @@
 SecureVisit is a strong, production-structured repository and a controlled
 synthetic-staging candidate. It is not yet an approved institutional pilot or
 production service. The latest complete local release verification was run
-against code commit `0583443` and passed 744 server tests, 19 browser tests,
+against code commit `b891c5c` and passed 744 server tests, 19 browser tests,
 typecheck, lint, production build, fresh D1 migration checks, a disposable
 backup/restore drill, route-security coverage, and the production dependency
 audit.
 
 The documentation-only evidence refresh is pushed in the later commit. The
-verification result remains attributable to `0583443`, not to a claim that
+verification result remains attributable to `b891c5c`, not to a claim that
 external services have been tested.
 
 ## What is implemented locally
@@ -22,7 +22,7 @@ external services have been tested.
 | Visitor identity | Email/SMS development adapters, OTP expiry/attempt limits, session/device management, revocation, provider readiness checks | Implemented as boundaries; real email delivery and recovery require staging evidence |
 | Staff identity | OIDC and SAML flows, MFA claim requirements, role/facility mapping, step-up controls | Implemented as integration boundaries; institutional IdP validation remains open |
 | Verification | Relationship cases, evidence metadata, private-storage abstraction, malware-scan callback boundary, staff decisions, retention/legal hold | Persisted workflow implemented; R2 and scanner are not externally proven |
-| Credits/payments | Append-only ledger, transactional reservation/release, Xendit adapter, signed webhook normalization, refunds, disputes, reconciliation recovery | Adapter and invariants tested; no real Xendit sandbox evidence yet |
+| Credits/payments | Append-only ledger, transactional reservation/release, current Xendit Payment Session/refund adapter, signed webhook normalization, refunds, disputes, reconciliation recovery | Adapter and invariants tested; no real Xendit sandbox evidence yet |
 | Appointments | Availability, policy snapshots, approval checks, collision prevention, resource and credit reservation, cancellation/reschedule branches | Persisted workflow implemented and browser-tested locally |
 | Waiting Room/kiosk | Persisted readiness facts, presence TTLs, device checks, kiosk credentials, heartbeat, admission commands, retries and alarms | Repository workflow implemented; real enrolled hardware remains unproven |
 | Live video | Local transport plus LiveKit token/session/webhook/egress boundaries, visitor/kiosk/observer clients, termination and settlement logic | Local simulation is testable; a real three-party LiveKit call is not yet proven |
