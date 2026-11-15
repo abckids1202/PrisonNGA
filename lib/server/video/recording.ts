@@ -9,7 +9,7 @@ async function recordingStorageConfig(): Promise<RecordingStorageConfig> {
   const endpoint = (await getRuntimeValue("R2_S3_ENDPOINT") || "").trim();
   const accessKey = (await getRuntimeValue("R2_S3_ACCESS_KEY_ID") || "").trim();
   const secret = (await getRuntimeValue("R2_S3_SECRET_ACCESS_KEY") || "").trim();
-  const bucket = (await getRuntimeValue("RECORDINGS_BUCKET_NAME") || await getRuntimeValue("R2_BUCKET_NAME") || "").trim();
+  const bucket = (await getRuntimeValue("RECORDINGS_BUCKET_NAME") || "").trim();
   const region = (await getRuntimeValue("R2_S3_REGION") || "auto").trim();
   const encryptionMode = (await getRuntimeValue("RECORDINGS_ENCRYPTION_MODE") || "").trim().toLowerCase();
   const encryptionKeyReference = (await getRuntimeValue("RECORDINGS_ENCRYPTION_KEY_REFERENCE") || "").trim();

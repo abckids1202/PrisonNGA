@@ -88,7 +88,7 @@ export function validateEnvironment(env: RuntimeConfig): EnvironmentCheck {
   if (value(env, "RECORDINGS_ENCRYPTION_MODE") !== "r2_managed") missing.push("RECORDINGS_ENCRYPTION_MODE=r2_managed");
   if (!isSafeRecordingEncryptionReference(value(env, "RECORDINGS_ENCRYPTION_KEY_REFERENCE"))) missing.push("RECORDINGS_ENCRYPTION_KEY_REFERENCE (bounded non-secret identifier)");
   if (!isSecureHttpsEndpoint(value(env, "R2_S3_ENDPOINT"))) missing.push("R2_S3_ENDPOINT (must be an https:// URL without credentials or fragments)");
-  if (!value(env, "RECORDINGS_BUCKET_NAME") && !value(env, "R2_BUCKET_NAME")) missing.push("RECORDINGS_BUCKET_NAME");
+  if (!value(env, "RECORDINGS_BUCKET_NAME")) missing.push("RECORDINGS_BUCKET_NAME");
   if (!value(env, "R2_S3_ACCESS_KEY_ID")) missing.push("R2_S3_ACCESS_KEY_ID");
   requireSecret(env, "R2_S3_SECRET_ACCESS_KEY", missing);
   if (value(env, "EVIDENCE_STORAGE_PROVIDER") !== "r2") missing.push("EVIDENCE_STORAGE_PROVIDER=r2");

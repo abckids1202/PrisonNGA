@@ -66,3 +66,8 @@ test("both staff federation providers are required when configured", () => {
   const missingOidc = validateEnvironment({ ...base, STAFF_OIDC_CLIENT_SECRET: "" });
   assert.ok(missingOidc.missing.includes("STAFF_OIDC_CLIENT_SECRET"));
 });
+
+test("recordings require the explicit separate bucket name", () => {
+  const missing = validateEnvironment({ ...base, RECORDINGS_BUCKET_NAME: "", R2_BUCKET_NAME: "legacy-shared-bucket" });
+  assert.ok(missing.missing.includes("RECORDINGS_BUCKET_NAME"));
+});
