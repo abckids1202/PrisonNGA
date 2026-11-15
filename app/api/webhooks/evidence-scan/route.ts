@@ -19,6 +19,13 @@ function text(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+async function replayScanEventIfPresent(d1: D1Database, callback: ScanCallback, snapshot: string, contextRequestId: string, matched: boolean, evidenceId?: string): Promise<Response | null> {
+  const winner = await d1.prepare("SELECT payload FROM evidence_scan_events WHERE provider = ? AND event_id = ?").bind(callback.provider, callback.eventId).first<{ payload: string }>();
+  if (!winner) return null;
+  if (winner.payload !== snapshot) throw new SecurityError("EVIDENCE_SCAN_REPLAY_CONFLICT", 409);
+  return securityResponse({ accepted: true, matched, idempotent: true, ...(evidenceId ? { evidenceId } : {}), eventId: callback.eventId }, 200, contextRequestId);
+}
+
 export async function POST(request: Request) {
   const context = await getRequestContext();
   try {
@@ -74,12 +81,26 @@ export async function POST(request: Request) {
         .bind(eventId, callback.eventId, callback.provider, callback.scanReference, evidence?.id || callback.evidenceId || null, evidence?.organization_id || null, evidence?.facility_id || null, callback.verdict, snapshot, now),
     ];
     if (!evidence) {
-      const results = await d1.batch(statements);
+      let results: D1Result<unknown>[];
+      try {
+        results = await d1.batch(statements);
+      } catch (error) {
+        const replay = await replayScanEventIfPresent(d1, callback, snapshot, context.requestId, false);
+        if (replay) return replay;
+        throw error;
+      }
       if (!results[0]?.meta.changes) throw new SecurityError("EVIDENCE_SCAN_EVENT_NOT_PERSISTED", 503);
       return securityResponse({ accepted: true, matched: false, eventId: callback.eventId }, 202, context.requestId);
     }
     if (evidence.status !== "QUARANTINED" || evidence.scan_status !== "PENDING") {
-      const results = await d1.batch(statements);
+      let results: D1Result<unknown>[];
+      try {
+        results = await d1.batch(statements);
+      } catch (error) {
+        const replay = await replayScanEventIfPresent(d1, callback, snapshot, context.requestId, true, evidence.id);
+        if (replay) return replay;
+        throw error;
+      }
       if (!results[0]?.meta.changes) throw new SecurityError("EVIDENCE_SCAN_EVENT_NOT_PERSISTED", 503);
       return securityResponse({ accepted: true, matched: true, idempotent: true, evidenceId: evidence.id }, 200, context.requestId);
     }
@@ -100,7 +121,14 @@ export async function POST(request: Request) {
       eventType: "EVIDENCE_SCAN_COMPLETED",
       payload: { evidenceId: evidence.id, verdict: callback.verdict, provider: callback.provider, scanReference: callback.scanReference },
     }, { sql: "EXISTS (SELECT 1 FROM evidence_documents WHERE id = ? AND facility_id = ? AND status = ? AND scan_status = ?)", values: [evidence.id, evidence.facility_id, nextStatus, nextScanStatus] }));
-    const results = await d1.batch(statements);
+    let results: D1Result<unknown>[];
+    try {
+      results = await d1.batch(statements);
+    } catch (error) {
+      const replay = await replayScanEventIfPresent(d1, callback, snapshot, context.requestId, true, evidence.id);
+      if (replay) return replay;
+      throw error;
+    }
     if (!results.slice(0, 4).every((result) => Boolean(result?.meta.changes))) throw new SecurityError("EVIDENCE_SCAN_STATE_NOT_PERSISTED", 503);
     return securityResponse({ accepted: true, matched: true, evidenceId: evidence.id, status: nextStatus, scanStatus: nextScanStatus, eventId: callback.eventId }, 200, context.requestId);
   } catch (error) {

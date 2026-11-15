@@ -72,6 +72,14 @@ test("scanner callbacks support an accepted reference without treating it as cle
   assert.match(callback, /EVIDENCE_SCAN_SIGNATURE_INVALID/);
   assert.match(callback, /status = 'QUARANTINED'/);
   assert.match(callback, /nextStatus = callback\.verdict === "clean" \? "AVAILABLE"/);
+  assert.match(callback, /replayScanEventIfPresent/);
+  assert.match(callback, /EVIDENCE_SCAN_REPLAY_CONFLICT/);
+});
+
+test("concurrent identical scanner callbacks replay the winning event instead of returning a uniqueness failure", async () => {
+  const callback = await readFile(new URL("../app/api/webhooks/evidence-scan/route.ts", import.meta.url), "utf8");
+  assert.match(callback, /catch \(error\) \{[\s\S]*replayScanEventIfPresent/);
+  assert.match(callback, /SELECT payload FROM evidence_scan_events WHERE provider = \? AND event_id = \?/);
 });
 
 test("scanner callbacks fail closed for disabled organizations", async () => {
