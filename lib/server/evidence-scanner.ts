@@ -6,6 +6,7 @@ export type EvidenceScanVerdict = "CLEAN" | "INFECTED";
 export type EvidenceScanResult = { verdict: EvidenceScanVerdict | "PENDING"; providerReference?: string };
 
 type EvidenceScanInput = {
+  evidenceId?: string;
   bytes: Uint8Array;
   contentType: string;
   sha256: string;
@@ -43,6 +44,7 @@ export async function requestEvidenceScan(input: EvidenceScanInput): Promise<Evi
   if (environment !== "development" && !isSecureHttpsEndpoint(callbackUrl || "")) throw new Error("EVIDENCE_SCAN_CALLBACK_NOT_CONFIGURED");
   const payload = JSON.stringify({
     type: "SECUREVISIT_EVIDENCE_SCAN",
+    ...(input.evidenceId ? { evidenceId: input.evidenceId } : {}),
     sha256: input.sha256,
     contentType: input.contentType,
     byteSize: input.byteSize,

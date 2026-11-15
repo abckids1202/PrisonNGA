@@ -10,6 +10,8 @@ test("evidence scanning fails closed outside development and signs timestamped w
   assert.match(source, /x-securevisit-timestamp/);
   assert.match(source, /\$\{timestamp\}\.\$\{payload\}/);
   assert.match(source, /idempotency-key/);
+  assert.match(source, /evidenceId\?: string/);
+  assert.match(source, /input\.evidenceId/);
   assert.match(source, /const environment = .*unknown/);
 });
 

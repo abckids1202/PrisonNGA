@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     let evidenceCommitted = false;
     let evidenceUploaded = false;
     try {
-      scanResult = await requestEvidenceScan({ bytes, contentType: file.type, sha256, byteSize: bytes.length });
+      scanResult = await requestEvidenceScan({ evidenceId: id, bytes, contentType: file.type, sha256, byteSize: bytes.length });
     } catch (error) {
       const code = error instanceof Error ? error.message : "EVIDENCE_SCAN_FAILED";
       if (code === "EVIDENCE_SCAN_NOT_CONFIGURED" || code === "EVIDENCE_SCAN_PROVIDER_UNSUPPORTED") throw new SecurityError(code, 503);
