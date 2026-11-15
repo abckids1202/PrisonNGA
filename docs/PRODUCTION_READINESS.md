@@ -19,11 +19,11 @@ Use the [pilot evidence register](./PILOT_EVIDENCE_REGISTER.md) to assign owners
 - Production release gates require a named release-evidence manifest ID, matching future expiry metadata, and one named, unexpired evidence record for every gate; readiness rejects missing, malformed, stale, or incomplete manifests. Staging and production also require a separate recording-policy approval attestation before governed recording can be treated as release-ready.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, deployment-header smoke tests (including LiveKit connectivity), and dependency audit must pass before every pushed phase.
 
-### Baseline verification — 2026-11-15 (`a2db8da`)
+### Baseline verification — 2026-11-15 (`c6f81ff`)
 
 The current repository baseline was rechecked against the pilot contract:
 
-- `npm run verify:release`: 744 release tests and 19 browser tests passed. The verifier also passed fresh local D1 migrations, staging-fixture compatibility, a disposable backup/restore drill, typecheck, lint, production build, route-security coverage, and the production dependency audit with 0 vulnerabilities. The browser journey includes persisted local visitor, kiosk, and staff observer token issuance and safe termination. These checks prove repository behavior only; external provider and institutional evidence remains required.
+- `npm run verify:release`: 744 release tests and 19 browser tests passed. The verifier also passed fresh local D1 migrations, staging-fixture compatibility, a disposable backup/restore drill, typecheck, lint, production build, route-security coverage, and the production dependency audit with 0 vulnerabilities. It now forces an isolated development environment and removes Vercel/API-origin variables before local build and browser checks, preventing stale external rewrites from contaminating local evidence. The browser journey includes persisted local visitor, kiosk, and staff observer token issuance and safe termination. These checks prove repository behavior only; external provider and institutional evidence remains required.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Production build: passed.
