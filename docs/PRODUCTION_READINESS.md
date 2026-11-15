@@ -16,10 +16,10 @@ Use the [pilot evidence register](./PILOT_EVIDENCE_REGISTER.md) to assign owners
 - Governed recording is available only when the facility policy permits it, explicit participant consent is persisted, private R2 storage and encryption controls are configured, retention/legal-hold rules are active, playback is authorized and audited, and the staging recording evidence gate has passed. Otherwise recording remains disabled.
 - Development OTP delivery and development simulation controls are environment-gated and are not pilot capabilities.
 - Staging and production environment validation requires both institutional staff federation paths (`STAFF_AUTH_PROVIDER=both`), with OIDC and SAML MFA claims configured independently; development may use a local-only provider shape.
-- Production release gates require a named release-evidence manifest ID, matching future expiry metadata, and one named, unexpired evidence record for every gate; readiness rejects missing, malformed, stale, or incomplete manifests.
+- Production release gates require a named release-evidence manifest ID, matching future expiry metadata, and one named, unexpired evidence record for every gate; readiness rejects missing, malformed, stale, or incomplete manifests. Staging and production also require a separate recording-policy approval attestation before governed recording can be treated as release-ready.
 - Local migration verification, build, typecheck, lint, unit/integration tests, browser smoke tests, deployment-header smoke tests (including LiveKit connectivity), and dependency audit must pass before every pushed phase.
 
-### Baseline verification — 2026-11-15 (`93d04d7`)
+### Baseline verification — 2026-11-15 (`222becd`)
 
 The current repository baseline was rechecked against the pilot contract:
 
