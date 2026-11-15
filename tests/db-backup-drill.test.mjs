@@ -15,6 +15,14 @@ test("database backup drill refuses direct remote restore and reorders exports s
   assert.match(source, /pragma_foreign_key_check/);
   assert.match(source, /LEDGER_OK/);
   assert.match(source, /AUDIT_OK/);
+  assert.match(source, /SECUREVISIT_LOCAL_D1_STATE_DIR/);
+});
+
+test("release backup verification provisions and exports the same disposable local state", async () => {
+  const source = await readFile(new URL("../scripts/verify-local-backup-drill.mjs", import.meta.url), "utf8");
+  assert.match(source, /db:migrate:local/);
+  assert.match(source, /db:seed:local/);
+  assert.match(source, /SECUREVISIT_LOCAL_D1_STATE_DIR: stateDirectory/);
 });
 
 test("remote migration tooling requires an explicit non-development environment", async () => {

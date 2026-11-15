@@ -11,6 +11,8 @@ const base = {
   PLATFORM_PROVISIONING_SECRET: "p".repeat(32),
   SECUREVISIT_HASH_SALT: "y".repeat(32),
   VISITOR_AUTH_DELIVERY: "webhook",
+  VISITOR_AUTH_CHANNELS: "EMAIL",
+  SECUREVISIT_VISITOR_EMAIL_ONLY_APPROVAL: "approved",
   VISITOR_AUTH_WEBHOOK_URL: "https://auth.example.test",
   VISITOR_AUTH_WEBHOOK_SECRET: "v".repeat(32),
   VIDEO_PROVIDER: "livekit",

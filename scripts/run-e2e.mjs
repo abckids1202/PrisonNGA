@@ -15,6 +15,9 @@ const childEnvironment = isolatedStatePath
       ...process.env,
       SECUREVISIT_LOCAL_D1_STATE_DIR: isolatedStatePath,
       SECUREVISIT_ENVIRONMENT: "development",
+      // The browser suite includes an explicit SMS compatibility test. Keep
+      // that test opt-in isolated from the product's email-first default.
+      VISITOR_AUTH_CHANNELS: "EMAIL,SMS",
       VISITOR_AUTH_DELIVERY: "console",
       PAYMENT_PROVIDER: "local_test",
       PAYMENT_WEBHOOK_SECRET: "local-development-payment-webhook-secret-0123456789",

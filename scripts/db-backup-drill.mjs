@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -43,6 +43,44 @@ function splitSqlStatements(sql) {
   return statements;
 }
 
+function sqlIdentifier(value) {
+  return `"${String(value).replaceAll("\"", "\"\"")}"`;
+}
+
+function sqlLiteral(value) {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number" || typeof value === "bigint") return String(value);
+  if (value instanceof Uint8Array || Buffer.isBuffer(value)) return `X'${Buffer.from(value).toString("hex")}'`;
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+async function exportConfiguredLocalState(stateDirectory, outputPath) {
+  const databaseDirectory = path.join(path.resolve(projectRoot, stateDirectory), "v3", "d1", "miniflare-D1DatabaseObject");
+  const candidates = (await readdir(databaseDirectory, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".sqlite") && entry.name !== "metadata.sqlite")
+    .map((entry) => path.join(databaseDirectory, entry.name));
+  if (candidates.length !== 1) throw new Error("Configured local D1 state must contain exactly one application SQLite database.");
+  const database = new DatabaseSync(candidates[0], { readOnly: true });
+  try {
+    const objects = database.prepare("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'trigger' THEN 2 WHEN 'view' THEN 3 ELSE 4 END, name").all();
+    const tables = objects.filter((object) => object.type === "table");
+    const statements = ["PRAGMA defer_foreign_keys=TRUE;"];
+    for (const table of tables) statements.push(`${table.sql};`);
+    for (const table of tables) {
+      const columns = database.prepare(`PRAGMA table_info(${sqlIdentifier(table.name)})`).all().map((column) => column.name);
+      if (!columns.length) continue;
+      const rows = database.prepare(`SELECT * FROM ${sqlIdentifier(table.name)}`).all();
+      for (const row of rows) {
+        statements.push(`INSERT INTO ${sqlIdentifier(table.name)} (${columns.map(sqlIdentifier).join(", ")}) VALUES (${columns.map((column) => sqlLiteral(row[column])).join(", ")});`);
+      }
+    }
+    for (const object of objects.filter((entry) => entry.type !== "table")) statements.push(`${object.sql};`);
+    await writeFile(outputPath, `${statements.join("\n")}\n`, "utf8");
+  } finally {
+    database.close();
+  }
+}
+
 if (!existsSync(wranglerCli)) fail("Wrangler is not installed. Run npm install first.");
 if (!["backup", "restore"].includes(action)) fail("Usage: backup --output <file.sql> [--remote|--local] | restore --input <file.sql>");
 
@@ -75,6 +113,7 @@ if (action === "backup") {
   const resolvedOutput = path.resolve(outputPath);
   if (!resolvedOutput.toLowerCase().endsWith(".sql")) fail("Backup output must be a .sql file.");
   const args = [wranglerCli, "d1", "export", "DB", local ? "--local" : "--remote", "--output", resolvedOutput, "--skip-confirmation", "--config", configPath];
+  const configuredLocalStateDir = process.env.SECUREVISIT_LOCAL_D1_STATE_DIR?.trim();
   // Keep Wrangler's working directory anchored at the project so local
   // exports use the same persisted state as the application.
   args.push("--cwd", projectRoot);
@@ -82,9 +121,15 @@ if (action === "backup") {
   await mkdir(path.dirname(resolvedOutput), { recursive: true });
   await writeFile(configPath, `${config}\n`, { flag: "wx" });
   try {
-    const result = spawnSync(process.execPath, args, { cwd: projectRoot, stdio: "inherit" });
-    if (result.error) throw result.error;
-    process.exitCode = result.status ?? 1;
+    if (local && configuredLocalStateDir) {
+      await exportConfiguredLocalState(configuredLocalStateDir, resolvedOutput);
+      console.log(`Exported configured local D1 state to ${resolvedOutput}.`);
+      process.exitCode = 0;
+    } else {
+      const result = spawnSync(process.execPath, args, { cwd: projectRoot, stdio: "inherit" });
+      if (result.error) throw result.error;
+      process.exitCode = result.status ?? 1;
+    }
   } finally {
     await rm(configPath, { force: true });
   }

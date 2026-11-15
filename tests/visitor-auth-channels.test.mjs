@@ -4,9 +4,10 @@ import { readFile } from "node:fs/promises";
 import { parseVisitorAuthChannels } from "../lib/server/visitor-auth/channels.ts";
 import { validateEnvironment } from "../lib/server/config.ts";
 
-test("visitor authentication defaults to both channels and parses explicit scopes", () => {
-  assert.deepEqual(parseVisitorAuthChannels(undefined), { channels: ["EMAIL", "SMS"], valid: true, emailOnly: false });
+test("visitor authentication defaults to email-only and parses explicit scopes", () => {
+  assert.deepEqual(parseVisitorAuthChannels(undefined), { channels: ["EMAIL"], valid: true, emailOnly: true });
   assert.deepEqual(parseVisitorAuthChannels("EMAIL"), { channels: ["EMAIL"], valid: true, emailOnly: true });
+  assert.deepEqual(parseVisitorAuthChannels("BOTH"), { channels: ["EMAIL", "SMS"], valid: true, emailOnly: false });
   assert.equal(parseVisitorAuthChannels("SMS").channels[0], "SMS");
   assert.equal(parseVisitorAuthChannels("carrier").valid, false);
 });

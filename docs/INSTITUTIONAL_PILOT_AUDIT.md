@@ -3,17 +3,17 @@
 Date: 2026-11-15
 Scope: current repository, organization-to-facility tenant model with an initial Indonesian pilot, Cloudflare Worker + D1 + LiveKit
 
-Latest verified code commit: `616ab13` (`Use visitor visit resource for device check`).
+Latest verified code commit: `93d04d7` (`Cover persisted visitor device check page`).
 The verified baseline includes the Integration Readiness, Notification Operations, Finance, Compliance, Visitation, People, verification, Incidents, and Administration workspace extractions plus a guarded synthetic staging fixture workflow with fresh-schema verification and a staging-only staff bootstrap path; it passed the full release verifier.
 The code baseline for this verification includes the notification, evidence-retention, Waiting Room opening, payment recovery, local Live Session transport, incident accountability, visitor OTP recovery, and visitor cancellation UX/reliability fixes.
-The release verifier baseline now has 730 passing server tests and 19 browser tests,
+The release verifier baseline now has 731 passing server tests and 19 browser tests,
 fresh migration verification, a disposable backup/restore drill, typecheck,
 lint, production build, and a zero-vulnerability production dependency audit.
 This is repository evidence only; it does not attest external providers,
 institutional identity, hardware, or policy approvals.
 
-The release verifier reports 730 passing server tests plus 19 browser tests
-on `616ab13`, with 91 API routes covered by the route-security matrix,
+The release verifier reports 731 passing server tests plus 19 browser tests
+on `93d04d7`, with 91 API routes covered by the route-security matrix,
 including the governed recording-encryption checks, deployment preflight
 enforcement, and current browser/server validation; this is the current
 repository evidence record.
@@ -21,7 +21,9 @@ repository evidence record.
 Current redacted `npm run audit:pilot` result: `readyForPilot: false` in the
 development environment. The report identifies the expected missing deployment
 inputs `PUBLIC_APP_URL`, `D1_DATABASE_ID`, and `D1_DATABASE_NAME`, and warns that the development
-hash-salt fallback is active. No secret values are written to the report.
+hash-salt fallback is active. Visitor authentication now fails safe to email-only
+when `VISITOR_AUTH_CHANNELS` is absent; SMS requires an explicit channel opt-in,
+provider configuration, and policy approval. No secret values are written to the report.
 
 Fresh audit snapshot — 2026-10-11: strict readiness still reports
 `readyForPilot: false`. The local development checks pass because development
@@ -131,7 +133,7 @@ The current repository already includes:
 - Scheduled and Queue-triggered work now applies the same fail-closed environment validation as HTTP traffic; staging/production background work retries or stops before it can mutate state during an invalid deployment.
 - Development E2E now exercises checkout creation through a local-only provider adapter, signed payment webhook settlement, duplicate delivery, and one PURCHASE ledger entry; the adapter is unavailable outside development.
 - Development E2E can use an explicit in-memory evidence adapter for upload and protected reviewer reads; R2 remains the only non-development storage path and missing storage still fails closed.
-- Automated server and browser acceptance tests. The current validation baseline is 699 passing server test cases and 19 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
+- Automated server and browser acceptance tests. The current validation baseline is 731 passing server test cases and 19 browser tests; the release verifier also runs fresh migration verification, the local backup/restore drill, deployment-manifest preflight, and a production dependency audit as separate release gates. This is repository evidence only; it does not substitute for external-provider or institutional acceptance evidence.
 - Kiosk device-check persistence now accepts trigger-aware D1 change counts greater than zero while preserving explicit waiting-room version predicates; the complete 19-test browser suite proves the visitor → staff approval → kiosk readiness handoff after refresh.
 - Recording reconciliation and playback integrity failures now create organization-scoped critical security alarms, including missing objects, size drift, checksum mismatch, and bounded fallback failures.
 - `npm run audit:routes` now scans all 88 API route files and fails if a route is absent from `docs/ROUTE_SECURITY_MATRIX.md`; the matcher understands combined rows, parameterized segments, and wildcard route families. The release verifier passes with the resulting 699 server test cases and 19 browser tests.
