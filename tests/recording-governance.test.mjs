@@ -169,6 +169,7 @@ test("recording playback streams verified objects and bounds fallback hashing", 
   assert.match(route, /requestedByteRange/);
   assert.match(route, /status: range \? 206 : 200/);
   assert.match(route, /Content-Range/);
+  assert.match(route, /bytes \*\/\$\{object\.size\}/);
   assert.match(route, /Accept-Ranges/);
 });
 

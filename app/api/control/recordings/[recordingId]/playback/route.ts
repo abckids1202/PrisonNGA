@@ -2,7 +2,7 @@ import { getD1 } from "../../../../../../db/runtime";
 import { getRecordingStore, MAX_FALLBACK_INTEGRITY_BYTES } from "../../../../../../lib/server/evidence-storage";
 import { recordingIntegrityFailureStatement } from "../../../../../../lib/server/reconciliation";
 import { operationalLog, safeOperationalErrorMessage } from "../../../../../../lib/server/observability";
-import { applySecurityHeaders, getRequestContext, requireActiveBreakGlass, requirePermission, securityErrorResponse, SecurityError } from "../../../../../../lib/server/security";
+import { applySecurityHeaders, getRequestContext, requireActiveBreakGlass, requirePermission, securityErrorResponse, securityResponse, SecurityError } from "../../../../../../lib/server/security";
 
 async function recordIntegrityFailure(input: {
   database: D1Database;
@@ -111,7 +111,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ reco
         throw new SecurityError("RECORDING_INTEGRITY_CHECK_FAILED", 409);
       }
     }
-    const range = requestedByteRange(request.headers.get("range"), object.size);
+    let range: { start: number; end: number } | null;
+    try {
+      range = requestedByteRange(request.headers.get("range"), object.size);
+    } catch (error) {
+      if (error instanceof SecurityError && error.code === "RECORDING_RANGE_INVALID") {
+        const response = securityResponse({ error: error.code, requestId: context.requestId }, 416, context.requestId);
+        response.headers.set("Content-Range", `bytes */${object.size}`);
+        return response;
+      }
+      throw error;
+    }
     const servedObject = range ? await store.get(recording.storage_key, { range: { offset: range.start, length: range.end - range.start + 1 } }) : object;
     if (!servedObject || (range && servedObject.size !== range.end - range.start + 1)) throw new SecurityError("RECORDING_RANGE_UNAVAILABLE", 503);
     const correlationId = crypto.randomUUID();
