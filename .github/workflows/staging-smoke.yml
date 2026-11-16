@@ -46,5 +46,5 @@ jobs:
         with:
           name: securevisit-staging-smoke-${{ github.run_id }}
           path: evidence/staging-smoke-${{ github.run_id }}.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30

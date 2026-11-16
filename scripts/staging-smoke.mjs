@@ -6,31 +6,35 @@ const readinessCookie = String(process.env.STAGING_READINESS_COOKIE || "").trim(
 const requireReadiness = String(process.env.STAGING_SMOKE_REQUIRE_READINESS || "true").toLowerCase() !== "false";
 const allowInsecure = String(process.env.STAGING_SMOKE_ALLOW_INSECURE || "false").toLowerCase() === "true";
 const timeoutMs = Number(process.env.STAGING_SMOKE_TIMEOUT_MS || 10000);
+const evidencePath = String(process.env.STAGING_SMOKE_EVIDENCE_PATH || "").trim();
+const startupFailures = [];
 
 if (!baseUrl) {
-  throw new Error("STAGING_DOMAIN is required, for example https://staging.securevisit.example");
+  startupFailures.push("STAGING_DOMAIN is required, for example https://staging.securevisit.example");
 }
 
-let parsedBaseUrl;
-try {
-  parsedBaseUrl = new URL(baseUrl);
-} catch {
-  throw new Error(`STAGING_DOMAIN is not a valid URL: ${baseUrl}`);
+let parsedBaseUrl = null;
+if (baseUrl) {
+  try {
+    parsedBaseUrl = new URL(baseUrl);
+  } catch {
+    startupFailures.push(`STAGING_DOMAIN is not a valid URL: ${baseUrl}`);
+  }
 }
 
-if (parsedBaseUrl.username || parsedBaseUrl.password || parsedBaseUrl.pathname !== "/" || parsedBaseUrl.search || parsedBaseUrl.hash) {
-  throw new Error("STAGING_DOMAIN must be an origin without credentials, path, query, or fragment");
+if (parsedBaseUrl && (parsedBaseUrl.username || parsedBaseUrl.password || parsedBaseUrl.pathname !== "/" || parsedBaseUrl.search || parsedBaseUrl.hash)) {
+  startupFailures.push("STAGING_DOMAIN must be an origin without credentials, path, query, or fragment");
 }
 
-if (!allowInsecure && parsedBaseUrl.protocol !== "https:") {
-  throw new Error("STAGING_DOMAIN must use HTTPS; set STAGING_SMOKE_ALLOW_INSECURE=true only for an intentional local check");
+if (parsedBaseUrl && !allowInsecure && parsedBaseUrl.protocol !== "https:") {
+  startupFailures.push("STAGING_DOMAIN must use HTTPS; set STAGING_SMOKE_ALLOW_INSECURE=true only for an intentional local check");
 }
 
 if (!Number.isFinite(timeoutMs) || timeoutMs < 1000 || timeoutMs > 60000) {
-  throw new Error("STAGING_SMOKE_TIMEOUT_MS must be between 1000 and 60000 milliseconds");
+  startupFailures.push("STAGING_SMOKE_TIMEOUT_MS must be between 1000 and 60000 milliseconds");
 }
 
-const failures = [];
+const failures = [...startupFailures];
 const skipped = [];
 const checks = [];
 
@@ -77,10 +81,12 @@ function header(response, name) {
   return String(response.headers.get(name) || "").toLowerCase();
 }
 
-console.log(`SecureVisit staging smoke: ${baseUrl}`);
+console.log(`SecureVisit staging smoke: ${baseUrl || "(missing domain)"}`);
+
+for (const failure of startupFailures) console.error(`FAIL  configuration — ${failure}`);
 
 let liveResponse;
-try {
+if (parsedBaseUrl && startupFailures.length === 0) try {
   liveResponse = await request("/api/health/live");
   const liveBody = await readJson(liveResponse);
   check("liveness status", liveResponse.status === 200 && liveBody?.status === "ok", `HTTP ${liveResponse.status}`);
@@ -115,7 +121,7 @@ try {
   check("liveness request", false, error instanceof Error ? error.message : String(error));
 }
 
-if (readinessCookie) {
+if (parsedBaseUrl && startupFailures.length === 0 && readinessCookie) {
   const headers = { cookie: readinessCookie };
   try {
     const readinessResponse = await request("/api/health/readiness", headers);
@@ -127,19 +133,18 @@ if (readinessCookie) {
   } catch (error) {
     check("readiness request", false, error instanceof Error ? error.message : String(error));
   }
-} else if (requireReadiness) {
+} else if (parsedBaseUrl && startupFailures.length === 0 && requireReadiness) {
   check("readiness credentials", false, "set STAGING_READINESS_COOKIE to a short-lived staff session cookie");
 } else {
   skip("authenticated readiness", "set STAGING_SMOKE_REQUIRE_READINESS=true to make this a release gate");
 }
 
 if (skipped.length) console.log(`\n${skipped.length} check(s) skipped intentionally.`);
-const evidencePath = String(process.env.STAGING_SMOKE_EVIDENCE_PATH || "").trim();
 if (evidencePath) {
   const evidence = {
     generatedAt: new Date().toISOString(),
     environment: "staging",
-    deploymentOrigin: parsedBaseUrl.origin,
+    deploymentOrigin: parsedBaseUrl?.origin || null,
     releaseId: String(process.env.SECUREVISIT_RELEASE_EVIDENCE_ID || process.env.VERCEL_GIT_COMMIT_SHA || "").trim() || null,
     checks,
     failures,

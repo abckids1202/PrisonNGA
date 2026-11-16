@@ -15,7 +15,7 @@ test("staging smoke is scheduled for public monitoring and keeps authenticated r
   assert.match(workflow, /STAGING_SMOKE_REQUIRE_READINESS: \$\{\{ github\.event_name == 'workflow_dispatch'/);
   assert.match(workflow, /STAGING_SMOKE_EVIDENCE_PATH: evidence\/staging-smoke-\$\{\{ github\.run_id \}\}\.json/);
   assert.match(workflow, /actions\/upload-artifact@v4/);
-  assert.match(workflow, /if-no-files-found: error/);
+  assert.match(workflow, /if-no-files-found: warn/);
 });
 
 function runSmoke(baseUrl, extra = {}) {
@@ -121,4 +121,18 @@ test("staging smoke rejects a non-origin monitoring target", async () => {
   const result = await runSmoke("http://127.0.0.1:8787/tenant?probe=1");
   assert.notEqual(result.code, 0);
   assert.match(result.stderr, /STAGING_DOMAIN must be an origin/);
+});
+
+test("staging smoke writes a diagnostic artifact when configuration is missing", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "securevisit-smoke-config-"));
+  const evidencePath = join(directory, "evidence", "smoke.json");
+  try {
+    const result = await runSmoke("", { STAGING_SMOKE_EVIDENCE_PATH: evidencePath });
+    assert.notEqual(result.code, 0);
+    const evidence = JSON.parse(await readTextFile(evidencePath, "utf8"));
+    assert.equal(evidence.deploymentOrigin, null);
+    assert.ok(evidence.failures.some((failure) => failure.includes("STAGING_DOMAIN is required")));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
